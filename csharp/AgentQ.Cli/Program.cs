@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+using System.Text.Json;
+using System.Linq;
 using Spectre.Console;
 using AgentQ.Cli;
 using AgentQ.Tools;
@@ -8,7 +9,21 @@ using AgentQ.Providers.Anthropic;
 using AgentQ.Providers.OpenAi;
 
 // Parse configuration from args and environment
-var config = ProviderConfiguration.FromArgs(args);
+var initialConfig = ProviderConfiguration.FromArgs(args);
+
+// Load persisted config if available and merge (Arguments/Env take precedence)
+var persistedConfig = await ConfigStore.LoadAsync();
+var config = initialConfig;
+
+if (persistedConfig != null)
+{
+    // Use persisted values only if they weren't explicitly provided by user
+    if (string.IsNullOrEmpty(initialConfig.Provider)) config.Provider = persistedConfig.Provider;
+    if (string.IsNullOrEmpty(initialConfig.Model)) config.Model = persistedConfig.Model;
+    if (string.IsNullOrEmpty(initialConfig.BaseUrl)) config.BaseUrl = persistedConfig.BaseUrl;
+    if (string.IsNullOrEmpty(initialConfig.ApiKey)) config.ApiKey = persistedConfig.ApiKey;
+    if (initialConfig.TimeoutSeconds == 60) config.TimeoutSeconds = persistedConfig.TimeoutSeconds;
+}
 
 // Create provider factory and register providers
 var providerFactory = new ProviderFactory();
@@ -19,8 +34,24 @@ providerFactory.Register("openai", (baseUrl, apiKey) => new OpenAiCompatibleProv
 ILlmProvider? provider = null;
 if (string.IsNullOrEmpty(config.BaseUrl))
 {
-    // Default to localhost mock service
+    // Default to localhost mock service if no URL is provided
     config.BaseUrl = "http://localhost:18080";
+}
+
+// Validation: Check if required settings are missing
+if (string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.Model))
+{
+    AnsiConsole.Write(new Panel(
+        "[yellow]Warning: Model name or API Key is missing.[/]\n\n" +
+        "Please set environment variables or use commands:\n" +
+        "  - [cyan]set AGENTQ_MODEL=qwen-plus[/]\n" +
+        "  - [cyan]set AGENTQ_API_KEY=your-key[/]\n\n" +
+        "Or use [bold]/model[/], [bold]/base-url[/] commands inside the CLI."
+    )
+    {
+        Header = new PanelHeader("[yellow]Missing Configuration[/]"),
+        Border = BoxBorder.Rounded
+    });
 }
 
 if (!providerFactory.TryGetProvider(config.Provider, config.BaseUrl, config.ApiKey, out provider) || provider == null)
@@ -103,7 +134,7 @@ while (running)
                             AnsiConsole.Write(new Panel($"[red]Unknown or invalid provider: {providerName}[/]\n[dim]Available: {string.Join(", ", providerFactory.AvailableProviders)}[/]")
                             {
                                 Border = BoxBorder.Rounded,
-                                Title = "[red]Provider Error[/]"
+                                Header = new PanelHeader("[red]Provider Error[/]")
                             });
                         }
                     }
@@ -150,6 +181,67 @@ while (running)
                     }
                     break;
 
+                case "/config":
+                    if (parts.Length > 1 && parts[1].Trim().ToLowerInvariant() == "save")
+                    {
+                        try
+                        {
+                            await ConfigStore.SaveAsync(config);
+                            AnsiConsole.MarkupLine("[green]Current configuration saved successfully![/]");
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to save configuration:[/] {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine("[dim]Usage: /config save (Saves current provider, model, url, and timeout to config.json)[/]");
+                    }
+                    break;
+
+                case "/save":
+                    if (parts.Length > 1)
+                    {
+                        var filePath = parts[1].Trim();
+                        try
+                        {
+                            await SessionStore.SaveAsync(filePath, history.Messages);
+                            AnsiConsole.MarkupLine($"[green]Session saved to: [cyan]{filePath}[/][/]");
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to save session:[/] {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine("[red]Usage: /save <file_path>[/]");
+                    }
+                    break;
+
+                case "/load":
+                    if (parts.Length > 1)
+                    {
+                        var filePath = parts[1].Trim();
+                        try
+                        {
+                            var messages = await SessionStore.LoadAsync(filePath);
+                            history.Clear();
+                            history.AddRange(messages);
+                            AnsiConsole.MarkupLine($"[green]Session loaded from: [cyan]{filePath}[/] ({messages.Count} messages)[/]");
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to load session:[/] {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine("[red]Usage: /load <file_path>[/]");
+                    }
+                    break;
+
                 default:
                     AnsiConsole.MarkupLine($"[red]Unknown command: {command}[/]");
                     break;
@@ -167,13 +259,16 @@ while (running)
         AnsiConsole.Write(new Panel($"[red]An unexpected error occurred:[/] {ex.Message}\n[dim]{ex.StackTrace?.Split('\n').FirstOrDefault()}[/]")
         {
             Border = BoxBorder.Double,
-            Title = "[bold red]Critical Error[/]"
+            Header = new PanelHeader("[bold red]Critical Error[/]")
         });
     }
 }
 
 AnsiConsole.MarkupLine("\n[dim]Goodbye![/]");
 
+/// <summary>
+/// 도구 레지스트리 생성
+/// </summary>
 static ToolRegistry CreateToolRegistry()
 {
     var registry = new ToolRegistry();
@@ -187,34 +282,70 @@ static ToolRegistry CreateToolRegistry()
     return registry;
 }
 
+/// <summary>
+/// 메시지 전송 및 표시
+/// </summary>
 static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConversationHistory history, ToolRegistry registry, IPermissionEnforcer enforcer, CliToolLoopRunner loopRunner, CancellationToken ct = default)
 {
     AnsiConsole.Write(new Rule { Title = "Assistant", Style = Style.Parse("blue") });
+    
     try
     {
-        await loopRunner.ExecuteConversationTurnAsync(
-            provider,
-            model,
-            history,
-            registry,
-            enforcer,
-            onTextDelta: text => AnsiConsole.MarkupInterpolated($"[white]{text}[/]"),
-            onToolExecution: toolName => AnsiConsole.MarkupLine($"[dim]Executing tool: [cyan]{toolName}[/][/dim]"),
-            onToolOutput: output =>
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Thinking...", async ctx => 
             {
-                var preview = output.Length > 100 ? output.Substring(0, 100) : output;
-                AnsiConsole.MarkupLine($"[green]Tool output:[/] [dim]{preview}{(output.Length > 100 ? "..." : "")}[/]");
-            },
-            onToolError: error => AnsiConsole.MarkupLine($"[red]Tool error: {error}[/]"),
-            onPermissionDenied: toolName => AnsiConsole.MarkupLine($"[yellow]Permission denied for {toolName}[/]"),
-            ct: ct);
+                await loopRunner.ExecuteConversationTurnAsync(
+                    provider,
+                    model,
+                    history,
+                    registry,
+                    enforcer,
+                    onTextDelta: text => 
+                    {
+                        // Update status or stop it when text starts streaming
+                        ctx.Status("Receiving response...");
+                        AnsiConsole.MarkupInterpolated($"[white]{text}[/]");
+                    },
+                    onToolExecution: toolName => 
+                    {
+                        ctx.Status($"Executing tool: [cyan]{toolName}[/]...");
+                        AnsiConsole.MarkupLine($"[dim]Executing tool: [cyan]{toolName}[/][/dim]");
+                    },
+                    onToolOutput: output =>
+                    {
+                        var preview = output.Length > 100 ? output.Substring(0, 100) : output;
+                        AnsiConsole.MarkupLine($"[green]Tool output:[/] [dim]{preview}{(output.Length > 100 ? "..." : "")}[/]");
+                        ctx.Status("Processing tool output...");
+                    },
+                    onToolError: error => AnsiConsole.MarkupLine($"[red]Tool error: {error}[/]"),
+                    onPermissionDenied: toolName => AnsiConsole.MarkupLine($"[yellow]Permission denied for {toolName}[/]"),
+                    ct: ct);
+            });
+
+        // After the streaming is done, re-render the final response as Markdown for syntax highlighting
+        var lastMessage = history.Messages.LastOrDefault();
+        if (lastMessage != null && lastMessage.Role == ChatRole.Assistant)
+        {
+            // Clear the streaming output by writing a newline and re-rendering properly if needed
+            AnsiConsole.WriteLine();
+            var textContent = string.Join("\n", lastMessage.Content
+                .Where(c => c.Type == ContentType.Text)
+                .Select(c => c.Text));
+            
+            if (!string.IsNullOrWhiteSpace(textContent))
+            {
+                // Fallback to regular markup if Markdown class is missing for some reason
+                AnsiConsole.MarkupLine($"\n[white]{textContent}[/]");
+            }
+        }
     }
     catch (OperationCanceledException)
     {
         AnsiConsole.Write(new Panel("[yellow]The operation was timed out or cancelled.[/]")
         {
             Border = BoxBorder.Rounded,
-            Title = "[yellow]Timeout[/]"
+            Header = new PanelHeader("[yellow]Timeout[/]")
         });
     }
     catch (Exception ex)
@@ -222,12 +353,15 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
         AnsiConsole.Write(new Panel($"[red]Error during conversation:[/] {ex.Message}")
         {
             Border = BoxBorder.Rounded,
-            Title = "[red]API Error[/]"
+            Header = new PanelHeader("[red]API Error[/]")
         });
     }
     AnsiConsole.WriteLine();
 }
 
+/// <summary>
+/// 도구 직접 실행
+/// </summary>
 static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, string args)
 {
     var loopRunner = new CliToolLoopRunner();
@@ -261,7 +395,7 @@ static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, s
         AnsiConsole.Write(new Panel($"[red]Invalid JSON arguments:[/] {ex.Message}\n[dim]Example: /run {toolName} {{\"param\": \"value\"}}[/]")
         {
             Border = BoxBorder.Rounded,
-            Title = "[red]JSON Syntax Error[/]"
+            Header = new PanelHeader("[red]JSON Syntax Error[/]")
         });
         return;
     }
@@ -287,6 +421,9 @@ static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, s
     }
 }
 
+/// <summary>
+/// 도움말 표시
+/// </summary>
 static void ShowHelp(ToolRegistry registry)
 {
     AnsiConsole.MarkupLine("[bold]Commands:[/]");
@@ -302,6 +439,9 @@ static void ShowHelp(ToolRegistry registry)
     AnsiConsole.MarkupLine("  [yellow]/timeout[/]    - Show or set API timeout in seconds");
 }
 
+/// <summary>
+/// 도구 목록 표시
+/// </summary>
 static void ShowTools(ToolRegistry registry)
 {
     AnsiConsole.MarkupLine("[bold]Available Tools:[/]");
@@ -316,4 +456,3 @@ static void ShowTools(ToolRegistry registry)
 
     AnsiConsole.Write(table);
 }
-

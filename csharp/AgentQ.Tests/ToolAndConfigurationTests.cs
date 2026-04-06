@@ -5,15 +5,21 @@ using Xunit;
 
 namespace AgentQ.Tests;
 
+/// <summary>
+/// 도구 및 구성 설정에 대한 단위 테스트 클래스입니다.
+/// </summary>
 public sealed class ToolAndConfigurationTests : IDisposable
 {
     private readonly Dictionary<string, string?> _originalEnvironment = new();
 
+    /// <summary>
+    /// ReadFileTool이 문자열 offset과 limit 파라미터를 올바르게 파싱하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task ReadFileTool_ParsesStringOffsetAndLimit()
     {
         using var workspace = new TemporaryWorkspace();
-        SetEnvironment("CLAW_WORKSPACE_ROOT", workspace.RootPath);
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
         var filePath = workspace.CreateFile(
             "sample.txt",
             """
@@ -39,11 +45,14 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(2, json.RootElement.GetProperty("offset").GetInt32());
     }
 
+    /// <summary>
+    /// EditFileTool이 replace_all 모드에서 실제 교체 횟수를 올바르게 보고하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task EditFileTool_ReplaceAllReportsActualReplacementCount()
     {
         using var workspace = new TemporaryWorkspace();
-        SetEnvironment("CLAW_WORKSPACE_ROOT", workspace.RootPath);
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
         var filePath = workspace.CreateFile("sample.txt", "alpha beta alpha");
 
         var tool = new EditFileTool();
@@ -62,6 +71,9 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(2, json.RootElement.GetProperty("replacements").GetInt32());
     }
 
+    /// <summary>
+    /// GlobTool이 중첩 glob 패턴과 일치하는 파일을 올바르게 찾는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GlobTool_MatchesNestedGlobPatterns()
     {
@@ -90,6 +102,9 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains(files, file => file.Replace('\\', '/').EndsWith("/config/appsettings.json", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// GrepTool이 OneDrive 경로를 제외하지 않고 올바르게 검색하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GrepTool_DoesNotExcludeOneDrivePaths()
     {
@@ -111,6 +126,9 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(1, json.RootElement.GetProperty("numMatches").GetInt32());
     }
 
+    /// <summary>
+    /// PluginEchoTool이 plugin 스타일 페이로드를 올바르게 반환하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task PluginEchoTool_ReturnsPluginStylePayload()
     {
@@ -127,13 +145,16 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("hello", json.RootElement.GetProperty("input").GetProperty("message").GetString());
     }
 
+    /// <summary>
+    /// ProviderConfiguration.FromArgs가 환경 변수 폴백을 사용하여 제공자를 올바르게 구성하는지 검증합니다.
+    /// </summary>
     [Fact]
     public void ProviderConfiguration_FromArgs_UsesEnvironmentFallbackForProvider()
     {
-        SetEnvironment("CLAW_PROVIDER", "openai");
-        SetEnvironment("CLAW_MODEL", "gpt-4.1");
-        SetEnvironment("CLAW_BASE_URL", "https://example.test");
-        SetEnvironment("CLAW_API_KEY", "secret");
+        SetEnvironment("AGENTQ_PROVIDER", "openai");
+        SetEnvironment("AGENTQ_MODEL", "gpt-4.1");
+        SetEnvironment("AGENTQ_BASE_URL", "https://example.test");
+        SetEnvironment("AGENTQ_API_KEY", "secret");
 
         var config = ProviderConfiguration.FromArgs([]);
 
@@ -143,11 +164,14 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("secret", config.ApiKey);
     }
 
+    /// <summary>
+    /// ProviderConfiguration.FromArgs가 명시적 인수가 환경 변수보다 우선하는지 검증합니다.
+    /// </summary>
     [Fact]
     public void ProviderConfiguration_FromArgs_PrefersExplicitArguments()
     {
-        SetEnvironment("CLAW_PROVIDER", "anthropic");
-        SetEnvironment("CLAW_MODEL", "claude");
+        SetEnvironment("AGENTQ_PROVIDER", "anthropic");
+        SetEnvironment("AGENTQ_MODEL", "claude");
 
         var config = ProviderConfiguration.FromArgs(["--provider", "openai", "--model", "gpt-5"]);
 
@@ -155,12 +179,15 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("gpt-5", config.Model);
     }
 
+    /// <summary>
+    /// ReadFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task ReadFileTool_RejectsPathsOutsideWorkspaceRoot()
     {
         using var workspace = new TemporaryWorkspace();
         using var outside = new TemporaryWorkspace();
-        SetEnvironment("CLAW_WORKSPACE_ROOT", workspace.RootPath);
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
 
         var outsideFile = outside.CreateFile("outside.txt", "blocked");
         var tool = new ReadFileTool();
@@ -173,12 +200,15 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// WriteFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task WriteFileTool_RejectsPathsOutsideWorkspaceRoot()
     {
         using var workspace = new TemporaryWorkspace();
         using var outside = new TemporaryWorkspace();
-        SetEnvironment("CLAW_WORKSPACE_ROOT", workspace.RootPath);
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
 
         var outsideFile = Path.Combine(outside.RootPath, "outside.txt");
         var tool = new WriteFileTool();
@@ -193,12 +223,15 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// EditFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task EditFileTool_RejectsPathsOutsideWorkspaceRoot()
     {
         using var workspace = new TemporaryWorkspace();
         using var outside = new TemporaryWorkspace();
-        SetEnvironment("CLAW_WORKSPACE_ROOT", workspace.RootPath);
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
 
         var outsideFile = outside.CreateFile("outside.txt", "alpha");
         var tool = new EditFileTool();
@@ -214,6 +247,9 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 환경 변수를 설정하고 원래 값을 추적합니다.
+    /// </summary>
     private void SetEnvironment(string name, string? value)
     {
         if (!_originalEnvironment.ContainsKey(name))
@@ -224,7 +260,10 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Environment.SetEnvironmentVariable(name, value);
     }
 
-    public void Dispose()
+        /// <summary>
+        /// 임시 디렉토리와 모든 내용을 삭제합니다.
+        /// </summary>
+        public void Dispose()
     {
         foreach (var pair in _originalEnvironment)
         {
@@ -232,8 +271,14 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// 임시 작업 공간 디렉토리를 관리하는 헬퍼 클래스입니다.
+    /// </summary>
     private sealed class TemporaryWorkspace : IDisposable
     {
+        /// <summary>
+        /// 지정된 이름으로 임시 작업 공간 디렉토리를 생성합니다.
+        /// </summary>
         public TemporaryWorkspace(string? rootName = null)
         {
             RootPath = Path.Combine(
@@ -244,8 +289,14 @@ public sealed class ToolAndConfigurationTests : IDisposable
             Directory.CreateDirectory(RootPath);
         }
 
+        /// <summary>
+        /// 임시 작업 공간의 루트 디렉토리 경로입니다.
+        /// </summary>
         public string RootPath { get; }
 
+        /// <summary>
+        /// 지정된 상대 경로와 내용으로 파일을 생성합니다.
+        /// </summary>
         public string CreateFile(string relativePath, string content)
         {
             var path = Path.Combine(RootPath, relativePath);
@@ -255,11 +306,14 @@ public sealed class ToolAndConfigurationTests : IDisposable
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(path, content.Replace("\n", Environment.NewLine));
+            File.WriteAllText(path, content.Replace("\r\n", "\n").Replace("\n", Environment.NewLine));
             return path;
         }
 
-        public void Dispose()
+    /// <summary>
+    /// 테스트 중 변경된 환경 변수를 원래 값으로 복원합니다.
+    /// </summary>
+    public void Dispose()
         {
             if (Directory.Exists(RootPath))
             {

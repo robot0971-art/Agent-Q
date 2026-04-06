@@ -5,6 +5,9 @@ using AgentQ.Api;
 
 namespace AgentQ.MockService;
 
+/// <summary>
+/// Mock Anthropic 서비스
+/// </summary>
 public class MockAnthropicService
 {
     private HttpListener? _listener;
@@ -13,10 +16,20 @@ public class MockAnthropicService
     private readonly List<CapturedRequest> _capturedRequests = new();
     private readonly Lock _requestsLock = new();
 
+    /// <summary>
+    /// 기본 모델
+    /// </summary>
     public const string DefaultModel = "claude-sonnet-4-6";
 
+    /// <summary>
+    /// 기본 URL
+    /// </summary>
     public string BaseUrl { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// 서비스 시작
+    /// </summary>
+    /// <param name="prefix">URL 프리픽스</param>
     public async Task StartAsync(string prefix)
     {
         _listener = new HttpListener();
@@ -30,6 +43,9 @@ public class MockAnthropicService
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 서비스 중지
+    /// </summary>
     public async Task StopAsync()
     {
         _cts?.Cancel();
@@ -50,6 +66,9 @@ public class MockAnthropicService
         _listener?.Close();
     }
 
+    /// <summary>
+    /// 캡처된 요청 목록 가져오기
+    /// </summary>
     public List<CapturedRequest> GetCapturedRequests()
     {
         lock (_requestsLock)

@@ -6,8 +6,25 @@ using AgentQ.Tools;
 
 namespace AgentQ.Cli;
 
+/// <summary>
+/// CLI 도구 실행 루프
+/// </summary>
 public sealed class CliToolLoopRunner
 {
+    /// <summary>
+    /// 대화 턴 실행
+    /// </summary>
+    /// <param name="provider">LLM 제공자</param>
+    /// <param name="model">모델 이름</param>
+    /// <param name="history">대화 기록</param>
+    /// <param name="registry">도구 레지스트리</param>
+    /// <param name="enforcer">권한 인포서</param>
+    /// <param name="onTextDelta">텍스트 델타 콜백</param>
+    /// <param name="onToolExecution">도구 실행 콜백</param>
+    /// <param name="onToolOutput">도구 출력 콜백</param>
+    /// <param name="onToolError">도구 오류 콜백</param>
+    /// <param name="onPermissionDenied">권한 거부 콜백</param>
+    /// <param name="ct">취소 토큰</param>
     public async Task ExecuteConversationTurnAsync(
         ILlmProvider provider,
         string model,
@@ -130,12 +147,20 @@ public sealed class CliToolLoopRunner
         }
     }
 
+    /// <summary>
+    /// JSON 인수 파싱
+    /// </summary>
+    /// <param name="jsonArgs">JSON 인수 문자열</param>
+    /// <returns>파싱된 인수 딕셔너리</returns>
     public Dictionary<string, object?> ParseJsonArguments(string jsonArgs)
     {
         using var doc = JsonDocument.Parse(jsonArgs);
         return ParseJsonObject(doc.RootElement);
     }
 
+    /// <summary>
+    /// 입력 파싱
+    /// </summary>
     private static Dictionary<string, object?> ParseInput(object? input)
     {
         return input switch
@@ -146,6 +171,9 @@ public sealed class CliToolLoopRunner
         };
     }
 
+    /// <summary>
+    /// JSON 객체 파싱 시도
+    /// </summary>
     private static Dictionary<string, object?> TryParseJsonObject(string rawJson)
     {
         try
@@ -163,6 +191,9 @@ public sealed class CliToolLoopRunner
         return new Dictionary<string, object?>();
     }
 
+    /// <summary>
+    /// JSON 객체 파싱
+    /// </summary>
     private static Dictionary<string, object?> ParseJsonObject(JsonElement element)
     {
         var inputDict = new Dictionary<string, object?>();

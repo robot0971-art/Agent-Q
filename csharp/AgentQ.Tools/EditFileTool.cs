@@ -2,11 +2,29 @@
 
 namespace AgentQ.Tools;
 
+/// <summary>
+/// 파일 편집 도구
+/// </summary>
 public class EditFileTool : ITool
 {
+    /// <summary>
+    /// 도구 이름
+    /// </summary>
     public string Name => "edit_file";
+
+    /// <summary>
+    /// 도구 설명
+    /// </summary>
     public string Description => "Edit a file by replacing a specific string with a new string";
+
+    /// <summary>
+    /// 권한 확인 필요 여부
+    /// </summary>
     public bool RequiresPermission => true;
+
+    /// <summary>
+    /// 입력 스키마 (JSON Schema)
+    /// </summary>
     public object InputSchema => new
     {
         type = "object",
@@ -20,6 +38,12 @@ public class EditFileTool : ITool
         required = new[] { "path", "old_string", "new_string" }
     };
 
+    /// <summary>
+    /// 도구 실행
+    /// </summary>
+    /// <param name="input">입력 파라미터</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         if (!input.TryGetValue("path", out var pathObj) || pathObj is not string path)
@@ -86,6 +110,12 @@ public class EditFileTool : ITool
         }
     }
 
+    /// <summary>
+    /// 문자열 발생 횟수 계산
+    /// </summary>
+    /// <param name="content">원본 내용</param>
+    /// <param name="oldString">찾을 문자열</param>
+    /// <returns>발생 횟수</returns>
     private static int CountOccurrences(string content, string oldString)
     {
         if (string.IsNullOrEmpty(oldString))
@@ -104,6 +134,13 @@ public class EditFileTool : ITool
         return count;
     }
 
+    /// <summary>
+    /// Boolean 값 파싱 시도
+    /// </summary>
+    /// <param name="input">입력 딕셔너리</param>
+    /// <param name="key">키</param>
+    /// <param name="value">파싱된 값 (out)</param>
+    /// <returns>파싱 성공 여부</returns>
     private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
     {
         value = false;

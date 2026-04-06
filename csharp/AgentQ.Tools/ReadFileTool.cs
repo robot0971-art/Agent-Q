@@ -2,11 +2,29 @@
 
 namespace AgentQ.Tools;
 
+/// <summary>
+/// 파일 읽기 도구
+/// </summary>
 public class ReadFileTool : ITool
 {
+    /// <summary>
+    /// 도구 이름
+    /// </summary>
     public string Name => "read_file";
+
+    /// <summary>
+    /// 도구 설명
+    /// </summary>
     public string Description => "Read the contents of a file at the specified path";
+
+    /// <summary>
+    /// 권한 확인 필요 여부
+    /// </summary>
     public bool RequiresPermission => false;
+
+    /// <summary>
+    /// 입력 스키마 (JSON Schema)
+    /// </summary>
     public object InputSchema => new
     {
         type = "object",
@@ -19,6 +37,12 @@ public class ReadFileTool : ITool
         required = new[] { "path" }
     };
 
+    /// <summary>
+    /// 도구 실행
+    /// </summary>
+    /// <param name="input">입력 파라미터</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         if (!input.TryGetValue("path", out var pathObj) || pathObj is not string path)
@@ -65,6 +89,13 @@ public class ReadFileTool : ITool
         }
     }
 
+    /// <summary>
+    /// Int32 값 파싱 시도
+    /// </summary>
+    /// <param name="input">입력 딕셔너리</param>
+    /// <param name="key">키</param>
+    /// <param name="value">파싱된 값 (out)</param>
+    /// <returns>파싱 성공 여부</returns>
     private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
     {
         value = 0;

@@ -8,14 +8,30 @@ using AgentQ.Core.Providers;
 
 namespace AgentQ.Providers.OpenAi;
 
+/// <summary>
+/// OpenAI 호환 LLM 제공자
+/// </summary>
 public class OpenAiCompatibleProvider : ILlmProvider
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
 
+    /// <summary>
+    /// 제공자 이름
+    /// </summary>
     public string Name => "openai";
+
+    /// <summary>
+    /// 기본 모델
+    /// </summary>
     public string DefaultModel => _model;
 
+    /// <summary>
+    /// 생성자
+    /// </summary>
+    /// <param name="baseUrl">기본 URL</param>
+    /// <param name="apiKey">API 키</param>
+    /// <param name="model">모델 이름</param>
     public OpenAiCompatibleProvider(string baseUrl, string apiKey, string model = "gpt-4o")
     {
         _model = model;
@@ -26,6 +42,13 @@ public class OpenAiCompatibleProvider : ILlmProvider
         }
     }
 
+    /// <summary>
+    /// 응답 생성
+    /// </summary>
+    /// <param name="context">채팅 컨텍스트</param>
+    /// <param name="tools">사용 가능한 도구 목록</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>채팅 응답</returns>
     public async Task<ChatResponse> GenerateResponseAsync(
         ChatContext context,
         IEnumerable<AgentQ.Core.Models.ToolDefinition> tools,
@@ -35,7 +58,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
         var json = JsonSerializer.Serialize(request, GetJsonOptions());
 
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync("/v1/chat/completions", content, ct);
+        using var response = await _httpClient.PostAsync("chat/completions", content, ct);
         response.EnsureSuccessStatusCode();
 
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -44,6 +67,13 @@ public class OpenAiCompatibleProvider : ILlmProvider
         return ConvertToChatResponse(chatResponse!);
     }
 
+    /// <summary>
+    /// 스트리밍 응답 생성
+    /// </summary>
+    /// <param name="context">채팅 컨텍스트</param>
+    /// <param name="tools">사용 가능한 도구 목록</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>스트리밍 청크 시퀀스</returns>
     public async IAsyncEnumerable<StreamChunk> GenerateStreamAsync(
         ChatContext context,
         IEnumerable<AgentQ.Core.Models.ToolDefinition> tools,
@@ -53,7 +83,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
         var json = JsonSerializer.Serialize(request, GetJsonOptions());
 
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        using var requestMsg = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions") { Content = content };
+        using var requestMsg = new HttpRequestMessage(HttpMethod.Post, "chat/completions") { Content = content };
         using var response = await _httpClient.SendAsync(requestMsg, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
@@ -155,6 +185,9 @@ public class OpenAiCompatibleProvider : ILlmProvider
         }
     }
 
+    /// <summary>
+    /// 도구 호출 누적기 가져오기
+    /// </summary>
     private static ToolCallAccumulator GetAccumulator(Dictionary<int, ToolCallAccumulator> toolCalls, int index)
     {
         if (!toolCalls.TryGetValue(index, out var accumulator))
@@ -166,6 +199,9 @@ public class OpenAiCompatibleProvider : ILlmProvider
         return accumulator;
     }
 
+    /// <summary>
+    /// 채팅 요청 생성
+    /// </summary>
     private OpenAiChatRequest CreateChatRequest(ChatContext context, IEnumerable<AgentQ.Core.Models.ToolDefinition> tools, bool stream)
     {
         var messages = new List<OpenAiMessage>();
@@ -256,6 +292,9 @@ public class OpenAiCompatibleProvider : ILlmProvider
         return request;
     }
 
+    /// <summary>
+    /// 채팅 응답으로 변환
+    /// </summary>
     private ChatResponse ConvertToChatResponse(OpenAiChatResponse response)
     {
         var chatResponse = new ChatResponse
@@ -298,6 +337,9 @@ public class OpenAiCompatibleProvider : ILlmProvider
         return chatResponse;
     }
 
+    /// <summary>
+    /// 도구 인수 직렬화
+    /// </summary>
     private static string SerializeToolArguments(object? toolInput)
     {
         return toolInput switch
@@ -309,6 +351,9 @@ public class OpenAiCompatibleProvider : ILlmProvider
         };
     }
 
+    /// <summary>
+    /// JSON 옵션 가져오기
+    /// </summary>
     private static JsonSerializerOptions GetJsonOptions()
     {
         return new JsonSerializerOptions
@@ -319,13 +364,22 @@ public class OpenAiCompatibleProvider : ILlmProvider
     }
 }
 
+/// <summary>
+/// 도구 호출 누적기
+/// </summary>
 sealed class ToolCallAccumulator
 {
+    /// <summary>도구 ID</summary>
     public string? ToolId { get; set; }
+    /// <summary>도구 이름</summary>
     public string? ToolName { get; set; }
+    /// <summary>인수</summary>
     public StringBuilder Arguments { get; } = new();
 }
 
+/// <summary>
+/// OpenAI 채팅 요청
+/// </summary>
 public class OpenAiChatRequest
 {
     [JsonPropertyName("model")]
@@ -344,6 +398,9 @@ public class OpenAiChatRequest
     public bool Stream { get; set; }
 }
 
+/// <summary>
+/// OpenAI 메시지
+/// </summary>
 public class OpenAiMessage
 {
     [JsonPropertyName("role")]
@@ -359,6 +416,9 @@ public class OpenAiMessage
     public List<OpenAiToolCall>? ToolCalls { get; set; }
 }
 
+/// <summary>
+/// OpenAI 도구 정의
+/// </summary>
 public class OpenAiToolDefinition
 {
     [JsonPropertyName("type")]
@@ -368,6 +428,9 @@ public class OpenAiToolDefinition
     public OpenAiFunctionDefinition Function { get; set; } = new();
 }
 
+/// <summary>
+/// OpenAI 함수 정의
+/// </summary>
 public class OpenAiFunctionDefinition
 {
     [JsonPropertyName("name")]
@@ -380,6 +443,9 @@ public class OpenAiFunctionDefinition
     public object Parameters { get; set; } = new();
 }
 
+/// <summary>
+/// OpenAI 채팅 응답
+/// </summary>
 public class OpenAiChatResponse
 {
     [JsonPropertyName("id")]
@@ -395,6 +461,9 @@ public class OpenAiChatResponse
     public OpenAiUsage? Usage { get; set; }
 }
 
+/// <summary>
+/// OpenAI 선택
+/// </summary>
 public class OpenAiChoice
 {
     [JsonPropertyName("index")]
@@ -407,6 +476,9 @@ public class OpenAiChoice
     public string? FinishReason { get; set; }
 }
 
+/// <summary>
+/// OpenAI 사용량
+/// </summary>
 public class OpenAiUsage
 {
     [JsonPropertyName("prompt_tokens")]
@@ -419,6 +491,9 @@ public class OpenAiUsage
     public int TotalTokens { get; set; }
 }
 
+/// <summary>
+/// OpenAI 스트리밍 청크
+/// </summary>
 public class OpenAiStreamChunk
 {
     [JsonPropertyName("id")]
@@ -428,6 +503,9 @@ public class OpenAiStreamChunk
     public List<OpenAiStreamChoice>? Choices { get; set; }
 }
 
+/// <summary>
+/// OpenAI 스트리밍 선택
+/// </summary>
 public class OpenAiStreamChoice
 {
     [JsonPropertyName("index")]
@@ -440,6 +518,9 @@ public class OpenAiStreamChoice
     public string? FinishReason { get; set; }
 }
 
+/// <summary>
+/// OpenAI 스트리밍 델타
+/// </summary>
 public class OpenAiStreamDelta
 {
     [JsonPropertyName("role")]
@@ -452,6 +533,9 @@ public class OpenAiStreamDelta
     public List<OpenAiToolCall>? ToolCalls { get; set; }
 }
 
+/// <summary>
+/// OpenAI 도구 호출
+/// </summary>
 public class OpenAiToolCall
 {
     [JsonPropertyName("index")]
@@ -467,6 +551,9 @@ public class OpenAiToolCall
     public OpenAiFunctionCall? Function { get; set; }
 }
 
+/// <summary>
+/// OpenAI 함수 호출
+/// </summary>
 public class OpenAiFunctionCall
 {
     [JsonPropertyName("name")]

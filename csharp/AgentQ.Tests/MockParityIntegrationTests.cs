@@ -8,8 +8,14 @@ using Xunit;
 
 namespace AgentQ.Tests;
 
+/// <summary>
+/// 모의 서비스 통합 및 플러그인 패리티 테스트 클래스입니다.
+/// </summary>
 public sealed class MockParityIntegrationTests
 {
+    /// <summary>
+    /// GenerateResponseAsync이 플러그인 도구 라운드트립을 완료하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GenerateResponseAsync_CompletesPluginParityRoundtrip()
     {
@@ -47,6 +53,9 @@ public sealed class MockParityIntegrationTests
         Assert.All(capturedRequests, request => Assert.False(request.Stream));
     }
 
+    /// <summary>
+    /// GenerateStreamAsync이 다중 도구 패리티 라운드트립을 완료하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GenerateStreamAsync_CompletesMultiToolParityRoundtrip()
     {
@@ -108,6 +117,9 @@ public sealed class MockParityIntegrationTests
         Assert.All(capturedRequests, request => Assert.True(request.Stream));
     }
 
+    /// <summary>
+    /// 지정된 시나리오 토큰으로 채팅 컨텍스트를 생성합니다.
+    /// </summary>
     private static ChatContext CreateContext(string scenarioToken)
     {
         return new ChatContext
@@ -121,6 +133,9 @@ public sealed class MockParityIntegrationTests
         };
     }
 
+    /// <summary>
+    /// 지정된 이름으로 도구 정의 배열을 생성합니다.
+    /// </summary>
     private static ToolDefinition[] CreateToolDefinitions(params string[] names)
     {
         return names.Select(name => new ToolDefinition
@@ -135,6 +150,9 @@ public sealed class MockParityIntegrationTests
         }).ToArray();
     }
 
+    /// <summary>
+    /// 비동기 스트림에서 모든 청크를 수집합니다.
+    /// </summary>
     private static async Task<List<StreamChunk>> CollectChunksAsync(IAsyncEnumerable<StreamChunk> stream)
     {
         var chunks = new List<StreamChunk>();
@@ -146,11 +164,24 @@ public sealed class MockParityIntegrationTests
         return chunks;
     }
 
+    /// <summary>
+    /// 모의 Anthropic 서비스 테스트 픽스처입니다.
+    /// </summary>
     private sealed class MockServiceFixture : IAsyncDisposable
     {
+        /// <summary>
+        /// 모의 서비스 인스턴스입니다.
+        /// </summary>
         public required MockAnthropicService Service { get; init; }
+
+        /// <summary>
+        /// 서비스의 기본 URL입니다.
+        /// </summary>
         public required string BaseUrl { get; init; }
 
+        /// <summary>
+        /// 모의 서비스를 시작하고 픽스처를 반환합니다.
+        /// </summary>
         public static async Task<MockServiceFixture> StartAsync()
         {
             var prefix = BuildListenerPrefix();
@@ -164,11 +195,17 @@ public sealed class MockParityIntegrationTests
             };
         }
 
+        /// <summary>
+        /// 모의 서비스를 중지하고 리소스를 해제합니다.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             await Service.StopAsync();
         }
 
+        /// <summary>
+        /// 사용 가능한 포트로 리스너 접두사를 생성합니다.
+        /// </summary>
         private static string BuildListenerPrefix()
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);

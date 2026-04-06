@@ -7,8 +7,14 @@ using Xunit;
 
 namespace AgentQ.Tests;
 
+/// <summary>
+/// OpenAI 호환 제공자에 대한 단위 테스트 클래스입니다.
+/// </summary>
 public sealed class OpenAiProviderTests
 {
+    /// <summary>
+    /// GenerateResponseAsync가 도구 호출과 사용량을 올바르게 파싱하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GenerateResponseAsync_ParsesToolCallsAndUsage()
     {
@@ -71,6 +77,9 @@ public sealed class OpenAiProviderTests
         Assert.Contains(toolUses, tool => tool.ToolId == "call_grep" && tool.ToolName == "grep_search");
     }
 
+    /// <summary>
+    /// GenerateStreamAsync이 스트리밍 응답에서 여러 도구 호출을 올바르게 조립하는지 검증합니다.
+    /// </summary>
     [Fact]
     public async Task GenerateStreamAsync_AssemblesMultipleToolCalls()
     {
@@ -125,6 +134,9 @@ public sealed class OpenAiProviderTests
         Assert.Equal(2, chunks.Count(chunk => chunk.IsComplete));
     }
 
+    /// <summary>
+    /// 테스트용 채팅 컨텍스트를 생성합니다.
+    /// </summary>
     private static ChatContext CreateContext()
     {
         return new ChatContext
@@ -138,6 +150,9 @@ public sealed class OpenAiProviderTests
         };
     }
 
+    /// <summary>
+    /// 지정된 이름으로 도구 정의 배열을 생성합니다.
+    /// </summary>
     private static ToolDefinition[] CreateToolDefinitions(params string[] names)
     {
         return names.Select(name => new ToolDefinition
@@ -152,6 +167,9 @@ public sealed class OpenAiProviderTests
         }).ToArray();
     }
 
+    /// <summary>
+    /// 테스트용 OpenAI 호환 HTTP 서버입니다.
+    /// </summary>
     private sealed class OpenAiTestServer : IAsyncDisposable
     {
         private readonly HttpListener _listener = new();
@@ -159,6 +177,9 @@ public sealed class OpenAiProviderTests
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _listenerTask;
 
+        /// <summary>
+        /// 지정된 접두사와 응답 팩토리로 테스트 서버를 생성합니다.
+        /// </summary>
         private OpenAiTestServer(string prefix, Func<HttpListenerRequest, StaticResponse> responseFactory)
         {
             BaseUrl = prefix.TrimEnd('/');
@@ -168,14 +189,23 @@ public sealed class OpenAiProviderTests
             _listenerTask = Task.Run(ListenLoopAsync);
         }
 
+        /// <summary>
+        /// 서버의 기본 URL입니다.
+        /// </summary>
         public string BaseUrl { get; }
 
+        /// <summary>
+        /// 지정된 응답 팩토리로 테스트 서버를 시작합니다.
+        /// </summary>
         public static Task<OpenAiTestServer> StartAsync(Func<HttpListenerRequest, StaticResponse> responseFactory)
         {
             var prefix = BuildListenerPrefix();
             return Task.FromResult(new OpenAiTestServer(prefix, responseFactory));
         }
 
+        /// <summary>
+        /// 테스트 서버를 정리하고 리소스를 해제합니다.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             _cts.Cancel();
@@ -196,6 +226,9 @@ public sealed class OpenAiProviderTests
             _cts.Dispose();
         }
 
+        /// <summary>
+        /// 들어오는 HTTP 요청을 처리하는 루프입니다.
+        /// </summary>
         private async Task ListenLoopAsync()
         {
             while (!_cts.IsCancellationRequested)
@@ -224,6 +257,9 @@ public sealed class OpenAiProviderTests
             }
         }
 
+        /// <summary>
+        /// 사용 가능한 포트로 리스너 접두사를 생성합니다.
+        /// </summary>
         private static string BuildListenerPrefix()
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -235,6 +271,9 @@ public sealed class OpenAiProviderTests
         }
     }
 
+    /// <summary>
+    /// 정적 응답을 나타내는 레코드입니다.
+    /// </summary>
     private sealed record StaticResponse(string Body, string ContentType);
 }
 

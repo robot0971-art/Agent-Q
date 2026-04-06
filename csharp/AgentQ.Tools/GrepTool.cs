@@ -2,11 +2,29 @@
 
 namespace AgentQ.Tools;
 
+/// <summary>
+/// Grep 검색 도구
+/// </summary>
 public class GrepTool : ITool
 {
+    /// <summary>
+    /// 도구 이름
+    /// </summary>
     public string Name => "grep_search";
+
+    /// <summary>
+    /// 도구 설명
+    /// </summary>
     public string Description => "Search for a pattern in files using grep-like functionality";
+
+    /// <summary>
+    /// 권한 확인 필요 여부
+    /// </summary>
     public bool RequiresPermission => false;
+
+    /// <summary>
+    /// 입력 스키마 (JSON Schema)
+    /// </summary>
     public object InputSchema => new
     {
         type = "object",
@@ -20,6 +38,12 @@ public class GrepTool : ITool
         required = new[] { "pattern" }
     };
 
+    /// <summary>
+    /// 도구 실행
+    /// </summary>
+    /// <param name="input">입력 파라미터</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         if (!input.TryGetValue("pattern", out var patternObj) || patternObj is not string pattern)
@@ -98,12 +122,22 @@ public class GrepTool : ITool
         }
     }
 
+    /// <summary>
+    /// 바이너리 파일 여부 확인
+    /// </summary>
+    /// <param name="path">파일 경로</param>
+    /// <returns>바이너리 파일 여부</returns>
     private static bool IsBinaryFile(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         return ext is ".dll" or ".exe" or ".png" or ".jpg" or ".gif" or ".ico" or ".zip" or ".rar" or ".bin" or ".pdb" or ".so" or ".dylib";
     }
 
+    /// <summary>
+    /// 제외 경로 여부 확인
+    /// </summary>
+    /// <param name="path">경로</param>
+    /// <returns>제외 경로 여부</returns>
     private static bool IsExcludedPath(string path)
     {
         var normalized = path.Replace('\\', '/').ToLowerInvariant();
@@ -112,10 +146,24 @@ public class GrepTool : ITool
     }
 }
 
+/// <summary>
+/// Grep 검색 결과
+/// </summary>
 public class GrepMatch
 {
+    /// <summary>
+    /// 파일 경로
+    /// </summary>
     public string File { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 줄 번호
+    /// </summary>
     public int Line { get; init; }
+
+    /// <summary>
+    /// 내용
+    /// </summary>
     public string Content { get; init; } = string.Empty;
 }
 
