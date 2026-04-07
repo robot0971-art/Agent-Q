@@ -68,28 +68,34 @@ public class EditFileTool : ITool
                 return Task.FromResult(ToolResult.Error(errorMessage!));
             }
 
+            if (string.IsNullOrEmpty(oldString))
+                return Task.FromResult(ToolResult.Error("old_string must not be empty"));
+
+            if (oldString == newString)
+                return Task.FromResult(ToolResult.Error("old_string and new_string are identical; refusing no-op edit"));
+
+            if (Directory.Exists(fullPath))
+                return Task.FromResult(ToolResult.Error($"Path points to a directory, not a file: {path}"));
+
             if (!File.Exists(fullPath))
                 return Task.FromResult(ToolResult.Error($"File not found: {path}"));
 
             var content = File.ReadAllText(fullPath);
-            var count = 0;
+            var count = CountOccurrences(content, oldString);
+            if (count == 0)
+                return Task.FromResult(ToolResult.Error($"String not found in file: {path}"));
 
             if (replaceAll)
             {
-                count = CountOccurrences(content, oldString);
-                if (count == 0)
-                    return Task.FromResult(ToolResult.Error($"String not found in file: {path}"));
-
                 content = content.Replace(oldString, newString);
             }
             else
             {
-                var index = content.IndexOf(oldString, StringComparison.Ordinal);
-                if (index == -1)
-                    return Task.FromResult(ToolResult.Error($"String not found in file: {path}"));
+                if (count > 1)
+                    return Task.FromResult(ToolResult.Error($"String appears multiple times in file; use replace_all=true: {path}"));
 
+                var index = content.IndexOf(oldString, StringComparison.Ordinal);
                 content = content.Remove(index, oldString.Length).Insert(index, newString);
-                count = 1;
             }
 
             File.WriteAllText(fullPath, content);

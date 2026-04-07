@@ -17,6 +17,7 @@ public sealed class MockParityIntegrationTests
     /// GenerateResponseAsync이 플러그인 도구 라운드트립을 완료하는지 검증합니다.
     /// </summary>
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateResponseAsync_CompletesPluginParityRoundtrip()
     {
         await using var fixture = await MockServiceFixture.StartAsync();
@@ -57,6 +58,7 @@ public sealed class MockParityIntegrationTests
     /// GenerateStreamAsync이 다중 도구 패리티 라운드트립을 완료하는지 검증합니다.
     /// </summary>
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateStreamAsync_CompletesMultiToolParityRoundtrip()
     {
         await using var fixture = await MockServiceFixture.StartAsync();

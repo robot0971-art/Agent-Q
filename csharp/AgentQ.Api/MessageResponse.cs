@@ -46,7 +46,7 @@ public class MessageResponse
     /// <summary>
     /// 토큰 사용량
     /// </summary>
-    public Usage Usage { get; set; } = new();
+    public Usage? Usage { get; set; }
 
     /// <summary>
     /// 요청 ID
@@ -56,7 +56,7 @@ public class MessageResponse
     /// <summary>
     /// 총 토큰 수
     /// </summary>
-    public uint TotalTokens => Usage.TotalTokens;
+    public uint TotalTokens => Usage?.TotalTokens ?? 0;
 }
 
 /// <summary>

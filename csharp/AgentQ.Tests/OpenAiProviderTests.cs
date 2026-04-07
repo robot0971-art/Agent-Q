@@ -16,6 +16,7 @@ public sealed class OpenAiProviderTests
     /// GenerateResponseAsync가 도구 호출과 사용량을 올바르게 파싱하는지 검증합니다.
     /// </summary>
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateResponseAsync_ParsesToolCallsAndUsage()
     {
         const string responseBody =
@@ -81,6 +82,7 @@ public sealed class OpenAiProviderTests
     /// GenerateStreamAsync이 스트리밍 응답에서 여러 도구 호출을 올바르게 조립하는지 검증합니다.
     /// </summary>
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateStreamAsync_AssemblesMultipleToolCalls()
     {
         const string streamBody =
@@ -131,7 +133,7 @@ public sealed class OpenAiProviderTests
                                           tool.ToolName == "grep_search" &&
                                           tool.PartialInput == "{\"pattern\":\"parity\",\"path\":\"fixture.txt\"}");
 
-        Assert.Equal(2, chunks.Count(chunk => chunk.IsComplete));
+        Assert.Single(chunks, chunk => chunk.IsComplete);
     }
 
     /// <summary>

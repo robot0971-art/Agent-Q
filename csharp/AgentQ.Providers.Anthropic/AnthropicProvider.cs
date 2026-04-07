@@ -41,6 +41,27 @@ public class AnthropicProvider : ILlmProvider
     }
 
     /// <summary>
+    /// 테스트 또는 커스텀 전송 파이프라인용 생성자
+    /// </summary>
+    /// <param name="httpClient">사용할 HTTP 클라이언트</param>
+    /// <param name="apiKey">API 키</param>
+    public AnthropicProvider(HttpClient httpClient, string apiKey = "")
+    {
+        _apiKey = apiKey;
+        _httpClient = httpClient;
+
+        if (!string.IsNullOrEmpty(apiKey) && !_httpClient.DefaultRequestHeaders.Contains("x-api-key"))
+        {
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+        }
+
+        if (!_httpClient.DefaultRequestHeaders.Contains("anthropic-version"))
+        {
+            _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        }
+    }
+
+    /// <summary>
     /// 응답 생성
     /// </summary>
     /// <param name="context">채팅 컨텍스트</param>
@@ -57,7 +78,7 @@ public class AnthropicProvider : ILlmProvider
 
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _httpClient.PostAsync("/v1/messages", content, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, ct);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         var messageResponse = JsonSerializer.Deserialize<MessageResponse>(body, GetJsonOptions());
@@ -83,13 +104,13 @@ public class AnthropicProvider : ILlmProvider
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var requestMsg = new HttpRequestMessage(HttpMethod.Post, "/v1/messages") { Content = content };
         using var response = await _httpClient.SendAsync(requestMsg, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, ct);
 
         using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
-        var currentToolUse = new Dictionary<int, (string id, string name, StringBuilder input)>();
-        StreamChunk? currentChunk = null;
+        var toolCallBuffer = new ToolCallDeltaBuffer();
+        var completionSent = false;
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) != null)
@@ -102,89 +123,95 @@ public class AnthropicProvider : ILlmProvider
                 if (dataLine?.StartsWith("data:") == true)
                 {
                     var data = dataLine.Substring("data:".Length).Trim();
-                    using var doc = JsonDocument.Parse(data);
-                    var root = doc.RootElement;
-
-                    switch (eventType)
+                    JsonDocument? doc = null;
+                    try
                     {
-                        case "content_block_start":
-                            var index = root.GetProperty("index").GetInt32();
-                            var contentBlock = root.GetProperty("content_block");
-                            var type = contentBlock.GetProperty("type").GetString();
+                        doc = JsonDocument.Parse(data);
+                    }
+                    catch (JsonException)
+                    {
+                        continue;
+                    }
 
-                            if (type == "text")
-                            {
-                                currentChunk = new StreamChunk { TextDelta = "" };
-                                yield return currentChunk;
-                            }
-                            else if (type == "tool_use")
-                            {
-                                var id = contentBlock.GetProperty("id").GetString()!;
-                                var name = contentBlock.GetProperty("name").GetString()!;
-                                currentToolUse[index] = (id, name, new StringBuilder());
-                                currentChunk = new StreamChunk
+                    using (doc)
+                    {
+                        var root = doc.RootElement;
+
+                        switch (eventType)
+                        {
+                            case "content_block_start":
+                                if (!TryGetInt32(root, "index", out var startIndex) ||
+                                    !root.TryGetProperty("content_block", out var contentBlock) ||
+                                    !TryGetString(contentBlock, "type", out var startType))
                                 {
-                                    ToolUseDelta = new ToolUseChunk
-                                    {
-                                        ToolId = id,
-                                        ToolName = name,
-                                        PartialInput = ""
-                                    }
-                                };
-                                yield return currentChunk;
-                            }
-                            break;
-
-                        case "content_block_delta":
-                            var deltaIndex = root.GetProperty("index").GetInt32();
-                            var delta = root.GetProperty("delta");
-                            var deltaType = delta.GetProperty("type").GetString();
-
-                            if (deltaType == "text_delta")
-                            {
-                                var text = delta.GetProperty("text").GetString() ?? "";
-                                yield return new StreamChunk { TextDelta = text };
-                            }
-                            else if (deltaType == "input_json_delta")
-                            {
-                                var partialJson = delta.GetProperty("partial_json").GetString() ?? "";
-                                if (currentToolUse.TryGetValue(deltaIndex, out var tool))
-                                {
-                                    tool.input.Append(partialJson);
-                                    yield return new StreamChunk
-                                    {
-                                        ToolUseDelta = new ToolUseChunk
-                                        {
-                                            ToolId = tool.id,
-                                            ToolName = tool.name,
-                                            PartialInput = partialJson
-                                        }
-                                    };
+                                    break;
                                 }
-                            }
-                            break;
 
-                        case "content_block_stop":
-                            var stopIndex = root.GetProperty("index").GetInt32();
-                            if (currentToolUse.TryGetValue(stopIndex, out var completedTool))
-                            {
-                                yield return new StreamChunk
+                                if (startType == "tool_use")
                                 {
-                                    ToolUseDelta = new ToolUseChunk
+                                    toolCallBuffer.SetToolId(startIndex, TryGetString(contentBlock, "id", out var id) ? id : null);
+                                    toolCallBuffer.SetToolName(startIndex, TryGetString(contentBlock, "name", out var name) ? name : null);
+                                    var partialChunk = toolCallBuffer.BuildPartialChunk(startIndex, "");
+                                    if (partialChunk != null)
                                     {
-                                        ToolId = completedTool.id,
-                                        ToolName = completedTool.name,
-                                        PartialInput = completedTool.input.ToString(),
-                                        IsComplete = true
+                                        yield return new StreamChunk { ToolUseDelta = partialChunk };
                                     }
-                                };
-                                currentToolUse.Remove(stopIndex);
-                            }
-                            break;
+                                }
+                                break;
 
-                        case "message_stop":
-                            yield return new StreamChunk { IsComplete = true };
-                            break;
+                            case "content_block_delta":
+                                if (!TryGetInt32(root, "index", out var deltaIndex) ||
+                                    !root.TryGetProperty("delta", out var delta) ||
+                                    !TryGetString(delta, "type", out var deltaType))
+                                {
+                                    break;
+                                }
+
+                                if (deltaType == "text_delta")
+                                {
+                                    if (TryGetString(delta, "text", out var text) && !string.IsNullOrEmpty(text))
+                                    {
+                                        yield return new StreamChunk { TextDelta = text };
+                                    }
+                                }
+                                else if (deltaType == "input_json_delta")
+                                {
+                                    var partialJson = TryGetString(delta, "partial_json", out var jsonDelta) ? jsonDelta : string.Empty;
+                                    toolCallBuffer.AppendArguments(deltaIndex, partialJson);
+                                    var partialChunk = toolCallBuffer.BuildPartialChunk(deltaIndex, partialJson);
+                                    if (partialChunk != null)
+                                    {
+                                        yield return new StreamChunk { ToolUseDelta = partialChunk };
+                                    }
+                                }
+                                break;
+
+                            case "content_block_stop":
+                                if (!TryGetInt32(root, "index", out var stopIndex))
+                                {
+                                    break;
+                                }
+
+                                var completedChunk = toolCallBuffer.Complete(stopIndex);
+                                if (completedChunk != null)
+                                {
+                                    yield return new StreamChunk { ToolUseDelta = completedChunk };
+                                }
+                                break;
+
+                            case "message_stop":
+                                foreach (var toolCall in toolCallBuffer.CompleteAll())
+                                {
+                                    yield return new StreamChunk { ToolUseDelta = toolCall };
+                                }
+
+                                if (!completionSent)
+                                {
+                                    completionSent = true;
+                                    yield return new StreamChunk { IsComplete = true };
+                                }
+                                break;
+                        }
                     }
                 }
             }
@@ -350,6 +377,44 @@ public class AnthropicProvider : ILlmProvider
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
+    }
+
+    private static bool TryGetInt32(JsonElement element, string propertyName, out int value)
+    {
+        value = default;
+        return element.TryGetProperty(propertyName, out var property) && property.TryGetInt32(out value);
+    }
+
+    private static bool TryGetString(JsonElement element, string propertyName, out string? value)
+    {
+        value = null;
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        value = property.GetString();
+        return true;
+    }
+
+    private static async Task EnsureSuccessStatusCodeAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var trimmedBody = string.IsNullOrWhiteSpace(body)
+            ? "<empty body>"
+            : body.Length > 512
+                ? body[..512]
+                : body;
+
+        throw new HttpRequestException(
+            $"Anthropic request failed with status {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {trimmedBody}",
+            null,
+            response.StatusCode);
     }
 }
 

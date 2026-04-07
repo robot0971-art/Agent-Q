@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace AgentQ.Tools;
@@ -8,6 +8,8 @@ namespace AgentQ.Tools;
 /// </summary>
 public class GlobTool : ITool
 {
+    private const int MaximumFiles = 500;
+
     /// <summary>
     /// 도구 이름
     /// </summary>
@@ -27,7 +29,6 @@ public class GlobTool : ITool
     /// 입력 스키마 (JSON Schema)
     /// </summary>
     public object InputSchema => new
-
     {
         type = "object",
         properties = new
@@ -49,12 +50,19 @@ public class GlobTool : ITool
         if (!input.TryGetValue("pattern", out var patternObj) || patternObj is not string pattern)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
+        if (string.IsNullOrWhiteSpace(pattern))
+            return Task.FromResult(ToolResult.Error("pattern must not be empty"));
+
         var searchPath = ".";
         if (input.TryGetValue("path", out var pathObj) && pathObj is string p) searchPath = p;
 
         try
         {
-            var searchDir = Path.GetFullPath(searchPath);
+            if (!ToolPathGuard.TryResolvePath(searchPath, out var searchDir, out var errorMessage))
+            {
+                return Task.FromResult(ToolResult.Error(errorMessage!));
+            }
+
             if (!Directory.Exists(searchDir))
                 return Task.FromResult(ToolResult.Error($"Directory not found: {searchPath}"));
 
@@ -62,13 +70,21 @@ public class GlobTool : ITool
             var files = Directory.EnumerateFiles(searchDir, "*", SearchOption.AllDirectories)
                 .Where(f => !IsExcludedPath(f))
                 .Where(f => matcher.IsMatch(ToRelativePath(searchDir, f)))
+                .Take(MaximumFiles + 1)
                 .ToList();
+
+            var limitReached = files.Count > MaximumFiles;
+            if (limitReached)
+            {
+                files = files.Take(MaximumFiles).ToList();
+            }
 
             var output = new Dictionary<string, object?>
             {
                 ["pattern"] = pattern,
                 ["path"] = searchPath,
                 ["numFiles"] = files.Count,
+                ["limitReached"] = limitReached,
                 ["files"] = files
             };
 
@@ -120,4 +136,3 @@ public class GlobTool : ITool
                path.Contains("\\node_modules\\") || path.Contains("/node_modules/");
     }
 }
-

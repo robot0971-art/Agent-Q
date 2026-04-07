@@ -32,7 +32,8 @@ public class WriteFileTool : ITool
         properties = new
         {
             path = new { type = "string", description = "Path to the file to write" },
-            content = new { type = "string", description = "Content to write to the file" }
+            content = new { type = "string", description = "Content to write to the file" },
+            overwrite = new { type = "boolean", description = "Whether to overwrite an existing file (default: true)" }
         },
         required = new[] { "path", "content" }
     };
@@ -51,11 +52,33 @@ public class WriteFileTool : ITool
         if (!input.TryGetValue("content", out var contentObj) || contentObj is not string content)
             return Task.FromResult(ToolResult.Error("Missing required parameter: content"));
 
+        var overwrite = true;
+        if (TryGetBoolean(input, "overwrite", out var parsedOverwrite))
+        {
+            overwrite = parsedOverwrite;
+        }
+
         try
         {
             if (!ToolPathGuard.TryResolvePath(path, out var fullPath, out var errorMessage))
             {
                 return Task.FromResult(ToolResult.Error(errorMessage!));
+            }
+
+            if (Path.EndsInDirectorySeparator(fullPath))
+            {
+                return Task.FromResult(ToolResult.Error($"Path points to a directory, not a file: {path}"));
+            }
+
+            if (Directory.Exists(fullPath))
+            {
+                return Task.FromResult(ToolResult.Error($"Path points to an existing directory, not a file: {path}"));
+            }
+
+            var existedBeforeWrite = File.Exists(fullPath);
+            if (existedBeforeWrite && !overwrite)
+            {
+                return Task.FromResult(ToolResult.Error($"Refusing to overwrite existing file without overwrite=true: {path}"));
             }
 
             var directory = Path.GetDirectoryName(fullPath);
@@ -71,6 +94,7 @@ public class WriteFileTool : ITool
                 ["path"] = path,
                 ["filePath"] = fullPath,
                 ["bytesWritten"] = Encoding.UTF8.GetByteCount(content),
+                ["overwroteExisting"] = existedBeforeWrite,
                 ["status"] = "success"
             };
 
@@ -80,6 +104,35 @@ public class WriteFileTool : ITool
         {
             return Task.FromResult(ToolResult.Error($"Failed to write file: {ex.Message}"));
         }
+    }
+
+    private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
+    {
+        value = false;
+        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
+        {
+            return false;
+        }
+
+        if (rawValue is bool boolValue)
+        {
+            value = boolValue;
+            return true;
+        }
+
+        if (rawValue is string stringValue && bool.TryParse(stringValue, out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        if (rawValue is JsonElement json && json.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = json.GetBoolean();
+            return true;
+        }
+
+        return false;
     }
 }
 

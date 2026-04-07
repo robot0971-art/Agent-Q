@@ -85,6 +85,36 @@ public class ProviderConfiguration
     public int TimeoutSeconds { get; set; } = 60; // Default timeout
 
     /// <summary>
+    /// 단일 실행용 프롬프트
+    /// </summary>
+    public string Prompt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 표준 입력에서 프롬프트를 읽을지 여부
+    /// </summary>
+    public bool ReadPromptFromStdin { get; set; }
+
+    /// <summary>
+    /// 프롬프트 입력 파일 경로
+    /// </summary>
+    public string InputFilePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 비대화형 JSON 출력 여부
+    /// </summary>
+    public bool JsonOutput { get; set; }
+
+    /// <summary>
+    /// 비대화형 도구 실행 자동 허용 여부
+    /// </summary>
+    public bool AllowToolsWithoutPrompt { get; set; }
+
+    /// <summary>
+    /// 비대화형 실행에서 명시적으로 허용된 도구 목록
+    /// </summary>
+    public List<string> AllowedToolNames { get; } = [];
+
+    /// <summary>
     /// 환경 변수에서 설정 로드
     /// </summary>
     /// <returns>제공자 설정</returns>
@@ -132,6 +162,27 @@ public class ProviderConfiguration
                     break;
                 case "--timeout":
                     if (i + 1 < args.Length && int.TryParse(args[++i], out var t)) config.TimeoutSeconds = t;
+                    break;
+                case "--prompt":
+                    if (i + 1 < args.Length) config.Prompt = args[++i];
+                    break;
+                case "--stdin":
+                    config.ReadPromptFromStdin = true;
+                    break;
+                case "--input":
+                    if (i + 1 < args.Length) config.InputFilePath = args[++i];
+                    break;
+                case "--json":
+                    config.JsonOutput = true;
+                    break;
+                case "--yes":
+                    config.AllowToolsWithoutPrompt = true;
+                    break;
+                case "--allow-tool":
+                    if (i + 1 < args.Length)
+                    {
+                        config.AllowedToolNames.Add(args[++i]);
+                    }
                     break;
             }
         }

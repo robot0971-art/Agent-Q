@@ -18,7 +18,22 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <Packable>true</Packable>
+    <ToolCommandName>agentq</ToolCommandName>
+    <PackageId>AgentQ.Tool</PackageId>
+    <PackageTitle>AgentQ CLI</PackageTitle>
+    <Description>AgentQ is a C# CLI coding assistant with tool-use support and provider abstraction.</Description>
+    <Authors>robot0971-art</Authors>
+    <PackageTags>agentq;cli;assistant;tool</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageOutputPath>..\..\artifacts\packages</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+  </ItemGroup>
 
 </Project>
 

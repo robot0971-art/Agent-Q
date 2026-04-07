@@ -1,6 +1,6 @@
 using System.Text.Json;
-using System.Linq;
 using Spectre.Console;
+using Spectre.Console.Json;
 using AgentQ.Cli;
 using AgentQ.Tools;
 using AgentQ.Core.Models;
@@ -8,16 +8,12 @@ using AgentQ.Core.Providers;
 using AgentQ.Providers.Anthropic;
 using AgentQ.Providers.OpenAi;
 
-// Parse configuration from args and environment
 var initialConfig = ProviderConfiguration.FromArgs(args);
-
-// Load persisted config if available and merge (Arguments/Env take precedence)
 var persistedConfig = await ConfigStore.LoadAsync();
 var config = initialConfig;
 
 if (persistedConfig != null)
 {
-    // Use persisted values only if they weren't explicitly provided by user
     if (string.IsNullOrEmpty(initialConfig.Provider)) config.Provider = persistedConfig.Provider;
     if (string.IsNullOrEmpty(initialConfig.Model)) config.Model = persistedConfig.Model;
     if (string.IsNullOrEmpty(initialConfig.BaseUrl)) config.BaseUrl = persistedConfig.BaseUrl;
@@ -25,53 +21,83 @@ if (persistedConfig != null)
     if (initialConfig.TimeoutSeconds == 60) config.TimeoutSeconds = persistedConfig.TimeoutSeconds;
 }
 
-// Create provider factory and register providers
 var providerFactory = new ProviderFactory();
 providerFactory.Register("anthropic", (baseUrl, apiKey) => new AnthropicProvider(baseUrl, apiKey));
 providerFactory.Register("openai", (baseUrl, apiKey) => new OpenAiCompatibleProvider(baseUrl, apiKey));
 
-// Get or create provider
-ILlmProvider? provider = null;
-if (string.IsNullOrEmpty(config.BaseUrl))
+if (string.IsNullOrWhiteSpace(config.Provider))
 {
-    // Default to localhost mock service if no URL is provided
+    config.Provider = "anthropic";
+}
+
+if (string.IsNullOrWhiteSpace(config.BaseUrl))
+{
     config.BaseUrl = "http://localhost:18080";
 }
 
-// Validation: Check if required settings are missing
-if (string.IsNullOrEmpty(config.ApiKey) || string.IsNullOrEmpty(config.Model))
+var invocation = await AutomationSupport.ResolveInvocationAsync(
+    config,
+    Console.IsInputRedirected,
+    Console.In,
+    path => File.ReadAllTextAsync(path));
+if (invocation.ErrorMessage != null)
 {
+    Environment.ExitCode = (int)invocation.ErrorExitCode;
+    WriteAutomationError(config, invocation.ErrorMessage, invocation.ErrorExitCode);
+    return;
+}
+
+if (string.IsNullOrWhiteSpace(config.ApiKey) || string.IsNullOrWhiteSpace(config.Model))
+{
+    if (invocation.IsNonInteractive)
+    {
+        Environment.ExitCode = (int)ProcessExitCode.ConfigurationError;
+        WriteAutomationError(
+            config,
+            "Model name or API key is missing. Set AGENTQ_MODEL and AGENTQ_API_KEY before running non-interactively.",
+            ProcessExitCode.ConfigurationError);
+        return;
+    }
+
     AnsiConsole.Write(new Panel(
-        "[yellow]Warning: Model name or API Key is missing.[/]\n\n" +
-        "Please set environment variables or use commands:\n" +
-        "  - [cyan]set AGENTQ_MODEL=qwen-plus[/]\n" +
-        "  - [cyan]set AGENTQ_API_KEY=your-key[/]\n\n" +
-        "Or use [bold]/model[/], [bold]/base-url[/] commands inside the CLI."
-    )
+        "[yellow]Model name or API key is missing.[/]\n\n" +
+        "Set environment variables or use CLI commands.\n" +
+        "Examples:\n" +
+        "  [cyan]/model qwen-plus[/]\n" +
+        "  [cyan]/base-url http://localhost:18080[/]\n" +
+        "  [cyan]set AGENTQ_API_KEY=your-key[/]")
     {
         Header = new PanelHeader("[yellow]Missing Configuration[/]"),
         Border = BoxBorder.Rounded
     });
 }
 
-if (!providerFactory.TryGetProvider(config.Provider, config.BaseUrl, config.ApiKey, out provider) || provider == null)
-{
-    // Fall back to anthropic provider
-    provider = new AnthropicProvider(config.BaseUrl, config.ApiKey);
-}
-
+var provider = CreateProviderOrFallback(providerFactory, config);
 var history = new ChatConversationHistory();
 var toolRegistry = CreateToolRegistry();
-var enforcer = new ConsolePermissionEnforcer();
+IPermissionEnforcer enforcer = invocation.IsNonInteractive
+    ? new NonInteractivePermissionEnforcer(config.AllowToolsWithoutPrompt, config.AllowedToolNames)
+    : new ConsolePermissionEnforcer();
 var loopRunner = new CliToolLoopRunner();
+var compactor = new ConversationCompactor();
+
+if (invocation.IsNonInteractive)
+{
+    var result = await RunNonInteractiveAsync(provider, config, history, toolRegistry, enforcer, loopRunner, invocation.Prompt!);
+    Environment.ExitCode = (int)result.ExitCode;
+    return;
+}
+
+if (Console.IsInputRedirected)
+{
+    Environment.ExitCode = (int)ProcessExitCode.InvalidArguments;
+    AnsiConsole.MarkupLine("[red]Input is redirected. Use --stdin to read from standard input or --prompt/--input for one-shot execution.[/]");
+    return;
+}
+
 var running = true;
 
-AnsiConsole.MarkupLine("[bold blue]AgentQ CLI[/]");
-AnsiConsole.MarkupLine($"Provider: [cyan]{provider.Name}[/]");
-AnsiConsole.MarkupLine($"Model: [cyan]{config.Model}[/]");
-AnsiConsole.MarkupLine($"Base URL: [cyan]{config.BaseUrl}[/]");
-AnsiConsole.MarkupLine($"Tools registered: [cyan]{toolRegistry.All.Count}[/]");
-AnsiConsole.MarkupLine("Type [yellow]/help[/] for commands.\n");
+ShowWelcome(provider, config, toolRegistry);
 
 while (running)
 {
@@ -81,8 +107,9 @@ while (running)
 
         if (input.StartsWith("/"))
         {
-            var parts = input.Split(' ', 2);
+            var parts = input.Split(' ', 2, StringSplitOptions.TrimEntries);
             var command = parts[0].ToLowerInvariant();
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
 
             switch (command)
             {
@@ -97,41 +124,69 @@ while (running)
                     break;
 
                 case "/help":
-                    ShowHelp(toolRegistry);
+                    ShowHelp(toolRegistry, providerFactory.AvailableProviders);
                     break;
 
                 case "/history":
-                    AnsiConsole.MarkupLine($"[dim]{history.MessageCount} messages in history.[/]");
+                    AnsiConsole.MarkupLine($"[dim]Messages in history:[/] [cyan]{history.MessageCount}[/]");
+                    break;
+
+                case "/compact":
+                    try
+                    {
+                        using var compactCts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
+                        var result = await compactor.CompactAsync(provider, config.Model, history, compactCts.Token);
+                        if (result.Applied)
+                        {
+                            AnsiConsole.MarkupLine($"[green]Compacted [cyan]{result.CompactedMessages}[/] messages into one summary.[/]");
+                            AnsiConsole.MarkupLine($"[dim]Messages now in history:[/] [cyan]{result.TotalMessagesAfter}[/]");
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine($"[yellow]{result.Reason?.EscapeMarkup() ?? "Nothing to compact."}[/]");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Failed to compact conversation:[/] {ex.Message.EscapeMarkup()}");
+                    }
                     break;
 
                 case "/tools":
                     ShowTools(toolRegistry);
                     break;
 
+                case "/status":
+                    ShowStatus(provider, config, toolRegistry);
+                    break;
+
                 case "/run":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        await RunTool(toolRegistry, enforcer, parts[1].Trim());
+                        await RunTool(toolRegistry, enforcer, argument);
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine("[red]Usage: /run <tool_name> {\"param\": \"value\"}[/]");
+                        AnsiConsole.MarkupLine("[red]Usage:[/] /run <tool_name> {\"param\":\"value\"}");
                     }
                     break;
 
                 case "/provider":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        var providerName = parts[1].Trim().ToLowerInvariant();
+                        var providerName = argument.ToLowerInvariant();
                         if (providerFactory.TryGetProvider(providerName, config.BaseUrl, config.ApiKey, out var newProvider) && newProvider != null)
                         {
                             provider = newProvider;
                             config.Provider = providerName;
-                            AnsiConsole.MarkupLine($"[green]Provider switched to: {providerName}[/]");
+                            AnsiConsole.MarkupLine($"[green]Provider switched to [cyan]{providerName}[/].[/]");
+                            ShowStatus(provider, config, toolRegistry);
                         }
                         else
                         {
-                            AnsiConsole.Write(new Panel($"[red]Unknown or invalid provider: {providerName}[/]\n[dim]Available: {string.Join(", ", providerFactory.AvailableProviders)}[/]")
+                            AnsiConsole.Write(new Panel(
+                                $"[red]Unknown or invalid provider:[/] {providerName}\n" +
+                                $"[dim]Available:[/] {string.Join(", ", providerFactory.AvailableProviders)}")
                             {
                                 Border = BoxBorder.Rounded,
                                 Header = new PanelHeader("[red]Provider Error[/]")
@@ -140,54 +195,61 @@ while (running)
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine($"[dim]Current provider: [cyan]{provider.Name}[/][/]");
+                        AnsiConsole.MarkupLine($"[dim]Current provider:[/] [cyan]{provider.Name}[/]");
                     }
                     break;
 
                 case "/model":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        config.Model = parts[1].Trim();
-                        AnsiConsole.MarkupLine($"[green]Model set to: [cyan]{config.Model}[/][/]");
+                        config.Model = argument;
+                        AnsiConsole.MarkupLine($"[green]Model set to [cyan]{config.Model}[/].[/]");
+                        ShowStatus(provider, config, toolRegistry);
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine($"[dim]Current model: [cyan]{config.Model}[/][/]");
+                        AnsiConsole.MarkupLine($"[dim]Current model:[/] [cyan]{config.Model}[/]");
                     }
                     break;
 
                 case "/base-url":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        config.BaseUrl = parts[1].Trim();
-                        AnsiConsole.MarkupLine($"[green]Base URL set to: [cyan]{config.BaseUrl}[/][/]");
-                        AnsiConsole.MarkupLine("[yellow]Note: You might need to re-select the provider to apply the new Base URL.[/]");
+                        config.BaseUrl = argument;
+                        provider = CreateProviderOrFallback(providerFactory, config);
+                        AnsiConsole.MarkupLine($"[green]Base URL set to [cyan]{config.BaseUrl}[/].[/]");
+                        AnsiConsole.MarkupLine("[dim]Provider instance refreshed with the new base URL.[/]");
+                        ShowStatus(provider, config, toolRegistry);
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine($"[dim]Current Base URL: [cyan]{config.BaseUrl}[/][/]");
+                        AnsiConsole.MarkupLine($"[dim]Current base URL:[/] [cyan]{config.BaseUrl}[/]");
                     }
                     break;
 
                 case "/timeout":
-                    if (parts.Length > 1 && int.TryParse(parts[1].Trim(), out var timeout))
+                    if (!string.IsNullOrWhiteSpace(argument) && int.TryParse(argument, out var timeout) && timeout > 0)
                     {
                         config.TimeoutSeconds = timeout;
-                        AnsiConsole.MarkupLine($"[green]Timeout set to: [cyan]{config.TimeoutSeconds}[/] seconds[/]");
+                        AnsiConsole.MarkupLine($"[green]Timeout set to [cyan]{config.TimeoutSeconds}[/] seconds.[/]");
+                    }
+                    else if (string.IsNullOrWhiteSpace(argument))
+                    {
+                        AnsiConsole.MarkupLine($"[dim]Current timeout:[/] [cyan]{config.TimeoutSeconds}[/] seconds");
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine($"[dim]Current Timeout: [cyan]{config.TimeoutSeconds}[/] seconds[/]");
+                        AnsiConsole.MarkupLine("[red]Timeout must be a positive integer in seconds.[/]");
                     }
                     break;
 
                 case "/config":
-                    if (parts.Length > 1 && parts[1].Trim().ToLowerInvariant() == "save")
+                    if (argument.Equals("save", StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
                             await ConfigStore.SaveAsync(config);
-                            AnsiConsole.MarkupLine("[green]Current configuration saved successfully![/]");
+                            AnsiConsole.MarkupLine("[green]Configuration saved.[/]");
                         }
                         catch (Exception ex)
                         {
@@ -196,18 +258,17 @@ while (running)
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine("[dim]Usage: /config save (Saves current provider, model, url, and timeout to config.json)[/]");
+                        AnsiConsole.MarkupLine("[dim]Usage:[/] /config save");
                     }
                     break;
 
                 case "/save":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        var filePath = parts[1].Trim();
                         try
                         {
-                            await SessionStore.SaveAsync(filePath, history.Messages);
-                            AnsiConsole.MarkupLine($"[green]Session saved to: [cyan]{filePath}[/][/]");
+                            await SessionStore.SaveAsync(argument, history.Messages);
+                            AnsiConsole.MarkupLine($"[green]Session saved to [cyan]{argument}[/].[/]");
                         }
                         catch (Exception ex)
                         {
@@ -216,20 +277,19 @@ while (running)
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine("[red]Usage: /save <file_path>[/]");
+                        AnsiConsole.MarkupLine("[red]Usage:[/] /save <file_path>");
                     }
                     break;
 
                 case "/load":
-                    if (parts.Length > 1)
+                    if (!string.IsNullOrWhiteSpace(argument))
                     {
-                        var filePath = parts[1].Trim();
                         try
                         {
-                            var messages = await SessionStore.LoadAsync(filePath);
+                            var messages = await SessionStore.LoadAsync(argument);
                             history.Clear();
                             history.AddRange(messages);
-                            AnsiConsole.MarkupLine($"[green]Session loaded from: [cyan]{filePath}[/] ({messages.Count} messages)[/]");
+                            AnsiConsole.MarkupLine($"[green]Session loaded from [cyan]{argument}[/].[/] [dim]({messages.Count} messages)[/]");
                         }
                         catch (Exception ex)
                         {
@@ -238,12 +298,12 @@ while (running)
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine("[red]Usage: /load <file_path>[/]");
+                        AnsiConsole.MarkupLine("[red]Usage:[/] /load <file_path>");
                     }
                     break;
 
                 default:
-                    AnsiConsole.MarkupLine($"[red]Unknown command: {command}[/]");
+                    ShowUnknownCommand(command);
                     break;
             }
         }
@@ -256,7 +316,7 @@ while (running)
     }
     catch (Exception ex)
     {
-        AnsiConsole.Write(new Panel($"[red]An unexpected error occurred:[/] {ex.Message}\n[dim]{ex.StackTrace?.Split('\n').FirstOrDefault()}[/]")
+        AnsiConsole.Write(new Panel($"[red]Unexpected error:[/] {ex.Message}\n[dim]{ex.StackTrace?.Split('\n').FirstOrDefault()}[/]")
         {
             Border = BoxBorder.Double,
             Header = new PanelHeader("[bold red]Critical Error[/]")
@@ -266,9 +326,16 @@ while (running)
 
 AnsiConsole.MarkupLine("\n[dim]Goodbye![/]");
 
-/// <summary>
-/// 도구 레지스트리 생성
-/// </summary>
+static ILlmProvider CreateProviderOrFallback(ProviderFactory providerFactory, ProviderConfiguration config)
+{
+    if (providerFactory.TryGetProvider(config.Provider, config.BaseUrl, config.ApiKey, out var provider) && provider != null)
+    {
+        return provider;
+    }
+
+    return new AnthropicProvider(config.BaseUrl, config.ApiKey);
+}
+
 static ToolRegistry CreateToolRegistry()
 {
     var registry = new ToolRegistry();
@@ -282,18 +349,61 @@ static ToolRegistry CreateToolRegistry()
     return registry;
 }
 
-/// <summary>
-/// 메시지 전송 및 표시
-/// </summary>
+static void ShowWelcome(ILlmProvider provider, ProviderConfiguration config, ToolRegistry registry)
+{
+    var accentColor = new Color(216, 180, 254);
+    var qIcon = new FigletText("Q")
+        .Centered()
+        .Color(accentColor);
+
+    AnsiConsole.Write(
+        Align.Center(
+            new Panel(qIcon)
+            {
+                Border = BoxBorder.None,
+                Padding = new Padding(0, 0, 0, 0)
+            }));
+    AnsiConsole.WriteLine();
+
+    AnsiConsole.Write(new Panel(
+        $"[bold #D8B4FE]AgentQ CLI[/]\n" +
+        $"[dim]Provider:[/] [cyan]{provider.Name}[/]\n" +
+        $"[dim]Model:[/] [cyan]{config.Model}[/]\n" +
+        $"[dim]Base URL:[/] [cyan]{config.BaseUrl}[/]\n" +
+        $"[dim]Tools:[/] [cyan]{registry.All.Count}[/]\n\n" +
+        $"[dim]Type[/] [yellow]/help[/] [dim]for commands or[/] [yellow]/status[/] [dim]for current settings.[/]")
+    {
+        Header = new PanelHeader("[bold]Ready[/]"),
+        Border = BoxBorder.Rounded,
+        BorderStyle = new Style(accentColor)
+    });
+}
+
+static void ShowStatus(ILlmProvider provider, ProviderConfiguration config, ToolRegistry registry)
+{
+    var table = new Table().Border(TableBorder.Rounded);
+    table.AddColumn("Setting");
+    table.AddColumn("Value");
+    table.AddRow("Provider", $"[cyan]{provider.Name}[/]");
+    table.AddRow("Model", $"[cyan]{config.Model}[/]");
+    table.AddRow("Base URL", $"[cyan]{config.BaseUrl}[/]");
+    table.AddRow("Timeout", $"[cyan]{config.TimeoutSeconds} sec[/]");
+    table.AddRow("Tools", $"[cyan]{registry.All.Count}[/]");
+    AnsiConsole.Write(table);
+}
+
 static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConversationHistory history, ToolRegistry registry, IPermissionEnforcer enforcer, CliToolLoopRunner loopRunner, CancellationToken ct = default)
 {
     AnsiConsole.Write(new Rule { Title = "Assistant", Style = Style.Parse("blue") });
-    
+
+    var streamedAnyText = false;
+    var wroteVisibleLine = false;
+
     try
     {
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
-            .StartAsync("Thinking...", async ctx => 
+            .StartAsync("Thinking...", async ctx =>
             {
                 await loopRunner.ExecuteConversationTurnAsync(
                     provider,
@@ -301,48 +411,58 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
                     history,
                     registry,
                     enforcer,
-                    onTextDelta: text => 
+                    onTextDelta: text =>
                     {
-                        // Update status or stop it when text starts streaming
+                        streamedAnyText = true;
+                        wroteVisibleLine = true;
                         ctx.Status("Receiving response...");
-                        AnsiConsole.MarkupInterpolated($"[white]{text}[/]");
+                        AnsiConsole.MarkupInterpolated($"[white]{text.EscapeMarkup()}[/]");
                     },
-                    onToolExecution: toolName => 
+                    onToolExecution: toolName =>
                     {
+                        wroteVisibleLine = true;
                         ctx.Status($"Executing tool: [cyan]{toolName}[/]...");
-                        AnsiConsole.MarkupLine($"[dim]Executing tool: [cyan]{toolName}[/][/dim]");
+                        AnsiConsole.MarkupLine($"[dim]Executing tool:[/] [cyan]{toolName}[/]");
                     },
                     onToolOutput: output =>
                     {
-                        var preview = output.Length > 100 ? output.Substring(0, 100) : output;
-                        AnsiConsole.MarkupLine($"[green]Tool output:[/] [dim]{preview}{(output.Length > 100 ? "..." : "")}[/]");
+                        wroteVisibleLine = true;
+                        var preview = Shorten(output, 160);
+                        AnsiConsole.MarkupLine($"[green]Tool output:[/] [dim]{preview.EscapeMarkup()}[/]");
                         ctx.Status("Processing tool output...");
                     },
-                    onToolError: error => AnsiConsole.MarkupLine($"[red]Tool error: {error}[/]"),
-                    onPermissionDenied: toolName => AnsiConsole.MarkupLine($"[yellow]Permission denied for {toolName}[/]"),
+                    onToolError: error =>
+                    {
+                        wroteVisibleLine = true;
+                        AnsiConsole.MarkupLine($"[red]Tool error:[/] {error.EscapeMarkup()}");
+                    },
+                    onPermissionDenied: toolName =>
+                    {
+                        wroteVisibleLine = true;
+                        AnsiConsole.MarkupLine($"[yellow]Permission denied:[/] {toolName.EscapeMarkup()}");
+                    },
                     ct: ct);
             });
 
-        // After the streaming is done, re-render the final response as Markdown for syntax highlighting
         var lastMessage = history.Messages.LastOrDefault();
-        if (lastMessage != null && lastMessage.Role == ChatRole.Assistant)
+        if (!streamedAnyText && lastMessage != null && lastMessage.Role == ChatRole.Assistant)
         {
-            // Clear the streaming output by writing a newline and re-rendering properly if needed
-            AnsiConsole.WriteLine();
             var textContent = string.Join("\n", lastMessage.Content
                 .Where(c => c.Type == ContentType.Text)
-                .Select(c => c.Text));
-            
+                .Select(c => c.Text)
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
+
             if (!string.IsNullOrWhiteSpace(textContent))
             {
-                // Fallback to regular markup if Markdown class is missing for some reason
-                AnsiConsole.MarkupLine($"\n[white]{textContent}[/]");
+                wroteVisibleLine = true;
+                AnsiConsole.MarkupLine($"[white]{textContent.EscapeMarkup()}[/]");
             }
         }
     }
     catch (OperationCanceledException)
     {
-        AnsiConsole.Write(new Panel("[yellow]The operation was timed out or cancelled.[/]")
+        wroteVisibleLine = true;
+        AnsiConsole.Write(new Panel("[yellow]The request timed out or was cancelled.[/]")
         {
             Border = BoxBorder.Rounded,
             Header = new PanelHeader("[yellow]Timeout[/]")
@@ -350,29 +470,94 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
     }
     catch (Exception ex)
     {
-        AnsiConsole.Write(new Panel($"[red]Error during conversation:[/] {ex.Message}")
+        wroteVisibleLine = true;
+        AnsiConsole.Write(new Panel($"[red]Conversation error:[/] {ex.Message.EscapeMarkup()}")
         {
             Border = BoxBorder.Rounded,
             Header = new PanelHeader("[red]API Error[/]")
         });
     }
-    AnsiConsole.WriteLine();
+
+    if (wroteVisibleLine)
+    {
+        AnsiConsole.WriteLine();
+    }
 }
 
-/// <summary>
-/// 도구 직접 실행
-/// </summary>
+static async Task<NonInteractiveRunResult> RunNonInteractiveAsync(
+    ILlmProvider provider,
+    ProviderConfiguration config,
+    ChatConversationHistory history,
+    ToolRegistry registry,
+    IPermissionEnforcer enforcer,
+    CliToolLoopRunner loopRunner,
+    string prompt)
+{
+    history.AddUserMessage(prompt);
+    var toolOutputs = new List<string>();
+    var toolErrors = new List<string>();
+    var deniedTools = new List<string>();
+
+    try
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
+        await loopRunner.ExecuteConversationTurnAsync(
+            provider,
+            config.Model,
+            history,
+            registry,
+            enforcer,
+            onToolOutput: output => toolOutputs.Add(output),
+            onToolError: error => toolErrors.Add(error),
+            onPermissionDenied: toolName => deniedTools.Add(toolName),
+            ct: cts.Token);
+
+        var result = new NonInteractiveRunResult
+        {
+            FinalText = AutomationSupport.GetLatestAssistantText(history),
+            MessageCount = history.MessageCount
+        };
+        result.AllowedTools.AddRange(config.AllowToolsWithoutPrompt ? ["*"] : config.AllowedToolNames);
+        result.ToolOutputs.AddRange(toolOutputs);
+        result.ToolErrors.AddRange(toolErrors);
+        result.DeniedTools.AddRange(deniedTools);
+        WriteNonInteractiveResult(config, result);
+        return result;
+    }
+    catch (OperationCanceledException)
+    {
+        WriteAutomationError(config, "The non-interactive request timed out or was cancelled.", ProcessExitCode.ProviderFailure);
+        return new NonInteractiveRunResult
+        {
+            FinalText = string.Empty,
+            MessageCount = history.MessageCount,
+            ForcedExitCode = ProcessExitCode.ProviderFailure
+        };
+    }
+    catch (Exception ex)
+    {
+        WriteAutomationError(config, $"Conversation error: {ex.Message}", ProcessExitCode.ProviderFailure);
+        return new NonInteractiveRunResult
+        {
+            FinalText = string.Empty,
+            MessageCount = history.MessageCount,
+            ForcedExitCode = ProcessExitCode.ProviderFailure
+        };
+    }
+}
+
 static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, string args)
 {
     var loopRunner = new CliToolLoopRunner();
     var spaceIndex = args.IndexOf(' ');
-    var toolName = spaceIndex >= 0 ? args.Substring(0, spaceIndex) : args;
-    var jsonArgs = spaceIndex >= 0 ? args.Substring(spaceIndex + 1) : "{}";
+    var toolName = spaceIndex >= 0 ? args[..spaceIndex] : args;
+    var jsonArgs = spaceIndex >= 0 ? args[(spaceIndex + 1)..] : "{}";
 
     var tool = registry.Get(toolName);
     if (tool == null)
     {
-        AnsiConsole.MarkupLine($"[red]Tool not found: {toolName}[/]");
+        AnsiConsole.MarkupLine($"[red]Tool not found:[/] {toolName.EscapeMarkup()}");
+        AnsiConsole.MarkupLine("[dim]Use /tools to list available tools.[/]");
         return;
     }
 
@@ -392,7 +577,7 @@ static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, s
     }
     catch (JsonException ex)
     {
-        AnsiConsole.Write(new Panel($"[red]Invalid JSON arguments:[/] {ex.Message}\n[dim]Example: /run {toolName} {{\"param\": \"value\"}}[/]")
+        AnsiConsole.Write(new Panel($"[red]Invalid JSON arguments:[/] {ex.Message}\n[dim]Example:[/] /run {toolName} {{\"param\":\"value\"}}")
         {
             Border = BoxBorder.Rounded,
             Header = new PanelHeader("[red]JSON Syntax Error[/]")
@@ -400,7 +585,7 @@ static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, s
         return;
     }
 
-    AnsiConsole.MarkupLine($"[dim]Running tool: [cyan]{toolName}[/][/dim]");
+    AnsiConsole.MarkupLine($"[dim]Running tool:[/] [cyan]{toolName}[/]");
 
     try
     {
@@ -408,51 +593,174 @@ static async Task RunTool(ToolRegistry registry, IPermissionEnforcer enforcer, s
 
         if (result.IsError)
         {
-            AnsiConsole.MarkupLine($"[red]Tool execution failed: {result.Content}[/]");
+            AnsiConsole.MarkupLine($"[red]Tool execution failed:[/] {result.Content.EscapeMarkup()}");
         }
         else
         {
-            AnsiConsole.MarkupLine($"[green]{result.Content}[/]");
+            if (TryFormatJson(result.Content, out var prettyJson))
+            {
+                AnsiConsole.Write(new Panel(new JsonText(prettyJson))
+                {
+                    Header = new PanelHeader("[green]Tool Result[/]"),
+                    Border = BoxBorder.Rounded
+                });
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[green]{result.Content.EscapeMarkup()}[/]");
+            }
         }
     }
     catch (Exception ex)
     {
-        AnsiConsole.MarkupLine($"[bold red]Unexpected tool error:[/] {ex.Message}");
+        AnsiConsole.MarkupLine($"[bold red]Unexpected tool error:[/] {ex.Message.EscapeMarkup()}");
     }
 }
 
-/// <summary>
-/// 도움말 표시
-/// </summary>
-static void ShowHelp(ToolRegistry registry)
+static void ShowHelp(ToolRegistry registry, IEnumerable<string> providers)
 {
-    AnsiConsole.MarkupLine("[bold]Commands:[/]");
-    AnsiConsole.MarkupLine("  [yellow]/help[/]       - Show this help");
-    AnsiConsole.MarkupLine("  [yellow]/clear[/]      - Clear conversation history");
-    AnsiConsole.MarkupLine("  [yellow]/exit[/]       - Exit the CLI");
-    AnsiConsole.MarkupLine("  [yellow]/history[/]    - Show message count");
-    AnsiConsole.MarkupLine("  [yellow]/tools[/]      - List available tools");
-    AnsiConsole.MarkupLine("  [yellow]/run[/]        - Run a tool directly");
-    AnsiConsole.MarkupLine("  [yellow]/provider[/]   - Show or switch provider (anthropic, openai)");
-    AnsiConsole.MarkupLine("  [yellow]/model[/]      - Show or set model name");
-    AnsiConsole.MarkupLine("  [yellow]/base-url[/]   - Show or set API base URL");
-    AnsiConsole.MarkupLine("  [yellow]/timeout[/]    - Show or set API timeout in seconds");
+    AnsiConsole.MarkupLine("[bold]Commands[/]");
+    AnsiConsole.MarkupLine("  [yellow]/help[/]       Show help and examples");
+    AnsiConsole.MarkupLine("  [yellow]/status[/]     Show current provider, model, URL, timeout");
+    AnsiConsole.MarkupLine("  [yellow]/clear[/]      Clear conversation history");
+    AnsiConsole.MarkupLine("  [yellow]/history[/]    Show message count");
+    AnsiConsole.MarkupLine("  [yellow]/compact[/]    Summarize older messages and keep recent context");
+    AnsiConsole.MarkupLine("  [yellow]/tools[/]      List available tools");
+    AnsiConsole.MarkupLine("  [yellow]/run[/]        Run a tool directly");
+    AnsiConsole.MarkupLine("  [yellow]/provider[/]   Show or switch provider");
+    AnsiConsole.MarkupLine("  [yellow]/model[/]      Show or set model");
+    AnsiConsole.MarkupLine("  [yellow]/base-url[/]   Show or set base URL");
+    AnsiConsole.MarkupLine("  [yellow]/timeout[/]    Show or set timeout in seconds");
+    AnsiConsole.MarkupLine("  [yellow]/config save[/] Save current config");
+    AnsiConsole.MarkupLine("  [yellow]/save[/]       Save current session");
+    AnsiConsole.MarkupLine("  [yellow]/load[/]       Load a saved session");
+    AnsiConsole.MarkupLine("  [yellow]/exit[/]       Exit the CLI");
+    AnsiConsole.WriteLine();
+
+    AnsiConsole.MarkupLine("[bold]Automation[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Summarize README\"[/]");
+    AnsiConsole.MarkupLine("  [cyan]Get-Content prompt.txt | agentq --stdin[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --input prompt.txt[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Summarize README\" --json[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"List files\" --yes[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Read README\" --allow-tool read_file[/]");
+    AnsiConsole.WriteLine();
+
+    AnsiConsole.MarkupLine("[bold]Examples[/]");
+    AnsiConsole.MarkupLine("  [cyan]/provider openai[/]");
+    AnsiConsole.MarkupLine("  [cyan]/model gpt-5[/]");
+    AnsiConsole.MarkupLine("  [cyan]/base-url http://localhost:18080[/]");
+    AnsiConsole.MarkupLine("  [cyan]/timeout 90[/]");
+    AnsiConsole.MarkupLine("  [cyan]/compact[/]");
+    AnsiConsole.MarkupLine("  [cyan]/run read_file {\"path\":\"README.md\",\"offset\":1,\"limit\":20}[/]");
+    AnsiConsole.MarkupLine("  [cyan]/save session.json[/]");
+    AnsiConsole.MarkupLine("  [cyan]/load session.json[/]");
+    AnsiConsole.WriteLine();
+
+    AnsiConsole.MarkupLine($"[dim]Available providers:[/] {string.Join(", ", providers)}");
+    AnsiConsole.MarkupLine($"[dim]Registered tools:[/] {registry.All.Count}");
 }
 
-/// <summary>
-/// 도구 목록 표시
-/// </summary>
 static void ShowTools(ToolRegistry registry)
 {
-    AnsiConsole.MarkupLine("[bold]Available Tools:[/]");
-    var table = new Table();
+    var table = new Table().Border(TableBorder.Rounded);
     table.AddColumn("Name");
+    table.AddColumn("Permission");
     table.AddColumn("Description");
 
-    foreach (var tool in registry.All)
+    foreach (var tool in registry.All.OrderBy(tool => tool.Name))
     {
-        table.AddRow($"[cyan]{tool.Name}[/]", tool.Description);
+        table.AddRow(
+            $"[cyan]{tool.Name}[/]",
+            tool.RequiresPermission ? "[yellow]yes[/]" : "[green]no[/]",
+            tool.Description);
     }
 
     AnsiConsole.Write(table);
+}
+
+static void ShowUnknownCommand(string command)
+{
+    var suggestions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["/tool"] = "/tools",
+        ["/hist"] = "/history",
+        ["/models"] = "/model",
+        ["/providers"] = "/provider",
+        ["/url"] = "/base-url",
+        ["/stat"] = "/status"
+    };
+
+    if (suggestions.TryGetValue(command, out var suggested))
+    {
+        AnsiConsole.MarkupLine($"[red]Unknown command:[/] {command.EscapeMarkup()} [dim](did you mean {suggested}?)[/]");
+        return;
+    }
+
+    AnsiConsole.MarkupLine($"[red]Unknown command:[/] {command.EscapeMarkup()}");
+    AnsiConsole.MarkupLine("[dim]Type /help to see available commands.[/]");
+}
+
+static bool TryFormatJson(string value, out string prettyJson)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(value);
+        prettyJson = JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        return true;
+    }
+    catch (JsonException)
+    {
+        prettyJson = string.Empty;
+        return false;
+    }
+}
+
+static string Shorten(string value, int maxLength)
+{
+    if (value.Length <= maxLength)
+    {
+        return value;
+    }
+
+    return value[..maxLength] + "...";
+}
+
+static void WriteAutomationError(ProviderConfiguration config, string message, ProcessExitCode exitCode)
+{
+    if (config.JsonOutput)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            success = false,
+            exitCode = (int)exitCode,
+            terminationReason = exitCode switch
+            {
+                ProcessExitCode.ConfigurationError => "configuration_error",
+                ProcessExitCode.InvalidArguments => "invalid_arguments",
+                ProcessExitCode.PermissionDenied => "permission_denied",
+                ProcessExitCode.ToolFailure => "tool_error",
+                _ => "provider_error"
+            },
+            error = message
+        }, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(payload);
+        return;
+    }
+
+    AnsiConsole.MarkupLine($"[red]{Markup.Escape(message)}[/]");
+}
+
+static void WriteNonInteractiveResult(ProviderConfiguration config, NonInteractiveRunResult result)
+{
+    if (config.JsonOutput)
+    {
+        Console.WriteLine(AutomationSupport.SerializeJson(result));
+        return;
+    }
+
+    if (!string.IsNullOrWhiteSpace(result.FinalText))
+    {
+        Console.WriteLine(result.FinalText);
+    }
 }

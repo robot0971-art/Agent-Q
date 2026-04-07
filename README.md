@@ -1,75 +1,183 @@
-# AgentQ (에이전트 큐) 🚀
+# AgentQ
 
-**AgentQ**는 멀티 LLM(Anthropic, OpenAI compatible)을 지원하며, 강력한 도구 사용(Tool-use) 능력을 갖춘 터미널 기반의 AI 코딩 어시스턴트입니다. 
+AgentQ is a C# CLI coding assistant with tool-use support, provider abstraction, and a mock-service-backed test workflow.
 
-기존의 단순한 챗봇을 넘어, 직접 파일을 읽고 쓰고, 쉘 명령어를 실행하며 프로젝트 전체를 이해하고 코딩 작업을 수행할 수 있도록 설계되었습니다.
+## Status
 
----
+The project is past the prototype stage.
 
-## ✨ 핵심 기능 (Key Features)
+- core CLI loop exists
+- Anthropic and OpenAI-compatible providers exist
+- tool execution and permission flow exist
+- session/config persistence exist
+- mock parity infrastructure exists
 
-- **멀티 LLM 지원**: Anthropic Claude 3.5, OpenAI GPT-4o 등 다양한 모델을 지원하며 자유롭게 전환 가능합니다.
-- **강력한 도구 세트**:
-  - `bash`: 시스템 명령어 실행
-  - `read_file` / `write_file` / `edit_file`: 정밀한 파일 조작
-  - `grep` / `glob`: 효율적인 코드 검색
-- **안전한 보안 설계**: `AGENTQ_WORKSPACE_ROOT` 설정을 통해 에이전트의 활동 범위를 특정 디렉토리로 제한합니다.
-- **세션 및 설정 관리**:
-  - `/save`, `/load`: 대화 내역을 파일로 저장하고 나중에 다시 시작할 수 있습니다.
-  - `/config save`: 현재 사용 중인 모델과 API 설정을 영구적으로 저장합니다.
-- **네트워크 복원력**: 지수 백오프(Exponential Backoff) 기반의 재시도 로직이 탑재되어 네트워크 불안정 시에도 안정적으로 동작합니다.
-- **풍부한 터미널 UI**: `Spectre.Console`을 활용한 스피너, 마크다운 렌더링, 구문 강조 기능을 제공합니다.
+Current work is focused on stabilization, regression coverage, and documentation sync.
 
----
+## Requirements
 
-## 🛠 시작하기 (Getting Started)
+- Windows
+- .NET 10 SDK
 
-### 요구 사항
-- **.NET 10 SDK** 이상
+## Project Layout
 
-### 빌드 및 실행
-```bash
-# 프로젝트 빌드
-dotnet build csharp/AgentQ.sln
-
-# CLI 실행
-dotnet run --project csharp/AgentQ.Cli
+```text
+csharp/
+|- AgentQ.Api
+|- AgentQ.Core
+|- AgentQ.Providers.Anthropic
+|- AgentQ.Providers.OpenAi
+|- AgentQ.Tools
+|- AgentQ.Cli
+|- AgentQ.MockService
+`- AgentQ.Tests
 ```
 
-### 환경 변수 설정
-필요한 설정은 환경 변수나 `config.json`을 통해 관리할 수 있습니다.
-- `AGENTQ_PROVIDER`: 사용할 프로바이더 (anthropic, openai 등)
-- `AGENTQ_MODEL`: 사용할 모델 이름
-- `AGENTQ_API_KEY`: LLM 서비스 API 키
-- `AGENTQ_WORKSPACE_ROOT`: 에이전트가 접근 가능한 루트 디렉토리 (기본값: 현재 디렉토리)
+## Main Features
 
----
+- REPL-based coding assistant CLI
+- tool-use conversation loop
+- provider switching between `anthropic` and `openai`
+- file and shell tools
+- workspace-root path restriction
+- permission-gated tool execution
+- session save/load
+- config persistence
+- streamed tool-call assembly
+- retry wrapper for transient provider failures
 
-## ⌨️ 슬래시 명령어 (Slash Commands)
+## Built-in Tools
 
-CLI 내에서 다음과 같은 명령어를 사용할 수 있습니다.
+- `bash`
+- `read_file`
+- `write_file`
+- `edit_file`
+- `grep_search`
+- `glob_search`
+- `plugin_echo`
 
-| 명령어 | 설명 |
-| :--- | :--- |
-| `/help` | 사용 가능한 명령어 목록 표시 |
-| `/save <path>` | 현재 대화 세션을 JSON 파일로 저장 |
-| `/load <path>` | 이전 대화 세션을 불러오기 |
-| `/config save` | 현재 설정을 `config.json`에 영구 저장 |
-| `/clear` | 현재 대화 기록 초기화 |
-| `/exit` | 프로그램 종료 |
-| `/run <tool> <args>` | 도구를 수동으로 직접 실행 |
+## Environment Variables
 
----
+- `AGENTQ_PROVIDER`
+- `AGENTQ_MODEL`
+- `AGENTQ_API_KEY`
+- `AGENTQ_BASE_URL`
+- `AGENTQ_TIMEOUT`
+- `AGENTQ_WORKSPACE_ROOT`
 
-## 🏗 프로젝트 구조
+## Running
 
-- **AgentQ.Core**: LLM 제공자 인터페이스 및 핵심 모델 정의
-- **AgentQ.Tools**: 에이전트가 사용하는 각종 도구(Bash, File IO 등) 구현체
-- **AgentQ.Cli**: 사용자 상호작용 및 REPL 루프 담당
-- **AgentQ.Api**: 통신을 위한 데이터 계약(DTO) 정의
-- **AgentQ.MockService**: 테스트를 위한 모의 API 서버
+Start the CLI:
 
----
+```powershell
+dotnet run --project .\csharp\AgentQ.Cli
+```
 
-## 📝 라이선스
-이 프로젝트는 MIT 라이선스를 따릅니다.
+Install it as a .NET global tool:
+
+```powershell
+dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release
+dotnet tool install --global --add-source .\artifacts\packages AgentQ.Tool
+```
+
+After installation, run it from any terminal with:
+
+```powershell
+agentq
+```
+
+To refresh an existing installation after rebuilding:
+
+```powershell
+dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool
+```
+
+## Automation Mode
+
+AgentQ now supports one-shot non-interactive execution in addition to the interactive REPL.
+
+Examples:
+
+```powershell
+agentq --prompt "Summarize README.md"
+Get-Content .\prompt.txt | agentq --stdin
+agentq --input .\prompt.txt
+agentq --prompt "Summarize README.md" --json
+agentq --prompt "List files" --yes
+agentq --prompt "Read README.md" --allow-tool read_file
+```
+
+Current non-interactive behavior:
+
+- tools that require permission are denied automatically unless `--yes` is provided
+- `--allow-tool <name>` can be repeated to approve only specific tools in non-interactive mode
+- `--prompt`, `--stdin`, and `--input` are mutually exclusive
+- missing model/API configuration exits immediately instead of opening the REPL
+- `--json` emits a machine-readable result envelope with `success`, `exitCode`, `terminationReason`, `finalText`, `allowedTools`, `deniedTools`, `toolErrors`, and `toolOutputs`
+
+Startup currently renders a centered pastel-purple `Q` mark before the status panel.
+
+Useful slash commands:
+
+- `/help`
+- `/clear`
+- `/history`
+- `/compact`
+- `/tools`
+- `/status`
+- `/provider <name>`
+- `/model <name>`
+- `/base-url <url>`
+- `/timeout <seconds>`
+- `/save <path>`
+- `/load <path>`
+- `/config save`
+- `/run <tool> <json>`
+
+## Build and Test
+
+Use the repository wrapper scripts as the default entrypoints:
+
+```powershell
+.\build.cmd
+.\test.cmd
+.\test.integration.cmd
+```
+
+PowerShell variants also exist:
+
+```powershell
+.\build.ps1
+.\test.ps1
+.\test.integration.ps1
+```
+
+`test.cmd` and `test.ps1` exclude integration tests by default.
+`test.integration.cmd` and `test.integration.ps1` run only the integration test layer.
+
+The scripts no longer force `DOTNET_CLI_HOME`. They use the current local dotnet environment unless you explicitly set that variable yourself.
+
+## Mock Service
+
+The repository includes `AgentQ.MockService` for parity-style provider testing.
+
+Run it with:
+
+```powershell
+dotnet run --project .\csharp\AgentQ.MockService
+```
+
+## Validation Snapshot
+
+Current wrapper-script validation passed in this environment:
+
+- `.\test.cmd`: `44` non-integration tests passed
+- `.\test.integration.cmd`: `4` integration tests passed
+
+The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
+
+## Current Priority
+
+1. documentation synchronization and final cleanup
+2. optional provider integration expansion beyond current local coverage
+3. optional CLI rendering and UX polish

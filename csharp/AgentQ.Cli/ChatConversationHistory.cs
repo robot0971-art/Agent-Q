@@ -67,6 +67,31 @@ public class ChatConversationHistory
     }
 
     /// <summary>
+    /// 오래된 메시지를 요약 메시지 하나로 압축하고 최근 메시지는 유지합니다.
+    /// </summary>
+    /// <param name="summaryMessage">압축 요약 메시지</param>
+    /// <param name="keepLastMessages">뒤에서 유지할 메시지 수</param>
+    /// <returns>압축된 원본 메시지 수</returns>
+    public int CompactWithSummary(ChatMessage summaryMessage, int keepLastMessages)
+    {
+        if (_messages.Count <= keepLastMessages)
+        {
+            return 0;
+        }
+
+        keepLastMessages = Math.Max(0, keepLastMessages);
+        var preservedCount = Math.Min(keepLastMessages, _messages.Count);
+        var compactedCount = _messages.Count - preservedCount;
+        var tail = _messages.Skip(compactedCount).ToList();
+
+        _messages.Clear();
+        _messages.Add(summaryMessage);
+        _messages.AddRange(tail);
+
+        return compactedCount;
+    }
+
+    /// <summary>
     /// 메시지 개수
     /// </summary>
     public int MessageCount => _messages.Count;
