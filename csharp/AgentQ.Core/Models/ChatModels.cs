@@ -200,6 +200,11 @@ public class ChatContext
     /// 스트리밍 사용 여부
     /// </summary>
     public bool Stream { get; set; } = true;
+
+    /// <summary>
+    /// 단일 대화 턴에서 허용되는 최대 tool loop 횟수
+    /// </summary>
+    public int MaxSteps { get; set; } = 8;
 }
 
 /// <summary>
