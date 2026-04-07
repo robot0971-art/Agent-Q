@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AgentQ.Tools;
 
@@ -7,6 +8,10 @@ namespace AgentQ.Tools;
 /// </summary>
 public class GrepTool : ITool
 {
+    private const int MaximumMatches = 200;
+    private const int MaximumFilesToScan = 2000;
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
     /// <summary>
     /// 도구 이름
     /// </summary>
@@ -49,6 +54,9 @@ public class GrepTool : ITool
         if (!input.TryGetValue("pattern", out var patternObj) || patternObj is not string pattern)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
+        if (string.IsNullOrWhiteSpace(pattern))
+            return Task.FromResult(ToolResult.Error("pattern must not be empty"));
+
         var searchPath = ".";
         var outputMode = "content";
         var include = "*";
@@ -59,22 +67,41 @@ public class GrepTool : ITool
 
         try
         {
-            var searchDir = Path.GetFullPath(searchPath);
-            if (!Directory.Exists(searchDir))
-                return Task.FromResult(ToolResult.Error($"Directory not found: {searchPath}"));
+            if (!ToolPathGuard.TryResolvePath(searchPath, out var resolvedPath, out var errorMessage))
+            {
+                return Task.FromResult(ToolResult.Error(errorMessage!));
+            }
+
+            var regex = new Regex(pattern, RegexOptions.CultureInvariant, RegexTimeout);
+
+            var searchDir = resolvedPath;
+            string? targetFile = null;
+            if (File.Exists(resolvedPath))
+            {
+                targetFile = resolvedPath;
+                searchDir = Path.GetDirectoryName(resolvedPath) ?? resolvedPath;
+            }
+            else if (!Directory.Exists(resolvedPath))
+            {
+                return Task.FromResult(ToolResult.Error($"Directory or file not found: {searchPath}"));
+            }
 
             var results = new List<GrepMatch>();
-            var files = Directory.EnumerateFiles(searchDir, include, SearchOption.AllDirectories)
-                .Where(f => !IsBinaryFile(f) && !IsExcludedPath(f));
+            var files = EnumerateCandidateFiles(searchDir, include, targetFile).ToList();
+            var scannedFiles = 0;
+            var matchLimitReached = false;
+            var fileLimitReached = files.Count == MaximumFilesToScan;
 
             foreach (var file in files)
             {
+                scannedFiles++;
+
                 try
                 {
                     var lines = File.ReadAllLines(file);
                     for (int i = 0; i < lines.Length; i++)
                     {
-                        if (System.Text.RegularExpressions.Regex.IsMatch(lines[i], pattern))
+                        if (regex.IsMatch(lines[i]))
                         {
                             results.Add(new GrepMatch
                             {
@@ -82,12 +109,27 @@ public class GrepTool : ITool
                                 Line = i + 1,
                                 Content = lines[i].Trim()
                             });
+
+                            if (results.Count >= MaximumMatches)
+                            {
+                                matchLimitReached = true;
+                                break;
+                            }
                         }
                     }
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    return Task.FromResult(ToolResult.Error("Pattern evaluation timed out; use a simpler regex"));
                 }
                 catch
                 {
                     // Skip files that can't be read
+                }
+
+                if (matchLimitReached)
+                {
+                    break;
                 }
             }
 
@@ -97,7 +139,10 @@ public class GrepTool : ITool
                 {
                     ["pattern"] = pattern,
                     ["numMatches"] = results.Count,
-                    ["searchPath"] = searchPath
+                    ["searchPath"] = searchPath,
+                    ["scannedFiles"] = scannedFiles,
+                    ["matchLimitReached"] = matchLimitReached,
+                    ["fileLimitReached"] = fileLimitReached
                 };
                 return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(output)));
             }
@@ -106,6 +151,10 @@ public class GrepTool : ITool
             {
                 ["pattern"] = pattern,
                 ["numMatches"] = results.Count,
+                ["searchPath"] = searchPath,
+                ["scannedFiles"] = scannedFiles,
+                ["matchLimitReached"] = matchLimitReached,
+                ["fileLimitReached"] = fileLimitReached,
                 ["matches"] = results.Select(r => new
                 {
                     file = r.File,
@@ -116,10 +165,31 @@ public class GrepTool : ITool
 
             return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(contentResult)));
         }
+        catch (ArgumentException ex)
+        {
+            return Task.FromResult(ToolResult.Error($"Invalid grep pattern: {ex.Message}"));
+        }
         catch (Exception ex)
         {
             return Task.FromResult(ToolResult.Error($"Grep search failed: {ex.Message}"));
         }
+    }
+
+    private static IEnumerable<string> EnumerateCandidateFiles(string searchDir, string include, string? targetFile)
+    {
+        if (!string.IsNullOrEmpty(targetFile))
+        {
+            if (IsBinaryFile(targetFile) || IsExcludedPath(targetFile))
+            {
+                return [];
+            }
+
+            return [targetFile];
+        }
+
+        return Directory.EnumerateFiles(searchDir, include, SearchOption.AllDirectories)
+            .Where(f => !IsBinaryFile(f) && !IsExcludedPath(f))
+            .Take(MaximumFilesToScan);
     }
 
     /// <summary>
@@ -166,4 +236,3 @@ public class GrepMatch
     /// </summary>
     public string Content { get; init; } = string.Empty;
 }
-

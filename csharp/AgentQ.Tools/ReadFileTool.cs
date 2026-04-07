@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace AgentQ.Tools;
 
@@ -7,6 +7,10 @@ namespace AgentQ.Tools;
 /// </summary>
 public class ReadFileTool : ITool
 {
+    private const int DefaultLineLimit = 200;
+    private const int MaximumLineLimit = 500;
+    private const int MaximumContentLength = 20000;
+
     /// <summary>
     /// 도구 이름
     /// </summary>
@@ -55,21 +59,34 @@ public class ReadFileTool : ITool
                 return Task.FromResult(ToolResult.Error(errorMessage!));
             }
 
+            if (Directory.Exists(fullPath))
+                return Task.FromResult(ToolResult.Error($"Path points to a directory, not a file: {path}"));
+
             if (!File.Exists(fullPath))
                 return Task.FromResult(ToolResult.Error($"File not found: {path}"));
 
             var lines = File.ReadAllLines(fullPath);
-            int offset = 0;
-            int limit = lines.Length;
+            var offset = 0;
+            var limit = Math.Min(lines.Length, DefaultLineLimit);
 
             if (TryGetInt32(input, "offset", out var parsedOffset)) offset = Math.Max(0, parsedOffset - 1);
             if (TryGetInt32(input, "limit", out var parsedLimit)) limit = parsedLimit;
 
+            if (limit <= 0)
+                return Task.FromResult(ToolResult.Error("limit must be greater than 0"));
+
             offset = Math.Min(offset, lines.Length);
-            limit = Math.Min(limit, lines.Length - offset);
+            var requestedLimit = limit;
+            limit = Math.Min(Math.Min(limit, MaximumLineLimit), lines.Length - offset);
 
             var selectedLines = lines.Skip(offset).Take(limit).ToArray();
             var content = string.Join("\n", selectedLines);
+            var contentTruncated = false;
+            if (content.Length > MaximumContentLength)
+            {
+                content = content[..MaximumContentLength] + "\n[truncated]";
+                contentTruncated = true;
+            }
 
             var output = new Dictionary<string, object?>
             {
@@ -78,7 +95,10 @@ public class ReadFileTool : ITool
                 ["totalLines"] = lines.Length,
                 ["readLines"] = selectedLines.Length,
                 ["offset"] = offset + 1,
-                ["limit"] = limit
+                ["limit"] = limit,
+                ["requestedLimit"] = requestedLimit,
+                ["limitClamped"] = requestedLimit != limit,
+                ["contentTruncated"] = contentTruncated
             };
 
             return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(output)));
@@ -131,4 +151,3 @@ public class ReadFileTool : ITool
         return false;
     }
 }
-

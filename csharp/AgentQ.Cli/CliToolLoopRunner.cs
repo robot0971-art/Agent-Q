@@ -31,6 +31,7 @@ public sealed class CliToolLoopRunner
         ChatConversationHistory history,
         ToolRegistry registry,
         IPermissionEnforcer enforcer,
+        int? maxSteps = null,
         Action<string>? onTextDelta = null,
         Action<string>? onToolExecution = null,
         Action<string>? onToolOutput = null,
@@ -38,14 +39,27 @@ public sealed class CliToolLoopRunner
         Action<string>? onPermissionDenied = null,
         CancellationToken ct = default)
     {
+        var stepLimit = maxSteps.GetValueOrDefault(8);
+        var stepCount = 0;
+
         while (true)
         {
+            stepCount++;
+            if (stepCount > stepLimit)
+            {
+                history.AddAssistantMessage([
+                    ChatContent.CreateText($"Stopped after reaching the maximum tool steps ({stepLimit}).")
+                ]);
+                break;
+            }
+
             var context = new ChatContext
             {
                 Model = model,
                 Messages = history.Messages.ToList(),
                 MaxTokens = 1024,
-                Stream = true
+                Stream = true,
+                MaxSteps = stepLimit
             };
 
             var tools = registry.GetToolDefinitions().Select(t => new ToolDefinition
@@ -199,20 +213,30 @@ public sealed class CliToolLoopRunner
         var inputDict = new Dictionary<string, object?>();
         foreach (var prop in element.EnumerateObject())
         {
-            inputDict[prop.Name] = prop.Value.ValueKind switch
-            {
-                JsonValueKind.String => prop.Value.GetString(),
-                JsonValueKind.Number when prop.Value.TryGetInt32(out var intValue) => intValue,
-                JsonValueKind.Number => prop.Value.GetDouble(),
-                JsonValueKind.True => true,
-                JsonValueKind.False => false,
-                JsonValueKind.Object => prop.Value.Clone(),
-                JsonValueKind.Array => prop.Value.Clone(),
-                _ => prop.Value.GetRawText()
-            };
+            inputDict[prop.Name] = ParseJsonValue(prop.Value);
         }
 
         return inputDict;
+    }
+
+    /// <summary>
+    /// JSON 값을 .NET 타입으로 재귀 변환
+    /// </summary>
+    private static object? ParseJsonValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => ParseJsonObject(element),
+            JsonValueKind.Array => element.EnumerateArray().Select(ParseJsonValue).ToList(),
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number when element.TryGetInt32(out var intValue) => intValue,
+            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
+            JsonValueKind.Number => element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            _ => element.GetRawText()
+        };
     }
 }
 

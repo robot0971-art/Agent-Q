@@ -43,6 +43,17 @@ public class OpenAiCompatibleProvider : ILlmProvider
     }
 
     /// <summary>
+    /// 테스트 또는 커스텀 전송 파이프라인용 생성자
+    /// </summary>
+    /// <param name="httpClient">사용할 HTTP 클라이언트</param>
+    /// <param name="model">모델 이름</param>
+    public OpenAiCompatibleProvider(HttpClient httpClient, string model = "gpt-4o")
+    {
+        _httpClient = httpClient;
+        _model = model;
+    }
+
+    /// <summary>
     /// 응답 생성
     /// </summary>
     /// <param name="context">채팅 컨텍스트</param>
@@ -59,7 +70,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _httpClient.PostAsync("chat/completions", content, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, ct);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         var chatResponse = JsonSerializer.Deserialize<OpenAiChatResponse>(body, GetJsonOptions());
@@ -85,12 +96,13 @@ public class OpenAiCompatibleProvider : ILlmProvider
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var requestMsg = new HttpRequestMessage(HttpMethod.Post, "chat/completions") { Content = content };
         using var response = await _httpClient.SendAsync(requestMsg, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, ct);
 
         using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
-        var toolCalls = new Dictionary<int, ToolCallAccumulator>();
+        var toolCallBuffer = new ToolCallDeltaBuffer();
+        var completionSent = false;
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) != null)
@@ -103,6 +115,19 @@ public class OpenAiCompatibleProvider : ILlmProvider
             var data = line.Substring(6).Trim();
             if (data == "[DONE]")
             {
+                foreach (var toolCall in toolCallBuffer.CompleteAll())
+                {
+                    yield return new StreamChunk
+                    {
+                        ToolUseDelta = toolCall
+                    };
+                }
+
+                if (!completionSent)
+                {
+                    yield return new StreamChunk { IsComplete = true };
+                }
+
                 yield break;
             }
 
@@ -134,69 +159,30 @@ public class OpenAiCompatibleProvider : ILlmProvider
                 {
                     foreach (var toolCall in delta.ToolCalls)
                     {
-                        var accumulator = GetAccumulator(toolCalls, toolCall.Index);
-
-                        if (!string.IsNullOrEmpty(toolCall.Id))
-                        {
-                            accumulator.ToolId = toolCall.Id;
-                        }
-
-                        if (!string.IsNullOrEmpty(toolCall.Function?.Name))
-                        {
-                            accumulator.ToolName = toolCall.Function.Name;
-                        }
-
-                        if (!string.IsNullOrEmpty(toolCall.Function?.Arguments))
-                        {
-                            accumulator.Arguments.Append(toolCall.Function.Arguments);
-                        }
+                        toolCallBuffer.SetToolId(toolCall.Index, toolCall.Id);
+                        toolCallBuffer.SetToolName(toolCall.Index, toolCall.Function?.Name);
+                        toolCallBuffer.AppendArguments(toolCall.Index, toolCall.Function?.Arguments);
                     }
                 }
 
                 if (choice.FinishReason == "tool_calls")
                 {
-                    foreach (var toolCall in toolCalls.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Value))
+                    foreach (var toolCall in toolCallBuffer.CompleteAll())
                     {
-                        if (string.IsNullOrEmpty(toolCall.ToolId))
-                        {
-                            continue;
-                        }
-
                         yield return new StreamChunk
                         {
-                            ToolUseDelta = new ToolUseChunk
-                            {
-                                ToolId = toolCall.ToolId,
-                                ToolName = toolCall.ToolName ?? "unknown",
-                                PartialInput = toolCall.Arguments.ToString(),
-                                IsComplete = true
-                            }
+                            ToolUseDelta = toolCall
                         };
                     }
-
-                    toolCalls.Clear();
                 }
 
-                if (choice.FinishReason != null)
+                if (IsTerminalFinishReason(choice.FinishReason) && !completionSent)
                 {
+                    completionSent = true;
                     yield return new StreamChunk { IsComplete = true };
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// 도구 호출 누적기 가져오기
-    /// </summary>
-    private static ToolCallAccumulator GetAccumulator(Dictionary<int, ToolCallAccumulator> toolCalls, int index)
-    {
-        if (!toolCalls.TryGetValue(index, out var accumulator))
-        {
-            accumulator = new ToolCallAccumulator();
-            toolCalls[index] = accumulator;
-        }
-
-        return accumulator;
     }
 
     /// <summary>
@@ -362,19 +348,31 @@ public class OpenAiCompatibleProvider : ILlmProvider
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
     }
-}
 
-/// <summary>
-/// 도구 호출 누적기
-/// </summary>
-sealed class ToolCallAccumulator
-{
-    /// <summary>도구 ID</summary>
-    public string? ToolId { get; set; }
-    /// <summary>도구 이름</summary>
-    public string? ToolName { get; set; }
-    /// <summary>인수</summary>
-    public StringBuilder Arguments { get; } = new();
+    private static bool IsTerminalFinishReason(string? finishReason)
+    {
+        return finishReason is "stop" or "length" or "content_filter";
+    }
+
+    private static async Task EnsureSuccessStatusCodeAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var trimmedBody = string.IsNullOrWhiteSpace(body)
+            ? "<empty body>"
+            : body.Length > 512
+                ? body[..512]
+                : body;
+
+        throw new HttpRequestException(
+            $"OpenAI-compatible request failed with status {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {trimmedBody}",
+            null,
+            response.StatusCode);
+    }
 }
 
 /// <summary>

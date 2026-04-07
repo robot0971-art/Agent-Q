@@ -1,6 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AgentQ.Tools;
 
@@ -9,6 +10,19 @@ namespace AgentQ.Tools;
 /// </summary>
 public class BashTool : ITool
 {
+    private const int DefaultTimeoutMs = 30000;
+    private const int MinimumTimeoutMs = 1000;
+    private const int MaximumTimeoutMs = 120000;
+    private const int MaxOutputLength = 32000;
+    private static readonly (Regex Pattern, string Reason)[] BlockedCommandPatterns =
+    [
+        (new Regex(@"(^|\s)rm\s+-rf\s+(/|\*)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive recursive delete"),
+        (new Regex(@"(^|\s)(shutdown|reboot)(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "system shutdown/reboot"),
+        (new Regex(@"(^|\s)format(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk format"),
+        (new Regex(@"(^|\s)del\s+(/s|/q|/f)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive delete"),
+        (new Regex(@"Remove-Item\b.*-Recurse\b.*-Force\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive forced delete")
+    ];
+
     /// <summary>
     /// 도구 이름
     /// </summary>
@@ -33,7 +47,7 @@ public class BashTool : ITool
         properties = new
         {
             command = new { type = "string", description = "The bash command to execute" },
-            timeout = new { type = "integer", description = "Timeout in milliseconds (default 30000)" }
+            timeout = new { type = "integer", description = "Timeout in milliseconds (1000-120000, default 30000)" }
         },
         required = new[] { "command" }
     };
@@ -49,17 +63,29 @@ public class BashTool : ITool
         if (!input.TryGetValue("command", out var cmdObj) || cmdObj is not string command)
             return ToolResult.Error("Missing required parameter: command");
 
-        var timeout = 30000;
-        if (TryGetInt32(input, "timeout", out var parsedTimeout)) timeout = parsedTimeout;
+        command = command.Trim();
+        if (string.IsNullOrWhiteSpace(command))
+            return ToolResult.Error("Command cannot be empty");
+
+        if (TryGetBlockedReason(command, out var blockedReason))
+            return ToolResult.Error($"Command blocked by safety policy: {blockedReason}");
+
+        var timeout = DefaultTimeoutMs;
+        if (TryGetInt32(input, "timeout", out var parsedTimeout))
+        {
+            if (parsedTimeout < MinimumTimeoutMs || parsedTimeout > MaximumTimeoutMs)
+            {
+                return ToolResult.Error($"Timeout must be between {MinimumTimeoutMs}ms and {MaximumTimeoutMs}ms");
+            }
+
+            timeout = parsedTimeout;
+        }
 
         try
         {
             var psi = new ProcessStartInfo
             {
                 FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/bash",
-                Arguments = OperatingSystem.IsWindows()
-                    ? $"-NoProfile -Command \"{command}\""
-                    : $"-c \"{command}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -67,6 +93,18 @@ public class BashTool : ITool
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
+
+            if (OperatingSystem.IsWindows())
+            {
+                psi.ArgumentList.Add("-NoProfile");
+                psi.ArgumentList.Add("-Command");
+                psi.ArgumentList.Add(command);
+            }
+            else
+            {
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add(command);
+            }
 
             using var process = new Process { StartInfo = psi };
             process.Start();
@@ -87,17 +125,21 @@ public class BashTool : ITool
                 {
                     process.Kill(entireProcessTree: true);
                 }
+
                 return ToolResult.Error($"Command timed out after {timeout}ms: {command}");
             }
 
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
+            var stdout = Truncate(await stdoutTask, out var stdoutTruncated);
+            var stderr = Truncate(await stderrTask, out var stderrTruncated);
 
             var output = new Dictionary<string, object?>
             {
                 ["exitCode"] = process.ExitCode,
                 ["stdout"] = stdout,
-                ["stderr"] = stderr
+                ["stderr"] = stderr,
+                ["stdoutTruncated"] = stdoutTruncated,
+                ["stderrTruncated"] = stderrTruncated,
+                ["timeoutMs"] = timeout
             };
 
             return ToolResult.Success(JsonSerializer.Serialize(output));
@@ -149,5 +191,31 @@ public class BashTool : ITool
 
         return false;
     }
-}
 
+    private static bool TryGetBlockedReason(string command, out string reason)
+    {
+        foreach (var (pattern, blockedReason) in BlockedCommandPatterns)
+        {
+            if (pattern.IsMatch(command))
+            {
+                reason = blockedReason;
+                return true;
+            }
+        }
+
+        reason = string.Empty;
+        return false;
+    }
+
+    private static string Truncate(string value, out bool wasTruncated)
+    {
+        if (value.Length <= MaxOutputLength)
+        {
+            wasTruncated = false;
+            return value;
+        }
+
+        wasTruncated = true;
+        return value[..MaxOutputLength] + "\n...[truncated]";
+    }
+}

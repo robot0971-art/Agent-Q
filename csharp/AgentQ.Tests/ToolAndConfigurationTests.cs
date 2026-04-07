@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using AgentQ.Cli;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
 using Xunit;
@@ -11,6 +12,100 @@ namespace AgentQ.Tests;
 public sealed class ToolAndConfigurationTests : IDisposable
 {
     private readonly Dictionary<string, string?> _originalEnvironment = new();
+    private readonly string _configDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".agentq");
+    private readonly string _configPath;
+    private readonly bool _hadOriginalConfig;
+    private readonly string? _originalConfigContent;
+
+    public ToolAndConfigurationTests()
+    {
+        _configPath = Path.Combine(_configDirectory, "config.json");
+        _hadOriginalConfig = File.Exists(_configPath);
+        _originalConfigContent = _hadOriginalConfig ? File.ReadAllText(_configPath) : null;
+    }
+
+    [Fact]
+    public async Task SessionStore_SaveAndLoad_RoundTripsConversationHistory()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var sessionPath = Path.Combine(workspace.RootPath, "session.json");
+
+        var messages = new List<AgentQ.Core.Models.ChatMessage>
+        {
+            AgentQ.Core.Models.ChatMessage.SystemText("system prompt"),
+            AgentQ.Core.Models.ChatMessage.UserText("user input"),
+            new()
+            {
+                Role = AgentQ.Core.Models.ChatRole.Assistant,
+                Content =
+                [
+                    AgentQ.Core.Models.ChatContent.CreateText("Thinking"),
+                    AgentQ.Core.Models.ChatContent.CreateToolUse("tool_1", "read_file", "{\"path\":\"sample.txt\"}")
+                ]
+            },
+            AgentQ.Core.Models.ChatMessage.UserToolResult("tool_1", "{\"content\":\"sample\"}", false)
+        };
+
+        await SessionStore.SaveAsync(sessionPath, messages);
+        var loaded = await SessionStore.LoadAsync(sessionPath);
+
+        Assert.Equal(4, loaded.Count);
+        Assert.Equal(AgentQ.Core.Models.ChatRole.System, loaded[0].Role);
+        Assert.Equal("system prompt", Assert.Single(loaded[0].Content).Text);
+        Assert.Equal(AgentQ.Core.Models.ChatRole.Assistant, loaded[2].Role);
+        Assert.Equal(2, loaded[2].Content.Count);
+        Assert.Equal("read_file", Assert.Single(loaded[2].Content, content => content.Type == AgentQ.Core.Models.ContentType.ToolUse).ToolName);
+        Assert.Equal("{\"content\":\"sample\"}", Assert.Single(loaded[3].Content).ToolResult);
+    }
+
+    [Fact]
+    public async Task SessionStore_LoadAsync_ThrowsForMissingFile()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var missingPath = Path.Combine(workspace.RootPath, "missing-session.json");
+
+        var exception = await Assert.ThrowsAsync<FileNotFoundException>(() => SessionStore.LoadAsync(missingPath));
+
+        Assert.Contains("Session file not found", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConfigStore_SaveAndLoad_RoundTripsProviderConfiguration()
+    {
+        var config = new ProviderConfiguration
+        {
+            Provider = "openai",
+            Model = "gpt-5",
+            BaseUrl = "https://example.test",
+            ApiKey = "secret",
+            TimeoutSeconds = 45
+        };
+
+        await ConfigStore.SaveAsync(config);
+        var loaded = await ConfigStore.LoadAsync();
+
+        Assert.NotNull(loaded);
+        Assert.Equal("openai", loaded!.Provider);
+        Assert.Equal("gpt-5", loaded.Model);
+        Assert.Equal("https://example.test", loaded.BaseUrl);
+        Assert.Equal("secret", loaded.ApiKey);
+        Assert.Equal(45, loaded.TimeoutSeconds);
+        Assert.True(ConfigStore.Exists);
+    }
+
+    [Fact]
+    public async Task ConfigStore_LoadAsync_ReturnsNullForMalformedJson()
+    {
+        Directory.CreateDirectory(_configDirectory);
+        await File.WriteAllTextAsync(_configPath, "{invalid json");
+
+        var loaded = await ConfigStore.LoadAsync();
+
+        Assert.Null(loaded);
+        Assert.True(ConfigStore.Exists);
+    }
 
     /// <summary>
     /// ReadFileTool이 문자열 offset과 limit 파라미터를 올바르게 파싱하는지 검증합니다.
@@ -45,6 +140,30 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(2, json.RootElement.GetProperty("offset").GetInt32());
     }
 
+    [Fact]
+    public async Task ReadFileTool_ClampsLargeLimit_AndReportsTruncation()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile(
+            "large.txt",
+            string.Join('\n', Enumerable.Range(1, 800).Select(i => new string('a', 80) + i)));
+
+        var tool = new ReadFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["limit"] = 1000
+        });
+
+        Assert.False(result.IsError);
+
+        using var json = JsonDocument.Parse(result.Content);
+        Assert.Equal(500, json.RootElement.GetProperty("limit").GetInt32());
+        Assert.True(json.RootElement.GetProperty("limitClamped").GetBoolean());
+        Assert.True(json.RootElement.GetProperty("contentTruncated").GetBoolean());
+    }
+
     /// <summary>
     /// EditFileTool이 replace_all 모드에서 실제 교체 횟수를 올바르게 보고하는지 검증합니다.
     /// </summary>
@@ -72,12 +191,160 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
+    /// EditFileTool이 단일 교체 모드에서 중복 매치를 안전하게 거부하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task EditFileTool_RejectsAmbiguousSingleReplace()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile("sample.txt", "alpha beta alpha");
+
+        var tool = new EditFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["old_string"] = "alpha",
+            ["new_string"] = "omega"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("use replace_all=true", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("alpha beta alpha", File.ReadAllText(filePath));
+    }
+
+    /// <summary>
+    /// EditFileTool이 빈 old_string을 거부하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task EditFileTool_RejectsEmptyOldString()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile("sample.txt", "alpha beta");
+
+        var tool = new EditFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["old_string"] = "",
+            ["new_string"] = "omega"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("must not be empty", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// WriteFileTool이 overwrite=false일 때 기존 파일 덮어쓰기를 거부하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task WriteFileTool_RejectsOverwriteWhenExplicitlyDisabled()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile("sample.txt", "original");
+
+        var tool = new WriteFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["content"] = "updated",
+            ["overwrite"] = false
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("overwrite=true", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("original", File.ReadAllText(filePath));
+    }
+
+    /// <summary>
+    /// WriteFileTool이 디렉토리 경로를 파일 대상으로 허용하지 않는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task WriteFileTool_RejectsDirectoryTargets()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var directoryPath = Path.Combine(workspace.RootPath, "nested");
+        Directory.CreateDirectory(directoryPath);
+
+        var tool = new WriteFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = directoryPath,
+            ["content"] = "updated"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("directory", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// BashTool이 위험한 명령 패턴을 차단하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task BashTool_BlocksDangerousCommands()
+    {
+        var tool = new BashTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["command"] = "rm -rf /"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("blocked by safety policy", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// BashTool이 허용 범위를 벗어난 timeout 값을 거부하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task BashTool_RejectsTimeoutOutsideAllowedRange()
+    {
+        var tool = new BashTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["command"] = "Write-Output 'hello'",
+            ["timeout"] = 500
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("Timeout must be between", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// BashTool이 긴 출력을 잘라내고 절단 여부를 보고하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    public async Task BashTool_TruncatesLongOutput()
+    {
+        var tool = new BashTool();
+        var command = OperatingSystem.IsWindows()
+            ? "Write-Output ('a' * 33000)"
+            : "python3 - <<'PY'\nprint('a' * 33000)\nPY";
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["command"] = command
+        });
+
+        Assert.False(result.IsError);
+
+        using var json = JsonDocument.Parse(result.Content);
+        Assert.True(json.RootElement.GetProperty("stdoutTruncated").GetBoolean());
+        Assert.False(json.RootElement.GetProperty("stderrTruncated").GetBoolean());
+        Assert.Contains("[truncated]", json.RootElement.GetProperty("stdout").GetString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// GlobTool이 중첩 glob 패턴과 일치하는 파일을 올바르게 찾는지 검증합니다.
     /// </summary>
     [Fact]
     public async Task GlobTool_MatchesNestedGlobPatterns()
     {
         using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
         workspace.CreateFile(Path.Combine("config", "appsettings.json"), "{}");
         workspace.CreateFile(Path.Combine("bin", "skip.json"), "{}");
         workspace.CreateFile(Path.Combine("config", "notes.txt"), "text");
@@ -102,6 +369,25 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains(files, file => file.Replace('\\', '/').EndsWith("/config/appsettings.json", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task GlobTool_RejectsPathsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        outside.CreateFile("sample.txt", "data");
+
+        var tool = new GlobTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = outside.RootPath,
+            ["pattern"] = "*.txt"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// GrepTool이 OneDrive 경로를 제외하지 않고 올바르게 검색하는지 검증합니다.
     /// </summary>
@@ -109,6 +395,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     public async Task GrepTool_DoesNotExcludeOneDrivePaths()
     {
         using var workspace = new TemporaryWorkspace("OneDrive");
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
         workspace.CreateFile(Path.Combine("nested", "match.txt"), "needle");
 
         var tool = new GrepTool();
@@ -124,6 +411,48 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         using var json = JsonDocument.Parse(result.Content);
         Assert.Equal(1, json.RootElement.GetProperty("numMatches").GetInt32());
+    }
+
+    [Fact]
+    public async Task GrepTool_RejectsPathsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        outside.CreateFile("match.txt", "needle");
+
+        var tool = new GrepTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = outside.RootPath,
+            ["pattern"] = "needle"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GrepTool_StopsAfterMaximumMatches()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        workspace.CreateFile(
+            "match.txt",
+            string.Join('\n', Enumerable.Range(1, 300).Select(_ => "needle")));
+
+        var tool = new GrepTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = workspace.RootPath,
+            ["pattern"] = "needle"
+        });
+
+        Assert.False(result.IsError);
+
+        using var json = JsonDocument.Parse(result.Content);
+        Assert.Equal(200, json.RootElement.GetProperty("numMatches").GetInt32());
+        Assert.True(json.RootElement.GetProperty("matchLimitReached").GetBoolean());
     }
 
     /// <summary>
@@ -177,6 +506,26 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.Equal("openai", config.Provider);
         Assert.Equal("gpt-5", config.Model);
+    }
+
+    [Fact]
+    public void ProviderConfiguration_FromArgs_ParsesNonInteractivePromptOptions()
+    {
+        var config = ProviderConfiguration.FromArgs([
+            "--prompt", "summarize",
+            "--stdin",
+            "--input", "prompt.txt",
+            "--json",
+            "--yes",
+            "--allow-tool", "read_file",
+            "--allow-tool", "bash"]);
+
+        Assert.Equal("summarize", config.Prompt);
+        Assert.True(config.ReadPromptFromStdin);
+        Assert.Equal("prompt.txt", config.InputFilePath);
+        Assert.True(config.JsonOutput);
+        Assert.True(config.AllowToolsWithoutPrompt);
+        Assert.Equal(["read_file", "bash"], config.AllowedToolNames);
     }
 
     /// <summary>
@@ -268,6 +617,22 @@ public sealed class ToolAndConfigurationTests : IDisposable
         foreach (var pair in _originalEnvironment)
         {
             Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+        }
+
+        if (_hadOriginalConfig)
+        {
+            Directory.CreateDirectory(_configDirectory);
+            File.WriteAllText(_configPath, _originalConfigContent ?? string.Empty);
+        }
+        else if (File.Exists(_configPath))
+        {
+            File.Delete(_configPath);
+        }
+
+        if (Directory.Exists(_configDirectory) &&
+            !Directory.EnumerateFileSystemEntries(_configDirectory).Any())
+        {
+            Directory.Delete(_configDirectory);
         }
     }
 
