@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace AgentQ.Tools;
 
 /// <summary>
-/// Bash 명령 실행 도구
+/// 셸 명령을 실행하고 결과를 반환하는 도구입니다.
 /// </summary>
 public class BashTool : ITool
 {
@@ -24,22 +24,22 @@ public class BashTool : ITool
     ];
 
     /// <summary>
-    /// 도구 이름
+    /// 도구 이름입니다.
     /// </summary>
     public string Name => "bash";
 
     /// <summary>
-    /// 도구 설명
+    /// 도구 설명입니다.
     /// </summary>
     public string Description => "Execute a bash command and return its output";
 
     /// <summary>
-    /// 권한 확인 필요 여부
+    /// 사용자 권한 확인이 필요한지 여부입니다.
     /// </summary>
     public bool RequiresPermission => true;
 
     /// <summary>
-    /// 입력 스키마 (JSON Schema)
+    /// 입력 스키마입니다.
     /// </summary>
     public object InputSchema => new
     {
@@ -53,7 +53,7 @@ public class BashTool : ITool
     };
 
     /// <summary>
-    /// 도구 실행
+    /// 도구를 실행합니다.
     /// </summary>
     /// <param name="input">입력 파라미터</param>
     /// <param name="ct">취소 토큰</param>
@@ -85,6 +85,7 @@ public class BashTool : ITool
         {
             var psi = new ProcessStartInfo
             {
+                // Windows에서는 PowerShell, 그 외 환경에서는 bash를 사용합니다.
                 FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/bash",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -151,12 +152,12 @@ public class BashTool : ITool
     }
 
     /// <summary>
-    /// Int32 값 파싱 시도
+    /// 지정한 입력 값을 Int32로 변환할 수 있는지 확인합니다.
     /// </summary>
     /// <param name="input">입력 딕셔너리</param>
-    /// <param name="key">키</param>
-    /// <param name="value">파싱된 값 (out)</param>
-    /// <returns>파싱 성공 여부</returns>
+    /// <param name="key">조회할 키</param>
+    /// <param name="value">변환된 값</param>
+    /// <returns>변환 성공 여부</returns>
     private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
     {
         value = 0;

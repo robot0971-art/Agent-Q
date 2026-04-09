@@ -75,6 +75,9 @@ public sealed class AutomationCliIntegrationTests
         Assert.True(json.RootElement.GetProperty("success").GetBoolean());
         Assert.Equal("completed", json.RootElement.GetProperty("terminationReason").GetString());
         Assert.Equal("plugin_echo", json.RootElement.GetProperty("allowedTools")[0].GetString());
+        Assert.Equal("plugin_echo", json.RootElement.GetProperty("executedTools")[0].GetString());
+        Assert.Equal("plugin_echo", json.RootElement.GetProperty("toolOutputs")[0].GetProperty("toolName").GetString());
+        Assert.True(json.RootElement.GetProperty("toolOutputs")[0].GetProperty("isJson").GetBoolean());
         Assert.Equal("plugin tool completed: hello from plugin parity", json.RootElement.GetProperty("finalText").GetString());
     }
 

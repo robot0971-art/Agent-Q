@@ -244,7 +244,7 @@ public sealed class CliToolLoopRunnerTests
             execution: _ => ToolResult.Success("{\"content\":\"fixture parity text\"}")));
 
         var runner = new CliToolLoopRunner();
-        var toolOutputs = new List<string>();
+        var toolOutputs = new List<(string ToolName, string Output)>();
 
         await runner.ExecuteConversationTurnAsync(
             provider,
@@ -252,7 +252,7 @@ public sealed class CliToolLoopRunnerTests
             history,
             registry,
             new AlwaysAllowPermissionEnforcer(),
-            onToolOutput: output => toolOutputs.Add(output));
+            onToolOutput: (toolName, output) => toolOutputs.Add((toolName, output)));
 
         var toolResultsMessage = Assert.Single(history.Messages, message => message.Role == ChatRole.User && message.Content.Any(content => content.Type == ContentType.ToolResult));
         var toolResults = toolResultsMessage.Content.Where(content => content.Type == ContentType.ToolResult).ToArray();
@@ -260,7 +260,8 @@ public sealed class CliToolLoopRunnerTests
         Assert.Equal(2, toolResults.Length);
         Assert.Contains(toolResults, result => result.ToolUseId == "tool_read" && result.IsToolError == false);
         Assert.Contains(toolResults, result => result.ToolUseId == "tool_missing" && result.IsToolError == true && result.ToolResult == "Tool not found: missing_tool");
-        Assert.Single(toolOutputs, "{\"content\":\"fixture parity text\"}");
+        Assert.Single(toolOutputs);
+        Assert.Equal(("read_file", "{\"content\":\"fixture parity text\"}"), toolOutputs[0]);
 
         var finalAssistant = history.Messages.Last();
         var finalText = Assert.Single(finalAssistant.Content, content => content.Type == ContentType.Text).Text;
@@ -308,7 +309,7 @@ public sealed class CliToolLoopRunnerTests
             execution: _ => throw new InvalidOperationException("disk read failed")));
 
         var runner = new CliToolLoopRunner();
-        var toolErrors = new List<string>();
+        var toolErrors = new List<(string ToolName, string Error)>();
 
         await runner.ExecuteConversationTurnAsync(
             provider,
@@ -316,9 +317,10 @@ public sealed class CliToolLoopRunnerTests
             history,
             registry,
             new AlwaysAllowPermissionEnforcer(),
-            onToolError: error => toolErrors.Add(error));
+            onToolError: (toolName, error) => toolErrors.Add((toolName, error)));
 
-        Assert.Single(toolErrors, "Error: disk read failed");
+        Assert.Single(toolErrors);
+        Assert.Equal(("broken_tool", "Error: disk read failed"), toolErrors[0]);
 
         var toolResultsMessage = Assert.Single(history.Messages, message => message.Role == ChatRole.User && message.Content.Any(content => content.Type == ContentType.ToolResult));
         var toolResult = Assert.Single(toolResultsMessage.Content, content => content.Type == ContentType.ToolResult);
@@ -476,8 +478,8 @@ public sealed class CliToolLoopRunnerTests
         registry.Register(new FakeTool("fail_tool", requiresPermission: false, execution: _ => ToolResult.Error("simulated failure")));
 
         var runner = new CliToolLoopRunner();
-        var outputs = new List<string>();
-        var errors = new List<string>();
+        var outputs = new List<(string ToolName, string Output)>();
+        var errors = new List<(string ToolName, string Error)>();
 
         await runner.ExecuteConversationTurnAsync(
             provider,
@@ -485,11 +487,13 @@ public sealed class CliToolLoopRunnerTests
             history,
             registry,
             new AlwaysAllowPermissionEnforcer(),
-            onToolOutput: output => outputs.Add(output),
-            onToolError: error => errors.Add(error));
+            onToolOutput: (toolName, output) => outputs.Add((toolName, output)),
+            onToolError: (toolName, error) => errors.Add((toolName, error)));
 
-        Assert.Single(outputs, "{\"status\":\"ok\"}");
-        Assert.Single(errors, "simulated failure");
+        Assert.Single(outputs);
+        Assert.Single(errors);
+        Assert.Equal(("ok_tool", "{\"status\":\"ok\"}"), outputs[0]);
+        Assert.Equal(("fail_tool", "simulated failure"), errors[0]);
 
         var toolResultsMessage = Assert.Single(history.Messages, message => message.Role == ChatRole.User && message.Content.Any(content => content.Type == ContentType.ToolResult));
         var toolResults = toolResultsMessage.Content.Where(content => content.Type == ContentType.ToolResult).ToArray();

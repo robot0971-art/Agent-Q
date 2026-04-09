@@ -29,6 +29,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageOutputPath>..\..\artifacts\packages</PackageOutputPath>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.$([System.DateTime]::UtcNow.ToString('yyMMdd')).$([System.DateTime]::UtcNow.ToString('HHmmss'))</PackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

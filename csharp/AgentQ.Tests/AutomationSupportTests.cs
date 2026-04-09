@@ -20,6 +20,18 @@ public sealed class AutomationSupportTests
     }
 
     [Fact]
+    public async Task NonInteractivePermissionEnforcer_DenyListOverridesAllowRules()
+    {
+        var enforcer = new NonInteractivePermissionEnforcer(
+            allowToolsWithoutPrompt: true,
+            allowedToolNames: ["read_file"],
+            deniedToolNames: ["bash", "read_file"]);
+
+        Assert.False(await enforcer.RequestPermissionAsync("bash", "shell", "{}"));
+        Assert.False(await enforcer.RequestPermissionAsync("read_file", "read", "{}"));
+    }
+
+    [Fact]
     public async Task ResolveInvocationAsync_RejectsMultiplePromptSources()
     {
         var config = new ProviderConfiguration
@@ -64,10 +76,15 @@ public sealed class AutomationSupportTests
         var result = new NonInteractiveRunResult
         {
             FinalText = "done",
-            MessageCount = 3
+            MessageCount = 3,
+            Provider = "openai",
+            Model = "qwen-plus",
+            BaseUrl = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
         };
         result.AllowedTools.Add("read_file");
-        result.ToolOutputs.Add("{\"ok\":true}");
+        result.ConfiguredDeniedTools.Add("bash");
+        result.ExecutedTools.Add("read_file");
+        result.ToolOutputs.Add(ToolExecutionRecord.Create("read_file", "{\"ok\":true}", isError: false));
         result.DeniedTools.Add("bash");
 
         var json = AutomationSupport.SerializeJson(result);
@@ -77,8 +94,27 @@ public sealed class AutomationSupportTests
         Assert.Equal((int)ProcessExitCode.PermissionDenied, document.RootElement.GetProperty("exitCode").GetInt32());
         Assert.Equal("permission_denied", document.RootElement.GetProperty("terminationReason").GetString());
         Assert.Equal("done", document.RootElement.GetProperty("finalText").GetString());
+        Assert.Equal("openai", document.RootElement.GetProperty("provider").GetString());
+        Assert.Equal("qwen-plus", document.RootElement.GetProperty("model").GetString());
         Assert.Equal("read_file", document.RootElement.GetProperty("allowedTools")[0].GetString());
+        Assert.Equal("bash", document.RootElement.GetProperty("configuredDeniedTools")[0].GetString());
         Assert.Equal("bash", document.RootElement.GetProperty("deniedTools")[0].GetString());
+        Assert.Equal("read_file", document.RootElement.GetProperty("executedTools")[0].GetString());
+        Assert.True(document.RootElement.GetProperty("toolOutputs")[0].GetProperty("isJson").GetBoolean());
+        Assert.Equal("read_file", document.RootElement.GetProperty("toolOutputs")[0].GetProperty("toolName").GetString());
+        Assert.True(document.RootElement.GetProperty("permissionPolicy").GetProperty("deniedTools")[0].ValueEquals("bash"));
+    }
+
+    [Fact]
+    public void ToolExecutionRecord_PreservesRawTextWhenPayloadIsNotJson()
+    {
+        var record = ToolExecutionRecord.Create("bash", "plain text", isError: true);
+
+        Assert.Equal("bash", record.ToolName);
+        Assert.True(record.IsError);
+        Assert.False(record.IsJson);
+        Assert.Equal("plain text", record.Raw);
+        Assert.Null(record.Parsed);
     }
 
     [Fact]
