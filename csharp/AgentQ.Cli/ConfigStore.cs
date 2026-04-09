@@ -4,7 +4,7 @@ using AgentQ.Core.Providers;
 namespace AgentQ.Cli;
 
 /// <summary>
-/// 에이전트 설정 영구 저장소
+/// 사용자 설정 파일 저장소입니다.
 /// </summary>
 public static class ConfigStore
 {
@@ -21,7 +21,12 @@ public static class ConfigStore
     };
 
     /// <summary>
-    /// 설정을 파일로 저장
+    /// 설정 파일 전체 경로입니다.
+    /// </summary>
+    public static string PathValue => ConfigPath;
+
+    /// <summary>
+    /// 설정을 파일로 저장합니다.
     /// </summary>
     /// <param name="config">저장할 설정 객체</param>
     public static async Task SaveAsync(ProviderConfiguration config)
@@ -36,9 +41,9 @@ public static class ConfigStore
     }
 
     /// <summary>
-    /// 파일에서 설정 로드
+    /// 설정 파일에서 설정을 불러옵니다.
     /// </summary>
-    /// <returns>로드된 설정 객체 또는 null</returns>
+    /// <returns>불러온 설정 객체 또는 null</returns>
     public static async Task<ProviderConfiguration?> LoadAsync()
     {
         if (!File.Exists(ConfigPath))
@@ -58,7 +63,18 @@ public static class ConfigStore
     }
 
     /// <summary>
-    /// 설정 파일 존재 여부 확인
+    /// 저장된 설정 파일을 삭제합니다.
+    /// </summary>
+    public static void Delete()
+    {
+        if (File.Exists(ConfigPath))
+        {
+            File.Delete(ConfigPath);
+        }
+    }
+
+    /// <summary>
+    /// 설정 파일 존재 여부입니다.
     /// </summary>
     public static bool Exists => File.Exists(ConfigPath);
 }

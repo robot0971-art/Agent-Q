@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using AgentQ.Core.Models;
 using AgentQ.Providers.OpenAi;
 using Xunit;
@@ -12,6 +13,86 @@ namespace AgentQ.Tests;
 /// </summary>
 public sealed class OpenAiProviderTests
 {
+    /// <summary>
+    /// GenerateResponseAsync가 OpenAI 호환 요청 본문과 인증 헤더를 올바르게 전송하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_SendsExpectedOpenAiCompatibleRequest()
+    {
+        JsonDocument? capturedRequest = null;
+        string? capturedAuthorization = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_request_check",
+              "model": "gpt-4o-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "Request accepted."
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            capturedAuthorization = request.Headers["Authorization"];
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "gpt-4o-mini");
+        var context = new ChatContext
+        {
+            Model = "gpt-4o-mini",
+            SystemPrompt = "You are a careful assistant.",
+            Messages =
+            [
+                ChatMessage.UserText("Read the file."),
+                ChatMessage.AssistantToolUse("call_read", "read_file", new { path = "README.md" }),
+                ChatMessage.UserToolResult("call_read", "{\"content\":\"hello\"}", false)
+            ],
+            MaxTokens = 321
+        };
+
+        var response = await provider.GenerateResponseAsync(context, CreateToolDefinitions("read_file"));
+
+        Assert.Equal("Request accepted.", Assert.Single(response.Content).Text);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("Bearer test-key", capturedAuthorization);
+
+        var root = capturedRequest!.RootElement;
+        Assert.Equal("gpt-4o-mini", root.GetProperty("model").GetString());
+        Assert.Equal(321, root.GetProperty("max_tokens").GetInt32());
+        Assert.False(root.GetProperty("stream").GetBoolean());
+
+        var tools = root.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Single(tools);
+        Assert.Equal("read_file", tools[0].GetProperty("function").GetProperty("name").GetString());
+
+        var messages = root.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal(4, messages.Length);
+        Assert.Equal("system", messages[0].GetProperty("role").GetString());
+        Assert.Equal("You are a careful assistant.", messages[0].GetProperty("content").GetString());
+        Assert.Equal("user", messages[1].GetProperty("role").GetString());
+        Assert.Equal("Read the file.", messages[1].GetProperty("content").GetString());
+        Assert.Equal("assistant", messages[2].GetProperty("role").GetString());
+        Assert.Equal("function", messages[2].GetProperty("tool_calls")[0].GetProperty("type").GetString());
+        Assert.Equal("read_file", messages[2].GetProperty("tool_calls")[0].GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("{\"path\":\"README.md\"}", messages[2].GetProperty("tool_calls")[0].GetProperty("function").GetProperty("arguments").GetString());
+        Assert.Equal("tool", messages[3].GetProperty("role").GetString());
+        Assert.Equal("call_read", messages[3].GetProperty("tool_call_id").GetString());
+        Assert.Equal("{\"content\":\"hello\"}", messages[3].GetProperty("content").GetString());
+    }
+
     /// <summary>
     /// GenerateResponseAsync가 도구 호출과 사용량을 올바르게 파싱하는지 검증합니다.
     /// </summary>
@@ -133,6 +214,48 @@ public sealed class OpenAiProviderTests
                                           tool.ToolName == "grep_search" &&
                                           tool.PartialInput == "{\"pattern\":\"parity\",\"path\":\"fixture.txt\"}");
 
+        Assert.Single(chunks, chunk => chunk.IsComplete);
+    }
+
+    /// <summary>
+    /// GenerateStreamAsync가 스트리밍 요청에서 stream=true를 전송하는지 검증합니다.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateStreamAsync_SendsStreamEnabledRequest()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string streamBody =
+            """
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(streamBody, "text/event-stream");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "gpt-4o-mini");
+        var context = CreateContext();
+
+        var chunks = new List<StreamChunk>();
+        await foreach (var chunk in provider.GenerateStreamAsync(context, CreateToolDefinitions("read_file")))
+        {
+            chunks.Add(chunk);
+        }
+
+        Assert.NotNull(capturedRequest);
+        Assert.True(capturedRequest!.RootElement.GetProperty("stream").GetBoolean());
+        Assert.Equal("gpt-4o-mini", capturedRequest.RootElement.GetProperty("model").GetString());
+        Assert.Contains(chunks, chunk => chunk.TextDelta == "ok");
         Assert.Single(chunks, chunk => chunk.IsComplete);
     }
 

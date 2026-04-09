@@ -93,6 +93,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("secret", loaded.ApiKey);
         Assert.Equal(45, loaded.TimeoutSeconds);
         Assert.True(ConfigStore.Exists);
+        Assert.EndsWith(Path.Combine(".agentq", "config.json"), ConfigStore.PathValue, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -105,6 +106,43 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.Null(loaded);
         Assert.True(ConfigStore.Exists);
+    }
+
+    [Fact]
+    public async Task ConfigStore_Delete_RemovesSavedConfiguration()
+    {
+        var config = new ProviderConfiguration
+        {
+            Provider = "openai",
+            Model = "gpt-4o-mini",
+            BaseUrl = "https://api.openai.com/v1/",
+            ApiKey = "secret"
+        };
+
+        await ConfigStore.SaveAsync(config);
+        Assert.True(ConfigStore.Exists);
+
+        ConfigStore.Delete();
+
+        Assert.False(ConfigStore.Exists);
+        Assert.Null(await ConfigStore.LoadAsync());
+    }
+
+    [Fact]
+    public void ConsolePermissionEnforcer_BuildSummary_AcceptsStringWrappedJsonArguments()
+    {
+        var method = typeof(ConsolePermissionEnforcer).GetMethod(
+            "BuildSummary",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var result = (IEnumerable<string>?)method!.Invoke(null, ["bash", "\"{\\\"command\\\":\\\"echo hello\\\",\\\"timeout\\\":5000}\""]);
+        var summaryLines = Assert.IsAssignableFrom<IEnumerable<string>>(result).ToArray();
+
+        Assert.Contains(summaryLines, line => line.Contains("Command:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summaryLines, line => line.Contains("echo hello", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summaryLines, line => line.Contains("5000", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -518,7 +556,8 @@ public sealed class ToolAndConfigurationTests : IDisposable
             "--json",
             "--yes",
             "--allow-tool", "read_file",
-            "--allow-tool", "bash"]);
+            "--allow-tool", "bash",
+            "--deny-tool", "bash"]);
 
         Assert.Equal("summarize", config.Prompt);
         Assert.True(config.ReadPromptFromStdin);
@@ -526,6 +565,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.True(config.JsonOutput);
         Assert.True(config.AllowToolsWithoutPrompt);
         Assert.Equal(["read_file", "bash"], config.AllowedToolNames);
+        Assert.Equal(["bash"], config.DeniedToolNames);
     }
 
     /// <summary>

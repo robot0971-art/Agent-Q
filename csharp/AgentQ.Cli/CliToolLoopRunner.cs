@@ -34,8 +34,8 @@ public sealed class CliToolLoopRunner
         int? maxSteps = null,
         Action<string>? onTextDelta = null,
         Action<string>? onToolExecution = null,
-        Action<string>? onToolOutput = null,
-        Action<string>? onToolError = null,
+        Action<string, string>? onToolOutput = null,
+        Action<string, string>? onToolError = null,
         Action<string>? onPermissionDenied = null,
         CancellationToken ct = default)
     {
@@ -140,11 +140,11 @@ public sealed class CliToolLoopRunner
                     var result = await tool.ExecuteAsync(ParseInput(input), ct);
                     if (result.IsError)
                     {
-                        onToolError?.Invoke(result.Content);
+                        onToolError?.Invoke(toolName, result.Content);
                     }
                     else
                     {
-                        onToolOutput?.Invoke(result.Content);
+                        onToolOutput?.Invoke(toolName, result.Content);
                     }
 
                     toolResults.Add(ChatContent.CreateToolResult(toolId, result.Content, result.IsError));
@@ -152,7 +152,7 @@ public sealed class CliToolLoopRunner
                 catch (Exception ex)
                 {
                     var message = $"Error: {ex.Message}";
-                    onToolError?.Invoke(message);
+                    onToolError?.Invoke(toolName, message);
                     toolResults.Add(ChatContent.CreateToolResult(toolId, message, true));
                 }
             }

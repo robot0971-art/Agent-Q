@@ -50,8 +50,8 @@ AgentQ.sln
 - `read_file`
 - `write_file`
 - `edit_file`
-- `grep`
-- `glob`
+- `grep_search`
+- `glob_search`
 - `plugin_echo`
 
 ### Safety and Reliability
@@ -68,6 +68,9 @@ AgentQ.sln
 ## Current CLI Commands
 
 - `/help`
+- `/history`
+- `/compact`
+- `/tools`
 - `/status`
 - `/clear`
 - `/run`
@@ -111,8 +114,8 @@ This is an environment limitation, not a confirmed source-level failure.
 
 The project no longer needs major architectural invention. The main remaining work is:
 
-1. documentation synchronization and final cleanup
-2. optional provider integration expansion beyond current local coverage
+1. real-provider compatibility validation for OpenAI-compatible endpoints such as Alibaba Cloud Model Studio
+2. documentation synchronization and final cleanup
 3. optional CLI rendering and UX polish
 
 ## Current Validation Snapshot

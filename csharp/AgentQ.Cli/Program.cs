@@ -76,7 +76,7 @@ var provider = CreateProviderOrFallback(providerFactory, config);
 var history = new ChatConversationHistory();
 var toolRegistry = CreateToolRegistry();
 IPermissionEnforcer enforcer = invocation.IsNonInteractive
-    ? new NonInteractivePermissionEnforcer(config.AllowToolsWithoutPrompt, config.AllowedToolNames)
+    ? new NonInteractivePermissionEnforcer(config.AllowToolsWithoutPrompt, config.AllowedToolNames, config.DeniedToolNames)
     : new ConsolePermissionEnforcer();
 var loopRunner = new CliToolLoopRunner();
 var compactor = new ConversationCompactor();
@@ -227,6 +227,19 @@ while (running)
                     }
                     break;
 
+                case "/api-key":
+                    if (!string.IsNullOrWhiteSpace(argument))
+                    {
+                        config.ApiKey = argument;
+                        provider = CreateProviderOrFallback(providerFactory, config);
+                        AnsiConsole.MarkupLine($"[green]API key set to[/] [cyan]{MaskSecret(config.ApiKey)}[/]");
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[dim]Current API key:[/] [cyan]{MaskSecret(config.ApiKey)}[/]");
+                    }
+                    break;
+
                 case "/timeout":
                     if (!string.IsNullOrWhiteSpace(argument) && int.TryParse(argument, out var timeout) && timeout > 0)
                     {
@@ -249,16 +262,36 @@ while (running)
                         try
                         {
                             await ConfigStore.SaveAsync(config);
-                            AnsiConsole.MarkupLine("[green]Configuration saved.[/]");
+                            AnsiConsole.MarkupLine($"[green]Configuration saved:[/] [cyan]{ConfigStore.PathValue.EscapeMarkup()}[/]");
                         }
                         catch (Exception ex)
                         {
                             AnsiConsole.MarkupLine($"[red]Failed to save configuration:[/] {ex.Message}");
                         }
                     }
+                    else if (argument.Equals("show", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ShowConfigDetails(config);
+                    }
+                    else if (argument.Equals("path", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AnsiConsole.MarkupLine($"[dim]Config path:[/] [cyan]{ConfigStore.PathValue.EscapeMarkup()}[/]");
+                    }
+                    else if (argument.Equals("clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            ConfigStore.Delete();
+                            AnsiConsole.MarkupLine($"[green]Saved configuration deleted:[/] [cyan]{ConfigStore.PathValue.EscapeMarkup()}[/]");
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to delete saved configuration:[/] {ex.Message}");
+                        }
+                    }
                     else
                     {
-                        AnsiConsole.MarkupLine("[dim]Usage:[/] /config save");
+                        AnsiConsole.MarkupLine("[dim]Usage:[/] /config save | /config show | /config path | /config clear");
                     }
                     break;
 
@@ -351,22 +384,31 @@ static ToolRegistry CreateToolRegistry()
 
 static void ShowWelcome(ILlmProvider provider, ProviderConfiguration config, ToolRegistry registry)
 {
-    var accentColor = new Color(216, 180, 254);
-    var qIcon = new FigletText("Q")
-        .Centered()
-        .Color(accentColor);
+    var accentColor = new Color(214, 106, 34);
+    var accentHighlight = new Color(247, 178, 103);
+    var qIcon = new Rows(
+    [
+        new Markup("[#D66A22]████████╗[/][#F7B267]  ██████╗[/]"),
+        new Markup("[#D66A22]██╔═══██║[/][#F7B267] ██╔═══██╗[/]"),
+        new Markup("[#D66A22]██║   ██║[/][#F7B267] ██║   ██║[/]"),
+        new Markup("[#D66A22]██║▄▄ ██║[/][#F7B267] ██║▄▄ ██║[/]"),
+        new Markup("[#D66A22]╚██████╔╝[/][#F7B267] ╚██████╔╝[/]"),
+        new Markup("[#D66A22] ╚══▀▀═╝[/][#F7B267]   ╚══▀▀═╝[/]"),
+        new Markup("[dim]agentq[/] [#F7B267]//[/] [dim]interactive coding cli[/]")
+    ]);
 
     AnsiConsole.Write(
         Align.Center(
             new Panel(qIcon)
             {
-                Border = BoxBorder.None,
-                Padding = new Padding(0, 0, 0, 0)
+                Border = BoxBorder.Rounded,
+                BorderStyle = new Style(accentHighlight),
+                Padding = new Padding(1, 0, 1, 0)
             }));
     AnsiConsole.WriteLine();
 
     AnsiConsole.Write(new Panel(
-        $"[bold #D8B4FE]AgentQ CLI[/]\n" +
+        $"[bold #D66A22]AgentQ CLI[/]\n" +
         $"[dim]Provider:[/] [cyan]{provider.Name}[/]\n" +
         $"[dim]Model:[/] [cyan]{config.Model}[/]\n" +
         $"[dim]Base URL:[/] [cyan]{config.BaseUrl}[/]\n" +
@@ -387,7 +429,9 @@ static void ShowStatus(ILlmProvider provider, ProviderConfiguration config, Tool
     table.AddRow("Provider", $"[cyan]{provider.Name}[/]");
     table.AddRow("Model", $"[cyan]{config.Model}[/]");
     table.AddRow("Base URL", $"[cyan]{config.BaseUrl}[/]");
+    table.AddRow("API Key", $"[cyan]{MaskSecret(config.ApiKey)}[/]");
     table.AddRow("Timeout", $"[cyan]{config.TimeoutSeconds} sec[/]");
+    table.AddRow("Saved Config", ConfigStore.Exists ? "[green]yes[/]" : "[yellow]no[/]");
     table.AddRow("Tools", $"[cyan]{registry.All.Count}[/]");
     AnsiConsole.Write(table);
 }
@@ -395,9 +439,6 @@ static void ShowStatus(ILlmProvider provider, ProviderConfiguration config, Tool
 static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConversationHistory history, ToolRegistry registry, IPermissionEnforcer enforcer, CliToolLoopRunner loopRunner, CancellationToken ct = default)
 {
     AnsiConsole.Write(new Rule { Title = "Assistant", Style = Style.Parse("blue") });
-
-    var streamedAnyText = false;
-    var wroteVisibleLine = false;
 
     try
     {
@@ -413,40 +454,34 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
                     enforcer,
                     onTextDelta: text =>
                     {
-                        streamedAnyText = true;
-                        wroteVisibleLine = true;
                         ctx.Status("Receiving response...");
-                        AnsiConsole.MarkupInterpolated($"[white]{text.EscapeMarkup()}[/]");
                     },
                     onToolExecution: toolName =>
                     {
-                        wroteVisibleLine = true;
                         ctx.Status($"Executing tool: [cyan]{toolName}[/]...");
-                        AnsiConsole.MarkupLine($"[dim]Executing tool:[/] [cyan]{toolName}[/]");
+                        AnsiConsole.MarkupLine($"[bold yellow]Tool:[/] [cyan]{toolName}[/]");
                     },
-                    onToolOutput: output =>
+                    onToolOutput: (_, output) =>
                     {
-                        wroteVisibleLine = true;
                         var preview = Shorten(output, 160);
-                        AnsiConsole.MarkupLine($"[green]Tool output:[/] [dim]{preview.EscapeMarkup()}[/]");
+                        AnsiConsole.MarkupLine($"[green]Result:[/] [dim]{preview.EscapeMarkup()}[/]");
                         ctx.Status("Processing tool output...");
                     },
-                    onToolError: error =>
+                    onToolError: (_, error) =>
                     {
-                        wroteVisibleLine = true;
                         AnsiConsole.MarkupLine($"[red]Tool error:[/] {error.EscapeMarkup()}");
                     },
                     onPermissionDenied: toolName =>
                     {
-                        wroteVisibleLine = true;
                         AnsiConsole.MarkupLine($"[yellow]Permission denied:[/] {toolName.EscapeMarkup()}");
                     },
                     ct: ct);
             });
 
         var lastMessage = history.Messages.LastOrDefault();
-        if (!streamedAnyText && lastMessage != null && lastMessage.Role == ChatRole.Assistant)
+        if (lastMessage != null && lastMessage.Role == ChatRole.Assistant)
         {
+            // 스트리밍 중간 출력 대신 최종 응답을 한 번만 그려서 콘솔 리렌더링에 지워지지 않게 합니다.
             var textContent = string.Join("\n", lastMessage.Content
                 .Where(c => c.Type == ContentType.Text)
                 .Select(c => c.Text)
@@ -454,14 +489,12 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
 
             if (!string.IsNullOrWhiteSpace(textContent))
             {
-                wroteVisibleLine = true;
                 AnsiConsole.MarkupLine($"[white]{textContent.EscapeMarkup()}[/]");
             }
         }
     }
     catch (OperationCanceledException)
     {
-        wroteVisibleLine = true;
         AnsiConsole.Write(new Panel("[yellow]The request timed out or was cancelled.[/]")
         {
             Border = BoxBorder.Rounded,
@@ -470,7 +503,6 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
     }
     catch (Exception ex)
     {
-        wroteVisibleLine = true;
         AnsiConsole.Write(new Panel($"[red]Conversation error:[/] {ex.Message.EscapeMarkup()}")
         {
             Border = BoxBorder.Rounded,
@@ -478,10 +510,7 @@ static async Task SendAndDisplay(ILlmProvider provider, string model, ChatConver
         });
     }
 
-    if (wroteVisibleLine)
-    {
-        AnsiConsole.WriteLine();
-    }
+    AnsiConsole.WriteLine();
 }
 
 static async Task<NonInteractiveRunResult> RunNonInteractiveAsync(
@@ -494,9 +523,10 @@ static async Task<NonInteractiveRunResult> RunNonInteractiveAsync(
     string prompt)
 {
     history.AddUserMessage(prompt);
-    var toolOutputs = new List<string>();
+    var toolOutputs = new List<ToolExecutionRecord>();
     var toolErrors = new List<string>();
     var deniedTools = new List<string>();
+    var executedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     try
     {
@@ -507,20 +537,30 @@ static async Task<NonInteractiveRunResult> RunNonInteractiveAsync(
             history,
             registry,
             enforcer,
-            onToolOutput: output => toolOutputs.Add(output),
-            onToolError: error => toolErrors.Add(error),
+            onToolExecution: toolName => executedTools.Add(toolName),
+            onToolOutput: (toolName, output) => toolOutputs.Add(ToolExecutionRecord.Create(toolName, output, isError: false)),
+            onToolError: (toolName, error) =>
+            {
+                toolOutputs.Add(ToolExecutionRecord.Create(toolName, error, isError: true));
+                toolErrors.Add(error);
+            },
             onPermissionDenied: toolName => deniedTools.Add(toolName),
             ct: cts.Token);
 
         var result = new NonInteractiveRunResult
         {
             FinalText = AutomationSupport.GetLatestAssistantText(history),
-            MessageCount = history.MessageCount
+            MessageCount = history.MessageCount,
+            Provider = provider.Name,
+            Model = config.Model,
+            BaseUrl = config.BaseUrl
         };
         result.AllowedTools.AddRange(config.AllowToolsWithoutPrompt ? ["*"] : config.AllowedToolNames);
+        result.ConfiguredDeniedTools.AddRange(config.DeniedToolNames);
         result.ToolOutputs.AddRange(toolOutputs);
         result.ToolErrors.AddRange(toolErrors);
         result.DeniedTools.AddRange(deniedTools);
+        result.ExecutedTools.AddRange(executedTools);
         WriteNonInteractiveResult(config, result);
         return result;
     }
@@ -630,8 +670,9 @@ static void ShowHelp(ToolRegistry registry, IEnumerable<string> providers)
     AnsiConsole.MarkupLine("  [yellow]/provider[/]   Show or switch provider");
     AnsiConsole.MarkupLine("  [yellow]/model[/]      Show or set model");
     AnsiConsole.MarkupLine("  [yellow]/base-url[/]   Show or set base URL");
+    AnsiConsole.MarkupLine("  [yellow]/api-key[/]    Show or set API key");
     AnsiConsole.MarkupLine("  [yellow]/timeout[/]    Show or set timeout in seconds");
-    AnsiConsole.MarkupLine("  [yellow]/config save[/] Save current config");
+    AnsiConsole.MarkupLine("  [yellow]/config[/]     Save, show, locate, or clear saved config");
     AnsiConsole.MarkupLine("  [yellow]/save[/]       Save current session");
     AnsiConsole.MarkupLine("  [yellow]/load[/]       Load a saved session");
     AnsiConsole.MarkupLine("  [yellow]/exit[/]       Exit the CLI");
@@ -644,13 +685,17 @@ static void ShowHelp(ToolRegistry registry, IEnumerable<string> providers)
     AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Summarize README\" --json[/]");
     AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"List files\" --yes[/]");
     AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Read README\" --allow-tool read_file[/]");
+    AnsiConsole.MarkupLine("  [cyan]agentq --prompt \"Read README\" --allow-tool read_file --deny-tool bash[/]");
     AnsiConsole.WriteLine();
 
     AnsiConsole.MarkupLine("[bold]Examples[/]");
     AnsiConsole.MarkupLine("  [cyan]/provider openai[/]");
     AnsiConsole.MarkupLine("  [cyan]/model gpt-5[/]");
+    AnsiConsole.MarkupLine("  [cyan]/api-key sk-...[/]");
     AnsiConsole.MarkupLine("  [cyan]/base-url http://localhost:18080[/]");
     AnsiConsole.MarkupLine("  [cyan]/timeout 90[/]");
+    AnsiConsole.MarkupLine("  [cyan]/config save[/]");
+    AnsiConsole.MarkupLine("  [cyan]/config show[/]");
     AnsiConsole.MarkupLine("  [cyan]/compact[/]");
     AnsiConsole.MarkupLine("  [cyan]/run read_file {\"path\":\"README.md\",\"offset\":1,\"limit\":20}[/]");
     AnsiConsole.MarkupLine("  [cyan]/save session.json[/]");
@@ -659,6 +704,36 @@ static void ShowHelp(ToolRegistry registry, IEnumerable<string> providers)
 
     AnsiConsole.MarkupLine($"[dim]Available providers:[/] {string.Join(", ", providers)}");
     AnsiConsole.MarkupLine($"[dim]Registered tools:[/] {registry.All.Count}");
+}
+
+static void ShowConfigDetails(ProviderConfiguration config)
+{
+    var table = new Table().Border(TableBorder.Rounded);
+    table.AddColumn("Field");
+    table.AddColumn("Value");
+    table.AddRow("Config Path", $"[cyan]{ConfigStore.PathValue.EscapeMarkup()}[/]");
+    table.AddRow("Saved File", ConfigStore.Exists ? "[green]present[/]" : "[yellow]missing[/]");
+    table.AddRow("Provider", $"[cyan]{config.Provider}[/]");
+    table.AddRow("Model", $"[cyan]{config.Model}[/]");
+    table.AddRow("Base URL", $"[cyan]{config.BaseUrl}[/]");
+    table.AddRow("API Key", $"[cyan]{MaskSecret(config.ApiKey)}[/]");
+    table.AddRow("Timeout", $"[cyan]{config.TimeoutSeconds} sec[/]");
+    AnsiConsole.Write(table);
+}
+
+static string MaskSecret(string value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return "(not set)";
+    }
+
+    if (value.Length <= 8)
+    {
+        return new string('*', value.Length);
+    }
+
+    return $"{value[..4]}...{value[^4..]}";
 }
 
 static void ShowTools(ToolRegistry registry)

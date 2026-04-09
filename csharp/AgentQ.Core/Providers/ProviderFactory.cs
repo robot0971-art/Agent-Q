@@ -115,6 +115,11 @@ public class ProviderConfiguration
     public List<string> AllowedToolNames { get; } = [];
 
     /// <summary>
+    /// 비대화형 실행에서 명시적으로 거부된 도구 목록
+    /// </summary>
+    public List<string> DeniedToolNames { get; } = [];
+
+    /// <summary>
     /// 환경 변수에서 설정 로드
     /// </summary>
     /// <returns>제공자 설정</returns>
@@ -182,6 +187,12 @@ public class ProviderConfiguration
                     if (i + 1 < args.Length)
                     {
                         config.AllowedToolNames.Add(args[++i]);
+                    }
+                    break;
+                case "--deny-tool":
+                    if (i + 1 < args.Length)
+                    {
+                        config.DeniedToolNames.Add(args[++i]);
                     }
                     break;
             }

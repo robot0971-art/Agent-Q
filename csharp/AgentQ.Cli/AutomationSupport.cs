@@ -29,13 +29,23 @@ public sealed class NonInteractiveRunResult
 {
     public string FinalText { get; init; } = string.Empty;
 
-    public List<string> ToolOutputs { get; } = [];
+    public List<ToolExecutionRecord> ToolOutputs { get; } = [];
 
     public List<string> ToolErrors { get; } = [];
 
     public List<string> DeniedTools { get; } = [];
 
     public List<string> AllowedTools { get; } = [];
+
+    public List<string> ConfiguredDeniedTools { get; } = [];
+
+    public List<string> ExecutedTools { get; } = [];
+
+    public string? Provider { get; init; }
+
+    public string? Model { get; init; }
+
+    public string? BaseUrl { get; init; }
 
     public int MessageCount { get; init; }
 
@@ -66,12 +76,79 @@ public sealed class NonInteractiveRunResult
         exitCode = (int)ExitCode,
         terminationReason = TerminationReason,
         finalText = FinalText,
+        provider = Provider,
+        model = Model,
+        baseUrl = BaseUrl,
         allowedTools = AllowedTools,
+        configuredDeniedTools = ConfiguredDeniedTools,
         deniedTools = DeniedTools,
+        executedTools = ExecutedTools,
+        permissionPolicy = new
+        {
+            allowAll = AllowedTools.Contains("*", StringComparer.Ordinal),
+            allowedTools = AllowedTools,
+            deniedTools = ConfiguredDeniedTools
+        },
         toolErrors = ToolErrors,
         toolOutputs = ToolOutputs,
         messageCount = MessageCount
     };
+}
+
+public sealed class ToolExecutionRecord
+{
+    [System.Text.Json.Serialization.JsonPropertyName("toolName")]
+    public required string ToolName { get; init; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("isError")]
+    public required bool IsError { get; init; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("raw")]
+    public required string Raw { get; init; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("isJson")]
+    public required bool IsJson { get; init; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("parsed")]
+    public JsonElement? Parsed { get; init; }
+
+    public static ToolExecutionRecord Create(string toolName, string raw, bool isError)
+    {
+        if (!TryParseJson(raw, out var parsed))
+        {
+            return new ToolExecutionRecord
+            {
+                ToolName = toolName,
+                IsError = isError,
+                Raw = raw,
+                IsJson = false
+            };
+        }
+
+        return new ToolExecutionRecord
+        {
+            ToolName = toolName,
+            IsError = isError,
+            Raw = raw,
+            IsJson = true,
+            Parsed = parsed
+        };
+    }
+
+    private static bool TryParseJson(string raw, out JsonElement parsed)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            parsed = document.RootElement.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            parsed = default;
+            return false;
+        }
+    }
 }
 
 public static class AutomationSupport
@@ -191,7 +268,8 @@ public static class AutomationSupport
     {
         return JsonSerializer.Serialize(result.ToJsonEnvelope(), new JsonSerializerOptions
         {
-            WriteIndented = true
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         });
     }
 }
