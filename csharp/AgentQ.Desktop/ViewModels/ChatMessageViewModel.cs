@@ -6,6 +6,10 @@ public sealed class ChatMessageViewModel
 
     public required string Content { get; init; }
 
+    public DateTime CreatedAt { get; init; } = DateTime.Now;
+
+    public string CreatedAtText => CreatedAt.ToString("HH:mm:ss");
+
     public IReadOnlyList<ChatAttachmentViewModel> Attachments { get; init; } = [];
 
     public bool HasAttachments => Attachments.Count > 0;

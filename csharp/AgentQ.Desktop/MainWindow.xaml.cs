@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -37,7 +38,7 @@ public partial class MainWindow : Window
         {
             _viewModel.ApplyConfiguration(saved);
             ApiKeyBox.Password = saved.ApiKey;
-            _viewModel.StatusText = $"설정을 불러왔습니다: {_configService.ConfigPath}";
+            _viewModel.StatusText = "설정 로드 완료";
         }
         else
         {
@@ -46,10 +47,10 @@ public partial class MainWindow : Window
                 Provider = "opencode-go",
                 Model = "kimi-k2.6",
                 BaseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl,
-                TimeoutSeconds = 0,
+                TimeoutSeconds = 30,
                 MaxTokens = 4096
             });
-            _viewModel.StatusText = "처음 실행입니다. API key를 입력하고 설정을 저장하세요.";
+            _viewModel.StatusText = "API key를 입력하고 설정을 저장하세요.";
         }
 
         _viewModel.AddLog("AgentQ Desktop 시작");
@@ -90,8 +91,24 @@ public partial class MainWindow : Window
         {
             _viewModel.WorkspaceRoot = dialog.SelectedPath;
             Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", dialog.SelectedPath);
-            _viewModel.AddLog($"작업 폴더 선택: {dialog.SelectedPath}");
+            _viewModel.StatusText = "프로젝트 폴더가 설정되었습니다.";
+            _viewModel.AddLog($"프로젝트 폴더 선택: {dialog.SelectedPath}");
         }
+    }
+
+    private void OpenWorkspace_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!Directory.Exists(_viewModel.WorkspaceRoot))
+        {
+            _viewModel.StatusText = "열 수 있는 프로젝트 폴더가 없습니다.";
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _viewModel.WorkspaceRoot,
+            UseShellExecute = true
+        });
     }
 
     private void AttachFiles_OnClick(object sender, RoutedEventArgs e)
@@ -239,9 +256,48 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ClearLogs_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.Logs.Clear();
+        _viewModel.AddLog("로그 초기화");
+    }
+
     private void Exit_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleWindowMaximized();
+            return;
+        }
+
+        DragMove();
+    }
+
+    private void MinimizeWindow_OnClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeWindow_OnClick(object sender, RoutedEventArgs e)
+    {
+        ToggleWindowMaximized();
+    }
+
+    private void CloseWindow_OnClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void ToggleWindowMaximized()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
     }
 
     private async Task SendCurrentMessageAsync()
@@ -261,11 +317,12 @@ public partial class MainWindow : Window
             Content = prompt,
             Attachments = messageAttachments
         });
+
         var assistantMessage = new ChatMessageViewModel { Role = "AgentQ", Content = string.Empty };
         _viewModel.Messages.Add(assistantMessage);
         var assistantIndex = _viewModel.Messages.Count - 1;
         _viewModel.IsBusy = true;
-        _viewModel.StatusText = "응답을 생성하는 중입니다.";
+        _viewModel.StatusText = "응답 생성 중";
         _viewModel.AddLog("모델 호출 시작");
 
         try
@@ -285,7 +342,8 @@ public partial class MainWindow : Window
                             _viewModel.Messages[assistantIndex] = new ChatMessageViewModel
                             {
                                 Role = assistantMessage.Role,
-                                Content = _viewModel.Messages[assistantIndex].Content + delta
+                                Content = _viewModel.Messages[assistantIndex].Content + delta,
+                                CreatedAt = assistantMessage.CreatedAt
                             };
                         }
                     });
@@ -299,7 +357,8 @@ public partial class MainWindow : Window
                 _viewModel.Messages[assistantIndex] = new ChatMessageViewModel
                 {
                     Role = "AgentQ",
-                    Content = "(빈 응답)"
+                    Content = "(빈 응답)",
+                    CreatedAt = assistantMessage.CreatedAt
                 };
             }
 
