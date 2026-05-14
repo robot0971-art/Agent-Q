@@ -22,9 +22,13 @@
                 <Separator />
                 <MenuItem Header="종료" Click="Exit_OnClick" />
             </MenuItem>
+            <MenuItem Header="편집">
+                <MenuItem Header="마지막 답변 복사" Click="CopyLastAssistantMessage_OnClick" />
+                <MenuItem Header="전체 대화 복사" Click="CopyConversation_OnClick" />
+                <MenuItem Header="대화 초기화" Click="ClearConversation_OnClick" />
+            </MenuItem>
             <MenuItem Header="설정">
                 <MenuItem Header="설정 저장" Click="SaveSettings_OnClick" />
-                <MenuItem Header="대화 초기화" Click="ClearConversation_OnClick" />
             </MenuItem>
             <MenuItem Header="보기">
                 <MenuItem Header="글자 크게" Click="IncreaseFontSize_OnClick" />
@@ -146,11 +150,24 @@
                                         MaxWidth="{Binding ActualWidth, ElementName=MessagesList}">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Role}" FontWeight="SemiBold" Foreground="#175CD3" />
-                                        <TextBlock Text="{Binding Content}"
-                                                   TextWrapping="Wrap"
-                                                   FontSize="{Binding DataContext.DesktopFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                   Margin="0,6,0,0"
-                                                   Foreground="#1F2933" />
+                                        <TextBox Text="{Binding Content}"
+                                                 TextWrapping="Wrap"
+                                                 FontSize="{Binding DataContext.DesktopFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                 Margin="0,6,0,0"
+                                                 Foreground="#1F2933"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 IsReadOnly="True"
+                                                 IsReadOnlyCaretVisible="False"
+                                                 AcceptsReturn="True"
+                                                 TextChanged="MessageTextBox_OnTextChanged">
+                                            <TextBox.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="복사" Command="ApplicationCommands.Copy" />
+                                                    <MenuItem Header="메시지 전체 복사" Click="CopyMessage_OnClick" />
+                                                </ContextMenu>
+                                            </TextBox.ContextMenu>
+                                        </TextBox>
                                         <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,10,0,0">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>

@@ -18,6 +18,8 @@ public sealed class DesktopAgentService
         """;
 
     private readonly List<ChatMessage> _messages = [];
+    private readonly LinkContentFetcher _linkContentFetcher = new();
+    private readonly WorkspaceIndexer _workspaceIndexer = new();
 
     public async Task<string> SendAsync(
         ProviderConfiguration config,
@@ -27,7 +29,8 @@ public sealed class DesktopAgentService
         CancellationToken ct = default)
     {
         var provider = CreateProvider(config);
-        _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
+        var enrichedUserText = await BuildPromptWithContextAsync(config, userText, ct);
+        _messages.Add(await CreateUserMessageAsync(enrichedUserText, attachments ?? [], ct));
 
         var context = new ChatContext
         {
@@ -56,6 +59,39 @@ public sealed class DesktopAgentService
     public void ClearConversation()
     {
         _messages.Clear();
+    }
+
+    private async Task<string> BuildPromptWithContextAsync(ProviderConfiguration config, string userText, CancellationToken ct)
+    {
+        var workspaceRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT") ?? Environment.CurrentDirectory;
+        var workspaceContext = await _workspaceIndexer.BuildContextAsync(workspaceRoot, ct);
+        var linkedContext = await _linkContentFetcher.BuildContextAsync(userText, ct);
+
+        if (string.IsNullOrWhiteSpace(workspaceContext) && string.IsNullOrWhiteSpace(linkedContext))
+        {
+            return userText;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine(userText);
+        builder.AppendLine();
+        builder.AppendLine("---");
+        builder.AppendLine("The desktop app attached local context before sending this message.");
+        builder.AppendLine("Use the workspace snapshot for repository questions, but say when a file may be missing from the snapshot.");
+
+        if (!string.IsNullOrWhiteSpace(workspaceContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(workspaceContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(linkedContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(linkedContext);
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     private static async Task<ChatMessage> CreateUserMessageAsync(

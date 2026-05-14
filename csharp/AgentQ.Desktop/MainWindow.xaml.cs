@@ -1,11 +1,12 @@
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using AgentQ.Core.Providers;
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
-using Microsoft.Win32;
 
 namespace AgentQ.Desktop;
 
@@ -48,7 +49,7 @@ public partial class MainWindow : Window
                 TimeoutSeconds = 0,
                 MaxTokens = 4096
             });
-            _viewModel.StatusText = "첫 실행입니다. API key를 입력하고 설정을 저장하세요.";
+            _viewModel.StatusText = "처음 실행입니다. API key를 입력하고 설정을 저장하세요.";
         }
 
         _viewModel.AddLog("AgentQ Desktop 시작");
@@ -78,7 +79,7 @@ public partial class MainWindow : Window
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "프로젝트 폴더를 선택하세요",
+            Description = "프로젝트 폴더를 선택하세요.",
             UseDescriptionForTitle = true,
             SelectedPath = string.IsNullOrWhiteSpace(_viewModel.WorkspaceRoot)
                 ? Environment.CurrentDirectory
@@ -131,8 +132,8 @@ public partial class MainWindow : Window
         }
 
         _viewModel.StatusText = _attachments.Count == 0
-            ? "첨부된 파일이 없습니다."
-            : $"첨부 파일 {_attachments.Count}개가 선택되었습니다. 이미지는 그대로 전송되고, 동영상은 ffmpeg가 있으면 대표 프레임으로 분석됩니다.";
+            ? "첨부한 파일이 없습니다."
+            : $"첨부 파일 {_attachments.Count}개가 선택되었습니다.";
     }
 
     private void ClearAttachments_OnClick(object sender, RoutedEventArgs e)
@@ -180,6 +181,62 @@ public partial class MainWindow : Window
     {
         _viewModel.StatusText =
             $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, 글자 크기: {_viewModel.DesktopFontSize:0}";
+    }
+
+    private void CopyMessage_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.MenuItem { DataContext: ChatMessageViewModel message } ||
+            string.IsNullOrEmpty(message.Content))
+        {
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(message.Content);
+        _viewModel.StatusText = "메시지를 클립보드에 복사했습니다.";
+    }
+
+    private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
+    {
+        var message = _viewModel.Messages.LastOrDefault(item =>
+            string.Equals(item.Role, "AgentQ", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(item.Content));
+
+        if (message == null)
+        {
+            _viewModel.StatusText = "복사할 AgentQ 답변이 없습니다.";
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(message.Content);
+        _viewModel.StatusText = "마지막 답변을 클립보드에 복사했습니다.";
+    }
+
+    private void CopyConversation_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Messages.Count == 0)
+        {
+            _viewModel.StatusText = "복사할 대화가 없습니다.";
+            return;
+        }
+
+        var builder = new StringBuilder();
+        foreach (var message in _viewModel.Messages)
+        {
+            builder.AppendLine($"{message.Role}:");
+            builder.AppendLine(message.Content);
+            builder.AppendLine();
+        }
+
+        System.Windows.Clipboard.SetText(builder.ToString().TrimEnd());
+        _viewModel.StatusText = "전체 대화를 클립보드에 복사했습니다.";
+    }
+
+    private void MessageTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox textBox)
+        {
+            textBox.ScrollToEnd();
+        }
     }
 
     private void Exit_OnClick(object sender, RoutedEventArgs e)
@@ -256,7 +313,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            _viewModel.StatusText = "요청이 취소되었거나 시간 초과되었습니다.";
+            _viewModel.StatusText = "요청이 취소되었거나 시간이 초과되었습니다.";
             _viewModel.AddLog("요청 취소 또는 시간 초과");
         }
         catch (Exception ex)
