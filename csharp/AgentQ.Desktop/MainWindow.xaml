@@ -8,199 +8,249 @@
         MinWidth="980"
         Background="#F6F7F9"
         FontFamily="Segoe UI">
-    <Grid Margin="18">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="310" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="300" />
-        </Grid.ColumnDefinitions>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <Border Grid.Column="0" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8" Padding="16">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <TextBlock Text="AgentQ Desktop" FontSize="24" FontWeight="SemiBold" Foreground="#1F2933" />
-                    <TextBlock Text="Windows 데스크톱 코딩 에이전트" Margin="0,4,0,18" Foreground="#667085" />
+        <Menu Grid.Row="0" Background="#F2F4F7" BorderBrush="#D7DCE2" BorderThickness="0,0,0,1">
+            <MenuItem Header="파일">
+                <MenuItem Header="프로젝트 폴더 선택" Click="BrowseWorkspace_OnClick" />
+                <MenuItem Header="첨부 추가" Click="AttachFiles_OnClick" />
+                <MenuItem Header="첨부 지우기" Click="ClearAttachments_OnClick" />
+                <Separator />
+                <MenuItem Header="종료" Click="Exit_OnClick" />
+            </MenuItem>
+            <MenuItem Header="설정">
+                <MenuItem Header="설정 저장" Click="SaveSettings_OnClick" />
+                <MenuItem Header="대화 초기화" Click="ClearConversation_OnClick" />
+            </MenuItem>
+            <MenuItem Header="보기">
+                <MenuItem Header="글자 크게" Click="IncreaseFontSize_OnClick" />
+                <MenuItem Header="글자 작게" Click="DecreaseFontSize_OnClick" />
+                <MenuItem Header="기본 글자 크기" Click="ResetFontSize_OnClick" />
+            </MenuItem>
+            <MenuItem Header="도움말">
+                <MenuItem Header="상태 보기" Click="ShowStatus_OnClick" />
+            </MenuItem>
+        </Menu>
 
-                    <TextBlock Text="Provider" FontWeight="SemiBold" />
-                    <ComboBox x:Name="ProviderBox" Margin="0,6,0,12" IsEditable="True" Text="{Binding Provider, UpdateSourceTrigger=PropertyChanged}">
-                        <ComboBoxItem Content="opencode-go" />
-                        <ComboBoxItem Content="openai" />
-                        <ComboBoxItem Content="anthropic" />
-                    </ComboBox>
+        <Grid Grid.Row="1" Margin="18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="310" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="Model" FontWeight="SemiBold" />
-                    <TextBox Margin="0,6,0,12" Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
+            <Border Grid.Column="0" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="AgentQ Desktop" FontSize="24" FontWeight="SemiBold" Foreground="#1F2933" />
+                        <TextBlock Text="Windows 데스크톱 코딩 에이전트" Margin="0,4,0,18" Foreground="#667085" />
 
-                    <TextBlock Text="Base URL" FontWeight="SemiBold" />
-                    <TextBox Margin="0,6,0,12" Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="설정" FontSize="16" FontWeight="SemiBold" Foreground="#1F2933" Margin="0,0,0,10" />
 
-                    <TextBlock Text="API Key" FontWeight="SemiBold" />
-                    <PasswordBox x:Name="ApiKeyBox" Margin="0,6,0,12" PasswordChanged="ApiKeyBox_OnPasswordChanged" />
+                        <TextBlock Text="Provider" FontWeight="SemiBold" />
+                        <ComboBox x:Name="ProviderBox" Margin="0,6,0,12" IsEditable="True" Text="{Binding Provider, UpdateSourceTrigger=PropertyChanged}">
+                            <ComboBoxItem Content="opencode-go" />
+                            <ComboBoxItem Content="openai" />
+                            <ComboBoxItem Content="anthropic" />
+                        </ComboBox>
 
-                    <Grid Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="Timeout" FontWeight="SemiBold" />
-                            <TextBox Margin="0,6,0,0" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Max Tokens" FontWeight="SemiBold" />
-                            <TextBox Margin="0,6,0,0" Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                    </Grid>
+                        <TextBlock Text="Model" FontWeight="SemiBold" />
+                        <TextBox Margin="0,6,0,12" Text="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
 
-                    <TextBlock Text="프로젝트 폴더" FontWeight="SemiBold" />
-                    <TextBox Margin="0,6,0,8" Text="{Binding WorkspaceRoot, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Content="폴더 선택" Click="BrowseWorkspace_OnClick" Height="34" Margin="0,0,0,12" />
+                        <TextBlock Text="Base URL" FontWeight="SemiBold" />
+                        <TextBox Margin="0,6,0,12" Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
 
-                    <Button Content="설정 저장" Click="SaveSettings_OnClick" Height="38" FontWeight="SemiBold" />
-                    <Button Content="대화 초기화" Click="ClearConversation_OnClick" Height="34" Margin="0,8,0,0" />
+                        <TextBlock Text="API Key" FontWeight="SemiBold" />
+                        <PasswordBox x:Name="ApiKeyBox" Margin="0,6,0,12" PasswordChanged="ApiKeyBox_OnPasswordChanged" />
 
-                    <Border Background="#F1F5F9" CornerRadius="6" Padding="10" Margin="0,18,0,0">
-                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Foreground="#344054" />
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
-
-        <Border Grid.Column="1" Margin="14,0" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <ListBox x:Name="MessagesList"
-                         Grid.Row="0"
-                         ItemsSource="{Binding Messages}"
-                         BorderThickness="0"
-                         Padding="14"
-                         Background="White"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         HorizontalContentAlignment="Stretch">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Padding" Value="0" />
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderBrush="#E4E7EC"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="12"
-                                    Margin="0,0,0,10"
-                                    Background="#FBFCFE"
-                                    MaxWidth="{Binding ActualWidth, ElementName=MessagesList}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Role}" FontWeight="SemiBold" Foreground="#175CD3" />
-                                    <TextBlock Text="{Binding Content}"
-                                               TextWrapping="Wrap"
-                                               Margin="0,6,0,0"
-                                               Foreground="#1F2933" />
-                                    <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,10,0,0">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Background="#EAF2FF"
-                                                        CornerRadius="12"
-                                                        Padding="8,4"
-                                                        Margin="0,0,6,6"
-                                                        ToolTip="{Binding Path}">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="{Binding Kind}"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="#175CD3"
-                                                                   Margin="0,0,6,0" />
-                                                        <TextBlock Text="{Binding FileName}"
-                                                                   Foreground="#175CD3"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   MaxWidth="320" />
-                                                    </StackPanel>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <Grid Grid.Row="1" Margin="14">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Border Grid.Row="0"
-                            Background="#F8FAFC"
-                            BorderBrush="#E4E7EC"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="8"
-                            Margin="0,0,0,8">
-                        <Grid>
+                        <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Timeout" FontWeight="SemiBold" />
+                                <TextBox Margin="0,6,0,0" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Max Tokens" FontWeight="SemiBold" />
+                                <TextBox Margin="0,6,0,0" Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Content="첨부" Width="72" Height="30" Click="AttachFiles_OnClick" />
-                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Attachments}" Margin="10,0">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="#EAF2FF" CornerRadius="12" Padding="8,4" Margin="0,0,6,0">
-                                            <TextBlock Text="{Binding}" Foreground="#175CD3" />
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Button Grid.Column="2" Content="첨부 지우기" Width="96" Height="30" Click="ClearAttachments_OnClick" />
+                            <TextBlock Text="글자 크기" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1" Text="{Binding DesktopFontSize, StringFormat={}{0:0}}" Foreground="#667085" />
                         </Grid>
-                    </Border>
+                        <Slider Minimum="11"
+                                Maximum="22"
+                                TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                Margin="0,8,0,18"
+                                Value="{Binding DesktopFontSize, UpdateSourceTrigger=PropertyChanged}" />
 
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="96" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="InputBox"
-                                 MinHeight="48"
-                                 MaxHeight="120"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 PreviewKeyDown="InputBox_OnPreviewKeyDown"
-                                 Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="1" Content="전송" Margin="10,0,0,0" FontWeight="SemiBold" Click="Send_OnClick" />
+                        <TextBlock Text="파일" FontSize="16" FontWeight="SemiBold" Foreground="#1F2933" Margin="0,0,0,10" />
+
+                        <TextBlock Text="프로젝트 폴더" FontWeight="SemiBold" />
+                        <TextBox Margin="0,6,0,8" Text="{Binding WorkspaceRoot, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="폴더 선택" Click="BrowseWorkspace_OnClick" Height="34" Margin="0,0,0,12" />
+
+                        <Button Content="설정 저장" Click="SaveSettings_OnClick" Height="38" FontWeight="SemiBold" />
+                        <Button Content="대화 초기화" Click="ClearConversation_OnClick" Height="34" Margin="0,8,0,0" />
+
+                        <Border Background="#F1F5F9" CornerRadius="6" Padding="10" Margin="0,18,0,0">
+                            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Foreground="#344054" />
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="1" Margin="14,0" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ListBox x:Name="MessagesList"
+                             Grid.Row="0"
+                             ItemsSource="{Binding Messages}"
+                             BorderThickness="0"
+                             Padding="14"
+                             Background="White"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E4E7EC"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="12"
+                                        Margin="0,0,0,10"
+                                        Background="#FBFCFE"
+                                        MaxWidth="{Binding ActualWidth, ElementName=MessagesList}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Role}" FontWeight="SemiBold" Foreground="#175CD3" />
+                                        <TextBlock Text="{Binding Content}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="{Binding DataContext.DesktopFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                   Margin="0,6,0,0"
+                                                   Foreground="#1F2933" />
+                                        <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,10,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#EAF2FF"
+                                                            CornerRadius="12"
+                                                            Padding="8,4"
+                                                            Margin="0,0,6,6"
+                                                            ToolTip="{Binding Path}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Kind}"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#175CD3"
+                                                                       Margin="0,0,6,0" />
+                                                            <TextBlock Text="{Binding FileName}"
+                                                                       Foreground="#175CD3"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxWidth="320" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Grid Grid.Row="1" Margin="14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0"
+                                Background="#F8FAFC"
+                                BorderBrush="#E4E7EC"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="8"
+                                Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="첨부" Width="72" Height="30" Click="AttachFiles_OnClick" />
+                                <ItemsControl Grid.Column="1" ItemsSource="{Binding Attachments}" Margin="10,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#EAF2FF" CornerRadius="12" Padding="8,4" Margin="0,0,6,0">
+                                                <TextBlock Text="{Binding}" Foreground="#175CD3" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Grid.Column="2" Content="첨부 지우기" Width="96" Height="30" Click="ClearAttachments_OnClick" />
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="96" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="InputBox"
+                                     MinHeight="48"
+                                     MaxHeight="120"
+                                     AcceptsReturn="True"
+                                     FontSize="{Binding DesktopFontSize}"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     PreviewKeyDown="InputBox_OnPreviewKeyDown"
+                                     Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1" Content="전송" Margin="10,0,0,0" FontWeight="SemiBold" Click="Send_OnClick" />
+                        </Grid>
                     </Grid>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
 
-        <Border Grid.Column="2" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8" Padding="14">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="작업 로그" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
-                <ListBox Grid.Row="1" ItemsSource="{Binding Logs}" BorderThickness="0" Background="White" />
-            </Grid>
-        </Border>
+            <Border Grid.Column="2" Background="White" BorderBrush="#D7DCE2" BorderThickness="1" CornerRadius="8" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="작업 로그" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Logs}" BorderThickness="0" Background="White" FontSize="{Binding DesktopFontSize}" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

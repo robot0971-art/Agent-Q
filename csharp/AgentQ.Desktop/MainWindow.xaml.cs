@@ -158,6 +158,35 @@ public partial class MainWindow : Window
         await SendCurrentMessageAsync();
     }
 
+    private void IncreaseFontSize_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.DesktopFontSize += 1;
+        _viewModel.StatusText = $"글자 크기: {_viewModel.DesktopFontSize:0}";
+    }
+
+    private void DecreaseFontSize_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.DesktopFontSize -= 1;
+        _viewModel.StatusText = $"글자 크기: {_viewModel.DesktopFontSize:0}";
+    }
+
+    private void ResetFontSize_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.DesktopFontSize = 14;
+        _viewModel.StatusText = "글자 크기를 기본값으로 되돌렸습니다.";
+    }
+
+    private void ShowStatus_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.StatusText =
+            $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, 글자 크기: {_viewModel.DesktopFontSize:0}";
+    }
+
+    private void Exit_OnClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
     private async Task SendCurrentMessageAsync()
     {
         var prompt = _viewModel.InputText.Trim();

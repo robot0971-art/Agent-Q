@@ -92,6 +92,11 @@ public class ProviderConfiguration
     public uint MaxTokens { get; set; } = 4096;
 
     /// <summary>
+    /// 데스크톱 UI 글자 크기
+    /// </summary>
+    public double DesktopFontSize { get; set; } = 14;
+
+    /// <summary>
     /// 단일 실행용 프롬프트
     /// </summary>
     public string Prompt { get; set; } = string.Empty;

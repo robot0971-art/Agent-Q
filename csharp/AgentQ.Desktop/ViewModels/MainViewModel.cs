@@ -16,6 +16,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _statusText = "준비됨";
     private int _timeoutSeconds;
     private uint _maxTokens = 4096;
+    private double _desktopFontSize = 14;
     private bool _isBusy;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -86,6 +87,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _isBusy, value);
     }
 
+    public double DesktopFontSize
+    {
+        get => _desktopFontSize;
+        set => SetField(ref _desktopFontSize, Math.Clamp(value, 11, 22));
+    }
+
     public ProviderConfiguration ToConfiguration()
     {
         return new ProviderConfiguration
@@ -95,7 +102,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             BaseUrl = BaseUrl,
             ApiKey = ApiKey,
             TimeoutSeconds = TimeoutSeconds,
-            MaxTokens = MaxTokens
+            MaxTokens = MaxTokens,
+            DesktopFontSize = DesktopFontSize
         };
     }
 
@@ -107,6 +115,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApiKey = config.ApiKey;
         TimeoutSeconds = config.TimeoutSeconds;
         MaxTokens = config.MaxTokens == 0 ? 4096 : config.MaxTokens;
+        DesktopFontSize = config.DesktopFontSize <= 0 ? 14 : config.DesktopFontSize;
     }
 
     public void AddLog(string message)
