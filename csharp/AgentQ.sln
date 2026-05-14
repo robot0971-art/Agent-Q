@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Providers.OpenAi", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Tests", "AgentQ.Tests\AgentQ.Tests.csproj", "{73A7F83A-F784-4B2D-B83C-E30A86F12D37}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Desktop", "AgentQ.Desktop\AgentQ.Desktop.csproj", "{604EEEBD-E63A-416D-9827-973008FBF789}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,9 +127,20 @@ Global
 		{73A7F83A-F784-4B2D-B83C-E30A86F12D37}.Release|x64.Build.0 = Release|Any CPU
 		{73A7F83A-F784-4B2D-B83C-E30A86F12D37}.Release|x86.ActiveCfg = Release|Any CPU
 		{73A7F83A-F784-4B2D-B83C-E30A86F12D37}.Release|x86.Build.0 = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|x64.Build.0 = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Debug|x86.Build.0 = Debug|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|Any CPU.Build.0 = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x64.ActiveCfg = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x64.Build.0 = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x86.ActiveCfg = Release|Any CPU
+		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
-

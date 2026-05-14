@@ -93,6 +93,227 @@ public sealed class OpenAiProviderTests
         Assert.Equal("{\"content\":\"hello\"}", messages[3].GetProperty("content").GetString());
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_PreservesBaseUrlPathWithoutTrailingSlash()
+    {
+        string? capturedPath = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_path_check",
+              "model": "kimi-k2.6",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            capturedPath = request.Url?.AbsolutePath;
+            return new StaticResponse(responseBody, "application/json");
+        }, "v1");
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl.TrimEnd('/'), "test-key", "kimi-k2.6");
+
+        await provider.GenerateResponseAsync(CreateContext(), []);
+
+        Assert.Equal("/v1/chat/completions", capturedPath);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_ExpandsMultipleToolResultsIntoToolMessages()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_multi_tool_result_check",
+              "model": "kimi-k2.6",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "done"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "kimi-k2.6");
+        var context = new ChatContext
+        {
+            Model = "kimi-k2.6",
+            Messages =
+            [
+                ChatMessage.UserText("Run commands."),
+                new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content =
+                    [
+                        ChatContent.CreateToolUse("bash:0", "bash", "{\"command\":\"pwd\"}"),
+                        ChatContent.CreateToolUse("bash:1", "bash", "{\"command\":\"ls\"}")
+                    ]
+                },
+                new ChatMessage
+                {
+                    Role = ChatRole.User,
+                    Content =
+                    [
+                        ChatContent.CreateToolResult("bash:0", "{\"stdout\":\"/tmp\"}", false),
+                        ChatContent.CreateToolResult("bash:1", "{\"stdout\":\"README.md\"}", false)
+                    ]
+                }
+            ]
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("bash"));
+
+        Assert.NotNull(capturedRequest);
+        var messages = capturedRequest!.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+
+        Assert.Equal(4, messages.Length);
+        Assert.Equal("assistant", messages[1].GetProperty("role").GetString());
+        Assert.Equal("bash:0", messages[1].GetProperty("tool_calls")[0].GetProperty("id").GetString());
+        Assert.Equal("bash:1", messages[1].GetProperty("tool_calls")[1].GetProperty("id").GetString());
+        Assert.Equal("tool", messages[2].GetProperty("role").GetString());
+        Assert.Equal("bash:0", messages[2].GetProperty("tool_call_id").GetString());
+        Assert.Equal("{\"stdout\":\"/tmp\"}", messages[2].GetProperty("content").GetString());
+        Assert.Equal("tool", messages[3].GetProperty("role").GetString());
+        Assert.Equal("bash:1", messages[3].GetProperty("tool_call_id").GetString());
+        Assert.Equal("{\"stdout\":\"README.md\"}", messages[3].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_AddsReasoningContentPlaceholderForOpenCodeGoKimiToolCalls()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_reasoning_placeholder_check",
+              "model": "kimi-k2.6",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "done"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "kimi-k2.6", "opencode-go");
+        var context = new ChatContext
+        {
+            Model = "kimi-k2.6",
+            Messages =
+            [
+                ChatMessage.UserText("Run commands."),
+                new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content =
+                    [
+                        ChatContent.CreateToolUse("bash:0", "bash", "{\"command\":\"pwd\"}")
+                    ]
+                },
+                new ChatMessage
+                {
+                    Role = ChatRole.User,
+                    Content =
+                    [
+                        ChatContent.CreateToolResult("bash:0", "{\"stdout\":\"/tmp\"}", false)
+                    ]
+                }
+            ]
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("bash"));
+
+        Assert.NotNull(capturedRequest);
+        var messages = capturedRequest!.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal("assistant", messages[1].GetProperty("role").GetString());
+        Assert.Equal(" ", messages[1].GetProperty("reasoning_content").GetString());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_DisablesThinkingForOpenCodeGoKimiModels()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_thinking_check",
+              "model": "kimi-k2.6",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "kimi-k2.6", "opencode-go");
+        var context = CreateContext();
+        context.Model = "kimi-k2.6";
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("bash"));
+
+        Assert.NotNull(capturedRequest);
+        var thinking = capturedRequest!.RootElement.GetProperty("thinking");
+        Assert.Equal("disabled", thinking.GetProperty("type").GetString());
+    }
+
+
     /// <summary>
     /// GenerateResponseAsync가 도구 호출과 사용량을 올바르게 파싱하는지 검증합니다.
     /// </summary>
@@ -322,9 +543,9 @@ public sealed class OpenAiProviderTests
         /// <summary>
         /// 지정된 응답 팩토리로 테스트 서버를 시작합니다.
         /// </summary>
-        public static Task<OpenAiTestServer> StartAsync(Func<HttpListenerRequest, StaticResponse> responseFactory)
+        public static Task<OpenAiTestServer> StartAsync(Func<HttpListenerRequest, StaticResponse> responseFactory, string? pathPrefix = null)
         {
-            var prefix = BuildListenerPrefix();
+            var prefix = BuildListenerPrefix(pathPrefix);
             return Task.FromResult(new OpenAiTestServer(prefix, responseFactory));
         }
 
@@ -385,14 +606,17 @@ public sealed class OpenAiProviderTests
         /// <summary>
         /// 사용 가능한 포트로 리스너 접두사를 생성합니다.
         /// </summary>
-        private static string BuildListenerPrefix()
+        private static string BuildListenerPrefix(string? pathPrefix = null)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
 
-            return $"http://127.0.0.1:{port}/";
+            var normalizedPath = string.IsNullOrWhiteSpace(pathPrefix)
+                ? string.Empty
+                : $"{pathPrefix.Trim('/')}/";
+            return $"http://127.0.0.1:{port}/{normalizedPath}";
         }
     }
 

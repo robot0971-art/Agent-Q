@@ -84,6 +84,8 @@ public enum ContentType
 {
     /// <summary>텍스트</summary>
     Text,
+    /// <summary>이미지</summary>
+    Image,
     /// <summary>도구 사용</summary>
     ToolUse,
     /// <summary>도구 결과</summary>
@@ -105,6 +107,18 @@ public class ChatContent
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Text { get; set; }
+
+    /// <summary>
+    /// 미디어 MIME 타입 (Image 타입일 때)
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MediaType { get; set; }
+
+    /// <summary>
+    /// Base64 인코딩된 미디어 데이터 (Image 타입일 때)
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Base64Data { get; set; }
 
     /// <summary>
     /// 도구 ID (ToolUse 타입일 때)
@@ -149,6 +163,12 @@ public class ChatContent
     /// <returns>텍스트 콘텐츠</returns>
     public static ChatContent CreateText(string text) =>
         new() { Type = ContentType.Text, Text = text };
+
+    /// <summary>
+    /// 이미지 콘텐츠 생성
+    /// </summary>
+    public static ChatContent CreateImage(string mediaType, string base64Data) =>
+        new() { Type = ContentType.Image, MediaType = mediaType, Base64Data = base64Data };
 
     /// <summary>
     /// 도구 사용 콘텐츠 생성

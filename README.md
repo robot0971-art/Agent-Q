@@ -64,6 +64,9 @@ csharp/
 - `AGENTQ_BASE_URL`
 - `AGENTQ_TIMEOUT`
 - `AGENTQ_WORKSPACE_ROOT`
+- `OPENCODE_GO_API_KEY`
+- `OPENCODE_GO_BASE_URL`
+- `OPENCODE_GO_MODEL`
 
 ## Running
 
@@ -71,6 +74,12 @@ Start the CLI:
 
 ```powershell
 dotnet run --project .\csharp\AgentQ.Cli
+```
+
+Start the Windows desktop app:
+
+```powershell
+dotnet run --project .\csharp\AgentQ.Desktop
 ```
 
 Install it as a .NET global tool:
@@ -213,7 +222,8 @@ Useful slash commands:
 - `/model <name>`
 - `/api-key <key>`
 - `/base-url <url>`
-- `/timeout <seconds>`
+- `/timeout <seconds>` (`0` disables the provider request timeout)
+- `/max-tokens <count>` (`8192` or higher is useful for long reviews)
 - `/config save`
 - `/config show`
 - `/config path`
@@ -276,6 +286,32 @@ Notes:
 - The browser console URL is not the API endpoint. Use the `dashscope.../compatible-mode/v1` base URL from the official docs.
 - The OpenAI-compatible provider is now covered by local tests that verify the outgoing `chat/completions` request shape, including `Authorization`, `messages`, `tools`, `tool_calls`, `tool_call_id`, and `stream=true` handling.
 - Third-party compatibility should still be validated against your target model and region because provider-side behavior can differ even when the request contract matches.
+
+## OpenCode Go
+
+OpenCode Go can be used through AgentQ when you have an API key for one of the OpenAI-compatible Go models.
+
+PowerShell:
+
+```powershell
+$env:OPENCODE_GO_MODEL="kimi-k2.6"
+$env:OPENCODE_GO_API_KEY="<your_opencode_go_api_key>"
+
+agentq --prompt "hello" --json
+```
+
+Equivalent generic configuration:
+
+```powershell
+$env:AGENTQ_PROVIDER="opencode-go"
+$env:AGENTQ_BASE_URL="https://opencode.ai/zen/go/v1"
+$env:AGENTQ_MODEL="kimi-k2.6"
+$env:AGENTQ_API_KEY="<your_opencode_go_api_key>"
+```
+
+`opencode-go` uses the same OpenAI-compatible Chat Completions request path as the built-in `openai` provider. When `OPENCODE_GO_API_KEY` or `OPENCODE_GO_MODEL` is set, AgentQ defaults the base URL to `https://opencode.ai/zen/go/v1`.
+
+Model IDs currently documented by OpenCode Go for the Chat Completions endpoint include `glm-5.1`, `glm-5`, `kimi-k2.5`, `kimi-k2.6`, `deepseek-v4-pro`, `deepseek-v4-flash`, `mimo-v2.5`, and `mimo-v2.5-pro`. MiniMax Go models use an Anthropic-style `/messages` endpoint and are not covered by this OpenAI-compatible provider alias yet.
 
 ## Validation Snapshot
 

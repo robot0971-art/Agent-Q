@@ -59,6 +59,8 @@ public class ProviderFactory
 /// </summary>
 public class ProviderConfiguration
 {
+    public const string OpenCodeGoDefaultBaseUrl = "https://opencode.ai/zen/go/v1";
+
     /// <summary>
     /// 제공자 이름
     /// </summary>
@@ -83,6 +85,11 @@ public class ProviderConfiguration
     /// 타임아웃 (초)
     /// </summary>
     public int TimeoutSeconds { get; set; } = 60; // Default timeout
+
+    /// <summary>
+    /// 최대 출력 토큰 수
+    /// </summary>
+    public uint MaxTokens { get; set; } = 4096;
 
     /// <summary>
     /// 단일 실행용 프롬프트
@@ -125,18 +132,36 @@ public class ProviderConfiguration
     /// <returns>제공자 설정</returns>
     public static ProviderConfiguration FromEnvironment()
     {
+        var provider = Environment.GetEnvironmentVariable("AGENTQ_PROVIDER") ??
+                       Environment.GetEnvironmentVariable("CLAW_PROVIDER");
+        var opencodeGoApiKey = Environment.GetEnvironmentVariable("OPENCODE_GO_API_KEY");
+        var opencodeGoBaseUrl = Environment.GetEnvironmentVariable("OPENCODE_GO_BASE_URL");
+        var opencodeGoModel = Environment.GetEnvironmentVariable("OPENCODE_GO_MODEL");
+        var hasOpenCodeGoConfig = !string.IsNullOrWhiteSpace(opencodeGoApiKey) ||
+                                  !string.IsNullOrWhiteSpace(opencodeGoBaseUrl) ||
+                                  !string.IsNullOrWhiteSpace(opencodeGoModel);
+        var resolvedProvider = provider ?? (hasOpenCodeGoConfig ? "opencode-go" : string.Empty);
+        var defaultBaseUrl = resolvedProvider.Equals("opencode-go", StringComparison.OrdinalIgnoreCase)
+            ? OpenCodeGoDefaultBaseUrl
+            : string.Empty;
+
         return new ProviderConfiguration
         {
-            Provider = Environment.GetEnvironmentVariable("AGENTQ_PROVIDER") ?? 
-                       Environment.GetEnvironmentVariable("CLAW_PROVIDER") ?? "anthropic",
+            Provider = resolvedProvider,
             Model = Environment.GetEnvironmentVariable("AGENTQ_MODEL") ?? 
-                    Environment.GetEnvironmentVariable("CLAW_MODEL") ?? string.Empty,
+                    Environment.GetEnvironmentVariable("CLAW_MODEL") ??
+                    opencodeGoModel ?? string.Empty,
             BaseUrl = Environment.GetEnvironmentVariable("AGENTQ_BASE_URL") ?? 
-                      Environment.GetEnvironmentVariable("CLAW_BASE_URL") ?? "https://api.anthropic.com",
+                      Environment.GetEnvironmentVariable("CLAW_BASE_URL") ??
+                      opencodeGoBaseUrl ?? defaultBaseUrl,
             ApiKey = Environment.GetEnvironmentVariable("AGENTQ_API_KEY") ??
                      Environment.GetEnvironmentVariable("CLAW_API_KEY") ??
+                     opencodeGoApiKey ??
                      Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? string.Empty,
-            TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("AGENTQ_TIMEOUT"), out var t) ? t : 60
+            TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("AGENTQ_TIMEOUT"), out var t) ? t : 60,
+            MaxTokens = uint.TryParse(Environment.GetEnvironmentVariable("AGENTQ_MAX_TOKENS"), out var maxTokens) && maxTokens > 0
+                ? maxTokens
+                : 4096
         };
     }
 
@@ -167,6 +192,9 @@ public class ProviderConfiguration
                     break;
                 case "--timeout":
                     if (i + 1 < args.Length && int.TryParse(args[++i], out var t)) config.TimeoutSeconds = t;
+                    break;
+                case "--max-tokens":
+                    if (i + 1 < args.Length && uint.TryParse(args[++i], out var maxTokens) && maxTokens > 0) config.MaxTokens = maxTokens;
                     break;
                 case "--prompt":
                     if (i + 1 < args.Length) config.Prompt = args[++i];
@@ -204,6 +232,7 @@ public class ProviderConfiguration
         if (string.IsNullOrEmpty(config.BaseUrl)) config.BaseUrl = envConfig.BaseUrl;
         if (string.IsNullOrEmpty(config.ApiKey)) config.ApiKey = envConfig.ApiKey;
         if (config.TimeoutSeconds == 60 && envConfig.TimeoutSeconds != 60) config.TimeoutSeconds = envConfig.TimeoutSeconds;
+        if (config.MaxTokens == 4096 && envConfig.MaxTokens != 4096) config.MaxTokens = envConfig.MaxTokens;
 
         return config;
     }

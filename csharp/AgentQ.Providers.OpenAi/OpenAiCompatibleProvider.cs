@@ -15,11 +15,12 @@ public class OpenAiCompatibleProvider : ILlmProvider
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
+    private readonly string _name;
 
     /// <summary>
     /// 제공자 이름
     /// </summary>
-    public string Name => "openai";
+    public string Name => _name;
 
     /// <summary>
     /// 기본 모델
@@ -32,10 +33,11 @@ public class OpenAiCompatibleProvider : ILlmProvider
     /// <param name="baseUrl">기본 URL</param>
     /// <param name="apiKey">API 키</param>
     /// <param name="model">모델 이름</param>
-    public OpenAiCompatibleProvider(string baseUrl, string apiKey, string model = "gpt-4o")
+    public OpenAiCompatibleProvider(string baseUrl, string apiKey, string model = "gpt-4o", string name = "openai")
     {
         _model = model;
-        _httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _name = name;
+        _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
         if (!string.IsNullOrEmpty(apiKey))
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -47,10 +49,11 @@ public class OpenAiCompatibleProvider : ILlmProvider
     /// </summary>
     /// <param name="httpClient">사용할 HTTP 클라이언트</param>
     /// <param name="model">모델 이름</param>
-    public OpenAiCompatibleProvider(HttpClient httpClient, string model = "gpt-4o")
+    public OpenAiCompatibleProvider(HttpClient httpClient, string model = "gpt-4o", string name = "openai")
     {
         _httpClient = httpClient;
         _model = model;
+        _name = name;
     }
 
     /// <summary>
@@ -191,6 +194,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
     private OpenAiChatRequest CreateChatRequest(ChatContext context, IEnumerable<AgentQ.Core.Models.ToolDefinition> tools, bool stream)
     {
         var messages = new List<OpenAiMessage>();
+        var effectiveModel = string.IsNullOrEmpty(context.Model) ? DefaultModel : context.Model;
 
         if (!string.IsNullOrEmpty(context.SystemPrompt))
         {
@@ -199,6 +203,21 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
         foreach (var msg in context.Messages)
         {
+            if (msg.Content.Any(c => c.Type == ContentType.ToolResult))
+            {
+                foreach (var toolResult in msg.Content.Where(c => c.Type == ContentType.ToolResult))
+                {
+                    messages.Add(new OpenAiMessage
+                    {
+                        Role = "tool",
+                        ToolCallId = toolResult.ToolUseId,
+                        Content = toolResult.ToolResult
+                    });
+                }
+
+                continue;
+            }
+
             var role = msg.Role switch
             {
                 ChatRole.User => "user",
@@ -210,7 +229,14 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
             var openAiMsg = new OpenAiMessage { Role = role };
 
-            if (msg.Content.Count == 1 && msg.Content[0].Type == ContentType.Text)
+            if (msg.Content.Any(c => c.Type == ContentType.Image))
+            {
+                openAiMsg.Content = msg.Content
+                    .Where(c => c.Type is ContentType.Text or ContentType.Image)
+                    .Select(ToOpenAiContentPart)
+                    .ToList();
+            }
+            else if (msg.Content.Count == 1 && msg.Content[0].Type == ContentType.Text)
             {
                 openAiMsg.Content = msg.Content[0].Text;
             }
@@ -231,18 +257,16 @@ public class OpenAiCompatibleProvider : ILlmProvider
                     }).ToList();
                 }
 
+                if (ShouldApplyKimiToolCallCompatibility(effectiveModel))
+                {
+                    openAiMsg.ReasoningContent = " ";
+                }
+
                 var textContent = msg.Content.Where(c => c.Type == ContentType.Text).Select(c => c.Text).FirstOrDefault();
                 if (!string.IsNullOrEmpty(textContent))
                 {
                     openAiMsg.Content = textContent;
                 }
-            }
-            else if (msg.Content.Any(c => c.Type == ContentType.ToolResult))
-            {
-                var toolResult = msg.Content.First(c => c.Type == ContentType.ToolResult);
-                openAiMsg.Role = "tool";
-                openAiMsg.ToolCallId = toolResult.ToolUseId;
-                openAiMsg.Content = toolResult.ToolResult;
             }
             else
             {
@@ -254,11 +278,16 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
         var request = new OpenAiChatRequest
         {
-            Model = string.IsNullOrEmpty(context.Model) ? DefaultModel : context.Model,
+            Model = effectiveModel,
             Messages = messages,
             MaxTokens = context.MaxTokens == 0 ? 1024 : (int)context.MaxTokens,
             Stream = stream
         };
+
+        if (ShouldDisableThinking(request.Model))
+        {
+            request.Thinking = new OpenAiThinkingOptions { Type = "disabled" };
+        }
 
         var toolList = tools.ToList();
         if (toolList.Any())
@@ -303,9 +332,10 @@ public class OpenAiCompatibleProvider : ILlmProvider
         {
             var choice = response.Choices[0];
 
-            if (!string.IsNullOrEmpty(choice.Message?.Content))
+            var content = ExtractMessageText(choice.Message?.Content);
+            if (!string.IsNullOrEmpty(content))
             {
-                chatResponse.Content.Add(ChatContent.CreateText(choice.Message.Content));
+                chatResponse.Content.Add(ChatContent.CreateText(content));
             }
 
             if (choice.Message?.ToolCalls != null)
@@ -337,6 +367,46 @@ public class OpenAiCompatibleProvider : ILlmProvider
         };
     }
 
+    private static OpenAiContentPart ToOpenAiContentPart(ChatContent content)
+    {
+        if (content.Type == ContentType.Image)
+        {
+            return new OpenAiContentPart
+            {
+                Type = "image_url",
+                ImageUrl = new OpenAiImageUrl
+                {
+                    Url = $"data:{content.MediaType};base64,{content.Base64Data}"
+                }
+            };
+        }
+
+        return new OpenAiContentPart
+        {
+            Type = "text",
+            Text = content.Text ?? string.Empty
+        };
+    }
+
+    private static string? ExtractMessageText(object? content)
+    {
+        return content switch
+        {
+            null => null,
+            string text => text,
+            JsonElement json when json.ValueKind == JsonValueKind.String => json.GetString(),
+            JsonElement json when json.ValueKind == JsonValueKind.Array => string.Join(
+                "\n",
+                json.EnumerateArray()
+                    .Where(part => part.TryGetProperty("type", out var type) &&
+                                   type.GetString() == "text" &&
+                                   part.TryGetProperty("text", out _))
+                    .Select(part => part.GetProperty("text").GetString())
+                    .Where(text => !string.IsNullOrWhiteSpace(text))),
+            _ => content.ToString()
+        };
+    }
+
     /// <summary>
     /// JSON 옵션 가져오기
     /// </summary>
@@ -348,6 +418,17 @@ public class OpenAiCompatibleProvider : ILlmProvider
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
     }
+
+    private static string NormalizeBaseUrl(string baseUrl) =>
+        baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : $"{baseUrl}/";
+
+    private bool ShouldDisableThinking(string model) =>
+        _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
+        model.StartsWith("kimi-", StringComparison.OrdinalIgnoreCase);
+
+    private bool ShouldApplyKimiToolCallCompatibility(string model) =>
+        _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
+        model.StartsWith("kimi-", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsTerminalFinishReason(string? finishReason)
     {
@@ -394,6 +475,15 @@ public class OpenAiChatRequest
 
     [JsonPropertyName("stream")]
     public bool Stream { get; set; }
+
+    [JsonPropertyName("thinking")]
+    public OpenAiThinkingOptions? Thinking { get; set; }
+}
+
+public class OpenAiThinkingOptions
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -405,13 +495,34 @@ public class OpenAiMessage
     public string Role { get; set; } = string.Empty;
 
     [JsonPropertyName("content")]
-    public string? Content { get; set; }
+    public object? Content { get; set; }
 
     [JsonPropertyName("tool_call_id")]
     public string? ToolCallId { get; set; }
 
     [JsonPropertyName("tool_calls")]
     public List<OpenAiToolCall>? ToolCalls { get; set; }
+
+    [JsonPropertyName("reasoning_content")]
+    public string? ReasoningContent { get; set; }
+}
+
+public class OpenAiContentPart
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("image_url")]
+    public OpenAiImageUrl? ImageUrl { get; set; }
+}
+
+public class OpenAiImageUrl
+{
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
 }
 
 /// <summary>

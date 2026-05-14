@@ -37,7 +37,28 @@ public static class ConfigStore
         }
 
         var json = JsonSerializer.Serialize(config, Options);
-        await File.WriteAllTextAsync(ConfigPath, json);
+        var tempPath = Path.Combine(ConfigDirectory, $"config.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, json);
+
+            if (File.Exists(ConfigPath))
+            {
+                File.Replace(tempPath, ConfigPath, destinationBackupFileName: null);
+            }
+            else
+            {
+                File.Move(tempPath, ConfigPath);
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
     }
 
     /// <summary>

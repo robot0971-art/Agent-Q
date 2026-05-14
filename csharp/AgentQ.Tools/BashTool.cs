@@ -19,8 +19,16 @@ public class BashTool : ITool
         (new Regex(@"(^|\s)rm\s+-rf\s+(/|\*)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive recursive delete"),
         (new Regex(@"(^|\s)(shutdown|reboot)(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "system shutdown/reboot"),
         (new Regex(@"(^|\s)format(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk format"),
-        (new Regex(@"(^|\s)del\s+(/s|/q|/f)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive delete"),
-        (new Regex(@"Remove-Item\b.*-Recurse\b.*-Force\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive forced delete")
+        (new Regex(@"(^|\s)(del|erase)\b(?=.*(?:/s|-recurse\b))(?=.*(?:/q|/f|-force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive delete"),
+        (new Regex(@"(^|\s)(rmdir|rd)\b(?=.*(?:/s|-recurse\b))(?=.*(?:/q|-force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive directory delete"),
+        (new Regex(@"\b(remove-item|ri|rm|del|erase)\b(?=.*(?:-r\b|-recurse\b))(?=.*(?:-fo\b|-force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive forced delete"),
+        (new Regex(@"\b(encodedcommand|enc)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "encoded command execution"),
+        (new Regex(@"(^|\s)diskpart(\.exe)?(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk partition management"),
+        (new Regex(@"(^|\s)fsutil(\.exe)?\s+file\s+setzerodata\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "file zeroing"),
+        (new Regex(@"(^|\s)cipher(\.exe)?\s+/w\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk wipe"),
+        (new Regex(@"(^|\s)net(\.exe)?\s+user\b.*\s+/delete\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "user account deletion"),
+        (new Regex(@"(^|\s)takeown(\.exe)?\b.*\b(icacls|del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "ownership takeover followed by destructive command"),
+        (new Regex(@"(^|\s)icacls(\.exe)?\b.*\s/grant\b.*\b(del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "permission change followed by destructive command")
     ];
 
     /// <summary>

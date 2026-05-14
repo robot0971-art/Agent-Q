@@ -76,6 +76,66 @@ public sealed class CliToolLoopRunnerTests
         Assert.Equal("Checking plugin. Final: hello from cli", string.Concat(outputs));
     }
 
+    [Fact]
+    public async Task ExecuteConversationTurnAsync_ProvidesDefaultSystemPrompt()
+    {
+        ChatContext? capturedContext = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            capturedContext = context;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "ok" },
+                new StreamChunk { IsComplete = true });
+        });
+
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("check context");
+
+        var runner = new CliToolLoopRunner();
+
+        await runner.ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            new ToolRegistry(),
+            new AlwaysAllowPermissionEnforcer());
+
+        Assert.NotNull(capturedContext);
+        Assert.Contains("Windows", capturedContext!.SystemPrompt);
+        Assert.Contains("Korean", capturedContext.SystemPrompt);
+        Assert.Contains("PowerShell", capturedContext.SystemPrompt);
+        Assert.Contains("uname", capturedContext.SystemPrompt);
+    }
+
+    [Fact]
+    public async Task ExecuteConversationTurnAsync_UsesConfiguredMaxTokens()
+    {
+        ChatContext? capturedContext = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            capturedContext = context;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "ok" },
+                new StreamChunk { IsComplete = true });
+        });
+
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("check max tokens");
+
+        var runner = new CliToolLoopRunner();
+
+        await runner.ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            new ToolRegistry(),
+            new AlwaysAllowPermissionEnforcer(),
+            maxTokens: 8192);
+
+        Assert.NotNull(capturedContext);
+        Assert.Equal(8192u, capturedContext!.MaxTokens);
+    }
+
     /// <summary>
     /// ExecuteConversationTurnAsync이 권한 거부된 도구 결과를 기록하는지 검증합니다.
     /// </summary>

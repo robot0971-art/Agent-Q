@@ -106,6 +106,21 @@ public sealed class AutomationSupportTests
     }
 
     [Fact]
+    public void SerializeJson_DoesNotEscapeKoreanText()
+    {
+        var result = new NonInteractiveRunResult
+        {
+            FinalText = "안녕하세요",
+            MessageCount = 2
+        };
+
+        var json = AutomationSupport.SerializeJson(result);
+
+        Assert.Contains("안녕하세요", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\uC548", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ToolExecutionRecord_PreservesRawTextWhenPayloadIsNotJson()
     {
         var record = ToolExecutionRecord.Create("bash", "plain text", isError: true);

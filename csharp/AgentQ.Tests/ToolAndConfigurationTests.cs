@@ -92,8 +92,38 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("https://example.test", loaded.BaseUrl);
         Assert.Equal("secret", loaded.ApiKey);
         Assert.Equal(45, loaded.TimeoutSeconds);
+        Assert.Equal(4096u, loaded.MaxTokens);
         Assert.True(ConfigStore.Exists);
         Assert.EndsWith(Path.Combine(".agentq", "config.json"), ConfigStore.PathValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConfigStore_SaveAsync_ReplacesExistingFileWithoutLeavingTempFiles()
+    {
+        Directory.CreateDirectory(_configDirectory);
+        await File.WriteAllTextAsync(_configPath, "{\"provider\":\"old\"}");
+
+        var config = new ProviderConfiguration
+        {
+            Provider = "opencode-go",
+            Model = "kimi-k2.6",
+            BaseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl,
+            ApiKey = "secret",
+            TimeoutSeconds = 0,
+            MaxTokens = 8192
+        };
+
+        await ConfigStore.SaveAsync(config);
+
+        var loaded = await ConfigStore.LoadAsync();
+        var tempFiles = Directory.GetFiles(_configDirectory, "config.*.tmp");
+
+        Assert.NotNull(loaded);
+        Assert.Equal("opencode-go", loaded!.Provider);
+        Assert.Equal("kimi-k2.6", loaded.Model);
+        Assert.Equal(0, loaded.TimeoutSeconds);
+        Assert.Equal(8192u, loaded.MaxTokens);
+        Assert.Empty(tempFiles);
     }
 
     [Fact]
@@ -140,9 +170,30 @@ public sealed class ToolAndConfigurationTests : IDisposable
         var result = (IEnumerable<string>?)method!.Invoke(null, ["bash", "\"{\\\"command\\\":\\\"echo hello\\\",\\\"timeout\\\":5000}\""]);
         var summaryLines = Assert.IsAssignableFrom<IEnumerable<string>>(result).ToArray();
 
-        Assert.Contains(summaryLines, line => line.Contains("Command:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summaryLines, line => line.Contains("명령:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(summaryLines, line => line.Contains("echo hello", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(summaryLines, line => line.Contains("5000", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ConsolePermissionEnforcer_ClearSessionAllowedTools_RemovesTrackedPermissions()
+    {
+        var enforcer = new ConsolePermissionEnforcer();
+        var field = typeof(ConsolePermissionEnforcer).GetField(
+            "_sessionAllowedTools",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        Assert.NotNull(field);
+
+        var allowedTools = Assert.IsType<HashSet<string>>(field!.GetValue(enforcer));
+        allowedTools.Add("bash");
+        allowedTools.Add("read_file");
+
+        Assert.Equal(["bash", "read_file"], enforcer.SessionAllowedTools.ToArray());
+
+        enforcer.ClearSessionAllowedTools();
+
+        Assert.Empty(enforcer.SessionAllowedTools);
     }
 
     /// <summary>
@@ -325,13 +376,36 @@ public sealed class ToolAndConfigurationTests : IDisposable
     public async Task BashTool_BlocksDangerousCommands()
     {
         var tool = new BashTool();
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        var dangerousCommands = new[]
         {
-            ["command"] = "rm -rf /"
-        });
+            "rm -rf /",
+            "rmdir /s /q C:\\temp\\danger",
+            "rd /s /q C:\\temp\\danger",
+            "erase /q /s C:\\temp\\danger\\*",
+            "del /s /q /f C:\\temp\\danger\\*",
+            "powershell -EncodedCommand SQBFAFgA",
+            "powershell -enc SQBFAFgA",
+            "diskpart /s wipe.txt",
+            "fsutil file setzerodata offset=0 length=1024 C:\\temp\\file.bin",
+            "cipher /w:C:\\temp",
+            "net user demo /delete",
+            "Remove-Item C:\\temp -Recurse -Force",
+            "ri C:\\temp -r -fo",
+            "del C:\\temp -Recurse -Force",
+            "takeown /f C:\\temp && rmdir /s /q C:\\temp",
+            "icacls C:\\temp /grant Everyone:F && del /s /q C:\\temp\\*"
+        };
 
-        Assert.True(result.IsError);
-        Assert.Contains("blocked by safety policy", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        foreach (var command in dangerousCommands)
+        {
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["command"] = command
+            });
+
+            Assert.True(result.IsError, $"Expected command to be blocked: {command}");
+            Assert.Contains("blocked by safety policy", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     /// <summary>
@@ -531,6 +605,75 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("secret", config.ApiKey);
     }
 
+    [Fact]
+    public void ProviderConfiguration_FromArgs_LeavesProviderEmptyWithoutExplicitConfiguration()
+    {
+        SetEnvironment("AGENTQ_PROVIDER", null);
+        SetEnvironment("AGENTQ_MODEL", null);
+        SetEnvironment("AGENTQ_BASE_URL", null);
+        SetEnvironment("AGENTQ_API_KEY", null);
+        SetEnvironment("CLAW_PROVIDER", null);
+        SetEnvironment("CLAW_MODEL", null);
+        SetEnvironment("CLAW_BASE_URL", null);
+        SetEnvironment("CLAW_API_KEY", null);
+        SetEnvironment("ANTHROPIC_API_KEY", null);
+        SetEnvironment("OPENCODE_GO_MODEL", null);
+        SetEnvironment("OPENCODE_GO_BASE_URL", null);
+        SetEnvironment("OPENCODE_GO_API_KEY", null);
+
+        var config = ProviderConfiguration.FromArgs([]);
+
+        Assert.Equal(string.Empty, config.Provider);
+        Assert.Equal(string.Empty, config.BaseUrl);
+    }
+
+    [Fact]
+    public void ProviderConfiguration_FromArgs_UsesOpenCodeGoEnvironmentFallback()
+    {
+        SetEnvironment("AGENTQ_PROVIDER", null);
+        SetEnvironment("AGENTQ_MODEL", null);
+        SetEnvironment("AGENTQ_BASE_URL", null);
+        SetEnvironment("AGENTQ_API_KEY", null);
+        SetEnvironment("CLAW_PROVIDER", null);
+        SetEnvironment("CLAW_MODEL", null);
+        SetEnvironment("CLAW_BASE_URL", null);
+        SetEnvironment("CLAW_API_KEY", null);
+        SetEnvironment("ANTHROPIC_API_KEY", null);
+        SetEnvironment("OPENCODE_GO_MODEL", "glm-4.6");
+        SetEnvironment("OPENCODE_GO_BASE_URL", "https://opencode-go.example/v1");
+        SetEnvironment("OPENCODE_GO_API_KEY", "opencode-secret");
+
+        var config = ProviderConfiguration.FromArgs([]);
+
+        Assert.Equal("opencode-go", config.Provider);
+        Assert.Equal("glm-4.6", config.Model);
+        Assert.Equal("https://opencode-go.example/v1", config.BaseUrl);
+        Assert.Equal("opencode-secret", config.ApiKey);
+    }
+
+    [Fact]
+    public void ProviderConfiguration_FromArgs_DefaultsOpenCodeGoBaseUrl()
+    {
+        SetEnvironment("AGENTQ_PROVIDER", null);
+        SetEnvironment("AGENTQ_MODEL", null);
+        SetEnvironment("AGENTQ_BASE_URL", null);
+        SetEnvironment("AGENTQ_API_KEY", null);
+        SetEnvironment("CLAW_PROVIDER", null);
+        SetEnvironment("CLAW_MODEL", null);
+        SetEnvironment("CLAW_BASE_URL", null);
+        SetEnvironment("CLAW_API_KEY", null);
+        SetEnvironment("ANTHROPIC_API_KEY", null);
+        SetEnvironment("OPENCODE_GO_MODEL", "kimi-k2.6");
+        SetEnvironment("OPENCODE_GO_API_KEY", "opencode-secret");
+
+        var config = ProviderConfiguration.FromArgs([]);
+
+        Assert.Equal("opencode-go", config.Provider);
+        Assert.Equal("kimi-k2.6", config.Model);
+        Assert.Equal(ProviderConfiguration.OpenCodeGoDefaultBaseUrl, config.BaseUrl);
+        Assert.Equal("opencode-secret", config.ApiKey);
+    }
+
     /// <summary>
     /// ProviderConfiguration.FromArgs가 명시적 인수가 환경 변수보다 우선하는지 검증합니다.
     /// </summary>
@@ -544,6 +687,18 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.Equal("openai", config.Provider);
         Assert.Equal("gpt-5", config.Model);
+    }
+
+    [Fact]
+    public void ProviderConfiguration_FromArgs_ParsesMaxTokens()
+    {
+        SetEnvironment("AGENTQ_MAX_TOKENS", "8192");
+
+        var envConfig = ProviderConfiguration.FromArgs([]);
+        var explicitConfig = ProviderConfiguration.FromArgs(["--max-tokens", "16384"]);
+
+        Assert.Equal(8192u, envConfig.MaxTokens);
+        Assert.Equal(16384u, explicitConfig.MaxTokens);
     }
 
     [Fact]
@@ -612,6 +767,70 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ReadFileTool_RejectsSymlinkTargetsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideFile = outside.CreateFile("secret.txt", "blocked");
+        var linkPath = Path.Combine(workspace.RootPath, "secret-link.txt");
+        if (!TryCreateFileSymbolicLink(linkPath, outsideFile))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new ReadFileTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "secret-link.txt"
+            });
+
+            Assert.True(result.IsError);
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task WriteFileTool_RejectsDirectorySymlinkParentsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        var outsideFile = Path.Combine(outside.RootPath, "created.txt");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new WriteFileTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "link-out/created.txt",
+                ["content"] = "blocked"
+            });
+
+            Assert.True(result.IsError);
+            Assert.False(File.Exists(outsideFile));
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
     /// <summary>
     /// EditFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
     /// </summary>
@@ -636,6 +855,74 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task EditFileTool_RejectsSymlinkTargetsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideFile = outside.CreateFile("outside.txt", "alpha");
+        var linkPath = Path.Combine(workspace.RootPath, "outside-link.txt");
+        if (!TryCreateFileSymbolicLink(linkPath, outsideFile))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new EditFileTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "outside-link.txt",
+                ["old_string"] = "alpha",
+                ["new_string"] = "omega"
+            });
+
+            Assert.True(result.IsError);
+            Assert.Equal("alpha", File.ReadAllText(outsideFile));
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task EditFileTool_RejectsDirectorySymlinkParentsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideFile = outside.CreateFile("editable.txt", "alpha");
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new EditFileTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "link-out/editable.txt",
+                ["old_string"] = "alpha",
+                ["new_string"] = "omega"
+            });
+
+            Assert.True(result.IsError);
+            Assert.Equal("alpha", File.ReadAllText(outsideFile));
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
     /// <summary>
     /// 환경 변수를 설정하고 원래 값을 추적합니다.
     /// </summary>
@@ -647,6 +934,55 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
 
         Environment.SetEnvironmentVariable(name, value);
+    }
+
+    private static bool TryCreateFileSymbolicLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            File.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            DeleteFileSystemLink(linkPath);
+            return false;
+        }
+    }
+
+    private static bool TryCreateDirectorySymbolicLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            DeleteFileSystemLink(linkPath);
+            return false;
+        }
+    }
+
+    private static void DeleteFileSystemLink(string linkPath)
+    {
+        try
+        {
+            if (File.Exists(linkPath))
+            {
+                File.Delete(linkPath);
+            }
+            else if (Directory.Exists(linkPath))
+            {
+                Directory.Delete(linkPath);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
         /// <summary>

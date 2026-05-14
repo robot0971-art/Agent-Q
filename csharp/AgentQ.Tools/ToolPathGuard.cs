@@ -36,6 +36,12 @@ internal static class ToolPathGuard
             return false;
         }
 
+        if (!TryEnsureResolvedPathWithinRoot(workspaceRoot, fullPath, out errorMessage))
+        {
+            errorMessage = $"Path is outside the workspace root after resolving links: {path}";
+            return false;
+        }
+
         return true;
     }
 
@@ -72,6 +78,96 @@ internal static class ToolPathGuard
 
         return candidatePath.Equals(rootPath, comparison) ||
                candidatePath.StartsWith(normalizedRoot, comparison);
+    }
+
+    private static bool TryEnsureResolvedPathWithinRoot(
+        string workspaceRoot,
+        string candidatePath,
+        out string? errorMessage)
+    {
+        errorMessage = null;
+
+        if (!TryResolveExistingPath(workspaceRoot, out var resolvedWorkspaceRoot))
+        {
+            return true;
+        }
+
+        if (File.Exists(candidatePath) &&
+            TryResolveExistingPath(candidatePath, out var resolvedFile) &&
+            !IsWithinRoot(resolvedWorkspaceRoot, resolvedFile))
+        {
+            return false;
+        }
+
+        var directoryToCheck = Directory.Exists(candidatePath)
+            ? candidatePath
+            : Path.GetDirectoryName(candidatePath);
+
+        while (!string.IsNullOrEmpty(directoryToCheck) &&
+               IsWithinRoot(workspaceRoot, directoryToCheck))
+        {
+            if (Directory.Exists(directoryToCheck) &&
+                TryResolveExistingPath(directoryToCheck, out var resolvedDirectory) &&
+                !IsWithinRoot(resolvedWorkspaceRoot, resolvedDirectory))
+            {
+                return false;
+            }
+
+            if (PathsEqual(workspaceRoot, directoryToCheck))
+            {
+                break;
+            }
+
+            directoryToCheck = Path.GetDirectoryName(directoryToCheck);
+        }
+
+        return true;
+    }
+
+    private static bool TryResolveExistingPath(string path, out string resolvedPath)
+    {
+        resolvedPath = Path.GetFullPath(path);
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                var directory = new DirectoryInfo(path);
+                var target = directory.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? directory.FullName);
+                return true;
+            }
+
+            if (File.Exists(path))
+            {
+                var file = new FileInfo(path);
+                var target = file.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? file.FullName);
+                return true;
+            }
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(left),
+            Path.TrimEndingDirectorySeparator(right),
+            comparison);
     }
 
     /// <summary>

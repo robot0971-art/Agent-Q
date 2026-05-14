@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using System.Text.Json;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
@@ -32,6 +31,7 @@ public sealed class CliToolLoopRunner
         ToolRegistry registry,
         IPermissionEnforcer enforcer,
         int? maxSteps = null,
+        uint maxTokens = 4096,
         Action<string>? onTextDelta = null,
         Action<string>? onToolExecution = null,
         Action<string, string>? onToolOutput = null,
@@ -53,111 +53,41 @@ public sealed class CliToolLoopRunner
                 break;
             }
 
-            var context = new ChatContext
+            var turnBuilder = new ConversationTurnBuilder();
+            var turnRequest = turnBuilder.Build(model, history, registry, stepLimit, maxTokens);
+
+            var streamingProcessor = new StreamingProcessor();
+            var response = await streamingProcessor.ProcessAsync(
+                provider.GenerateStreamAsync(turnRequest.Context, turnRequest.Tools, ct),
+                onTextDelta,
+                ct);
+
+            if (response.AssistantContent.Any())
             {
-                Model = model,
-                Messages = history.Messages.ToList(),
-                MaxTokens = 1024,
-                Stream = true,
-                MaxSteps = stepLimit
-            };
-
-            var tools = registry.GetToolDefinitions().Select(t => new ToolDefinition
-            {
-                Name = t.Name,
-                Description = t.Description,
-                InputSchema = t.InputSchema
-            });
-
-            var toolUses = new List<ChatContent>();
-            var textBuilder = new StringBuilder();
-
-            await foreach (var chunk in provider.GenerateStreamAsync(context, tools, ct))
-            {
-                if (chunk.TextDelta != null)
-                {
-                    textBuilder.Append(chunk.TextDelta);
-                    onTextDelta?.Invoke(chunk.TextDelta);
-                }
-
-                if (chunk.ToolUseDelta?.IsComplete == true)
-                {
-                    toolUses.Add(ChatContent.CreateToolUse(
-                        chunk.ToolUseDelta.ToolId,
-                        chunk.ToolUseDelta.ToolName,
-                        chunk.ToolUseDelta.PartialInput ?? "{}"));
-                }
+                history.AddAssistantMessage(response.AssistantContent.ToList());
             }
 
-            var assistantContent = new List<ChatContent>();
-            if (textBuilder.Length > 0)
-            {
-                assistantContent.Add(ChatContent.CreateText(textBuilder.ToString()));
-            }
-
-            assistantContent.AddRange(toolUses);
-
-            if (assistantContent.Any())
-            {
-                history.AddAssistantMessage(assistantContent);
-            }
-
-            if (!toolUses.Any())
+            if (!response.ToolUses.Any())
             {
                 break;
             }
 
-            var toolResults = new List<ChatContent>();
+            var toolExecutor = new ToolExecutor(
+                registry,
+                enforcer,
+                new ToolExecutionCallbacks
+                {
+                    OnToolExecution = onToolExecution,
+                    OnToolOutput = onToolOutput,
+                    OnToolError = onToolError,
+                    OnPermissionDenied = onPermissionDenied
+                });
+            var toolResults = await toolExecutor.ExecuteAsync(response.ToolUses, ct);
 
-            foreach (var toolUse in toolUses)
+            if (toolResults.Any())
             {
-                var toolName = toolUse.ToolName!;
-                var toolId = toolUse.ToolId!;
-                var input = toolUse.ToolInput;
-                var inputJson = JsonSerializer.Serialize(input, new JsonSerializerOptions { WriteIndented = true });
-
-                var tool = registry.Get(toolName);
-                if (tool == null)
-                {
-                    toolResults.Add(ChatContent.CreateToolResult(toolId, $"Tool not found: {toolName}", true));
-                    continue;
-                }
-
-                if (tool.RequiresPermission)
-                {
-                    if (!await enforcer.RequestPermissionAsync(toolName, tool.Description, inputJson))
-                    {
-                        onPermissionDenied?.Invoke(toolName);
-                        toolResults.Add(ChatContent.CreateToolResult(toolId, "Permission denied by user", true));
-                        continue;
-                    }
-                }
-
-                onToolExecution?.Invoke(toolName);
-
-                try
-                {
-                    var result = await tool.ExecuteAsync(ParseInput(input), ct);
-                    if (result.IsError)
-                    {
-                        onToolError?.Invoke(toolName, result.Content);
-                    }
-                    else
-                    {
-                        onToolOutput?.Invoke(toolName, result.Content);
-                    }
-
-                    toolResults.Add(ChatContent.CreateToolResult(toolId, result.Content, result.IsError));
-                }
-                catch (Exception ex)
-                {
-                    var message = $"Error: {ex.Message}";
-                    onToolError?.Invoke(toolName, message);
-                    toolResults.Add(ChatContent.CreateToolResult(toolId, message, true));
-                }
+                history.AddToolResults(toolResults);
             }
-
-            history.AddToolResults(toolResults);
         }
     }
 
@@ -168,75 +98,7 @@ public sealed class CliToolLoopRunner
     /// <returns>파싱된 인수 딕셔너리</returns>
     public Dictionary<string, object?> ParseJsonArguments(string jsonArgs)
     {
-        using var doc = JsonDocument.Parse(jsonArgs);
-        return ParseJsonObject(doc.RootElement);
-    }
-
-    /// <summary>
-    /// 입력 파싱
-    /// </summary>
-    private static Dictionary<string, object?> ParseInput(object? input)
-    {
-        return input switch
-        {
-            JsonElement json when json.ValueKind == JsonValueKind.Object => ParseJsonObject(json),
-            string rawJson => TryParseJsonObject(rawJson),
-            _ => new Dictionary<string, object?>()
-        };
-    }
-
-    /// <summary>
-    /// JSON 객체 파싱 시도
-    /// </summary>
-    private static Dictionary<string, object?> TryParseJsonObject(string rawJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(rawJson);
-            if (doc.RootElement.ValueKind == JsonValueKind.Object)
-            {
-                return ParseJsonObject(doc.RootElement);
-            }
-        }
-        catch
-        {
-        }
-
-        return new Dictionary<string, object?>();
-    }
-
-    /// <summary>
-    /// JSON 객체 파싱
-    /// </summary>
-    private static Dictionary<string, object?> ParseJsonObject(JsonElement element)
-    {
-        var inputDict = new Dictionary<string, object?>();
-        foreach (var prop in element.EnumerateObject())
-        {
-            inputDict[prop.Name] = ParseJsonValue(prop.Value);
-        }
-
-        return inputDict;
-    }
-
-    /// <summary>
-    /// JSON 값을 .NET 타입으로 재귀 변환
-    /// </summary>
-    private static object? ParseJsonValue(JsonElement element)
-    {
-        return element.ValueKind switch
-        {
-            JsonValueKind.Object => ParseJsonObject(element),
-            JsonValueKind.Array => element.EnumerateArray().Select(ParseJsonValue).ToList(),
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number when element.TryGetInt32(out var intValue) => intValue,
-            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
-            JsonValueKind.Number => element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => element.GetRawText()
-        };
+        return JsonArgumentParser.ParseJsonArguments(jsonArgs);
     }
 }
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 
@@ -153,6 +154,13 @@ public sealed class ToolExecutionRecord
 
 public static class AutomationSupport
 {
+    public static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     public static async Task<AutomationInvocation> ResolveInvocationAsync(
         ProviderConfiguration config,
         bool isInputRedirected,
@@ -266,10 +274,6 @@ public static class AutomationSupport
 
     public static string SerializeJson(NonInteractiveRunResult result)
     {
-        return JsonSerializer.Serialize(result.ToJsonEnvelope(), new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        return JsonSerializer.Serialize(result.ToJsonEnvelope(), JsonOutputOptions);
     }
 }
