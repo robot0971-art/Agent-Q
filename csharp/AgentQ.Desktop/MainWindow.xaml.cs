@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using AgentQ.Core.Providers;
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
@@ -22,12 +24,52 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel = new();
     private readonly DesktopConfigService _configService = new();
     private readonly DesktopAgentService _agentService = new();
+    private readonly DesktopVerificationRunner _verificationRunner = new();
+    private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
+    private readonly DesktopGitService _gitService = new();
+    private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
+    private readonly WorkspaceAnalysisService _workspaceAnalysisService = new();
+    private readonly ProjectAgentConfigService _projectConfigService = new();
+    private readonly AgentCheckpointService _checkpointService = new();
+    private readonly DesktopPlanWorkflowService _planWorkflowService = new();
+    private readonly DesktopPlanCheckpointWorkflowService _planCheckpointWorkflowService;
+    private readonly AgentSessionSummaryService _sessionSummaryService = new();
+    private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
+    private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
+    private readonly DesktopFileChangeReviewService _fileChangeReviewService = new();
+    private readonly DesktopCheckpointWorkflowService _checkpointWorkflowService;
+    private readonly VerificationFailureClassifier _verificationFailureClassifier = new();
     private readonly List<DesktopAttachment> _attachments = [];
+    private readonly List<FileChangeRecord> _pendingAutoFixChanges = [];
+    private AgentVerificationPlan? _pendingAutoFixVerificationPlan;
+    private int _pendingAutoFixNextAttempt;
+    private int _pendingAutoFixMaxAttempts;
+    private string _pendingAutoFixPreviousFailureSignature = string.Empty;
+    private bool _messagesPinnedToBottom = true;
 
     public MainWindow()
     {
         InitializeComponent();
+        _verificationPanelWorkflowService = new DesktopVerificationPanelWorkflowService(
+            new DesktopVerificationWorkflowService(
+                _verificationRunner,
+                _verificationFailureClassifier));
+        _gitPanelWorkflowService = new DesktopGitPanelWorkflowService(_gitService);
+        _checkpointWorkflowService = new DesktopCheckpointWorkflowService(_checkpointService, _gitService);
+        _planCheckpointWorkflowService = new DesktopPlanCheckpointWorkflowService(
+            _planWorkflowService,
+            _checkpointWorkflowService);
+        _workspaceContextWorkflowService = new DesktopWorkspaceContextWorkflowService(
+            _workspaceAnalysisService,
+            _projectConfigService,
+            _sessionSummaryService,
+            _planCheckpointWorkflowService);
+        _agentRunWorkflowService = new DesktopAgentRunWorkflowService(
+            _agentService,
+            _workspaceContextWorkflowService,
+            _verificationPanelWorkflowService);
         DataContext = _viewModel;
+        _viewModel.Messages.CollectionChanged += (_, _) => ScrollMessagesToEndIfPinned();
         Loaded += MainWindow_OnLoaded;
     }
 
@@ -38,7 +80,7 @@ public partial class MainWindow : Window
         {
             _viewModel.ApplyConfiguration(saved);
             ApiKeyBox.Password = saved.ApiKey;
-            _viewModel.StatusText = "설정 로드 완료";
+            _viewModel.StatusText = "Settings loaded";
         }
         else
         {
@@ -50,10 +92,11 @@ public partial class MainWindow : Window
                 TimeoutSeconds = 30,
                 MaxTokens = 4096
             });
-            _viewModel.StatusText = "API key를 입력하고 설정을 저장하세요.";
+            _viewModel.StatusText = "Enter an API key and save settings.";
         }
 
-        _viewModel.AddLog("AgentQ Desktop 시작");
+        _viewModel.AddLog("AgentQ Desktop started");
+        await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
     }
 
     private void ApiKeyBox_OnPasswordChanged(object sender, RoutedEventArgs e)
@@ -66,21 +109,21 @@ public partial class MainWindow : Window
         try
         {
             await _configService.SaveAsync(_viewModel.ToConfiguration());
-            _viewModel.StatusText = "설정을 저장했습니다.";
-            _viewModel.AddLog("설정 저장 완료");
+            _viewModel.StatusText = "Settings saved";
+            _viewModel.AddLog("Settings saved");
         }
         catch (Exception ex)
         {
-            _viewModel.StatusText = $"설정 저장 실패: {ex.Message}";
-            _viewModel.AddLog($"설정 저장 실패: {ex.Message}");
+            _viewModel.StatusText = $"Settings save failed: {ex.Message}";
+            _viewModel.AddLog($"Settings save failed: {ex.Message}");
         }
     }
 
-    private void BrowseWorkspace_OnClick(object sender, RoutedEventArgs e)
+    private async void BrowseWorkspace_OnClick(object sender, RoutedEventArgs e)
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "프로젝트 폴더를 선택하세요.",
+            Description = "Select a project folder.",
             UseDescriptionForTitle = true,
             SelectedPath = string.IsNullOrWhiteSpace(_viewModel.WorkspaceRoot)
                 ? Environment.CurrentDirectory
@@ -90,17 +133,43 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
         {
             _viewModel.WorkspaceRoot = dialog.SelectedPath;
-            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", dialog.SelectedPath);
-            _viewModel.StatusText = "프로젝트 폴더가 설정되었습니다.";
-            _viewModel.AddLog($"프로젝트 폴더 선택: {dialog.SelectedPath}");
+            await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
+            _viewModel.StatusText = "Project folder selected";
+            _viewModel.AddLog($"Project folder selected: {dialog.SelectedPath}");
         }
+    }
+
+    private async void RefreshWorkspaceAnalysis_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _workspaceContextWorkflowService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog);
+    }
+
+    private async void SaveProjectConfig_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _workspaceContextWorkflowService.SaveProjectConfigAsync(_viewModel);
+        }
+        catch (Exception ex)
+        {
+            _viewModel.StatusText = $"Project config save failed: {ex.Message}";
+            _viewModel.AddLog($"Project config save failed: {TrimForLog(ex.Message)}");
+        }
+    }
+
+    private async void LoadProjectConfig_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _workspaceContextWorkflowService.LoadProjectConfigAsync(_viewModel);
+        _viewModel.StatusText = _workspaceContextWorkflowService.ProjectConfig == null
+            ? "No project config found"
+            : "Project config loaded";
     }
 
     private void OpenWorkspace_OnClick(object sender, RoutedEventArgs e)
     {
         if (!Directory.Exists(_viewModel.WorkspaceRoot))
         {
-            _viewModel.StatusText = "열 수 있는 프로젝트 폴더가 없습니다.";
+            _viewModel.StatusText = "No valid project folder to open.";
             return;
         }
 
@@ -115,9 +184,9 @@ public partial class MainWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "이미지 또는 동영상 선택",
+            Title = "Select images or videos",
             Multiselect = true,
-            Filter = "이미지/동영상|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm|모든 파일|*.*"
+            Filter = "Images/Videos|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm|All files|*.*"
         };
 
         if (dialog.ShowDialog(this) != true)
@@ -130,7 +199,7 @@ public partial class MainWindow : Window
             var extension = Path.GetExtension(path).ToLowerInvariant();
             if (!SupportedAttachmentExtensions.Contains(extension))
             {
-                _viewModel.AddLog($"지원하지 않는 첨부 형식: {Path.GetFileName(path)}");
+                _viewModel.AddLog($"Unsupported attachment type: {Path.GetFileName(path)}");
                 continue;
             }
 
@@ -149,15 +218,15 @@ public partial class MainWindow : Window
         }
 
         _viewModel.StatusText = _attachments.Count == 0
-            ? "첨부한 파일이 없습니다."
-            : $"첨부 파일 {_attachments.Count}개가 선택되었습니다.";
+            ? "No attachments selected."
+            : $"{_attachments.Count} attachment(s) selected.";
     }
 
     private void ClearAttachments_OnClick(object sender, RoutedEventArgs e)
     {
         _attachments.Clear();
         _viewModel.Attachments.Clear();
-        _viewModel.StatusText = "첨부 파일을 지웠습니다.";
+        _viewModel.StatusText = "Attachments cleared";
     }
 
     private void InputBox_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -176,28 +245,33 @@ public partial class MainWindow : Window
         await SendCurrentMessageAsync();
     }
 
+    private void StopAgent_OnClick(object sender, RoutedEventArgs e)
+    {
+        _agentRunWorkflowService.Stop(_viewModel);
+    }
+
     private void IncreaseFontSize_OnClick(object sender, RoutedEventArgs e)
     {
         _viewModel.DesktopFontSize += 1;
-        _viewModel.StatusText = $"글자 크기: {_viewModel.DesktopFontSize:0}";
+        _viewModel.StatusText = $"Font size: {_viewModel.DesktopFontSize:0}";
     }
 
     private void DecreaseFontSize_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.DesktopFontSize -= 1;
-        _viewModel.StatusText = $"글자 크기: {_viewModel.DesktopFontSize:0}";
+        _viewModel.DesktopFontSize = Math.Max(11, _viewModel.DesktopFontSize - 1);
+        _viewModel.StatusText = $"Font size: {_viewModel.DesktopFontSize:0}";
     }
 
     private void ResetFontSize_OnClick(object sender, RoutedEventArgs e)
     {
         _viewModel.DesktopFontSize = 14;
-        _viewModel.StatusText = "글자 크기를 기본값으로 되돌렸습니다.";
+        _viewModel.StatusText = "Font size reset";
     }
 
     private void ShowStatus_OnClick(object sender, RoutedEventArgs e)
     {
         _viewModel.StatusText =
-            $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, 글자 크기: {_viewModel.DesktopFontSize:0}";
+            $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, Font size: {_viewModel.DesktopFontSize:0}";
     }
 
     private void CopyMessage_OnClick(object sender, RoutedEventArgs e)
@@ -209,7 +283,7 @@ public partial class MainWindow : Window
         }
 
         System.Windows.Clipboard.SetText(message.Content);
-        _viewModel.StatusText = "메시지를 클립보드에 복사했습니다.";
+        _viewModel.StatusText = "Message copied to clipboard";
     }
 
     private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
@@ -220,19 +294,19 @@ public partial class MainWindow : Window
 
         if (message == null)
         {
-            _viewModel.StatusText = "복사할 AgentQ 답변이 없습니다.";
+            _viewModel.StatusText = "No AgentQ response to copy";
             return;
         }
 
         System.Windows.Clipboard.SetText(message.Content);
-        _viewModel.StatusText = "마지막 답변을 클립보드에 복사했습니다.";
+        _viewModel.StatusText = "Last response copied to clipboard";
     }
 
     private void CopyConversation_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel.Messages.Count == 0)
         {
-            _viewModel.StatusText = "복사할 대화가 없습니다.";
+            _viewModel.StatusText = "No conversation to copy";
             return;
         }
 
@@ -245,7 +319,7 @@ public partial class MainWindow : Window
         }
 
         System.Windows.Clipboard.SetText(builder.ToString().TrimEnd());
-        _viewModel.StatusText = "전체 대화를 클립보드에 복사했습니다.";
+        _viewModel.StatusText = "Conversation copied to clipboard";
     }
 
     private void MessageTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
@@ -256,10 +330,84 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MessageTextBox_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var scrollViewer = FindDescendant<ScrollViewer>(MessagesList);
+        if (scrollViewer == null)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
+    }
+
+    private void ScrollMessagesToEndIfPinned()
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            var scrollViewer = FindDescendant<ScrollViewer>(MessagesList);
+            if (scrollViewer == null || !_messagesPinnedToBottom)
+            {
+                return;
+            }
+
+            scrollViewer.ScrollToEnd();
+        }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private static bool IsNearBottom(ScrollViewer scrollViewer)
+    {
+        return scrollViewer.ScrollableHeight <= 0 ||
+               scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset < 80;
+    }
+
+    private void MessagesList_OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.OriginalSource is ScrollViewer scrollViewer)
+        {
+            _messagesPinnedToBottom = IsNearBottom(scrollViewer);
+        }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T typed)
+            {
+                return typed;
+            }
+
+            var descendant = FindDescendant<T>(child);
+            if (descendant != null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
     private void ClearLogs_OnClick(object sender, RoutedEventArgs e)
     {
         _viewModel.Logs.Clear();
-        _viewModel.AddLog("로그 초기화");
+        _viewModel.AddLog("Logs cleared");
+    }
+
+    private void ClearSidePanel_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.Logs.Clear();
+        _viewModel.RunSteps.Clear();
+        _viewModel.VerificationPlans.Clear();
+        _viewModel.VerificationResults.Clear();
+        _viewModel.FileChanges.Clear();
+        _gitPanelWorkflowService.ClearPanel(_viewModel);
+        _verificationPanelWorkflowService.ClearFailure(_viewModel);
+        ClearPendingAutoFixReview();
+        _viewModel.AddLog("Side panel cleared");
     }
 
     private void Exit_OnClick(object sender, RoutedEventArgs e)
@@ -300,115 +448,591 @@ public partial class MainWindow : Window
             : WindowState.Maximized;
     }
 
-    private async Task SendCurrentMessageAsync()
+    private async void RunVerification_OnClick(object sender, RoutedEventArgs e)
     {
-        var prompt = _viewModel.InputText.Trim();
-        if (string.IsNullOrWhiteSpace(prompt) || _viewModel.IsBusy)
+        if (sender is not System.Windows.Controls.Button { DataContext: AgentVerificationPlan plan } ||
+            string.IsNullOrWhiteSpace(plan.Command))
         {
             return;
         }
 
-        _viewModel.InputText = string.Empty;
-        var attachmentsForRequest = _attachments.ToList();
-        var messageAttachments = attachmentsForRequest.Select(ToAttachmentViewModel).ToList();
-        _viewModel.Messages.Add(new ChatMessageViewModel
-        {
-            Role = "사용자",
-            Content = prompt,
-            Attachments = messageAttachments
-        });
+        await RunVerificationPlanAsync(plan);
+    }
 
-        var assistantMessage = new ChatMessageViewModel { Role = "AgentQ", Content = string.Empty };
-        _viewModel.Messages.Add(assistantMessage);
-        var assistantIndex = _viewModel.Messages.Count - 1;
+    private async Task<DesktopVerificationWorkflowResult?> RunVerificationPlanAsync(AgentVerificationPlan plan)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return null;
+        }
+
         _viewModel.IsBusy = true;
-        _viewModel.StatusText = "응답 생성 중";
-        _viewModel.AddLog("모델 호출 시작");
+        var operationCts = new CancellationTokenSource();
+        _agentRunWorkflowService.SetActiveOperation(operationCts);
 
         try
         {
-            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", _viewModel.WorkspaceRoot);
-            using var cts = CreateTimeout(_viewModel.TimeoutSeconds);
-            var fullText = await _agentService.SendAsync(
-                _viewModel.ToConfiguration(),
-                prompt,
-                attachmentsForRequest,
-                delta =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (assistantIndex >= 0 && assistantIndex < _viewModel.Messages.Count)
-                        {
-                            _viewModel.Messages[assistantIndex] = new ChatMessageViewModel
-                            {
-                                Role = assistantMessage.Role,
-                                Content = _viewModel.Messages[assistantIndex].Content + delta,
-                                CreatedAt = assistantMessage.CreatedAt
-                            };
-                        }
-                    });
-                },
-                cts?.Token ?? CancellationToken.None);
-
-            if (string.IsNullOrWhiteSpace(fullText) &&
-                assistantIndex >= 0 &&
-                assistantIndex < _viewModel.Messages.Count)
-            {
-                _viewModel.Messages[assistantIndex] = new ChatMessageViewModel
-                {
-                    Role = "AgentQ",
-                    Content = "(빈 응답)",
-                    CreatedAt = assistantMessage.CreatedAt
-                };
-            }
-
-            _viewModel.StatusText = "응답 완료";
-            _viewModel.AddLog("모델 호출 완료");
-            if (_attachments.Count > 0)
-            {
-                _attachments.Clear();
-                _viewModel.Attachments.Clear();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _viewModel.StatusText = "요청이 취소되었거나 시간이 초과되었습니다.";
-            _viewModel.AddLog("요청 취소 또는 시간 초과");
-        }
-        catch (Exception ex)
-        {
-            _viewModel.StatusText = $"오류: {ex.Message}";
-            _viewModel.AddLog($"오류: {ex.Message}");
+            return await _verificationPanelWorkflowService.RunVerificationAsync(
+                _viewModel,
+                plan,
+                _workspaceContextWorkflowService.ProjectConfig?.VerificationCommands,
+                TimeSpan.FromMinutes(2),
+                operationCts.Token);
         }
         finally
         {
+            _agentRunWorkflowService.ClearActiveOperation(operationCts);
+            operationCts.Dispose();
             _viewModel.IsBusy = false;
         }
     }
 
-    private static ChatAttachmentViewModel ToAttachmentViewModel(DesktopAttachment attachment)
+    private async void RefreshGitStatus_OnClick(object sender, RoutedEventArgs e)
     {
-        return new ChatAttachmentViewModel
+        await RefreshGitStatusAsync();
+    }
+
+    private async void RefreshGitDiff_OnClick(object sender, RoutedEventArgs e)
+    {
+        await RefreshGitDiffAsync();
+    }
+
+    private async void ReviewGitChanges_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
         {
-            FileName = attachment.FileName,
-            Kind = attachment.IsImage ? "이미지" : "동영상",
-            Path = attachment.Path
-        };
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        _viewModel.StatusText = "Preparing code review";
+
+        var result = await _gitPanelWorkflowService.PrepareCodeReviewAsync(_viewModel.WorkspaceRoot);
+        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
+        {
+            return;
+        }
+
+        var messageCountBeforeReview = _viewModel.Messages.Count;
+        _viewModel.InputText = result.Prompt;
+        await SendCurrentMessageAsync();
+        _gitPanelWorkflowService.CaptureLastCodeReview(_viewModel, messageCountBeforeReview);
+    }
+
+    private async void FixCodeReviewFindings_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_gitPanelWorkflowService.LastCodeReviewText))
+        {
+            _viewModel.StatusText = "No code review to fix";
+            return;
+        }
+
+        var result = await _gitPanelWorkflowService.PrepareCodeReviewFixAsync(_viewModel.WorkspaceRoot);
+        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
+        {
+            return;
+        }
+
+        _viewModel.InputText = result.Prompt;
+        _viewModel.CanFixLastCodeReviewFindings = false;
+        await SendCurrentMessageAsync();
+    }
+
+    private async void CommitSummary_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        _viewModel.StatusText = "Preparing commit summary";
+
+        var result = await _gitPanelWorkflowService.PrepareCommitSummaryAsync(_viewModel.WorkspaceRoot);
+        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
+        {
+            return;
+        }
+
+        _viewModel.InputText = result.Prompt;
+        await SendCurrentMessageAsync();
+    }
+
+    private async void CreatePlan_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var planPrompt = _planCheckpointWorkflowService.BuildPlanPrompt(_viewModel);
+        if (string.IsNullOrWhiteSpace(planPrompt))
+        {
+            _viewModel.StatusText = "No goal to plan";
+            return;
+        }
+
+        _viewModel.InputText = planPrompt;
+        _viewModel.AddLog("Plan prompt prepared");
+        var messageCountBeforePlan = _viewModel.Messages.Count;
+        await SendCurrentMessageAsync();
+        _planCheckpointWorkflowService.CapturePlanItems(_viewModel, messageCountBeforePlan);
+    }
+
+    private async void ContinuePlanItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        await ContinueNextPlanItemAsync();
+    }
+
+    private async void PlanAndRun_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var planPrompt = _planCheckpointWorkflowService.BuildPlanPrompt(_viewModel);
+        if (string.IsNullOrWhiteSpace(planPrompt))
+        {
+            _viewModel.StatusText = "No goal to plan";
+            return;
+        }
+
+        _viewModel.InputText = planPrompt;
+        _viewModel.AddLog("Plan+run prompt prepared");
+        var messageCountBeforePlan = _viewModel.Messages.Count;
+        await SendCurrentMessageAsync();
+        if (_viewModel.IsBusy)
+        {
+            return;
+        }
+
+        _planCheckpointWorkflowService.CapturePlanItems(_viewModel, messageCountBeforePlan);
+
+        if (_viewModel.PlanItems.Count == 0)
+        {
+            return;
+        }
+
+        await ContinueNextPlanItemAsync();
+    }
+
+    private async Task ContinueNextPlanItemAsync()
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        if (_planCheckpointWorkflowService.PrepareNextPlanItem(_viewModel) == null)
+        {
+            return;
+        }
+
+        await SendCurrentMessageAsync();
+    }
+
+    private void MarkPlanItemDone_OnClick(object sender, RoutedEventArgs e)
+    {
+        _planCheckpointWorkflowService.MarkSelectedPlanItemDone(_viewModel);
+    }
+
+    private async void MarkDoneAndContinue_OnClick(object sender, RoutedEventArgs e)
+    {
+        MarkPlanItemDone_OnClick(sender, e);
+        if (_viewModel.SelectedPlanItem != null)
+        {
+            await ContinueNextPlanItemAsync();
+        }
+    }
+
+    private async void SaveCheckpoint_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _planCheckpointWorkflowService.SaveCheckpointAsync(_viewModel);
+        }
+        catch (Exception ex)
+        {
+            _viewModel.StatusText = $"Checkpoint save failed: {ex.Message}";
+            _viewModel.AddLog($"Checkpoint save failed: {ex.Message}");
+        }
+    }
+
+    private async void LoadCheckpoint_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _planCheckpointWorkflowService.LoadLatestCheckpointAsync(_viewModel);
+        _viewModel.StatusText = _planCheckpointWorkflowService.HasCheckpoint ? "Checkpoint loaded" : "No checkpoint found";
+    }
+
+    private async void ResumeCheckpoint_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var resumePrompt = await _planCheckpointWorkflowService.BuildResumeCheckpointPromptAsync(_viewModel);
+        if (string.IsNullOrWhiteSpace(resumePrompt))
+        {
+            return;
+        }
+
+        _viewModel.InputText = resumePrompt;
+        await SendCurrentMessageAsync();
+    }
+
+    private async void SaveSessionSummary_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _workspaceContextWorkflowService.SaveSessionSummaryAsync(
+            _viewModel,
+            "Manual session summary saved",
+            TrimForLog);
+    }
+
+    private async void LoadSessionSummary_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _workspaceContextWorkflowService.LoadLatestSessionSummaryAsync(_viewModel);
+        _viewModel.StatusText = _workspaceContextWorkflowService.HasSessionSummary
+            ? "Session summary loaded"
+            : "No session summary found";
+    }
+
+    private async void ResumeSessionSummary_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var resumePrompt = await _workspaceContextWorkflowService.BuildResumeSessionSummaryPromptAsync(_viewModel);
+        if (string.IsNullOrWhiteSpace(resumePrompt))
+        {
+            return;
+        }
+
+        _viewModel.InputText = resumePrompt;
+        await SendCurrentMessageAsync();
+    }
+
+    private async Task RefreshGitStatusAsync()
+    {
+        await _gitPanelWorkflowService.RefreshStatusAsync(_viewModel, TrimForLog);
+    }
+
+    private async Task RefreshGitDiffAsync()
+    {
+        await _gitPanelWorkflowService.RefreshDiffAsync(_viewModel, TrimForLog);
+    }
+
+    private async void GitChangedFiles_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
+    }
+
+    private void ApproveGitChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
+    }
+
+    private void RejectGitChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
+    }
+
+    private void NeedsEditGitChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit);
+    }
+
+    private void ApproveFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        _fileChangeReviewService.Mark(
+            _viewModel,
+            (sender as FrameworkElement)?.DataContext as FileChangeRecord,
+            FileChangeReviewStatus.Approved);
+    }
+
+    private void NeedsEditFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        _fileChangeReviewService.Mark(
+            _viewModel,
+            (sender as FrameworkElement)?.DataContext as FileChangeRecord,
+            FileChangeReviewStatus.NeedsEdit);
+    }
+
+    private async void RevertFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        await _fileChangeReviewService.RevertAsync(
+            _viewModel,
+            (sender as FrameworkElement)?.DataContext as FileChangeRecord);
+    }
+
+    private async void ApproveAutoFixAndVerify_OnClick(object sender, RoutedEventArgs e)
+    {
+        await ApprovePendingAutoFixChangesAndVerifyAsync();
+    }
+
+    private async void FixVerificationFailure_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var fixPrompt = _verificationPanelWorkflowService.BuildFixPrompt();
+        if (string.IsNullOrWhiteSpace(fixPrompt))
+        {
+            _viewModel.StatusText = "No failed verification to fix";
+            return;
+        }
+
+        _viewModel.InputText = fixPrompt;
+        await SendCurrentMessageAsync(preserveLastVerificationFailure: true);
+    }
+
+    private async void AutoFixVerificationFailure_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        await RunAutoFixVerificationLoopAsync(maxAttempts: 3);
+    }
+
+    private Task RunAutoFixVerificationLoopAsync(int maxAttempts)
+    {
+        return RunAutoFixVerificationLoopAsync(
+            maxAttempts,
+            startAttempt: 1,
+            previousFailureSignature: _verificationPanelWorkflowService.LastFailureSignature);
+    }
+
+    private async Task RunAutoFixVerificationLoopAsync(
+        int maxAttempts,
+        int startAttempt,
+        string previousFailureSignature)
+    {
+        if (startAttempt > maxAttempts)
+        {
+            _viewModel.AddRunStep(
+                AgentRunState.Failed,
+                "Auto fix stopped: max attempts reached",
+                $"Tried {maxAttempts} fix attempts.");
+            _viewModel.StatusText = $"Auto fix stopped after {maxAttempts} attempts";
+            return;
+        }
+
+        var retryPlan = _verificationPanelWorkflowService.CreateRetryPlan();
+        var fixPrompt = _verificationPanelWorkflowService.BuildFixPrompt();
+        if (retryPlan == null || string.IsNullOrWhiteSpace(fixPrompt))
+        {
+            _viewModel.StatusText = startAttempt == 1
+                ? "No failed verification to auto-fix"
+                : "Auto fix stopped: no failed verification remains";
+            return;
+        }
+
+        var fileChangeCountBeforeAttempt = _viewModel.FileChanges.Count;
+        var workspaceFingerprintBeforeAttempt = await BuildWorkspaceChangeFingerprintAsync();
+
+        _viewModel.AddRunStep(
+            AgentRunState.Planning,
+            $"Auto fix attempt {startAttempt}/{maxAttempts}",
+            $"Fix, then rerun: {retryPlan.Command}");
+        _viewModel.InputText = fixPrompt;
+        await SendCurrentMessageAsync(preserveLastVerificationFailure: true);
+
+        if (_viewModel.IsBusy)
+        {
+            return;
+        }
+
+        var recordedFileChangeCount = _viewModel.FileChanges.Count - fileChangeCountBeforeAttempt;
+        var workspaceFingerprintAfterAttempt = await BuildWorkspaceChangeFingerprintAsync();
+        if (recordedFileChangeCount <= 0 &&
+            string.Equals(workspaceFingerprintBeforeAttempt, workspaceFingerprintAfterAttempt, StringComparison.Ordinal))
+        {
+            _viewModel.AddRunStep(
+                AgentRunState.Failed,
+                "Auto fix stopped: no file changes",
+                "The fix attempt did not change the workspace.");
+            _viewModel.StatusText = "Auto fix stopped: no file changes";
+            return;
+        }
+
+        _viewModel.AddRunStep(
+            AgentRunState.RecordingChanges,
+            "Auto fix changes detected",
+            recordedFileChangeCount > 0
+                ? $"{recordedFileChangeCount} file change(s) recorded."
+                : "Workspace diff changed.");
+
+        PauseAutoFixForReview(
+            retryPlan,
+            _viewModel.FileChanges.Skip(fileChangeCountBeforeAttempt).ToList(),
+            startAttempt + 1,
+            maxAttempts,
+            previousFailureSignature);
+    }
+
+    private void PauseAutoFixForReview(
+        AgentVerificationPlan retryPlan,
+        IReadOnlyList<FileChangeRecord> changes,
+        int nextAttempt,
+        int maxAttempts,
+        string previousFailureSignature)
+    {
+        _pendingAutoFixVerificationPlan = retryPlan;
+        _pendingAutoFixChanges.Clear();
+        _pendingAutoFixChanges.AddRange(changes);
+        _pendingAutoFixNextAttempt = nextAttempt;
+        _pendingAutoFixMaxAttempts = maxAttempts;
+        _pendingAutoFixPreviousFailureSignature = previousFailureSignature;
+
+        _viewModel.AddRunStep(
+            AgentRunState.WaitingForApproval,
+            "Auto fix paused for review",
+            "Review the changed files in Preview, then choose Approve all & verify.");
+        _viewModel.StatusText = "Review Auto Fix changes before verification";
+    }
+
+    private async Task ApprovePendingAutoFixChangesAndVerifyAsync()
+    {
+        if (_viewModel.IsBusy)
+        {
+            _viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        if (_pendingAutoFixVerificationPlan == null)
+        {
+            _viewModel.StatusText = "No pending Auto Fix verification";
+            return;
+        }
+
+        if (_pendingAutoFixChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.NeedsEdit))
+        {
+            _viewModel.StatusText = "Auto Fix changes need edits before verification";
+            _viewModel.AddRunStep(
+                AgentRunState.WaitingForApproval,
+                "Auto fix waiting for edits",
+                "One or more pending changes are marked Needs edit.");
+            return;
+        }
+
+        if (_pendingAutoFixChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.Reverted))
+        {
+            ClearPendingAutoFixReview();
+            _viewModel.StatusText = "Auto Fix verification cancelled after revert";
+            _viewModel.AddRunStep(
+                AgentRunState.Cancelled,
+                "Auto fix verification cancelled",
+                "One or more pending changes were reverted.");
+            return;
+        }
+
+        foreach (var change in _pendingAutoFixChanges.Where(change => change.ReviewStatus == FileChangeReviewStatus.Pending))
+        {
+            change.ReviewStatus = FileChangeReviewStatus.Approved;
+        }
+
+        var retryPlan = _pendingAutoFixVerificationPlan;
+        var nextAttempt = _pendingAutoFixNextAttempt;
+        var maxAttempts = _pendingAutoFixMaxAttempts;
+        var previousFailureSignature = _pendingAutoFixPreviousFailureSignature;
+        ClearPendingAutoFixReview();
+
+        _viewModel.AddRunStep(
+            AgentRunState.Verifying,
+            "Approved Auto Fix changes",
+            retryPlan.Command);
+        var verificationResult = await RunVerificationPlanAsync(retryPlan);
+
+        if (verificationResult?.Succeeded == true)
+        {
+            _viewModel.AddRunStep(AgentRunState.Done, "Auto fix succeeded", retryPlan.Command);
+            _viewModel.StatusText = "Auto fix succeeded";
+            return;
+        }
+
+        var currentFailureSignature = _verificationPanelWorkflowService.LastFailureSignature;
+        if (!string.IsNullOrWhiteSpace(currentFailureSignature) &&
+            string.Equals(previousFailureSignature, currentFailureSignature, StringComparison.Ordinal))
+        {
+            _viewModel.AddRunStep(
+                AgentRunState.Failed,
+                "Auto fix stopped: repeated failure",
+                "The latest verification failed in the same way as before.");
+            _viewModel.StatusText = "Auto fix stopped: repeated failure";
+            return;
+        }
+
+        if (nextAttempt > maxAttempts)
+        {
+            _viewModel.AddRunStep(
+                AgentRunState.Failed,
+                "Auto fix stopped: max attempts reached",
+                $"Tried {maxAttempts} fix attempts.");
+            _viewModel.StatusText = $"Auto fix stopped after {maxAttempts} attempts";
+            return;
+        }
+
+        await RunAutoFixVerificationLoopAsync(maxAttempts, nextAttempt, currentFailureSignature);
+    }
+
+    private void ClearPendingAutoFixReview()
+    {
+        _pendingAutoFixVerificationPlan = null;
+        _pendingAutoFixChanges.Clear();
+        _pendingAutoFixNextAttempt = 0;
+        _pendingAutoFixMaxAttempts = 0;
+        _pendingAutoFixPreviousFailureSignature = string.Empty;
+    }
+
+    private async Task<string> BuildWorkspaceChangeFingerprintAsync(CancellationToken ct = default)
+    {
+        var status = await _gitService.GetStatusAsync(_viewModel.WorkspaceRoot, ct);
+        var diff = await _gitService.GetFullDiffAsync(_viewModel.WorkspaceRoot, ct);
+        var content = $"{status.ExitCode}\n{status.StandardOutput}\n{status.StandardError}\n---diff---\n{diff.ExitCode}\n{diff.StandardOutput}\n{diff.StandardError}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+    }
+
+    private async Task SendCurrentMessageAsync(bool preserveLastVerificationFailure = false)
+    {
+        await _agentRunWorkflowService.SendCurrentMessageAsync(
+            _viewModel,
+            _attachments,
+            this,
+            Dispatcher,
+            TrimForLog,
+            preserveLastVerificationFailure);
     }
 
     private void ClearConversation_OnClick(object sender, RoutedEventArgs e)
     {
-        _agentService.ClearConversation();
-        _viewModel.Messages.Clear();
-        _viewModel.AddLog("대화 초기화");
-        _viewModel.StatusText = "대화를 초기화했습니다.";
+        _agentRunWorkflowService.ClearConversation(_viewModel);
     }
 
-    private static CancellationTokenSource? CreateTimeout(int timeoutSeconds)
+    private static string TrimForLog(string value)
     {
-        return timeoutSeconds <= 0
-            ? null
-            : new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        value = value.ReplaceLineEndings(" ");
+        return value.Length <= 180 ? value : value[..180] + "...";
     }
 
     private static string GetMediaType(string extension)
@@ -428,4 +1052,5 @@ public partial class MainWindow : Window
             _ => "application/octet-stream"
         };
     }
+
 }

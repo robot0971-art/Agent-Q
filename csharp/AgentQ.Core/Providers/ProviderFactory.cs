@@ -97,6 +97,21 @@ public class ProviderConfiguration
     public double DesktopFontSize { get; set; } = 14;
 
     /// <summary>
+    /// 데스크톱에서 프로젝트 컨텍스트를 자동 첨부할지 여부
+    /// </summary>
+    public bool DesktopAutoAttachWorkspaceContext { get; set; } = true;
+
+    /// <summary>
+    /// 데스크톱에서 메시지의 링크를 자동으로 읽을지 여부
+    /// </summary>
+    public bool DesktopAutoFetchLinks { get; set; } = true;
+
+    /// <summary>
+    /// 데스크톱 에이전트 작업 모드
+    /// </summary>
+    public string DesktopWorkMode { get; set; } = "Coding";
+
+    /// <summary>
     /// 단일 실행용 프롬프트
     /// </summary>
     public string Prompt { get; set; } = string.Empty;

@@ -138,6 +138,9 @@ public class ChatContent
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public object? ToolInput { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasoningContent { get; set; }
+
     /// <summary>
     /// 도구 사용 ID (ToolResult 타입일 때)
     /// </summary>
@@ -283,6 +286,8 @@ public class StreamChunk
     /// 텍스트 델타 (스트리밍 중인 텍스트)
     /// </summary>
     public string? TextDelta { get; set; }
+
+    public string? ReasoningDelta { get; set; }
 
     /// <summary>
     /// 도구 사용 델타

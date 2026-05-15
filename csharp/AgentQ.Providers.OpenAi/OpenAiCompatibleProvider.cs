@@ -146,6 +146,18 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
             if (chunk?.Choices == null || chunk.Choices.Count == 0)
             {
+                if (chunk?.Usage != null)
+                {
+                    yield return new StreamChunk
+                    {
+                        Usage = new UsageStats
+                        {
+                            InputTokens = chunk.Usage.PromptTokens,
+                            OutputTokens = chunk.Usage.CompletionTokens
+                        }
+                    };
+                }
+
                 continue;
             }
 
@@ -156,6 +168,11 @@ public class OpenAiCompatibleProvider : ILlmProvider
                 if (!string.IsNullOrEmpty(delta?.Content))
                 {
                     yield return new StreamChunk { TextDelta = delta.Content };
+                }
+
+                if (!string.IsNullOrEmpty(delta?.ReasoningContent))
+                {
+                    yield return new StreamChunk { ReasoningDelta = delta.ReasoningContent };
                 }
 
                 if (delta?.ToolCalls != null)
@@ -257,7 +274,15 @@ public class OpenAiCompatibleProvider : ILlmProvider
                     }).ToList();
                 }
 
-                if (ShouldApplyKimiToolCallCompatibility(effectiveModel))
+                var reasoningContent = toolUses
+                    .Select(t => t.ReasoningContent)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+                if (!string.IsNullOrWhiteSpace(reasoningContent))
+                {
+                    openAiMsg.ReasoningContent = reasoningContent;
+                }
+                else if (ShouldApplyKimiToolCallCompatibility(effectiveModel) ||
+                         ShouldApplyDeepSeekToolCallCompatibility(effectiveModel))
                 {
                     openAiMsg.ReasoningContent = " ";
                 }
@@ -281,7 +306,8 @@ public class OpenAiCompatibleProvider : ILlmProvider
             Model = effectiveModel,
             Messages = messages,
             MaxTokens = context.MaxTokens == 0 ? 1024 : (int)context.MaxTokens,
-            Stream = stream
+            Stream = stream,
+            StreamOptions = stream ? new OpenAiStreamOptions { IncludeUsage = true } : null
         };
 
         if (ShouldDisableThinking(request.Model))
@@ -430,6 +456,10 @@ public class OpenAiCompatibleProvider : ILlmProvider
         _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
         model.StartsWith("kimi-", StringComparison.OrdinalIgnoreCase);
 
+    private bool ShouldApplyDeepSeekToolCallCompatibility(string model) =>
+        _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
+        model.StartsWith("deepseek-", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsTerminalFinishReason(string? finishReason)
     {
         return finishReason is "stop" or "length" or "content_filter";
@@ -476,8 +506,17 @@ public class OpenAiChatRequest
     [JsonPropertyName("stream")]
     public bool Stream { get; set; }
 
+    [JsonPropertyName("stream_options")]
+    public OpenAiStreamOptions? StreamOptions { get; set; }
+
     [JsonPropertyName("thinking")]
     public OpenAiThinkingOptions? Thinking { get; set; }
+}
+
+public class OpenAiStreamOptions
+{
+    [JsonPropertyName("include_usage")]
+    public bool IncludeUsage { get; set; }
 }
 
 public class OpenAiThinkingOptions
@@ -610,6 +649,9 @@ public class OpenAiStreamChunk
 
     [JsonPropertyName("choices")]
     public List<OpenAiStreamChoice>? Choices { get; set; }
+
+    [JsonPropertyName("usage")]
+    public OpenAiUsage? Usage { get; set; }
 }
 
 /// <summary>
@@ -637,6 +679,9 @@ public class OpenAiStreamDelta
 
     [JsonPropertyName("content")]
     public string? Content { get; set; }
+
+    [JsonPropertyName("reasoning_content")]
+    public string? ReasoningContent { get; set; }
 
     [JsonPropertyName("tool_calls")]
     public List<OpenAiToolCall>? ToolCalls { get; set; }

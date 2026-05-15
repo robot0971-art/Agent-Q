@@ -21,7 +21,8 @@ public sealed class WorkspaceIndexer
     private static readonly string[] PriorityFileNames =
     [
         "README.md", "readme.md", "package.json", "global.json",
-        "Directory.Build.props", "Directory.Build.targets"
+        "Directory.Build.props", "Directory.Build.targets",
+        ".editorconfig", ".gitignore", ".gitattributes"
     ];
 
     public async Task<string> BuildContextAsync(string workspaceRoot, CancellationToken ct)
@@ -32,7 +33,7 @@ public sealed class WorkspaceIndexer
         }
 
         var root = Path.GetFullPath(workspaceRoot);
-        var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+        var files = SafeEnumerateFiles(root)
             .Where(file => !IsExcludedPath(root, file))
             .Select(file => new WorkspaceFile(file, Path.GetRelativePath(root, file).Replace('\\', '/')))
             .OrderBy(file => GetPriority(file.RelativePath))
@@ -104,13 +105,14 @@ public sealed class WorkspaceIndexer
     private static bool IsReadableTextFile(WorkspaceFile file)
     {
         var extension = Path.GetExtension(file.FullPath);
-        return TextExtensions.Contains(extension) || PriorityFileNames.Contains(Path.GetFileName(file.FullPath));
+        return TextExtensions.Contains(extension) ||
+               PriorityFileNames.Contains(Path.GetFileName(file.FullPath), StringComparer.OrdinalIgnoreCase);
     }
 
     private static int GetPriority(string relativePath)
     {
         var fileName = Path.GetFileName(relativePath);
-        if (PriorityFileNames.Contains(fileName))
+        if (PriorityFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase))
         {
             return 0;
         }
@@ -128,6 +130,63 @@ public sealed class WorkspaceIndexer
         }
 
         return TextExtensions.Contains(extension) ? 3 : 9;
+    }
+
+    private static IEnumerable<string> SafeEnumerateFiles(string root)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(current);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                yield return file;
+            }
+
+            string[] directories;
+            try
+            {
+                directories = Directory.GetDirectories(current);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var directory in directories)
+            {
+                if (IsExcludedDirectory(directory))
+                {
+                    continue;
+                }
+
+                pending.Push(directory);
+            }
+        }
+    }
+
+    private static bool IsExcludedDirectory(string directory)
+    {
+        var name = Path.GetFileName(directory);
+        return name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("artifacts", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsExcludedPath(string root, string file)
