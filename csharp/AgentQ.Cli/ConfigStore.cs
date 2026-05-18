@@ -8,12 +8,6 @@ namespace AgentQ.Cli;
 /// </summary>
 public static class ConfigStore
 {
-    private static readonly string ConfigDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".agentq");
-
-    private static readonly string ConfigPath = Path.Combine(ConfigDirectory, "config.json");
-
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -23,7 +17,7 @@ public static class ConfigStore
     /// <summary>
     /// 설정 파일 전체 경로입니다.
     /// </summary>
-    public static string PathValue => ConfigPath;
+    public static string PathValue => GetConfigPath();
 
     /// <summary>
     /// 설정을 파일로 저장합니다.
@@ -31,25 +25,28 @@ public static class ConfigStore
     /// <param name="config">저장할 설정 객체</param>
     public static async Task SaveAsync(ProviderConfiguration config)
     {
-        if (!Directory.Exists(ConfigDirectory))
+        var configDirectory = GetConfigDirectory();
+        var configPath = GetConfigPath();
+
+        if (!Directory.Exists(configDirectory))
         {
-            Directory.CreateDirectory(ConfigDirectory);
+            Directory.CreateDirectory(configDirectory);
         }
 
         var json = JsonSerializer.Serialize(config, Options);
-        var tempPath = Path.Combine(ConfigDirectory, $"config.{Guid.NewGuid():N}.tmp");
+        var tempPath = Path.Combine(configDirectory, $"config.{Guid.NewGuid():N}.tmp");
 
         try
         {
             await File.WriteAllTextAsync(tempPath, json);
 
-            if (File.Exists(ConfigPath))
+            if (File.Exists(configPath))
             {
-                File.Replace(tempPath, ConfigPath, destinationBackupFileName: null);
+                File.Replace(tempPath, configPath, destinationBackupFileName: null);
             }
             else
             {
-                File.Move(tempPath, ConfigPath);
+                File.Move(tempPath, configPath);
             }
         }
         finally
@@ -67,14 +64,16 @@ public static class ConfigStore
     /// <returns>불러온 설정 객체 또는 null</returns>
     public static async Task<ProviderConfiguration?> LoadAsync()
     {
-        if (!File.Exists(ConfigPath))
+        var configPath = GetConfigPath();
+
+        if (!File.Exists(configPath))
         {
             return null;
         }
 
         try
         {
-            var json = await File.ReadAllTextAsync(ConfigPath);
+            var json = await File.ReadAllTextAsync(configPath);
             return JsonSerializer.Deserialize<ProviderConfiguration>(json, Options);
         }
         catch
@@ -88,14 +87,32 @@ public static class ConfigStore
     /// </summary>
     public static void Delete()
     {
-        if (File.Exists(ConfigPath))
+        var configPath = GetConfigPath();
+
+        if (File.Exists(configPath))
         {
-            File.Delete(ConfigPath);
+            File.Delete(configPath);
         }
     }
 
     /// <summary>
     /// 설정 파일 존재 여부입니다.
     /// </summary>
-    public static bool Exists => File.Exists(ConfigPath);
+    public static bool Exists => File.Exists(GetConfigPath());
+
+    private static string GetConfigDirectory()
+    {
+        var homeDirectory = Environment.GetEnvironmentVariable("USERPROFILE");
+        if (string.IsNullOrWhiteSpace(homeDirectory))
+        {
+            homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        return Path.Combine(homeDirectory, ".agentq");
+    }
+
+    private static string GetConfigPath()
+    {
+        return Path.Combine(GetConfigDirectory(), "config.json");
+    }
 }
