@@ -1,10 +1,27 @@
 using AgentQ.Desktop.Services;
+using AgentQ.Desktop.ViewModels;
 using Xunit;
 
 namespace AgentQ.Tests;
 
 public sealed class DesktopServiceTests
 {
+    [Theory]
+    [InlineData(AgentWorkMode.Readonly, 20)]
+    [InlineData(AgentWorkMode.Coding, 50)]
+    [InlineData(AgentWorkMode.FullAgent, 50)]
+    public void MainViewModel_ToConfiguration_SetsDesktopToolStepBudget(AgentWorkMode workMode, int expectedMaxToolSteps)
+    {
+        var viewModel = new MainViewModel
+        {
+            WorkMode = workMode
+        };
+
+        var config = viewModel.ToConfiguration();
+
+        Assert.Equal(expectedMaxToolSteps, config.DesktopMaxToolSteps);
+    }
+
     [Fact]
     public void DesktopPlanParser_ParsesCheckboxNumberedAndBulletItems()
     {

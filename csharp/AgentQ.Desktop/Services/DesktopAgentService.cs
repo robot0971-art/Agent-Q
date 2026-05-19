@@ -25,7 +25,9 @@ public sealed class DesktopAgentService
         Keep tool use scoped to the selected workspace and explain important changes clearly.
         """;
 
-    private const int DefaultMaxToolSteps = 8;
+    private const int DefaultMaxToolSteps = 50;
+    private const int ReadonlyMaxToolSteps = 20;
+    private const int MaxConfiguredToolSteps = 100;
     private const int MaxToolResultChars = 24000;
     private const int MaxChangeSnapshotChars = 160000;
 
@@ -395,14 +397,14 @@ public sealed class DesktopAgentService
     {
         if (config.DesktopMaxToolSteps > 0)
         {
-            return Math.Clamp(config.DesktopMaxToolSteps, 1, 32);
+            return Math.Clamp(config.DesktopMaxToolSteps, 1, MaxConfiguredToolSteps);
         }
 
         return workMode switch
         {
-            AgentWorkMode.Readonly => DefaultMaxToolSteps,
-            AgentWorkMode.Coding => 12,
-            AgentWorkMode.FullAgent => 16,
+            AgentWorkMode.Readonly => ReadonlyMaxToolSteps,
+            AgentWorkMode.Coding => DefaultMaxToolSteps,
+            AgentWorkMode.FullAgent => DefaultMaxToolSteps,
             _ => DefaultMaxToolSteps
         };
     }

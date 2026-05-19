@@ -415,10 +415,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             DesktopWorkMode = WorkMode.ToString(),
             DesktopMaxToolSteps = WorkMode switch
             {
-                AgentWorkMode.Readonly => 8,
-                AgentWorkMode.Coding => 12,
-                AgentWorkMode.FullAgent => 16,
-                _ => 12
+                AgentWorkMode.Readonly => 20,
+                AgentWorkMode.Coding => 50,
+                AgentWorkMode.FullAgent => 50,
+                _ => 50
             }
         };
     }
