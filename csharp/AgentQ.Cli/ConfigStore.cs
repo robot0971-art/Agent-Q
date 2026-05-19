@@ -18,6 +18,8 @@ public interface IConfigStore
 
 public sealed class FileConfigStore : IConfigStore
 {
+    public const string ConfigHomeEnvironmentVariable = "AGENTQ_CONFIG_HOME";
+
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -97,7 +99,11 @@ public sealed class FileConfigStore : IConfigStore
 
     private static string GetConfigDirectory()
     {
-        var homeDirectory = Environment.GetEnvironmentVariable("USERPROFILE");
+        var overrideHome = Environment.GetEnvironmentVariable(ConfigHomeEnvironmentVariable);
+        var homeDirectory = string.IsNullOrWhiteSpace(overrideHome)
+            ? Environment.GetEnvironmentVariable("USERPROFILE")
+            : Path.GetFullPath(overrideHome);
+
         if (string.IsNullOrWhiteSpace(homeDirectory))
         {
             homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -114,6 +120,8 @@ public sealed class FileConfigStore : IConfigStore
 
 public static class ConfigStore
 {
+    public const string ConfigHomeEnvironmentVariable = FileConfigStore.ConfigHomeEnvironmentVariable;
+
     public static string PathValue => FileConfigStore.Default.PathValue;
 
     public static bool Exists => FileConfigStore.Default.Exists;

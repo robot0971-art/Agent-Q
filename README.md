@@ -1,18 +1,19 @@
 # AgentQ
 
-AgentQ is a C# CLI coding assistant with tool-use support, provider abstraction, and a mock-service-backed test workflow.
+AgentQ is a C# coding assistant with a CLI, a Windows desktop app, tool-use support, provider abstraction, and a mock-service-backed test workflow.
 
 ## Status
 
 The project is past the prototype stage.
 
 - core CLI loop exists
+- WPF desktop app exists
 - Anthropic and OpenAI-compatible providers exist
 - tool execution and permission flow exist
 - session/config persistence exist
 - mock parity infrastructure exists
 
-Current work is focused on stabilization, regression coverage, and documentation sync.
+Current work is focused on desktop stabilization, regression coverage, and documentation sync.
 
 ## Requirements
 
@@ -29,6 +30,7 @@ csharp/
 |- AgentQ.Providers.OpenAi
 |- AgentQ.Tools
 |- AgentQ.Cli
+|- AgentQ.Desktop
 |- AgentQ.MockService
 `- AgentQ.Tests
 ```
@@ -45,6 +47,8 @@ csharp/
 - config persistence
 - streamed tool-call assembly
 - retry wrapper for transient provider failures
+- Windows desktop chat UI
+- desktop workspace analysis, Git diff/status panels, checkpoints, session summaries, and verification result cards
 
 ## Built-in Tools
 
@@ -63,10 +67,13 @@ csharp/
 - `AGENTQ_API_KEY`
 - `AGENTQ_BASE_URL`
 - `AGENTQ_TIMEOUT`
+- `AGENTQ_CONFIG_HOME`
 - `AGENTQ_WORKSPACE_ROOT`
 - `OPENCODE_GO_API_KEY`
 - `OPENCODE_GO_BASE_URL`
 - `OPENCODE_GO_MODEL`
+
+`AGENTQ_CONFIG_HOME` is optional. When set, AgentQ stores configuration in `<AGENTQ_CONFIG_HOME>\.agentq\config.json`; otherwise it uses the current user's profile directory. This is mainly useful for tests and isolated local runs.
 
 ## Running
 
@@ -80,6 +87,12 @@ Start the Windows desktop app:
 
 ```powershell
 dotnet run --project .\csharp\AgentQ.Desktop
+```
+
+Build the desktop app without launching it:
+
+```powershell
+dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj
 ```
 
 Install it as a .NET global tool:
@@ -255,6 +268,14 @@ PowerShell variants also exist:
 
 The scripts no longer force `DOTNET_CLI_HOME`. They use the current local dotnet environment unless you explicitly set that variable yourself.
 
+For the full solution, including desktop service tests:
+
+```powershell
+dotnet test .\csharp\AgentQ.sln
+```
+
+The test project targets `net10.0-windows` so it can cover desktop services without launching the WPF UI.
+
 ## Mock Service
 
 The repository includes `AgentQ.MockService` for parity-style provider testing.
@@ -264,28 +285,6 @@ Run it with:
 ```powershell
 dotnet run --project .\csharp\AgentQ.MockService
 ```
-
-## Alibaba Cloud Model Studio
-
-Alibaba Cloud Model Studio exposes an OpenAI-compatible Chat Completions API, so it can be used through AgentQ's `openai` provider by setting the correct `base-url`, model, and API key.
-
-Example for the Singapore international endpoint:
-
-```powershell
-$env:AGENTQ_PROVIDER="openai"
-$env:AGENTQ_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-$env:AGENTQ_MODEL="qwen-plus"
-$env:AGENTQ_API_KEY="<your_dashscope_api_key>"
-
-agentq --prompt "Summarize README.md" --json
-```
-
-Notes:
-
-- Use the endpoint that matches your Alibaba Cloud region and key.
-- The browser console URL is not the API endpoint. Use the `dashscope.../compatible-mode/v1` base URL from the official docs.
-- The OpenAI-compatible provider is now covered by local tests that verify the outgoing `chat/completions` request shape, including `Authorization`, `messages`, `tools`, `tool_calls`, `tool_call_id`, and `stream=true` handling.
-- Third-party compatibility should still be validated against your target model and region because provider-side behavior can differ even when the request contract matches.
 
 ## OpenCode Go
 
@@ -315,15 +314,16 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 ## Validation Snapshot
 
-Current wrapper-script validation passed in this environment:
+Current local validation passed in this environment:
 
-- `.\test.cmd`: `54` non-integration tests passed
-- `dotnet test .\csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~OpenAiProviderTests|FullyQualifiedName~ProviderUnitTests"`: `10` provider-focused tests passed
+- `dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj`: succeeded with `0` warnings and `0` errors
+- `dotnet test .\csharp\AgentQ.sln`: `91` tests passed
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
 
 ## Current Priority
 
-1. documentation synchronization and final cleanup
-2. optional provider integration expansion beyond current local coverage
-3. optional CLI rendering and UX polish
+1. split large desktop panels out of `MainWindow.xaml` and code-behind
+2. improve desktop Git stage/commit/pull workflows
+3. move provider model catalogs out of hardcoded UI state
+4. continue expanding desktop service tests

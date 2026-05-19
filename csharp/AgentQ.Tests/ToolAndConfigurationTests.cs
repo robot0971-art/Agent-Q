@@ -99,6 +99,28 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfigStore_UsesConfigHomeOverride()
+    {
+        using var configHome = new TemporaryWorkspace("AgentQ.ConfigHome");
+        SetEnvironment(ConfigStore.ConfigHomeEnvironmentVariable, configHome.RootPath);
+
+        var config = new ProviderConfiguration
+        {
+            Provider = "openai",
+            Model = "gpt-4.1",
+            BaseUrl = "https://example.test",
+            ApiKey = "secret"
+        };
+
+        await ConfigStore.SaveAsync(config);
+
+        var expectedPath = Path.Combine(configHome.RootPath, ".agentq", "config.json");
+        Assert.Equal(expectedPath, ConfigStore.PathValue);
+        Assert.True(File.Exists(expectedPath));
+        Assert.True(ConfigStore.Exists);
+    }
+
+    [Fact]
     public async Task ConfigStore_SaveAsync_ReplacesExistingFileWithoutLeavingTempFiles()
     {
         Directory.CreateDirectory(_configDirectory);
