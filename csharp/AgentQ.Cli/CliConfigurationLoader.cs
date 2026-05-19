@@ -2,11 +2,13 @@ using AgentQ.Core.Providers;
 
 namespace AgentQ.Cli;
 
-public sealed class CliConfigurationLoader(IConfigStore configStore)
+public sealed class CliConfigurationLoader(
+    IConfigStore configStore,
+    CommandLineConfigurationParser commandLineParser)
 {
     public async Task<ProviderConfiguration> LoadAsync(string[] args)
     {
-        var initialConfig = ProviderConfiguration.FromArgs(args);
+        var initialConfig = commandLineParser.Parse(args);
         var persistedConfig = await configStore.LoadAsync();
         var config = initialConfig;
 

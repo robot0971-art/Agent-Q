@@ -12,6 +12,8 @@ public static class AgentQCliServiceCollectionExtensions
     {
         services.AddSingleton(args);
         services.AddSingleton<IProviderHttpClientFactory, ProviderHttpClientFactory>();
+        services.AddSingleton<EnvironmentConfigurationLoader>();
+        services.AddSingleton<CommandLineConfigurationParser>();
         services.AddSingleton(CreateProviderFactory);
         services.AddSingleton<ITool, BashTool>();
         services.AddSingleton<ITool, ReadFileTool>();
