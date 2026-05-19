@@ -34,14 +34,20 @@ public class OpenAiCompatibleProvider : ILlmProvider
     /// <param name="apiKey">API 키</param>
     /// <param name="model">모델 이름</param>
     public OpenAiCompatibleProvider(string baseUrl, string apiKey, string model = "gpt-4o", string name = "openai")
+        : this(ProviderHttpClientFactory.Shared, baseUrl, apiKey, model, name)
+    {
+    }
+
+    public OpenAiCompatibleProvider(
+        IProviderHttpClientFactory httpClientFactory,
+        string baseUrl,
+        string apiKey,
+        string model = "gpt-4o",
+        string name = "openai")
     {
         _model = model;
         _name = name;
-        _httpClient = new HttpClient { BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)) };
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        }
+        _httpClient = httpClientFactory.CreateClient(baseUrl, apiKey, ProviderHttpAuthKind.Bearer);
     }
 
     /// <summary>
@@ -444,9 +450,6 @@ public class OpenAiCompatibleProvider : ILlmProvider
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
     }
-
-    private static string NormalizeBaseUrl(string baseUrl) =>
-        baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : $"{baseUrl}/";
 
     private bool ShouldDisableThinking(string model) =>
         _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&

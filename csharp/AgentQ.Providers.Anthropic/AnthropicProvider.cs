@@ -33,11 +33,14 @@ public class AnthropicProvider : ILlmProvider
     /// <param name="baseUrl">기본 URL</param>
     /// <param name="apiKey">API 키</param>
     public AnthropicProvider(string baseUrl, string apiKey)
+        : this(ProviderHttpClientFactory.Shared, baseUrl, apiKey)
+    {
+    }
+
+    public AnthropicProvider(IProviderHttpClientFactory httpClientFactory, string baseUrl, string apiKey)
     {
         _apiKey = apiKey;
-        _httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
-        _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        _httpClient = httpClientFactory.CreateClient(baseUrl, apiKey, ProviderHttpAuthKind.Anthropic);
     }
 
     /// <summary>

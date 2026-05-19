@@ -170,6 +170,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.IsType<FileConfigStore>(provider.GetRequiredService<IConfigStore>());
         Assert.IsType<FileSessionStore>(provider.GetRequiredService<ISessionStore>());
         Assert.IsType<InputFileReader>(provider.GetRequiredService<IInputFileReader>());
+        Assert.IsType<ProviderHttpClientFactory>(provider.GetRequiredService<IProviderHttpClientFactory>());
         Assert.IsType<CliAutomationOutput>(provider.GetRequiredService<ICliAutomationOutput>());
         Assert.NotNull(provider.GetRequiredService<CliNonInteractiveRunner>());
         Assert.NotNull(provider.GetRequiredService<CliInteractivePersistenceCommands>());

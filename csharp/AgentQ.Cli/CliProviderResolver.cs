@@ -3,7 +3,9 @@ using AgentQ.Providers.Anthropic;
 
 namespace AgentQ.Cli;
 
-public sealed class CliProviderResolver(ProviderFactory providerFactory)
+public sealed class CliProviderResolver(
+    ProviderFactory providerFactory,
+    IProviderHttpClientFactory httpClientFactory)
 {
     public IEnumerable<string> AvailableProviders => providerFactory.AvailableProviders;
 
@@ -19,6 +21,6 @@ public sealed class CliProviderResolver(ProviderFactory providerFactory)
             return provider;
         }
 
-        return new AnthropicProvider(config.BaseUrl, config.ApiKey);
+        return new AnthropicProvider(httpClientFactory, config.BaseUrl, config.ApiKey);
     }
 }

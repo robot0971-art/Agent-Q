@@ -11,6 +11,7 @@ public static class AgentQCliServiceCollectionExtensions
     public static IServiceCollection AddAgentQCli(this IServiceCollection services, string[] args)
     {
         services.AddSingleton(args);
+        services.AddSingleton<IProviderHttpClientFactory, ProviderHttpClientFactory>();
         services.AddSingleton(CreateProviderFactory);
         services.AddSingleton<ITool, BashTool>();
         services.AddSingleton<ITool, ReadFileTool>();
@@ -42,12 +43,13 @@ public static class AgentQCliServiceCollectionExtensions
         return services;
     }
 
-    private static ProviderFactory CreateProviderFactory(IServiceProvider _)
+    private static ProviderFactory CreateProviderFactory(IServiceProvider services)
     {
+        var httpClientFactory = services.GetRequiredService<IProviderHttpClientFactory>();
         var providerFactory = new ProviderFactory();
-        providerFactory.Register("anthropic", (baseUrl, apiKey) => new AnthropicProvider(baseUrl, apiKey));
-        providerFactory.Register("openai", (baseUrl, apiKey) => new OpenAiCompatibleProvider(baseUrl, apiKey));
-        providerFactory.Register("opencode-go", (baseUrl, apiKey) => new OpenAiCompatibleProvider(baseUrl, apiKey, name: "opencode-go"));
+        providerFactory.Register("anthropic", (baseUrl, apiKey) => new AnthropicProvider(httpClientFactory, baseUrl, apiKey));
+        providerFactory.Register("openai", (baseUrl, apiKey) => new OpenAiCompatibleProvider(httpClientFactory, baseUrl, apiKey));
+        providerFactory.Register("opencode-go", (baseUrl, apiKey) => new OpenAiCompatibleProvider(httpClientFactory, baseUrl, apiKey, name: "opencode-go"));
         return providerFactory;
     }
 

@@ -32,6 +32,12 @@ public sealed class DesktopAgentService
     private readonly ProjectMemoryService _projectMemoryService = new();
     private readonly WorkspaceIndexer _workspaceIndexer = new();
     private readonly ToolRegistry _toolRegistry = CreateToolRegistry();
+    private readonly IProviderHttpClientFactory _httpClientFactory;
+
+    public DesktopAgentService(IProviderHttpClientFactory? httpClientFactory = null)
+    {
+        _httpClientFactory = httpClientFactory ?? ProviderHttpClientFactory.Shared;
+    }
 
     public async Task<string> SendAsync(
         ProviderConfiguration config,
@@ -340,14 +346,14 @@ public sealed class DesktopAgentService
         }
     }
 
-    private static ILlmProvider CreateProvider(ProviderConfiguration config)
+    private ILlmProvider CreateProvider(ProviderConfiguration config)
     {
         ILlmProvider provider = config.Provider.ToLowerInvariant() switch
         {
-            "openai" => new OpenAiCompatibleProvider(config.BaseUrl, config.ApiKey),
-            "opencode-go" => new OpenAiCompatibleProvider(config.BaseUrl, config.ApiKey, name: "opencode-go"),
-            "anthropic" => new AnthropicProvider(config.BaseUrl, config.ApiKey),
-            _ => new OpenAiCompatibleProvider(config.BaseUrl, config.ApiKey, name: config.Provider)
+            "openai" => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey),
+            "opencode-go" => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey, name: "opencode-go"),
+            "anthropic" => new AnthropicProvider(_httpClientFactory, config.BaseUrl, config.ApiKey),
+            _ => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey, name: config.Provider)
         };
 
         return new ResilientLlmProvider(provider);
