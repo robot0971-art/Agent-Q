@@ -2,6 +2,7 @@
 using AgentQ.Cli;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -156,6 +157,29 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.False(ConfigStore.Exists);
         Assert.Null(await ConfigStore.LoadAsync());
+    }
+
+    [Fact]
+    public void AddAgentQCli_RegistersRuntimeStorageServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAgentQCli([]);
+
+        using var provider = services.BuildServiceProvider();
+        Assert.IsType<FileConfigStore>(provider.GetRequiredService<IConfigStore>());
+        Assert.IsType<FileSessionStore>(provider.GetRequiredService<ISessionStore>());
+        Assert.IsType<InputFileReader>(provider.GetRequiredService<IInputFileReader>());
+        Assert.IsType<CliAutomationOutput>(provider.GetRequiredService<ICliAutomationOutput>());
+        Assert.NotNull(provider.GetRequiredService<CliNonInteractiveRunner>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractivePersistenceCommands>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractiveSettingsCommands>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractiveToolCommands>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractiveSessionCommands>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractivePresenter>());
+        Assert.NotNull(provider.GetRequiredService<CliInteractiveConversationRunner>());
+        Assert.NotNull(provider.GetRequiredService<CliConfigurationLoader>());
+        Assert.NotNull(provider.GetRequiredService<CliApplication>());
     }
 
     [Fact]

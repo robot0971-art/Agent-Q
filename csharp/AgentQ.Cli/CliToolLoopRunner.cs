@@ -39,7 +39,7 @@ public sealed class CliToolLoopRunner
         Action<string>? onPermissionDenied = null,
         CancellationToken ct = default)
     {
-        var stepLimit = maxSteps.GetValueOrDefault(8);
+        var stepLimit = maxSteps.GetValueOrDefault(45);
         var stepCount = 0;
 
         while (true)

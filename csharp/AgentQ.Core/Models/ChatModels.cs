@@ -227,7 +227,7 @@ public class ChatContext
     /// <summary>
     /// 단일 대화 턴에서 허용되는 최대 tool loop 횟수
     /// </summary>
-    public int MaxSteps { get; set; } = 8;
+    public int MaxSteps { get; set; } = 45;
 }
 
 /// <summary>

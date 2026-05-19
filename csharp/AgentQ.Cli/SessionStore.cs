@@ -4,10 +4,14 @@ using AgentQ.Core.Models;
 
 namespace AgentQ.Cli;
 
-/// <summary>
-/// 대화 세션 영구 저장소
-/// </summary>
-public static class SessionStore
+public interface ISessionStore
+{
+    Task SaveAsync(string filePath, IEnumerable<ChatMessage> messages);
+
+    Task<List<ChatMessage>> LoadAsync(string filePath);
+}
+
+public sealed class FileSessionStore : ISessionStore
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -16,23 +20,15 @@ public static class SessionStore
         PropertyNameCaseInsensitive = true
     };
 
-    /// <summary>
-    /// 세션을 파일로 저장
-    /// </summary>
-    /// <param name="filePath">저장할 파일 경로</param>
-    /// <param name="messages">메시지 목록</param>
-    public static async Task SaveAsync(string filePath, IEnumerable<ChatMessage> messages)
+    public static FileSessionStore Default { get; } = new();
+
+    public async Task SaveAsync(string filePath, IEnumerable<ChatMessage> messages)
     {
         var json = JsonSerializer.Serialize(messages, Options);
         await File.WriteAllTextAsync(filePath, json);
     }
 
-    /// <summary>
-    /// 파일에서 세션 로드
-    /// </summary>
-    /// <param name="filePath">불러올 파일 경로</param>
-    /// <returns>메시지 목록</returns>
-    public static async Task<List<ChatMessage>> LoadAsync(string filePath)
+    public async Task<List<ChatMessage>> LoadAsync(string filePath)
     {
         if (!File.Exists(filePath))
         {
@@ -43,4 +39,13 @@ public static class SessionStore
         var messages = JsonSerializer.Deserialize<List<ChatMessage>>(json, Options);
         return messages ?? new List<ChatMessage>();
     }
+}
+
+public static class SessionStore
+{
+    public static Task SaveAsync(string filePath, IEnumerable<ChatMessage> messages) =>
+        FileSessionStore.Default.SaveAsync(filePath, messages);
+
+    public static Task<List<ChatMessage>> LoadAsync(string filePath) =>
+        FileSessionStore.Default.LoadAsync(filePath);
 }

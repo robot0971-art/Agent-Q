@@ -20,6 +20,17 @@ public static class AgentQCliServiceCollectionExtensions
         services.AddSingleton<ITool, GlobTool>();
         services.AddSingleton<ITool, PluginEchoTool>();
         services.AddSingleton(CreateToolRegistry);
+        services.AddSingleton<IConfigStore, FileConfigStore>();
+        services.AddSingleton<ISessionStore, FileSessionStore>();
+        services.AddSingleton<IInputFileReader, InputFileReader>();
+        services.AddSingleton<ICliAutomationOutput, CliAutomationOutput>();
+        services.AddSingleton<CliNonInteractiveRunner>();
+        services.AddSingleton<CliInteractivePersistenceCommands>();
+        services.AddSingleton<CliInteractiveSettingsCommands>();
+        services.AddSingleton<CliInteractiveToolCommands>();
+        services.AddSingleton<CliInteractiveSessionCommands>();
+        services.AddSingleton<CliInteractivePresenter>();
+        services.AddSingleton<CliInteractiveConversationRunner>();
         services.AddSingleton<CliConfigurationLoader>();
         services.AddSingleton<CliProviderResolver>();
         services.AddSingleton<CliPermissionEnforcerFactory>();

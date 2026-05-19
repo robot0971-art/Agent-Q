@@ -3,10 +3,20 @@ using AgentQ.Core.Providers;
 
 namespace AgentQ.Cli;
 
-/// <summary>
-/// 사용자 설정 파일 저장소입니다.
-/// </summary>
-public static class ConfigStore
+public interface IConfigStore
+{
+    string PathValue { get; }
+
+    bool Exists { get; }
+
+    Task SaveAsync(ProviderConfiguration config);
+
+    Task<ProviderConfiguration?> LoadAsync();
+
+    void Delete();
+}
+
+public sealed class FileConfigStore : IConfigStore
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -14,16 +24,13 @@ public static class ConfigStore
         PropertyNameCaseInsensitive = true
     };
 
-    /// <summary>
-    /// 설정 파일 전체 경로입니다.
-    /// </summary>
-    public static string PathValue => GetConfigPath();
+    public static FileConfigStore Default { get; } = new();
 
-    /// <summary>
-    /// 설정을 파일로 저장합니다.
-    /// </summary>
-    /// <param name="config">저장할 설정 객체</param>
-    public static async Task SaveAsync(ProviderConfiguration config)
+    public string PathValue => GetConfigPath();
+
+    public bool Exists => File.Exists(GetConfigPath());
+
+    public async Task SaveAsync(ProviderConfiguration config)
     {
         var configDirectory = GetConfigDirectory();
         var configPath = GetConfigPath();
@@ -58,11 +65,7 @@ public static class ConfigStore
         }
     }
 
-    /// <summary>
-    /// 설정 파일에서 설정을 불러옵니다.
-    /// </summary>
-    /// <returns>불러온 설정 객체 또는 null</returns>
-    public static async Task<ProviderConfiguration?> LoadAsync()
+    public async Task<ProviderConfiguration?> LoadAsync()
     {
         var configPath = GetConfigPath();
 
@@ -82,10 +85,7 @@ public static class ConfigStore
         }
     }
 
-    /// <summary>
-    /// 저장된 설정 파일을 삭제합니다.
-    /// </summary>
-    public static void Delete()
+    public void Delete()
     {
         var configPath = GetConfigPath();
 
@@ -94,11 +94,6 @@ public static class ConfigStore
             File.Delete(configPath);
         }
     }
-
-    /// <summary>
-    /// 설정 파일 존재 여부입니다.
-    /// </summary>
-    public static bool Exists => File.Exists(GetConfigPath());
 
     private static string GetConfigDirectory()
     {
@@ -115,4 +110,17 @@ public static class ConfigStore
     {
         return Path.Combine(GetConfigDirectory(), "config.json");
     }
+}
+
+public static class ConfigStore
+{
+    public static string PathValue => FileConfigStore.Default.PathValue;
+
+    public static bool Exists => FileConfigStore.Default.Exists;
+
+    public static Task SaveAsync(ProviderConfiguration config) => FileConfigStore.Default.SaveAsync(config);
+
+    public static Task<ProviderConfiguration?> LoadAsync() => FileConfigStore.Default.LoadAsync();
+
+    public static void Delete() => FileConfigStore.Default.Delete();
 }

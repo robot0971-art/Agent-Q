@@ -23,7 +23,7 @@ public sealed class DesktopAgentService
         Keep tool use scoped to the selected workspace and explain important changes clearly.
         """;
 
-    private const int MaxToolSteps = 8;
+    private const int MaxToolSteps = 45;
     private const int MaxToolResultChars = 24000;
     private const int MaxChangeSnapshotChars = 160000;
 
