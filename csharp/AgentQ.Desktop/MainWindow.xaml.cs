@@ -15,6 +15,8 @@ namespace AgentQ.Desktop;
 
 public partial class MainWindow : Window
 {
+    private const double MouseWheelScrollFactor = 0.35;
+
     private static readonly string[] SupportedAttachmentExtensions =
     [
         ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif",
@@ -339,7 +341,33 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
+        SmoothScroll(scrollViewer, e.Delta);
+    }
+
+    private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not DependencyObject source)
+        {
+            return;
+        }
+
+        var scrollViewer = source is ScrollViewer viewer
+            ? viewer
+            : FindDescendant<ScrollViewer>(source);
+        if (scrollViewer == null)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        SmoothScroll(scrollViewer, e.Delta);
+    }
+
+    private static void SmoothScroll(ScrollViewer scrollViewer, int wheelDelta)
+    {
+        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * MouseWheelScrollFactor;
+        targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
+        scrollViewer.ScrollToVerticalOffset(targetOffset);
     }
 
     private void ScrollMessagesToEndIfPinned()

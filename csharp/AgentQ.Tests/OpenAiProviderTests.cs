@@ -273,6 +273,78 @@ public sealed class OpenAiProviderTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_OmitsReasoningContentForOpenCodeGoDeepSeekToolCalls()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_deepseek_reasoning_check",
+              "model": "deepseek-v3.2",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "done"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "deepseek-v3.2", "opencode-go");
+        var context = new ChatContext
+        {
+            Model = "deepseek-v3.2",
+            Messages =
+            [
+                ChatMessage.UserText("Run commands."),
+                new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content =
+                    [
+                        new ChatContent
+                        {
+                            Type = ContentType.ToolUse,
+                            ToolId = "bash:0",
+                            ToolName = "bash",
+                            ToolInput = "{\"command\":\"pwd\"}",
+                            ReasoningContent = "internal reasoning"
+                        }
+                    ]
+                },
+                new ChatMessage
+                {
+                    Role = ChatRole.User,
+                    Content =
+                    [
+                        ChatContent.CreateToolResult("bash:0", "{\"stdout\":\"/tmp\"}", false)
+                    ]
+                }
+            ]
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("bash"));
+
+        Assert.NotNull(capturedRequest);
+        var messages = capturedRequest!.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal("assistant", messages[1].GetProperty("role").GetString());
+        Assert.False(messages[1].TryGetProperty("reasoning_content", out _));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateResponseAsync_DisablesThinkingForOpenCodeGoKimiModels()
     {
         JsonDocument? capturedRequest = null;
