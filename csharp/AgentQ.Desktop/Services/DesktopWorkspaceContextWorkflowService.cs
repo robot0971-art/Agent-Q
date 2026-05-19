@@ -57,7 +57,10 @@ public sealed class DesktopWorkspaceContextWorkflowService(
         try
         {
             viewModel.StatusText = "Analyzing workspace";
-            var analysis = await workspaceAnalysisService.AnalyzeAsync(viewModel.WorkspaceRoot, ct);
+            var workspaceRoot = viewModel.WorkspaceRoot;
+            var analysis = await Task.Run(
+                () => workspaceAnalysisService.AnalyzeAsync(workspaceRoot, ct),
+                ct);
             viewModel.ApplyWorkspaceAnalysis(analysis);
             viewModel.StatusText = "Workspace analysis refreshed";
             viewModel.AddLog($"Workspace analyzed: {analysis.Summary}");

@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,62 +15,73 @@ public partial class MainWindow : Window
 {
     private const double MouseWheelScrollFactor = 0.35;
 
-    private static readonly string[] SupportedAttachmentExtensions =
-    [
-        ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif",
-        ".mp4", ".mov", ".avi", ".mkv", ".webm"
-    ];
-
-    private readonly MainViewModel _viewModel = new();
-    private readonly DesktopConfigService _configService = new();
-    private readonly DesktopAgentService _agentService = new();
-    private readonly DesktopVerificationRunner _verificationRunner = new();
+    private readonly MainViewModel _viewModel;
+    private readonly DesktopConfigService _configService;
     private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
-    private readonly DesktopGitService _gitService = new();
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
-    private readonly WorkspaceAnalysisService _workspaceAnalysisService = new();
-    private readonly ProjectAgentConfigService _projectConfigService = new();
-    private readonly AgentCheckpointService _checkpointService = new();
-    private readonly DesktopPlanWorkflowService _planWorkflowService = new();
     private readonly DesktopPlanCheckpointWorkflowService _planCheckpointWorkflowService;
-    private readonly AgentSessionSummaryService _sessionSummaryService = new();
     private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
-    private readonly DesktopFileChangeReviewService _fileChangeReviewService = new();
+    private readonly DesktopFileChangeReviewService _fileChangeReviewService;
     private readonly DesktopCheckpointWorkflowService _checkpointWorkflowService;
-    private readonly VerificationFailureClassifier _verificationFailureClassifier = new();
+    private readonly DesktopAttachmentSelectionService _attachmentSelectionService;
+    private readonly DesktopClipboardService _clipboardService;
+    private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
     private readonly List<DesktopAttachment> _attachments = [];
-    private readonly List<FileChangeRecord> _pendingAutoFixChanges = [];
-    private AgentVerificationPlan? _pendingAutoFixVerificationPlan;
-    private int _pendingAutoFixNextAttempt;
-    private int _pendingAutoFixMaxAttempts;
-    private string _pendingAutoFixPreviousFailureSignature = string.Empty;
     private bool _messagesPinnedToBottom = true;
 
-    public MainWindow()
+    public MainWindow(
+        MainViewModel viewModel,
+        DesktopConfigService configService,
+        DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
+        DesktopGitPanelWorkflowService gitPanelWorkflowService,
+        DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
+        DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
+        DesktopAgentRunWorkflowService agentRunWorkflowService,
+        DesktopFileChangeReviewService fileChangeReviewService,
+        DesktopCheckpointWorkflowService checkpointWorkflowService,
+        DesktopAttachmentSelectionService attachmentSelectionService,
+        DesktopClipboardService clipboardService,
+        DesktopAutoFixWorkflowService autoFixWorkflowService)
     {
         InitializeComponent();
-        _verificationPanelWorkflowService = new DesktopVerificationPanelWorkflowService(
-            new DesktopVerificationWorkflowService(
-                _verificationRunner,
-                _verificationFailureClassifier));
-        _gitPanelWorkflowService = new DesktopGitPanelWorkflowService(_gitService);
-        _checkpointWorkflowService = new DesktopCheckpointWorkflowService(_checkpointService, _gitService);
-        _planCheckpointWorkflowService = new DesktopPlanCheckpointWorkflowService(
-            _planWorkflowService,
-            _checkpointWorkflowService);
-        _workspaceContextWorkflowService = new DesktopWorkspaceContextWorkflowService(
-            _workspaceAnalysisService,
-            _projectConfigService,
-            _sessionSummaryService,
-            _planCheckpointWorkflowService);
-        _agentRunWorkflowService = new DesktopAgentRunWorkflowService(
-            _agentService,
-            _workspaceContextWorkflowService,
-            _verificationPanelWorkflowService);
+        _viewModel = viewModel;
+        _configService = configService;
+        _verificationPanelWorkflowService = verificationPanelWorkflowService;
+        _gitPanelWorkflowService = gitPanelWorkflowService;
+        _planCheckpointWorkflowService = planCheckpointWorkflowService;
+        _workspaceContextWorkflowService = workspaceContextWorkflowService;
+        _agentRunWorkflowService = agentRunWorkflowService;
+        _fileChangeReviewService = fileChangeReviewService;
+        _checkpointWorkflowService = checkpointWorkflowService;
+        _attachmentSelectionService = attachmentSelectionService;
+        _clipboardService = clipboardService;
+        _autoFixWorkflowService = autoFixWorkflowService;
         DataContext = _viewModel;
+        HookVerificationPanelEvents();
+        HookGitPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ScrollMessagesToEndIfPinned();
         Loaded += MainWindow_OnLoaded;
+    }
+
+    private void HookVerificationPanelEvents()
+    {
+        VerificationPanelView.RunRequested += async (_, plan) => await RunVerificationPlanAsync(plan);
+        VerificationPanelView.FixFailureRequested += (_, _) => FixVerificationFailure_OnClick(this, new RoutedEventArgs());
+        VerificationPanelView.AutoFixRequested += (_, _) => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs());
+    }
+
+    private void HookGitPanelEvents()
+    {
+        GitPanelView.StatusRequested += async (_, _) => await RefreshGitStatusAsync();
+        GitPanelView.DiffRequested += async (_, _) => await RefreshGitDiffAsync();
+        GitPanelView.ReviewRequested += (_, _) => ReviewGitChanges_OnClick(this, new RoutedEventArgs());
+        GitPanelView.FixReviewRequested += (_, _) => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs());
+        GitPanelView.CommitSummaryRequested += (_, _) => CommitSummary_OnClick(this, new RoutedEventArgs());
+        GitPanelView.SelectedFileChanged += async (_, _) => await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
+        GitPanelView.ApproveRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
+        GitPanelView.RejectRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
+        GitPanelView.NeedsEditRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit);
     }
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
@@ -184,51 +193,12 @@ public partial class MainWindow : Window
 
     private void AttachFiles_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "Select images or videos",
-            Multiselect = true,
-            Filter = "Images/Videos|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm|All files|*.*"
-        };
-
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        foreach (var path in dialog.FileNames)
-        {
-            var extension = Path.GetExtension(path).ToLowerInvariant();
-            if (!SupportedAttachmentExtensions.Contains(extension))
-            {
-                _viewModel.AddLog($"Unsupported attachment type: {Path.GetFileName(path)}");
-                continue;
-            }
-
-            if (_attachments.Any(attachment => string.Equals(attachment.Path, path, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            _attachments.Add(new DesktopAttachment
-            {
-                Path = path,
-                FileName = Path.GetFileName(path),
-                MediaType = GetMediaType(extension)
-            });
-            _viewModel.Attachments.Add(Path.GetFileName(path));
-        }
-
-        _viewModel.StatusText = _attachments.Count == 0
-            ? "No attachments selected."
-            : $"{_attachments.Count} attachment(s) selected.";
+        _attachmentSelectionService.SelectAttachments(this, _viewModel, _attachments);
     }
 
     private void ClearAttachments_OnClick(object sender, RoutedEventArgs e)
     {
-        _attachments.Clear();
-        _viewModel.Attachments.Clear();
-        _viewModel.StatusText = "Attachments cleared";
+        _attachmentSelectionService.ClearAttachments(_viewModel, _attachments);
     }
 
     private void InputBox_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -245,6 +215,16 @@ public partial class MainWindow : Window
     private async void Send_OnClick(object sender, RoutedEventArgs e)
     {
         await SendCurrentMessageAsync();
+    }
+
+    private async void ContinueLastRun_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!_agentRunWorkflowService.PrepareContinuation(_viewModel))
+        {
+            return;
+        }
+
+        await SendCurrentMessageAsync(preserveLastVerificationFailure: true);
     }
 
     private void StopAgent_OnClick(object sender, RoutedEventArgs e)
@@ -278,50 +258,17 @@ public partial class MainWindow : Window
 
     private void CopyMessage_OnClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not System.Windows.Controls.MenuItem { DataContext: ChatMessageViewModel message } ||
-            string.IsNullOrEmpty(message.Content))
-        {
-            return;
-        }
-
-        System.Windows.Clipboard.SetText(message.Content);
-        _viewModel.StatusText = "Message copied to clipboard";
+        _clipboardService.CopyMessage(_viewModel, (sender as System.Windows.Controls.MenuItem)?.DataContext as ChatMessageViewModel);
     }
 
     private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
     {
-        var message = _viewModel.Messages.LastOrDefault(item =>
-            string.Equals(item.Role, "AgentQ", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(item.Content));
-
-        if (message == null)
-        {
-            _viewModel.StatusText = "No AgentQ response to copy";
-            return;
-        }
-
-        System.Windows.Clipboard.SetText(message.Content);
-        _viewModel.StatusText = "Last response copied to clipboard";
+        _clipboardService.CopyLastAssistantMessage(_viewModel);
     }
 
     private void CopyConversation_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.Messages.Count == 0)
-        {
-            _viewModel.StatusText = "No conversation to copy";
-            return;
-        }
-
-        var builder = new StringBuilder();
-        foreach (var message in _viewModel.Messages)
-        {
-            builder.AppendLine($"{message.Role}:");
-            builder.AppendLine(message.Content);
-            builder.AppendLine();
-        }
-
-        System.Windows.Clipboard.SetText(builder.ToString().TrimEnd());
-        _viewModel.StatusText = "Conversation copied to clipboard";
+        _clipboardService.CopyConversation(_viewModel);
     }
 
     private void MessageTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
@@ -434,7 +381,7 @@ public partial class MainWindow : Window
         _viewModel.FileChanges.Clear();
         _gitPanelWorkflowService.ClearPanel(_viewModel);
         _verificationPanelWorkflowService.ClearFailure(_viewModel);
-        ClearPendingAutoFixReview();
+        _autoFixWorkflowService.ClearPendingReview();
         _viewModel.AddLog("Side panel cleared");
     }
 
@@ -476,17 +423,6 @@ public partial class MainWindow : Window
             : WindowState.Maximized;
     }
 
-    private async void RunVerification_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button { DataContext: AgentVerificationPlan plan } ||
-            string.IsNullOrWhiteSpace(plan.Command))
-        {
-            return;
-        }
-
-        await RunVerificationPlanAsync(plan);
-    }
-
     private async Task<DesktopVerificationWorkflowResult?> RunVerificationPlanAsync(AgentVerificationPlan plan)
     {
         if (_viewModel.IsBusy)
@@ -514,16 +450,6 @@ public partial class MainWindow : Window
             operationCts.Dispose();
             _viewModel.IsBusy = false;
         }
-    }
-
-    private async void RefreshGitStatus_OnClick(object sender, RoutedEventArgs e)
-    {
-        await RefreshGitStatusAsync();
-    }
-
-    private async void RefreshGitDiff_OnClick(object sender, RoutedEventArgs e)
-    {
-        await RefreshGitDiffAsync();
     }
 
     private async void ReviewGitChanges_OnClick(object sender, RoutedEventArgs e)
@@ -765,26 +691,6 @@ public partial class MainWindow : Window
         await _gitPanelWorkflowService.RefreshDiffAsync(_viewModel, TrimForLog);
     }
 
-    private async void GitChangedFiles_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
-    }
-
-    private void ApproveGitChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
-    }
-
-    private void RejectGitChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
-    }
-
-    private void NeedsEditGitChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit);
-    }
-
     private void ApproveFileChange_OnClick(object sender, RoutedEventArgs e)
     {
         _fileChangeReviewService.Mark(
@@ -810,7 +716,10 @@ public partial class MainWindow : Window
 
     private async void ApproveAutoFixAndVerify_OnClick(object sender, RoutedEventArgs e)
     {
-        await ApprovePendingAutoFixChangesAndVerifyAsync();
+        await _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(
+            _viewModel,
+            RunVerificationPlanAsync,
+            SendCurrentMessageAsync);
     }
 
     private async void FixVerificationFailure_OnClick(object sender, RoutedEventArgs e)
@@ -840,205 +749,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunAutoFixVerificationLoopAsync(maxAttempts: 3);
-    }
-
-    private Task RunAutoFixVerificationLoopAsync(int maxAttempts)
-    {
-        return RunAutoFixVerificationLoopAsync(
-            maxAttempts,
-            startAttempt: 1,
-            previousFailureSignature: _verificationPanelWorkflowService.LastFailureSignature);
-    }
-
-    private async Task RunAutoFixVerificationLoopAsync(
-        int maxAttempts,
-        int startAttempt,
-        string previousFailureSignature)
-    {
-        if (startAttempt > maxAttempts)
-        {
-            _viewModel.AddRunStep(
-                AgentRunState.Failed,
-                "Auto fix stopped: max attempts reached",
-                $"Tried {maxAttempts} fix attempts.");
-            _viewModel.StatusText = $"Auto fix stopped after {maxAttempts} attempts";
-            return;
-        }
-
-        var retryPlan = _verificationPanelWorkflowService.CreateRetryPlan();
-        var fixPrompt = _verificationPanelWorkflowService.BuildFixPrompt();
-        if (retryPlan == null || string.IsNullOrWhiteSpace(fixPrompt))
-        {
-            _viewModel.StatusText = startAttempt == 1
-                ? "No failed verification to auto-fix"
-                : "Auto fix stopped: no failed verification remains";
-            return;
-        }
-
-        var fileChangeCountBeforeAttempt = _viewModel.FileChanges.Count;
-        var workspaceFingerprintBeforeAttempt = await BuildWorkspaceChangeFingerprintAsync();
-
-        _viewModel.AddRunStep(
-            AgentRunState.Planning,
-            $"Auto fix attempt {startAttempt}/{maxAttempts}",
-            $"Fix, then rerun: {retryPlan.Command}");
-        _viewModel.InputText = fixPrompt;
-        await SendCurrentMessageAsync(preserveLastVerificationFailure: true);
-
-        if (_viewModel.IsBusy)
-        {
-            return;
-        }
-
-        var recordedFileChangeCount = _viewModel.FileChanges.Count - fileChangeCountBeforeAttempt;
-        var workspaceFingerprintAfterAttempt = await BuildWorkspaceChangeFingerprintAsync();
-        if (recordedFileChangeCount <= 0 &&
-            string.Equals(workspaceFingerprintBeforeAttempt, workspaceFingerprintAfterAttempt, StringComparison.Ordinal))
-        {
-            _viewModel.AddRunStep(
-                AgentRunState.Failed,
-                "Auto fix stopped: no file changes",
-                "The fix attempt did not change the workspace.");
-            _viewModel.StatusText = "Auto fix stopped: no file changes";
-            return;
-        }
-
-        _viewModel.AddRunStep(
-            AgentRunState.RecordingChanges,
-            "Auto fix changes detected",
-            recordedFileChangeCount > 0
-                ? $"{recordedFileChangeCount} file change(s) recorded."
-                : "Workspace diff changed.");
-
-        PauseAutoFixForReview(
-            retryPlan,
-            _viewModel.FileChanges.Skip(fileChangeCountBeforeAttempt).ToList(),
-            startAttempt + 1,
-            maxAttempts,
-            previousFailureSignature);
-    }
-
-    private void PauseAutoFixForReview(
-        AgentVerificationPlan retryPlan,
-        IReadOnlyList<FileChangeRecord> changes,
-        int nextAttempt,
-        int maxAttempts,
-        string previousFailureSignature)
-    {
-        _pendingAutoFixVerificationPlan = retryPlan;
-        _pendingAutoFixChanges.Clear();
-        _pendingAutoFixChanges.AddRange(changes);
-        _pendingAutoFixNextAttempt = nextAttempt;
-        _pendingAutoFixMaxAttempts = maxAttempts;
-        _pendingAutoFixPreviousFailureSignature = previousFailureSignature;
-
-        _viewModel.AddRunStep(
-            AgentRunState.WaitingForApproval,
-            "Auto fix paused for review",
-            "Review the changed files in Preview, then choose Approve all & verify.");
-        _viewModel.StatusText = "Review Auto Fix changes before verification";
-    }
-
-    private async Task ApprovePendingAutoFixChangesAndVerifyAsync()
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        if (_pendingAutoFixVerificationPlan == null)
-        {
-            _viewModel.StatusText = "No pending Auto Fix verification";
-            return;
-        }
-
-        if (_pendingAutoFixChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.NeedsEdit))
-        {
-            _viewModel.StatusText = "Auto Fix changes need edits before verification";
-            _viewModel.AddRunStep(
-                AgentRunState.WaitingForApproval,
-                "Auto fix waiting for edits",
-                "One or more pending changes are marked Needs edit.");
-            return;
-        }
-
-        if (_pendingAutoFixChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.Reverted))
-        {
-            ClearPendingAutoFixReview();
-            _viewModel.StatusText = "Auto Fix verification cancelled after revert";
-            _viewModel.AddRunStep(
-                AgentRunState.Cancelled,
-                "Auto fix verification cancelled",
-                "One or more pending changes were reverted.");
-            return;
-        }
-
-        foreach (var change in _pendingAutoFixChanges.Where(change => change.ReviewStatus == FileChangeReviewStatus.Pending))
-        {
-            change.ReviewStatus = FileChangeReviewStatus.Approved;
-        }
-
-        var retryPlan = _pendingAutoFixVerificationPlan;
-        var nextAttempt = _pendingAutoFixNextAttempt;
-        var maxAttempts = _pendingAutoFixMaxAttempts;
-        var previousFailureSignature = _pendingAutoFixPreviousFailureSignature;
-        ClearPendingAutoFixReview();
-
-        _viewModel.AddRunStep(
-            AgentRunState.Verifying,
-            "Approved Auto Fix changes",
-            retryPlan.Command);
-        var verificationResult = await RunVerificationPlanAsync(retryPlan);
-
-        if (verificationResult?.Succeeded == true)
-        {
-            _viewModel.AddRunStep(AgentRunState.Done, "Auto fix succeeded", retryPlan.Command);
-            _viewModel.StatusText = "Auto fix succeeded";
-            return;
-        }
-
-        var currentFailureSignature = _verificationPanelWorkflowService.LastFailureSignature;
-        if (!string.IsNullOrWhiteSpace(currentFailureSignature) &&
-            string.Equals(previousFailureSignature, currentFailureSignature, StringComparison.Ordinal))
-        {
-            _viewModel.AddRunStep(
-                AgentRunState.Failed,
-                "Auto fix stopped: repeated failure",
-                "The latest verification failed in the same way as before.");
-            _viewModel.StatusText = "Auto fix stopped: repeated failure";
-            return;
-        }
-
-        if (nextAttempt > maxAttempts)
-        {
-            _viewModel.AddRunStep(
-                AgentRunState.Failed,
-                "Auto fix stopped: max attempts reached",
-                $"Tried {maxAttempts} fix attempts.");
-            _viewModel.StatusText = $"Auto fix stopped after {maxAttempts} attempts";
-            return;
-        }
-
-        await RunAutoFixVerificationLoopAsync(maxAttempts, nextAttempt, currentFailureSignature);
-    }
-
-    private void ClearPendingAutoFixReview()
-    {
-        _pendingAutoFixVerificationPlan = null;
-        _pendingAutoFixChanges.Clear();
-        _pendingAutoFixNextAttempt = 0;
-        _pendingAutoFixMaxAttempts = 0;
-        _pendingAutoFixPreviousFailureSignature = string.Empty;
-    }
-
-    private async Task<string> BuildWorkspaceChangeFingerprintAsync(CancellationToken ct = default)
-    {
-        var status = await _gitService.GetStatusAsync(_viewModel.WorkspaceRoot, ct);
-        var diff = await _gitService.GetFullDiffAsync(_viewModel.WorkspaceRoot, ct);
-        var content = $"{status.ExitCode}\n{status.StandardOutput}\n{status.StandardError}\n---diff---\n{diff.ExitCode}\n{diff.StandardOutput}\n{diff.StandardError}";
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+        await _autoFixWorkflowService.RunAsync(_viewModel, maxAttempts: 3, SendCurrentMessageAsync);
     }
 
     private async Task SendCurrentMessageAsync(bool preserveLastVerificationFailure = false)
@@ -1061,24 +772,6 @@ public partial class MainWindow : Window
     {
         value = value.ReplaceLineEndings(" ");
         return value.Length <= 180 ? value : value[..180] + "...";
-    }
-
-    private static string GetMediaType(string extension)
-    {
-        return extension.ToLowerInvariant() switch
-        {
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".webp" => "image/webp",
-            ".bmp" => "image/bmp",
-            ".gif" => "image/gif",
-            ".mp4" => "video/mp4",
-            ".mov" => "video/quicktime",
-            ".avi" => "video/x-msvideo",
-            ".mkv" => "video/x-matroska",
-            ".webm" => "video/webm",
-            _ => "application/octet-stream"
-        };
     }
 
 }

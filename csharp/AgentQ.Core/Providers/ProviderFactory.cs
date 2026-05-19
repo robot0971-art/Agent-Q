@@ -112,6 +112,11 @@ public class ProviderConfiguration
     public string DesktopWorkMode { get; set; } = "Coding";
 
     /// <summary>
+    /// 데스크톱 에이전트가 한 요청에서 실행할 최대 도구 단계 수
+    /// </summary>
+    public int DesktopMaxToolSteps { get; set; } = 0;
+
+    /// <summary>
     /// 단일 실행용 프롬프트
     /// </summary>
     public string Prompt { get; set; } = string.Empty;

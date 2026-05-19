@@ -21,6 +21,7 @@ public sealed class AutomationCliIntegrationTests
             environment:
             [
                 new("USERPROFILE", home.Path),
+                new("AGENTQ_CONFIG_HOME", home.Path),
                 new("AGENTQ_MODEL", ""),
                 new("AGENTQ_API_KEY", "")
             ]);
@@ -42,6 +43,7 @@ public sealed class AutomationCliIntegrationTests
             environment:
             [
                 new("USERPROFILE", home.Path),
+                new("AGENTQ_CONFIG_HOME", home.Path),
                 new("AGENTQ_MODEL", "demo-model"),
                 new("AGENTQ_API_KEY", "demo-key")
             ]);
@@ -64,6 +66,7 @@ public sealed class AutomationCliIntegrationTests
             environment:
             [
                 new("USERPROFILE", home.Path),
+                new("AGENTQ_CONFIG_HOME", home.Path),
                 new("AGENTQ_PROVIDER", "anthropic"),
                 new("AGENTQ_MODEL", "demo-model"),
                 new("AGENTQ_API_KEY", "demo-key"),
@@ -93,6 +96,7 @@ public sealed class AutomationCliIntegrationTests
             environment:
             [
                 new("USERPROFILE", home.Path),
+                new("AGENTQ_CONFIG_HOME", home.Path),
                 new("AGENTQ_PROVIDER", "anthropic"),
                 new("AGENTQ_MODEL", "demo-model"),
                 new("AGENTQ_API_KEY", "demo-key"),

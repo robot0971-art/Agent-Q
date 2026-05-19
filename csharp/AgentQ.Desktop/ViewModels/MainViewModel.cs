@@ -77,7 +77,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _canFixLastVerificationFailure;
     private bool _canFixLastCodeReviewFindings;
     private bool _canResumeCheckpoint;
+    private bool _canContinueLastRun;
     private string _lastVerificationFailureSummary = string.Empty;
+    private string _lastContinuationPrompt = string.Empty;
     private string _latestCheckpointText = "No checkpoint loaded.";
     private string _gitStatusText = "Not refreshed yet.";
     private string _gitDiffText = "Not refreshed yet.";
@@ -91,7 +93,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _workspaceAnalysisUpdatedText = "Not analyzed yet.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
-    private string _usageText = "사용량: 아직 없음";
+    private string _usageText = "사용량 정보 없음";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private GitChangedFile? _selectedGitChangedFile;
@@ -277,6 +279,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _canFixLastCodeReviewFindings, value);
     }
 
+    public bool CanContinueLastRun
+    {
+        get => _canContinueLastRun;
+        set => SetField(ref _canContinueLastRun, value);
+    }
+
+    public string LastContinuationPrompt
+    {
+        get => _lastContinuationPrompt;
+        set => SetField(ref _lastContinuationPrompt, value);
+    }
+
     public bool CanResumeCheckpoint
     {
         get => _canResumeCheckpoint;
@@ -398,7 +412,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             DesktopFontSize = DesktopFontSize,
             DesktopAutoAttachWorkspaceContext = AutoAttachWorkspaceContext,
             DesktopAutoFetchLinks = AutoFetchLinks,
-            DesktopWorkMode = WorkMode.ToString()
+            DesktopWorkMode = WorkMode.ToString(),
+            DesktopMaxToolSteps = WorkMode switch
+            {
+                AgentWorkMode.Readonly => 8,
+                AgentWorkMode.Coding => 12,
+                AgentWorkMode.FullAgent => 16,
+                _ => 12
+            }
         };
     }
 

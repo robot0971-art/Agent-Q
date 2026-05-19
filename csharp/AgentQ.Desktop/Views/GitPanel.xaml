@@ -1,0 +1,116 @@
+﻿<UserControl x:Class="AgentQ.Desktop.Views.GitPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Content="Status"
+                    Width="64"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="Status_OnClick" />
+            <Button Content="Diff"
+                    Width="64"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="Diff_OnClick" />
+            <Button Content="Review"
+                    Width="72"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="Review_OnClick" />
+            <Button Content="Fix review"
+                    Width="82"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="FixReview_OnClick"
+                    IsEnabled="{Binding CanFixLastCodeReviewFindings}" />
+            <Button Content="Commit summary"
+                    Width="112"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Click="CommitSummary_OnClick" />
+        </WrapPanel>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="92" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="72" />
+            </Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Text="{Binding GitLastUpdatedText}" Foreground="{DynamicResource TextMuted}" FontSize="11" />
+                <TextBlock Text="{Binding GitStatusText}" Foreground="{DynamicResource TextMuted}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+            </StackPanel>
+            <ListBox Grid.Row="1"
+                     ItemsSource="{Binding GitChangedFiles}"
+                     SelectedItem="{Binding SelectedGitChangedFile, Mode=TwoWay}"
+                     SelectionChanged="ChangedFiles_OnSelectionChanged"
+                     FontSize="12"
+                     HorizontalContentAlignment="Stretch"
+                     Margin="0,0,0,10">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <TextBlock Text="{Binding DisplayName}" FontFamily="Consolas" Foreground="{DynamicResource TextMain}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding ReviewStatusText}" Foreground="{DynamicResource Warning}" FontSize="11" Margin="0,0,0,4" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <DockPanel Grid.Row="2" Margin="0,0,0,4">
+                <WrapPanel DockPanel.Dock="Right">
+                    <Button Content="Approve"
+                            Width="70"
+                            Height="23"
+                            Padding="0"
+                            FontSize="11"
+                            Margin="0,0,4,0"
+                            Click="Approve_OnClick" />
+                    <Button Content="Reject"
+                            Width="62"
+                            Height="23"
+                            Padding="0"
+                            FontSize="11"
+                            Margin="0,0,4,0"
+                            Click="Reject_OnClick" />
+                    <Button Content="Needs edit"
+                            Width="78"
+                            Height="23"
+                            Padding="0"
+                            FontSize="11"
+                            Click="NeedsEdit_OnClick" />
+                </WrapPanel>
+                <TextBlock Text="Selected diff" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBox Grid.Row="3"
+                     Text="{Binding GitSelectedFileDiffText}"
+                     IsReadOnly="True"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     TextWrapping="NoWrap"
+                     HorizontalScrollBarVisibility="Auto"
+                     VerticalScrollBarVisibility="Auto"
+                     Margin="0,0,0,10" />
+            <TextBlock Grid.Row="4" Text="Diff stat" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,4" />
+            <TextBox Grid.Row="5"
+                     Text="{Binding GitDiffText}"
+                     IsReadOnly="True"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" />
+        </Grid>
+    </DockPanel>
+</UserControl>
+

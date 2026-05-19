@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.Text;
+using System.Windows;
 using System.Windows.Threading;
 using AgentQ.Desktop.ViewModels;
 
@@ -10,6 +11,8 @@ public sealed class DesktopAgentRunWorkflowService(
     DesktopVerificationPanelWorkflowService verificationPanelWorkflowService)
 {
     private const string ThinkingPlaceholder = "생각중...";
+    private const string ContinuationPrompt =
+        "Continue the previous run from where it stopped. Do not repeat completed work. Inspect current files or command results if needed, then continue until the task is complete or you need user input.";
     private readonly DesktopUsageTracker _usageTracker = new();
     private CancellationTokenSource? _activeOperationCts;
 
@@ -55,6 +58,8 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         viewModel.InputText = string.Empty;
+        viewModel.CanContinueLastRun = false;
+        viewModel.LastContinuationPrompt = string.Empty;
         var attachmentsForRequest = attachments.ToList();
         var messageAttachments = attachmentsForRequest.Select(DesktopAttachmentWorkflowService.ToViewModel).ToList();
         viewModel.Messages.Add(new ChatMessageViewModel
@@ -88,42 +93,80 @@ public sealed class DesktopAgentRunWorkflowService(
         {
             operationCts = CreateTimeout(viewModel.TimeoutSeconds);
             SetActiveOperation(operationCts);
-            var fullText = await agentService.SendAsync(
-                viewModel.ToConfiguration(),
-                prompt,
-                attachmentsForRequest,
-                viewModel.WorkspaceRoot,
-                viewModel.WorkMode,
-                delta =>
+            var config = viewModel.ToConfiguration();
+            var workspaceRoot = viewModel.WorkspaceRoot;
+            var workMode = viewModel.WorkMode;
+            var permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode);
+            var pendingDelta = new StringBuilder();
+            var pendingDeltaLock = new object();
+            var deltaFlushQueued = false;
+
+            void QueueAssistantDelta(string delta)
+            {
+                lock (pendingDeltaLock)
                 {
-                    dispatcher.Invoke(() =>
+                    pendingDelta.Append(delta);
+                    if (deltaFlushQueued)
                     {
-                        if (assistantIndex >= 0 && assistantIndex < viewModel.Messages.Count)
-                        {
-                            var currentContent = viewModel.Messages[assistantIndex].Content;
-                            viewModel.Messages[assistantIndex] = new ChatMessageViewModel
-                            {
-                                Role = assistantMessage.Role,
-                                Content = currentContent == ThinkingPlaceholder
-                                    ? delta
-                                    : currentContent + delta,
-                                CreatedAt = assistantMessage.CreatedAt
-                            };
-                        }
-                    });
-                },
-                new DesktopPermissionEnforcer(owner, viewModel.WorkMode),
-                DesktopToolCallbacksFactory.Create(
-                    viewModel,
-                    dispatcher,
-                    trimForLog,
-                    usage =>
+                        return;
+                    }
+
+                    deltaFlushQueued = true;
+                }
+
+                dispatcher.BeginInvoke(() =>
+                {
+                    string text;
+                    lock (pendingDeltaLock)
                     {
-                        var snapshot = _usageTracker.RecordActual(usage);
-                        viewModel.UsageText = snapshot.DisplayText;
-                        viewModel.AddLog($"Usage recorded: {snapshot.DisplayText}");
-                    }),
+                        text = pendingDelta.ToString();
+                        pendingDelta.Clear();
+                        deltaFlushQueued = false;
+                    }
+
+                    AppendAssistantDelta(viewModel, assistantMessage, assistantIndex, text);
+                }, DispatcherPriority.Background);
+            }
+
+            void FlushAssistantDelta()
+            {
+                string text;
+                lock (pendingDeltaLock)
+                {
+                    text = pendingDelta.ToString();
+                    pendingDelta.Clear();
+                    deltaFlushQueued = false;
+                }
+
+                if (!string.IsNullOrEmpty(text))
+                {
+                    dispatcher.Invoke(() => AppendAssistantDelta(viewModel, assistantMessage, assistantIndex, text));
+                }
+            }
+
+            var toolCallbacks = DesktopToolCallbacksFactory.Create(
+                viewModel,
+                dispatcher,
+                trimForLog,
+                usage =>
+                {
+                    var snapshot = _usageTracker.RecordActual(usage);
+                    viewModel.UsageText = snapshot.DisplayText;
+                    viewModel.AddLog($"Usage recorded: {snapshot.DisplayText}");
+                });
+            var fullText = await Task.Run(async () =>
+                await agentService.SendAsync(
+                    config,
+                    prompt,
+                    attachmentsForRequest,
+                    workspaceRoot,
+                    workMode,
+                    QueueAssistantDelta,
+                    permissionEnforcer,
+                    toolCallbacks,
+                    operationCts.Token),
                 operationCts.Token);
+            FlushAssistantDelta();
 
             if (string.IsNullOrWhiteSpace(fullText) &&
                 assistantIndex >= 0 &&
@@ -137,6 +180,7 @@ public sealed class DesktopAgentRunWorkflowService(
                 };
             }
 
+            UpdateContinuationState(viewModel, fullText);
             viewModel.StatusText = "Response complete";
             viewModel.AddLog("Model call completed");
             var usage = _usageTracker.RecordEstimate(prompt, fullText);
@@ -181,8 +225,24 @@ public sealed class DesktopAgentRunWorkflowService(
     {
         agentService.ClearConversation();
         viewModel.Messages.Clear();
+        viewModel.CanContinueLastRun = false;
+        viewModel.LastContinuationPrompt = string.Empty;
         viewModel.AddLog("Conversation cleared");
         viewModel.StatusText = "Conversation cleared";
+    }
+
+    public bool PrepareContinuation(MainViewModel viewModel)
+    {
+        if (!viewModel.CanContinueLastRun || string.IsNullOrWhiteSpace(viewModel.LastContinuationPrompt))
+        {
+            viewModel.StatusText = "No paused run to continue";
+            return false;
+        }
+
+        viewModel.InputText = viewModel.LastContinuationPrompt;
+        viewModel.CanContinueLastRun = false;
+        viewModel.AddLog("Continuation prompt prepared");
+        return true;
     }
 
     private static void ClearPendingAttachmentsAfterSuccessfulSend(
@@ -204,6 +264,43 @@ public sealed class DesktopAgentRunWorkflowService(
         {
             viewModel.AddLog(log);
         }
+    }
+
+    private static void UpdateContinuationState(MainViewModel viewModel, string fullText)
+    {
+        var hitToolStepLimit = fullText.Contains(
+            "Stopped after reaching the maximum tool steps",
+            StringComparison.OrdinalIgnoreCase);
+        viewModel.CanContinueLastRun = hitToolStepLimit;
+        viewModel.LastContinuationPrompt = hitToolStepLimit ? ContinuationPrompt : string.Empty;
+        if (hitToolStepLimit)
+        {
+            viewModel.AddLog("Run can be continued from the tool step limit.");
+        }
+    }
+
+    private static void AppendAssistantDelta(
+        MainViewModel viewModel,
+        ChatMessageViewModel assistantMessage,
+        int assistantIndex,
+        string delta)
+    {
+        if (string.IsNullOrEmpty(delta) ||
+            assistantIndex < 0 ||
+            assistantIndex >= viewModel.Messages.Count)
+        {
+            return;
+        }
+
+        var currentContent = viewModel.Messages[assistantIndex].Content;
+        viewModel.Messages[assistantIndex] = new ChatMessageViewModel
+        {
+            Role = assistantMessage.Role,
+            Content = currentContent == ThinkingPlaceholder
+                ? delta
+                : currentContent + delta,
+            CreatedAt = assistantMessage.CreatedAt
+        };
     }
 
     private static CancellationTokenSource CreateTimeout(int timeoutSeconds)

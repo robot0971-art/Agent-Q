@@ -1,4 +1,6 @@
 using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using AgentQ.Core.Models;
@@ -23,20 +25,27 @@ public sealed class DesktopAgentService
         Keep tool use scoped to the selected workspace and explain important changes clearly.
         """;
 
-    private const int MaxToolSteps = 45;
+    private const int DefaultMaxToolSteps = 8;
     private const int MaxToolResultChars = 24000;
     private const int MaxChangeSnapshotChars = 160000;
 
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly LinkContentFetcher _linkContentFetcher;
+    private readonly ProjectMemoryService _projectMemoryService;
+    private readonly WorkspaceIndexer _workspaceIndexer;
     private readonly List<ChatMessage> _messages = [];
-    private readonly LinkContentFetcher _linkContentFetcher = new();
-    private readonly ProjectMemoryService _projectMemoryService = new();
-    private readonly WorkspaceIndexer _workspaceIndexer = new();
     private readonly ToolRegistry _toolRegistry = CreateToolRegistry();
-    private readonly IProviderHttpClientFactory _httpClientFactory;
 
-    public DesktopAgentService(IProviderHttpClientFactory? httpClientFactory = null)
+    public DesktopAgentService(
+        IHttpClientFactory httpClientFactory,
+        LinkContentFetcher linkContentFetcher,
+        ProjectMemoryService projectMemoryService,
+        WorkspaceIndexer workspaceIndexer)
     {
-        _httpClientFactory = httpClientFactory ?? ProviderHttpClientFactory.Shared;
+        _httpClientFactory = httpClientFactory;
+        _linkContentFetcher = linkContentFetcher;
+        _projectMemoryService = projectMemoryService;
+        _workspaceIndexer = workspaceIndexer;
     }
 
     public async Task<string> SendAsync(
@@ -63,12 +72,15 @@ public sealed class DesktopAgentService
         var fileChanges = new List<FileChangeRecord>();
         var executedCommands = new List<string>();
 
-        for (var step = 1; step <= MaxToolSteps; step++)
+        var maxToolSteps = ResolveMaxToolSteps(config, workMode);
+
+        for (var step = 1; step <= maxToolSteps; step++)
         {
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Generating, $"Model turn {step}", "Waiting for assistant output or tool calls.");
             var response = await GenerateAssistantTurnAsync(
                 provider,
                 config,
+                maxToolSteps,
                 includeTransientContext ? transientContext : null,
                 builder,
                 onDelta,
@@ -111,7 +123,7 @@ public sealed class DesktopAgentService
             }
         }
 
-        var stoppedMessage = $"Stopped after reaching the maximum tool steps ({MaxToolSteps}).";
+        var stoppedMessage = $"Stopped after reaching the maximum tool steps ({maxToolSteps}).";
         builder.AppendLine();
         builder.AppendLine(stoppedMessage);
         onDelta?.Invoke(Environment.NewLine + stoppedMessage);
@@ -124,6 +136,7 @@ public sealed class DesktopAgentService
     private async Task<DesktopAssistantTurn> GenerateAssistantTurnAsync(
         ILlmProvider provider,
         ProviderConfiguration config,
+        int maxToolSteps,
         string? transientContext,
         StringBuilder textBuilder,
         Action<string>? onDelta,
@@ -138,7 +151,7 @@ public sealed class DesktopAgentService
             Messages = requestMessages,
             MaxTokens = config.MaxTokens == 0 ? 4096 : config.MaxTokens,
             Stream = true,
-            MaxSteps = MaxToolSteps
+            MaxSteps = maxToolSteps
         };
 
         var assistantText = new StringBuilder();
@@ -294,7 +307,7 @@ public sealed class DesktopAgentService
                     continue;
                 }
 
-                videoNotes.Add($"{attachment.FileName}: 동영상에서 대표 프레임 {result.FramePaths.Count}장을 추출해 이미지로 분석합니다.");
+                videoNotes.Add($"{attachment.FileName}: 동영상에서 대표 프레임 {result.FramePaths.Count}개를 추출해 이미지로 분석합니다.");
                 try
                 {
                     foreach (var framePath in result.FramePaths)
@@ -350,13 +363,48 @@ public sealed class DesktopAgentService
     {
         ILlmProvider provider = config.Provider.ToLowerInvariant() switch
         {
-            "openai" => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey),
-            "opencode-go" => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey, name: "opencode-go"),
-            "anthropic" => new AnthropicProvider(_httpClientFactory, config.BaseUrl, config.ApiKey),
-            _ => new OpenAiCompatibleProvider(_httpClientFactory, config.BaseUrl, config.ApiKey, name: config.Provider)
+            "openai" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey)),
+            "opencode-go" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), name: "opencode-go"),
+            "anthropic" => new AnthropicProvider(CreateAnthropicClient(config.BaseUrl), config.ApiKey),
+            _ => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), name: config.Provider)
         };
 
         return new ResilientLlmProvider(provider);
+    }
+
+    private HttpClient CreateAnthropicClient(string baseUrl)
+    {
+        var client = _httpClientFactory.CreateClient("anthropic");
+        client.BaseAddress = new Uri(baseUrl);
+        return client;
+    }
+
+    private HttpClient CreateOpenAiClient(string baseUrl, string apiKey)
+    {
+        var client = _httpClientFactory.CreateClient("openai");
+        client.BaseAddress = new Uri(OpenAiCompatibleProvider.NormalizeBaseUrl(baseUrl));
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
+
+        return client;
+    }
+
+    private static int ResolveMaxToolSteps(ProviderConfiguration config, AgentWorkMode workMode)
+    {
+        if (config.DesktopMaxToolSteps > 0)
+        {
+            return Math.Clamp(config.DesktopMaxToolSteps, 1, 32);
+        }
+
+        return workMode switch
+        {
+            AgentWorkMode.Readonly => DefaultMaxToolSteps,
+            AgentWorkMode.Coding => 12,
+            AgentWorkMode.FullAgent => 16,
+            _ => DefaultMaxToolSteps
+        };
     }
 
     private async Task<List<ChatContent>> ExecuteToolsAsync(

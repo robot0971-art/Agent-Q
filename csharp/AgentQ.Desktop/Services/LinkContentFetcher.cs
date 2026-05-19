@@ -12,10 +12,12 @@ public sealed class LinkContentFetcher
     private static readonly Regex TagRegex = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
 
-    private readonly HttpClient _httpClient = new()
+    private readonly IHttpClientFactory _httpClientFactory;
+
+    public LinkContentFetcher(IHttpClientFactory httpClientFactory)
     {
-        Timeout = TimeSpan.FromSeconds(15)
-    };
+        _httpClientFactory = httpClientFactory;
+    }
 
     public async Task<string> BuildContextAsync(string text, CancellationToken ct)
     {
@@ -51,7 +53,8 @@ public sealed class LinkContentFetcher
             request.Headers.UserAgent.ParseAdd("AgentQ-Desktop/1.0");
             request.Headers.Accept.ParseAdd("text/html, text/plain;q=0.9, */*;q=0.1");
 
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            var httpClient = _httpClientFactory.CreateClient("desktop-links");
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             response.EnsureSuccessStatusCode();
 
             var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
