@@ -273,7 +273,7 @@ public sealed class OpenAiProviderTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task GenerateResponseAsync_OmitsReasoningContentForOpenCodeGoDeepSeekToolCalls()
+    public async Task GenerateResponseAsync_PreservesReasoningContentForOpenCodeGoDeepSeekToolCalls()
     {
         JsonDocument? capturedRequest = null;
 
@@ -340,7 +340,7 @@ public sealed class OpenAiProviderTests
         Assert.NotNull(capturedRequest);
         var messages = capturedRequest!.RootElement.GetProperty("messages").EnumerateArray().ToArray();
         Assert.Equal("assistant", messages[1].GetProperty("role").GetString());
-        Assert.False(messages[1].TryGetProperty("reasoning_content", out _));
+        Assert.Equal("internal reasoning", messages[1].GetProperty("reasoning_content").GetString());
     }
 
     [Fact]

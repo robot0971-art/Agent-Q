@@ -283,8 +283,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
                 var reasoningContent = toolUses
                     .Select(t => t.ReasoningContent)
                     .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-                if (!string.IsNullOrWhiteSpace(reasoningContent) &&
-                    ShouldSendReasoningContent(effectiveModel))
+                if (!string.IsNullOrWhiteSpace(reasoningContent))
                 {
                     openAiMsg.ReasoningContent = reasoningContent;
                 }
@@ -458,10 +457,6 @@ public class OpenAiCompatibleProvider : ILlmProvider
     private bool ShouldApplyKimiToolCallCompatibility(string model) =>
         _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
         model.StartsWith("kimi-", StringComparison.OrdinalIgnoreCase);
-
-    private bool ShouldSendReasoningContent(string model) =>
-        !(_name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&
-          model.StartsWith("deepseek-", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsTerminalFinishReason(string? finishReason)
     {
