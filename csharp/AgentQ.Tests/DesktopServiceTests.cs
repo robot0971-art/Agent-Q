@@ -27,6 +27,12 @@ public sealed class DesktopServiceTests
     {
         Assert.Contains("opencode-go", DesktopProviderModelCatalog.Providers);
         Assert.Equal("kimi-k2.6", DesktopProviderModelCatalog.GetDefaultModel("opencode-go"));
+        Assert.Contains("qwen3.6-plus", DesktopProviderModelCatalog.GetModels("opencode-go"));
+        Assert.Contains("gpt-5.5", DesktopProviderModelCatalog.GetModels("openai"));
+        Assert.Contains("gpt-5.4-mini", DesktopProviderModelCatalog.GetModels("openai"));
+        Assert.Contains("gpt-5.3-codex", DesktopProviderModelCatalog.GetModels("openai"));
+        Assert.Contains("claude-opus-4-7", DesktopProviderModelCatalog.GetModels("anthropic"));
+        Assert.Contains("claude-sonnet-4-6", DesktopProviderModelCatalog.GetModels("anthropic"));
         Assert.Equal("https://api.openai.com/v1", DesktopProviderModelCatalog.GetDefaultBaseUrl("openai", string.Empty));
         Assert.Equal("default", DesktopProviderModelCatalog.GetDefaultModel("custom-provider"));
         Assert.Equal("https://example.test", DesktopProviderModelCatalog.GetDefaultBaseUrl("custom-provider", "https://example.test"));
