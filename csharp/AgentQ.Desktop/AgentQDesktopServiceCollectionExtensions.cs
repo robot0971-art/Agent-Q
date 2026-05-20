@@ -33,6 +33,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopPlanCommandService>();
         services.AddSingleton<AgentSessionSummaryService>();
         services.AddSingleton<DesktopWorkspaceContextWorkflowService>();
+        services.AddSingleton<DesktopWorkspaceCommandService>();
         services.AddSingleton<DesktopAgentRunWorkflowService>();
         services.AddSingleton<DesktopFileChangeReviewService>();
         services.AddSingleton<DesktopAttachmentSelectionService>();

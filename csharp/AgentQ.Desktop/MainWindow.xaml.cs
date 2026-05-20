@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,11 +19,10 @@ public partial class MainWindow : Window
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
     private readonly DesktopGitCommandService _gitCommandService;
     private readonly DesktopPlanCommandService _planCommandService;
+    private readonly DesktopWorkspaceCommandService _workspaceCommandService;
     private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
-    private readonly DesktopAttachmentSelectionService _attachmentSelectionService;
-    private readonly DesktopClipboardService _clipboardService;
     private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly List<DesktopAttachment> _attachments = [];
@@ -37,11 +34,10 @@ public partial class MainWindow : Window
         DesktopGitPanelWorkflowService gitPanelWorkflowService,
         DesktopGitCommandService gitCommandService,
         DesktopPlanCommandService planCommandService,
+        DesktopWorkspaceCommandService workspaceCommandService,
         DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
-        DesktopAttachmentSelectionService attachmentSelectionService,
-        DesktopClipboardService clipboardService,
         DesktopAutoFixWorkflowService autoFixWorkflowService,
         DesktopPanelEventBinder panelEventBinder)
     {
@@ -52,11 +48,10 @@ public partial class MainWindow : Window
         _gitPanelWorkflowService = gitPanelWorkflowService;
         _gitCommandService = gitCommandService;
         _planCommandService = planCommandService;
+        _workspaceCommandService = workspaceCommandService;
         _workspaceContextWorkflowService = workspaceContextWorkflowService;
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
-        _attachmentSelectionService = attachmentSelectionService;
-        _clipboardService = clipboardService;
         _autoFixWorkflowService = autoFixWorkflowService;
         _panelEventBinder = panelEventBinder;
         DataContext = _viewModel;
@@ -83,13 +78,13 @@ public partial class MainWindow : Window
     {
         return new DesktopPanelEventCallbacks
         {
-            SaveSettings = () => SaveSettings_OnClick(this, new RoutedEventArgs()),
+            SaveSettingsAsync = () => _workspaceCommandService.SaveSettingsAsync(_viewModel),
             UpdateApiKey = apiKey => _viewModel.ApiKey = apiKey,
-            BrowseWorkspace = () => BrowseWorkspace_OnClick(this, new RoutedEventArgs()),
-            OpenWorkspace = () => OpenWorkspace_OnClick(this, new RoutedEventArgs()),
-            RefreshWorkspaceAnalysis = () => RefreshWorkspaceAnalysis_OnClick(this, new RoutedEventArgs()),
-            SaveProjectConfig = () => SaveProjectConfig_OnClick(this, new RoutedEventArgs()),
-            LoadProjectConfig = () => LoadProjectConfig_OnClick(this, new RoutedEventArgs()),
+            BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
+            OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
+            RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
+            SaveProjectConfigAsync = () => _workspaceCommandService.SaveProjectConfigAsync(_viewModel, TrimForLog),
+            LoadProjectConfigAsync = () => _workspaceCommandService.LoadProjectConfigAsync(_viewModel),
             RunVerificationPlanAsync = RunVerificationPlanAsync,
             FixVerificationFailure = () => FixVerificationFailure_OnClick(this, new RoutedEventArgs()),
             AutoFixVerificationFailure = () => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs()),
@@ -104,12 +99,12 @@ public partial class MainWindow : Window
             SaveSessionSummary = () => SaveSessionSummary_OnClick(this, new RoutedEventArgs()),
             LoadSessionSummary = () => LoadSessionSummary_OnClick(this, new RoutedEventArgs()),
             ResumeSessionSummary = () => ResumeSessionSummary_OnClick(this, new RoutedEventArgs()),
-            AttachFiles = () => AttachFiles_OnClick(this, new RoutedEventArgs()),
-            ClearAttachments = () => ClearAttachments_OnClick(this, new RoutedEventArgs()),
+            AttachFiles = () => _workspaceCommandService.SelectAttachments(this, _viewModel, _attachments),
+            ClearAttachments = () => _workspaceCommandService.ClearAttachments(_viewModel, _attachments),
             SendCurrentMessageAsync = () => SendCurrentMessageAsync(),
             ContinueLastRun = () => ContinueLastRun_OnClick(this, new RoutedEventArgs()),
             StopAgent = () => StopAgent_OnClick(this, new RoutedEventArgs()),
-            CopyMessage = message => _clipboardService.CopyMessage(_viewModel, message),
+            CopyMessage = message => _workspaceCommandService.CopyMessage(_viewModel, message),
             ApproveFileChange = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.Approved),
             MarkFileChangeNeedsEdit = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit),
             RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
@@ -161,95 +156,29 @@ public partial class MainWindow : Window
         await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
     }
 
+    private async void Send_OnClick(object sender, RoutedEventArgs e)
+    {
+        await SendCurrentMessageAsync();
+    }
+
     private async void SaveSettings_OnClick(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            await _configService.SaveAsync(_viewModel.ToConfiguration());
-            _viewModel.StatusText = "Settings saved";
-            _viewModel.AddLog("Settings saved");
-        }
-        catch (Exception ex)
-        {
-            _viewModel.StatusText = $"Settings save failed: {ex.Message}";
-            _viewModel.AddLog($"Settings save failed: {ex.Message}");
-        }
+        await _workspaceCommandService.SaveSettingsAsync(_viewModel);
     }
 
     private async void BrowseWorkspace_OnClick(object sender, RoutedEventArgs e)
     {
-        using var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            Description = "Select a project folder.",
-            UseDescriptionForTitle = true,
-            SelectedPath = string.IsNullOrWhiteSpace(_viewModel.WorkspaceRoot)
-                ? Environment.CurrentDirectory
-                : _viewModel.WorkspaceRoot
-        };
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            _viewModel.WorkspaceRoot = dialog.SelectedPath;
-            await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
-            _viewModel.StatusText = "Project folder selected";
-            _viewModel.AddLog($"Project folder selected: {dialog.SelectedPath}");
-        }
-    }
-
-    private async void RefreshWorkspaceAnalysis_OnClick(object sender, RoutedEventArgs e)
-    {
-        await _workspaceContextWorkflowService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog);
-    }
-
-    private async void SaveProjectConfig_OnClick(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await _workspaceContextWorkflowService.SaveProjectConfigAsync(_viewModel);
-        }
-        catch (Exception ex)
-        {
-            _viewModel.StatusText = $"Project config save failed: {ex.Message}";
-            _viewModel.AddLog($"Project config save failed: {TrimForLog(ex.Message)}");
-        }
-    }
-
-    private async void LoadProjectConfig_OnClick(object sender, RoutedEventArgs e)
-    {
-        await _workspaceContextWorkflowService.LoadProjectConfigAsync(_viewModel);
-        _viewModel.StatusText = _workspaceContextWorkflowService.ProjectConfig == null
-            ? "No project config found"
-            : "Project config loaded";
-    }
-
-    private void OpenWorkspace_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (!Directory.Exists(_viewModel.WorkspaceRoot))
-        {
-            _viewModel.StatusText = "No valid project folder to open.";
-            return;
-        }
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = _viewModel.WorkspaceRoot,
-            UseShellExecute = true
-        });
+        await _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog);
     }
 
     private void AttachFiles_OnClick(object sender, RoutedEventArgs e)
     {
-        _attachmentSelectionService.SelectAttachments(this, _viewModel, _attachments);
+        _workspaceCommandService.SelectAttachments(this, _viewModel, _attachments);
     }
 
     private void ClearAttachments_OnClick(object sender, RoutedEventArgs e)
     {
-        _attachmentSelectionService.ClearAttachments(_viewModel, _attachments);
-    }
-
-    private async void Send_OnClick(object sender, RoutedEventArgs e)
-    {
-        await SendCurrentMessageAsync();
+        _workspaceCommandService.ClearAttachments(_viewModel, _attachments);
     }
 
     private async void ContinueLastRun_OnClick(object sender, RoutedEventArgs e)
@@ -293,12 +222,12 @@ public partial class MainWindow : Window
 
     private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
     {
-        _clipboardService.CopyLastAssistantMessage(_viewModel);
+        _workspaceCommandService.CopyLastAssistantMessage(_viewModel);
     }
 
     private void CopyConversation_OnClick(object sender, RoutedEventArgs e)
     {
-        _clipboardService.CopyConversation(_viewModel);
+        _workspaceCommandService.CopyConversation(_viewModel);
     }
 
     private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

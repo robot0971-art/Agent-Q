@@ -16,14 +16,14 @@ public sealed class DesktopPanelEventBinder
         GitPanel gitPanel,
         DesktopPanelEventCallbacks callbacks)
     {
-        settingsPanel.SaveRequested += (_, _) => callbacks.SaveSettings();
+        settingsPanel.SaveRequested += async (_, _) => await callbacks.SaveSettingsAsync();
         settingsPanel.ApiKeyChanged += (_, apiKey) => callbacks.UpdateApiKey(apiKey);
 
-        projectPanel.BrowseWorkspaceRequested += (_, _) => callbacks.BrowseWorkspace();
+        projectPanel.BrowseWorkspaceRequested += async (_, _) => await callbacks.BrowseWorkspaceAsync();
         projectPanel.OpenWorkspaceRequested += (_, _) => callbacks.OpenWorkspace();
-        projectPanel.RefreshWorkspaceAnalysisRequested += (_, _) => callbacks.RefreshWorkspaceAnalysis();
-        projectPanel.SaveProjectConfigRequested += (_, _) => callbacks.SaveProjectConfig();
-        projectPanel.LoadProjectConfigRequested += (_, _) => callbacks.LoadProjectConfig();
+        projectPanel.RefreshWorkspaceAnalysisRequested += async (_, _) => await callbacks.RefreshWorkspaceAnalysisAsync();
+        projectPanel.SaveProjectConfigRequested += async (_, _) => await callbacks.SaveProjectConfigAsync();
+        projectPanel.LoadProjectConfigRequested += async (_, _) => await callbacks.LoadProjectConfigAsync();
 
         verificationPanel.RunRequested += async (_, plan) => await callbacks.RunVerificationPlanAsync(plan);
         verificationPanel.FixFailureRequested += (_, _) => callbacks.FixVerificationFailure();
@@ -43,7 +43,7 @@ public sealed class DesktopPanelEventBinder
         memoryPanel.ResumeSessionSummaryRequested += (_, _) => callbacks.ResumeSessionSummary();
 
         chatPanel.AttachFilesRequested += (_, _) => callbacks.AttachFiles();
-        chatPanel.BrowseWorkspaceRequested += (_, _) => callbacks.BrowseWorkspace();
+        chatPanel.BrowseWorkspaceRequested += async (_, _) => await callbacks.BrowseWorkspaceAsync();
         chatPanel.ClearAttachmentsRequested += (_, _) => callbacks.ClearAttachments();
         chatPanel.SendRequested += async (_, _) => await callbacks.SendCurrentMessageAsync();
         chatPanel.ContinueLastRunRequested += (_, _) => callbacks.ContinueLastRun();
@@ -76,13 +76,13 @@ public sealed class DesktopPanelEventBinder
 
 public sealed class DesktopPanelEventCallbacks
 {
-    public required Action SaveSettings { get; init; }
+    public required Func<Task> SaveSettingsAsync { get; init; }
     public required Action<string> UpdateApiKey { get; init; }
-    public required Action BrowseWorkspace { get; init; }
+    public required Func<Task> BrowseWorkspaceAsync { get; init; }
     public required Action OpenWorkspace { get; init; }
-    public required Action RefreshWorkspaceAnalysis { get; init; }
-    public required Action SaveProjectConfig { get; init; }
-    public required Action LoadProjectConfig { get; init; }
+    public required Func<Task> RefreshWorkspaceAnalysisAsync { get; init; }
+    public required Func<Task> SaveProjectConfigAsync { get; init; }
+    public required Func<Task> LoadProjectConfigAsync { get; init; }
     public required Func<AgentVerificationPlan, Task> RunVerificationPlanAsync { get; init; }
     public required Action FixVerificationFailure { get; init; }
     public required Action AutoFixVerificationFailure { get; init; }
