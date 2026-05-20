@@ -327,6 +327,22 @@ The CI workflow:
 - builds the mock service Docker image on `ubuntu-latest`
 - starts the mock service container and runs a CLI JSON smoke test against it
 
+## Release Artifacts
+
+Tag pushes matching `v*` run `.github/workflows/release.yml`.
+
+Example:
+
+```powershell
+git tag v0.1.0-beta.1
+git push origin v0.1.0-beta.1
+```
+
+The release workflow builds and tests the solution, packs the CLI using the tag version, publishes the Windows desktop app, and creates a draft GitHub Release with:
+
+- `AgentQ.Tool.<version>.nupkg`
+- `AgentQ.Desktop-win-x64-<tag>.zip`
+
 ## OpenCode Go
 
 OpenCode Go can be used through AgentQ when you have an API key for one of the OpenAI-compatible Go models.

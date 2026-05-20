@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release artifacts
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Release tag did not resolve to a package version."
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore .\csharp\AgentQ.sln
+
+      - name: Build
+        run: dotnet build .\csharp\AgentQ.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test .\csharp\AgentQ.sln -c Release --no-build --logger trx --results-directory .\artifacts\test-results
+
+      - name: Pack CLI tool
+        run: dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release --no-build -p:PackageVersion=${{ steps.version.outputs.version }}
+
+      - name: Publish desktop app
+        run: >
+          dotnet publish .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o .\artifacts\desktop\win-x64
+
+      - name: Archive desktop app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\artifacts\release | Out-Null
+          Compress-Archive `
+            -Path .\artifacts\desktop\win-x64\* `
+            -DestinationPath ".\artifacts\release\AgentQ.Desktop-win-x64-${{ steps.version.outputs.tag }}.zip" `
+            -Force
+          Copy-Item .\artifacts\packages\*.nupkg .\artifacts\release\
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AgentQ ${{ steps.version.outputs.tag }}
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: |
+            artifacts/release/*.zip
+            artifacts/release/*.nupkg
