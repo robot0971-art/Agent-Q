@@ -1,8 +1,6 @@
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using AgentQ.Core.Providers;
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
@@ -11,8 +9,6 @@ namespace AgentQ.Desktop;
 
 public partial class MainWindow : Window
 {
-    private const double MouseWheelScrollFactor = 0.35;
-
     private readonly MainViewModel _viewModel;
     private readonly DesktopConfigService _configService;
     private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
@@ -24,6 +20,7 @@ public partial class MainWindow : Window
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
     private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
+    private readonly DesktopWindowCommandService _windowCommandService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly List<DesktopAttachment> _attachments = [];
 
@@ -39,6 +36,7 @@ public partial class MainWindow : Window
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
         DesktopAutoFixWorkflowService autoFixWorkflowService,
+        DesktopWindowCommandService windowCommandService,
         DesktopPanelEventBinder panelEventBinder)
     {
         InitializeComponent();
@@ -53,6 +51,7 @@ public partial class MainWindow : Window
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
         _autoFixWorkflowService = autoFixWorkflowService;
+        _windowCommandService = windowCommandService;
         _panelEventBinder = panelEventBinder;
         DataContext = _viewModel;
         HookPanelEvents();
@@ -198,26 +197,22 @@ public partial class MainWindow : Window
 
     private void IncreaseFontSize_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.DesktopFontSize += 1;
-        _viewModel.StatusText = $"Font size: {_viewModel.DesktopFontSize:0}";
+        _windowCommandService.IncreaseFontSize(_viewModel);
     }
 
     private void DecreaseFontSize_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.DesktopFontSize = Math.Max(11, _viewModel.DesktopFontSize - 1);
-        _viewModel.StatusText = $"Font size: {_viewModel.DesktopFontSize:0}";
+        _windowCommandService.DecreaseFontSize(_viewModel);
     }
 
     private void ResetFontSize_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.DesktopFontSize = 14;
-        _viewModel.StatusText = "Font size reset";
+        _windowCommandService.ResetFontSize(_viewModel);
     }
 
     private void ShowStatus_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.StatusText =
-            $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, Font size: {_viewModel.DesktopFontSize:0}";
+        _windowCommandService.ShowStatus(_viewModel);
     }
 
     private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
@@ -232,106 +227,42 @@ public partial class MainWindow : Window
 
     private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (sender is not DependencyObject source)
-        {
-            return;
-        }
-
-        var scrollViewer = source is ScrollViewer viewer
-            ? viewer
-            : FindDescendant<ScrollViewer>(source);
-        if (scrollViewer == null)
-        {
-            return;
-        }
-
-        e.Handled = true;
-        SmoothScroll(scrollViewer, e.Delta);
-    }
-
-    private static void SmoothScroll(ScrollViewer scrollViewer, int wheelDelta)
-    {
-        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * MouseWheelScrollFactor;
-        targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
-        scrollViewer.ScrollToVerticalOffset(targetOffset);
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root)
-        where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T typed)
-            {
-                return typed;
-            }
-
-            var descendant = FindDescendant<T>(child);
-            if (descendant != null)
-            {
-                return descendant;
-            }
-        }
-
-        return null;
+        _windowCommandService.HandleSmoothScroll(sender, e);
     }
 
     private void ClearLogs_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.Logs.Clear();
-        _viewModel.AddLog("Logs cleared");
+        _windowCommandService.ClearLogs(_viewModel);
     }
 
     private void ClearSidePanel_OnClick(object sender, RoutedEventArgs e)
     {
-        _viewModel.Logs.Clear();
-        _viewModel.RunSteps.Clear();
-        _viewModel.VerificationPlans.Clear();
-        _viewModel.VerificationResults.Clear();
-        _viewModel.FileChanges.Clear();
-        _gitPanelWorkflowService.ClearPanel(_viewModel);
-        _verificationPanelWorkflowService.ClearFailure(_viewModel);
-        _autoFixWorkflowService.ClearPendingReview();
-        _viewModel.AddLog("Side panel cleared");
+        _windowCommandService.ClearSidePanel(_viewModel);
     }
 
     private void Exit_OnClick(object sender, RoutedEventArgs e)
     {
-        Close();
+        _windowCommandService.Exit(this);
     }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2)
-        {
-            ToggleWindowMaximized();
-            return;
-        }
-
-        DragMove();
+        _windowCommandService.HandleTitleBarMouseDown(this, e);
     }
 
     private void MinimizeWindow_OnClick(object sender, RoutedEventArgs e)
     {
-        WindowState = WindowState.Minimized;
+        _windowCommandService.Minimize(this);
     }
 
     private void MaximizeWindow_OnClick(object sender, RoutedEventArgs e)
     {
-        ToggleWindowMaximized();
+        _windowCommandService.ToggleWindowMaximized(this);
     }
 
     private void CloseWindow_OnClick(object sender, RoutedEventArgs e)
     {
-        Close();
-    }
-
-    private void ToggleWindowMaximized()
-    {
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
+        _windowCommandService.Close(this);
     }
 
     private async Task<DesktopVerificationWorkflowResult?> RunVerificationPlanAsync(AgentVerificationPlan plan)
