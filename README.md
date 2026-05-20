@@ -322,7 +322,8 @@ The CI workflow:
 - restores and builds `csharp/AgentQ.sln` on `windows-latest`
 - runs the full Release test suite
 - packs the CLI as a .NET tool package
-- uploads CLI packages and test results as artifacts
+- publishes the Windows desktop app as a self-contained `win-x64` package
+- uploads CLI packages, desktop packages, and test results as artifacts
 - builds the mock service Docker image on `ubuntu-latest`
 - starts the mock service container and runs a CLI JSON smoke test against it
 

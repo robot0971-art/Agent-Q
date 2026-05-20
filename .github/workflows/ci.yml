@@ -37,11 +37,36 @@ jobs:
       - name: Pack CLI tool
         run: dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release --no-build
 
+      - name: Publish desktop app
+        run: >
+          dotnet publish .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o .\artifacts\desktop\win-x64
+
+      - name: Archive desktop app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\artifacts\desktop-package | Out-Null
+          Compress-Archive `
+            -Path .\artifacts\desktop\win-x64\* `
+            -DestinationPath .\artifacts\desktop-package\AgentQ.Desktop-win-x64.zip `
+            -Force
+
       - name: Upload CLI package
         uses: actions/upload-artifact@v4
         with:
           name: agentq-cli-package
           path: artifacts/packages/*.nupkg
+
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentq-desktop-win-x64
+          path: artifacts/desktop-package/AgentQ.Desktop-win-x64.zip
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
