@@ -102,6 +102,8 @@ public sealed class CliToolLoopRunnerTests
 
         Assert.NotNull(capturedContext);
         Assert.Contains("Windows", capturedContext!.SystemPrompt);
+        Assert.Contains("robot0971-art", capturedContext.SystemPrompt);
+        Assert.Contains("Model providers are only the underlying inference engines", capturedContext.SystemPrompt);
         Assert.Contains("Korean", capturedContext.SystemPrompt);
         Assert.Contains("PowerShell", capturedContext.SystemPrompt);
         Assert.Contains("uname", capturedContext.SystemPrompt);
