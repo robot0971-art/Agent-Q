@@ -22,6 +22,10 @@ public partial class GitPanel : System.Windows.Controls.UserControl
 
     public event EventHandler? PullFastForwardRequested;
 
+    public event EventHandler? BackupBranchRequested;
+
+    public event EventHandler? CheckoutMainRequested;
+
     public event EventHandler? SelectedFileChanged;
 
     public event EventHandler? ApproveRequested;
@@ -66,6 +70,16 @@ public partial class GitPanel : System.Windows.Controls.UserControl
     private void PullFastForward_OnClick(object sender, RoutedEventArgs e)
     {
         PullFastForwardRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void BackupBranch_OnClick(object sender, RoutedEventArgs e)
+    {
+        BackupBranchRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CheckoutMain_OnClick(object sender, RoutedEventArgs e)
+    {
+        CheckoutMainRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void ChangedFiles_OnSelectionChanged(object sender, SelectionChangedEventArgs e)

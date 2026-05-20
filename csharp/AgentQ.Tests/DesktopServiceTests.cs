@@ -94,6 +94,40 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void GitBranchRecoveryAnalyzer_CreatesTimestampedBackupBranchName()
+    {
+        var branchName = GitBranchRecoveryAnalyzer.CreateBackupBranchName(new DateTime(2026, 5, 20, 10, 30, 45));
+
+        Assert.Equal("backup/desktop-recovery-20260520-103045", branchName);
+    }
+
+    [Fact]
+    public void GitBranchRecoveryAnalyzer_BlocksBranchSwitchWithLocalChanges()
+    {
+        var canSwitch = GitBranchRecoveryAnalyzer.CanSwitchBranch(
+            [
+                new GitChangedFile
+                {
+                    Status = " M",
+                    Path = "README.md"
+                }
+            ],
+            out var reason);
+
+        Assert.False(canSwitch);
+        Assert.Contains("local changes", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitBranchRecoveryAnalyzer_AllowsBranchSwitchWithCleanTree()
+    {
+        var canSwitch = GitBranchRecoveryAnalyzer.CanSwitchBranch([], out var reason);
+
+        Assert.True(canSwitch);
+        Assert.Contains("clean", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopPlanParser_ParsesCheckboxNumberedAndBulletItems()
     {
         var items = DesktopPlanParser.Parse(

@@ -44,7 +44,21 @@
                     Height="26"
                     Padding="0"
                     FontSize="11"
+                    Margin="0,0,6,0"
                     Click="PullFastForward_OnClick" />
+            <Button Content="Backup branch"
+                    Width="104"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="BackupBranch_OnClick" />
+            <Button Content="Checkout main"
+                    Width="102"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Click="CheckoutMain_OnClick" />
         </WrapPanel>
         <Grid>
             <Grid.RowDefinitions>

@@ -119,6 +119,12 @@ Pull is blocked when:
 - the branch has diverged
 - the repository is in detached HEAD
 
+Branch recovery support now includes:
+
+- create a timestamped backup branch from the current HEAD
+- switch to `main` only when the working tree is clean
+- keep reset-style recovery out of the UI until a separate safe flow exists
+
 ### First-run setup guidance
 
 The CLI now offers to run `/setup` immediately when interactive startup is missing a model or API key. The Desktop first-run status/log text also points users to the Settings panel and Save action.
@@ -165,19 +171,19 @@ Primary files:
 - `csharp/AgentQ.Desktop/Views/*`
 - `csharp/AgentQ.Desktop/ViewModels/MainViewModel.cs`
 
-### 2. Improve desktop Git branch recovery actions
+### 2. Continue reducing MainWindow code-behind
 
 Priority: high
 
 Current issue:
 
-- real workflows include branch consolidation, deleted upstream branches, forced updates, and divergent local branches
-- the desktop Git panel now explains those states and can stage/commit/pull safely, but branch recovery actions still need explicit flows
+- `MainWindow.xaml` is now mostly composed of extracted panels
+- `MainWindow.xaml.cs` still coordinates many event handlers and workflow services
 
 Target:
 
-- consider backup-branch guidance before hard resets or branch switches
-- keep destructive/reset-style actions blocked unless a separate safe recovery flow exists
+- move related event coordination into focused workflow/coordinator classes
+- keep destructive/reset-style Git recovery out of the UI unless a separate safe flow exists
 
 Primary files:
 

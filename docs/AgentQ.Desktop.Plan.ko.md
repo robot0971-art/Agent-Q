@@ -22,13 +22,14 @@ AgentQ Desktop은 기존 AgentQ CLI의 provider, tool, permission 흐름을 재�
 - Git 브랜치 상태 안내: upstream 없음, upstream 삭제, ahead/behind/diverged 상태 표시
 - Git stage/commit 기본 흐름: 선택 파일 stage, 승인 파일 stage, 선택 파일 unstage, staged commit
 - Git pull 안전 흐름: 깨끗한 작업트리와 안전한 브랜치 상태에서만 `git pull --ff-only` 허용
+- Git 브랜치 복구 기본 흐름: 현재 HEAD 백업 브랜치 생성, 깨끗한 작업트리에서만 `main` 전환
 - global tool 업데이트 smoke test 검증: pack, tool update, installed/direct CLI 실행 성공
 
 ## 권장 작업 순서
 
-1. Git 브랜치 복구 동작을 브랜치 상태 안내와 연결해 안전하게 강화한다.
-2. `MainWindow.xaml.cs`의 조정 로직을 focused workflow/service로 계속 옮긴다.
-3. Desktop 서비스 단위 테스트를 계속 보강한다.
+1. `MainWindow.xaml.cs`의 조정 로직을 focused workflow/service로 계속 옮긴다.
+2. Desktop 서비스 단위 테스트를 계속 보강한다.
+3. Docker 기반 CLI/MockService/test 환경을 검토한다.
 
 ## 주요 사용자 흐름
 

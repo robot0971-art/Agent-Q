@@ -127,6 +127,30 @@ public sealed class DesktopGitService
             ct);
     }
 
+    public Task<GitCommandResult> CreateBranchAsync(
+        string workingDirectory,
+        string branchName,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["branch", branchName],
+            TimeSpan.FromSeconds(30),
+            ct);
+    }
+
+    public Task<GitCommandResult> CheckoutBranchAsync(
+        string workingDirectory,
+        string branchName,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["checkout", branchName],
+            TimeSpan.FromSeconds(30),
+            ct);
+    }
+
     private static async Task<GitCommandResult> RunGitAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,

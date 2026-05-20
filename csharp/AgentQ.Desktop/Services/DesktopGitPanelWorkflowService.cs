@@ -151,6 +151,38 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
         await ApplyGitMutationResultAsync(viewModel, result, "Pull completed", "Pull failed", trimForLog, ct);
     }
 
+    public async Task CreateBackupBranchAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
+    {
+        viewModel.StatusText = "Creating backup branch";
+        var branchName = GitBranchRecoveryAnalyzer.CreateBackupBranchName(DateTime.Now);
+        var result = await gitService.CreateBranchAsync(viewModel.WorkspaceRoot, branchName, ct);
+        await ApplyGitMutationResultAsync(
+            viewModel,
+            result,
+            $"Backup branch created: {branchName}",
+            "Backup branch failed",
+            trimForLog,
+            ct);
+    }
+
+    public async Task CheckoutMainAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
+    {
+        viewModel.StatusText = "Checking branch switch safety";
+        var snapshot = await _gitWorkflowService.GetSnapshotAsync(viewModel.WorkspaceRoot, ct);
+        ApplySnapshot(viewModel, snapshot);
+
+        if (!GitBranchRecoveryAnalyzer.CanSwitchBranch(snapshot.ChangedFiles, out var reason))
+        {
+            viewModel.StatusText = $"Switch blocked: {reason}";
+            viewModel.AddLog($"Switch blocked: {reason}");
+            return;
+        }
+
+        viewModel.StatusText = "Switching to main";
+        var result = await gitService.CheckoutBranchAsync(viewModel.WorkspaceRoot, "main", ct);
+        await ApplyGitMutationResultAsync(viewModel, result, "Switched to main", "Switch to main failed", trimForLog, ct);
+    }
+
     public bool ApplyPromptResult(MainViewModel viewModel, DesktopGitPromptResult result, Func<string, string> trimForLog)
     {
         ApplySnapshot(viewModel, result.Snapshot);

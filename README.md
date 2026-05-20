@@ -323,7 +323,7 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 Current local validation passed in this environment:
 
 - `dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj`: succeeded with `0` warnings and `0` errors
-- `dotnet test .\csharp\AgentQ.sln`: `112` tests passed
+- `dotnet test .\csharp\AgentQ.sln`: `115` tests passed
 - `dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release`: created `AgentQ.Tool.1.0.260520.12824.nupkg`
 - `dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool`: updated installed `agentq` to `1.0.260520.12824`
 - `agentq --prompt "hello" --json`: succeeded using saved `opencode-go` config

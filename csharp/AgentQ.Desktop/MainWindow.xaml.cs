@@ -142,6 +142,8 @@ public partial class MainWindow : Window
         GitPanelView.FixReviewRequested += (_, _) => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs());
         GitPanelView.CommitSummaryRequested += (_, _) => CommitSummary_OnClick(this, new RoutedEventArgs());
         GitPanelView.PullFastForwardRequested += async (_, _) => await _gitPanelWorkflowService.PullFastForwardOnlyAsync(_viewModel, TrimForLog);
+        GitPanelView.BackupBranchRequested += async (_, _) => await _gitPanelWorkflowService.CreateBackupBranchAsync(_viewModel, TrimForLog);
+        GitPanelView.CheckoutMainRequested += async (_, _) => await _gitPanelWorkflowService.CheckoutMainAsync(_viewModel, TrimForLog);
         GitPanelView.SelectedFileChanged += async (_, _) => await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
         GitPanelView.ApproveRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
         GitPanelView.RejectRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
