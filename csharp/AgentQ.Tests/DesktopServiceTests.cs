@@ -33,6 +33,9 @@ public sealed class DesktopServiceTests
         Assert.Contains("gpt-5.3-codex", DesktopProviderModelCatalog.GetModels("openai"));
         Assert.Contains("claude-opus-4-7", DesktopProviderModelCatalog.GetModels("anthropic"));
         Assert.Contains("claude-sonnet-4-6", DesktopProviderModelCatalog.GetModels("anthropic"));
+        Assert.Contains("gemini-3-pro-preview", DesktopProviderModelCatalog.GetModels("google"));
+        Assert.Contains("grok-4.3", DesktopProviderModelCatalog.GetModels("xai"));
+        Assert.Contains("deepseek-v4-pro", DesktopProviderModelCatalog.GetModels("deepseek"));
         Assert.Equal("https://api.openai.com/v1", DesktopProviderModelCatalog.GetDefaultBaseUrl("openai", string.Empty));
         Assert.Equal("default", DesktopProviderModelCatalog.GetDefaultModel("custom-provider"));
         Assert.Equal("https://example.test", DesktopProviderModelCatalog.GetDefaultBaseUrl("custom-provider", "https://example.test"));

@@ -56,18 +56,22 @@ public static class DesktopProviderModelCatalog
         ],
         ["google"] =
         [
+            "gemini-3-pro-preview",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
             "gemini-2.0-flash"
         ],
         ["xai"] =
         [
+            "grok-4.3",
+            "grok-4.3-latest",
             "grok-4",
-            "grok-3",
-            "grok-3-mini"
+            "grok-3"
         ],
         ["deepseek"] =
         [
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
             "deepseek-chat",
             "deepseek-reasoner"
         ]
