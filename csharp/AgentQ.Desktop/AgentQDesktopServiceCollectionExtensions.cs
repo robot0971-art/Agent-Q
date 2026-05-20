@@ -16,6 +16,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<ProjectMemoryService>();
         services.AddSingleton<WorkspaceIndexer>();
         services.AddSingleton<DesktopConfigService>();
+        services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopAgentService>();
         services.AddSingleton<DesktopVerificationRunner>();
         services.AddSingleton<VerificationFailureClassifier>();

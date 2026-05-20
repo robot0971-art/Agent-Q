@@ -1,7 +1,6 @@
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
-using AgentQ.Core.Providers;
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
 
@@ -10,13 +9,12 @@ namespace AgentQ.Desktop;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
-    private readonly DesktopConfigService _configService;
+    private readonly DesktopStartupCommandService _startupCommandService;
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
     private readonly DesktopGitCommandService _gitCommandService;
     private readonly DesktopPlanCommandService _planCommandService;
     private readonly DesktopWorkspaceCommandService _workspaceCommandService;
     private readonly DesktopVerificationCommandService _verificationCommandService;
-    private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
     private readonly DesktopWindowCommandService _windowCommandService;
@@ -25,13 +23,12 @@ public partial class MainWindow : Window
 
     public MainWindow(
         MainViewModel viewModel,
-        DesktopConfigService configService,
+        DesktopStartupCommandService startupCommandService,
         DesktopGitPanelWorkflowService gitPanelWorkflowService,
         DesktopGitCommandService gitCommandService,
         DesktopPlanCommandService planCommandService,
         DesktopWorkspaceCommandService workspaceCommandService,
         DesktopVerificationCommandService verificationCommandService,
-        DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
         DesktopWindowCommandService windowCommandService,
@@ -39,13 +36,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _viewModel = viewModel;
-        _configService = configService;
+        _startupCommandService = startupCommandService;
         _gitPanelWorkflowService = gitPanelWorkflowService;
         _gitCommandService = gitCommandService;
         _planCommandService = planCommandService;
         _workspaceCommandService = workspaceCommandService;
         _verificationCommandService = verificationCommandService;
-        _workspaceContextWorkflowService = workspaceContextWorkflowService;
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
         _windowCommandService = windowCommandService;
@@ -127,29 +123,8 @@ public partial class MainWindow : Window
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
-        var saved = await _configService.LoadAsync();
-        if (saved != null)
-        {
-            _viewModel.ApplyConfiguration(saved);
-            SettingsPanelView.ApiKey = saved.ApiKey;
-            _viewModel.StatusText = "Settings loaded";
-        }
-        else
-        {
-            _viewModel.ApplyConfiguration(new ProviderConfiguration
-            {
-                Provider = "opencode-go",
-                Model = "kimi-k2.6",
-                BaseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl,
-                TimeoutSeconds = 30,
-                MaxTokens = 4096
-            });
-            _viewModel.StatusText = "First run: enter an API key, confirm provider/model, then save settings.";
-            _viewModel.AddLog("First run setup: enter an API key in Settings and click Save.");
-        }
-
-        _viewModel.AddLog("AgentQ Desktop started");
-        await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
+        var result = await _startupCommandService.InitializeAsync(_viewModel, TrimForLog);
+        SettingsPanelView.ApiKey = result.ApiKey;
     }
 
     private async void Send_OnClick(object sender, RoutedEventArgs e)
