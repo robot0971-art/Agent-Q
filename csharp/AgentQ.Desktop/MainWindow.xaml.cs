@@ -19,11 +19,10 @@ public partial class MainWindow : Window
     private readonly DesktopConfigService _configService;
     private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
-    private readonly DesktopPlanCheckpointWorkflowService _planCheckpointWorkflowService;
+    private readonly DesktopPlanCommandService _planCommandService;
     private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
-    private readonly DesktopCheckpointWorkflowService _checkpointWorkflowService;
     private readonly DesktopAttachmentSelectionService _attachmentSelectionService;
     private readonly DesktopClipboardService _clipboardService;
     private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
@@ -35,11 +34,10 @@ public partial class MainWindow : Window
         DesktopConfigService configService,
         DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
         DesktopGitPanelWorkflowService gitPanelWorkflowService,
-        DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
+        DesktopPlanCommandService planCommandService,
         DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
-        DesktopCheckpointWorkflowService checkpointWorkflowService,
         DesktopAttachmentSelectionService attachmentSelectionService,
         DesktopClipboardService clipboardService,
         DesktopAutoFixWorkflowService autoFixWorkflowService,
@@ -50,11 +48,10 @@ public partial class MainWindow : Window
         _configService = configService;
         _verificationPanelWorkflowService = verificationPanelWorkflowService;
         _gitPanelWorkflowService = gitPanelWorkflowService;
-        _planCheckpointWorkflowService = planCheckpointWorkflowService;
+        _planCommandService = planCommandService;
         _workspaceContextWorkflowService = workspaceContextWorkflowService;
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
-        _checkpointWorkflowService = checkpointWorkflowService;
         _attachmentSelectionService = attachmentSelectionService;
         _clipboardService = clipboardService;
         _autoFixWorkflowService = autoFixWorkflowService;
@@ -503,24 +500,7 @@ public partial class MainWindow : Window
 
     private async void CreatePlan_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        var planPrompt = _planCheckpointWorkflowService.BuildPlanPrompt(_viewModel);
-        if (string.IsNullOrWhiteSpace(planPrompt))
-        {
-            _viewModel.StatusText = "No goal to plan";
-            return;
-        }
-
-        _viewModel.InputText = planPrompt;
-        _viewModel.AddLog("Plan prompt prepared");
-        var messageCountBeforePlan = _viewModel.Messages.Count;
-        await SendCurrentMessageAsync();
-        _planCheckpointWorkflowService.CapturePlanItems(_viewModel, messageCountBeforePlan);
+        await _planCommandService.CreatePlanAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private async void ContinuePlanItem_OnClick(object sender, RoutedEventArgs e)
@@ -530,137 +510,52 @@ public partial class MainWindow : Window
 
     private async void PlanAndRun_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        var planPrompt = _planCheckpointWorkflowService.BuildPlanPrompt(_viewModel);
-        if (string.IsNullOrWhiteSpace(planPrompt))
-        {
-            _viewModel.StatusText = "No goal to plan";
-            return;
-        }
-
-        _viewModel.InputText = planPrompt;
-        _viewModel.AddLog("Plan+run prompt prepared");
-        var messageCountBeforePlan = _viewModel.Messages.Count;
-        await SendCurrentMessageAsync();
-        if (_viewModel.IsBusy)
-        {
-            return;
-        }
-
-        _planCheckpointWorkflowService.CapturePlanItems(_viewModel, messageCountBeforePlan);
-
-        if (_viewModel.PlanItems.Count == 0)
-        {
-            return;
-        }
-
-        await ContinueNextPlanItemAsync();
+        await _planCommandService.PlanAndRunAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private async Task ContinueNextPlanItemAsync()
     {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        if (_planCheckpointWorkflowService.PrepareNextPlanItem(_viewModel) == null)
-        {
-            return;
-        }
-
-        await SendCurrentMessageAsync();
+        await _planCommandService.ContinueNextPlanItemAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private void MarkPlanItemDone_OnClick(object sender, RoutedEventArgs e)
     {
-        _planCheckpointWorkflowService.MarkSelectedPlanItemDone(_viewModel);
+        _planCommandService.MarkPlanItemDone(_viewModel);
     }
 
     private async void MarkDoneAndContinue_OnClick(object sender, RoutedEventArgs e)
     {
-        MarkPlanItemDone_OnClick(sender, e);
-        if (_viewModel.SelectedPlanItem != null)
-        {
-            await ContinueNextPlanItemAsync();
-        }
+        await _planCommandService.MarkDoneAndContinueAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private async void SaveCheckpoint_OnClick(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            await _planCheckpointWorkflowService.SaveCheckpointAsync(_viewModel);
-        }
-        catch (Exception ex)
-        {
-            _viewModel.StatusText = $"Checkpoint save failed: {ex.Message}";
-            _viewModel.AddLog($"Checkpoint save failed: {ex.Message}");
-        }
+        await _planCommandService.SaveCheckpointAsync(_viewModel);
     }
 
     private async void LoadCheckpoint_OnClick(object sender, RoutedEventArgs e)
     {
-        await _planCheckpointWorkflowService.LoadLatestCheckpointAsync(_viewModel);
-        _viewModel.StatusText = _planCheckpointWorkflowService.HasCheckpoint ? "Checkpoint loaded" : "No checkpoint found";
+        await _planCommandService.LoadCheckpointAsync(_viewModel);
     }
 
     private async void ResumeCheckpoint_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        var resumePrompt = await _planCheckpointWorkflowService.BuildResumeCheckpointPromptAsync(_viewModel);
-        if (string.IsNullOrWhiteSpace(resumePrompt))
-        {
-            return;
-        }
-
-        _viewModel.InputText = resumePrompt;
-        await SendCurrentMessageAsync();
+        await _planCommandService.ResumeCheckpointAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private async void SaveSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
-        await _workspaceContextWorkflowService.SaveSessionSummaryAsync(
-            _viewModel,
-            "Manual session summary saved",
-            TrimForLog);
+        await _planCommandService.SaveSessionSummaryAsync(_viewModel, TrimForLog);
     }
 
     private async void LoadSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
-        await _workspaceContextWorkflowService.LoadLatestSessionSummaryAsync(_viewModel);
-        _viewModel.StatusText = _workspaceContextWorkflowService.HasSessionSummary
-            ? "Session summary loaded"
-            : "No session summary found";
+        await _planCommandService.LoadSessionSummaryAsync(_viewModel);
     }
 
     private async void ResumeSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        var resumePrompt = await _workspaceContextWorkflowService.BuildResumeSessionSummaryPromptAsync(_viewModel);
-        if (string.IsNullOrWhiteSpace(resumePrompt))
-        {
-            return;
-        }
-
-        _viewModel.InputText = resumePrompt;
-        await SendCurrentMessageAsync();
+        await _planCommandService.ResumeSessionSummaryAsync(_viewModel, SendCurrentMessageAsync);
     }
 
     private async Task RefreshGitStatusAsync()

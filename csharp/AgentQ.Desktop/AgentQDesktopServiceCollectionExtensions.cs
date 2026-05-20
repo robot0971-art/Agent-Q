@@ -29,6 +29,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopCheckpointWorkflowService>();
         services.AddSingleton<DesktopPlanWorkflowService>();
         services.AddSingleton<DesktopPlanCheckpointWorkflowService>();
+        services.AddSingleton<DesktopPlanCommandService>();
         services.AddSingleton<AgentSessionSummaryService>();
         services.AddSingleton<DesktopWorkspaceContextWorkflowService>();
         services.AddSingleton<DesktopAgentRunWorkflowService>();
