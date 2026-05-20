@@ -20,6 +20,8 @@ public partial class GitPanel : System.Windows.Controls.UserControl
 
     public event EventHandler? CommitSummaryRequested;
 
+    public event EventHandler? PullFastForwardRequested;
+
     public event EventHandler? SelectedFileChanged;
 
     public event EventHandler? ApproveRequested;
@@ -27,6 +29,14 @@ public partial class GitPanel : System.Windows.Controls.UserControl
     public event EventHandler? RejectRequested;
 
     public event EventHandler? NeedsEditRequested;
+
+    public event EventHandler? StageSelectedRequested;
+
+    public event EventHandler? StageApprovedRequested;
+
+    public event EventHandler? UnstageSelectedRequested;
+
+    public event EventHandler? CommitStagedRequested;
 
     private void Status_OnClick(object sender, RoutedEventArgs e)
     {
@@ -53,6 +63,11 @@ public partial class GitPanel : System.Windows.Controls.UserControl
         CommitSummaryRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    private void PullFastForward_OnClick(object sender, RoutedEventArgs e)
+    {
+        PullFastForwardRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     private void ChangedFiles_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         SelectedFileChanged?.Invoke(this, EventArgs.Empty);
@@ -71,5 +86,25 @@ public partial class GitPanel : System.Windows.Controls.UserControl
     private void NeedsEdit_OnClick(object sender, RoutedEventArgs e)
     {
         NeedsEditRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StageSelected_OnClick(object sender, RoutedEventArgs e)
+    {
+        StageSelectedRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StageApproved_OnClick(object sender, RoutedEventArgs e)
+    {
+        StageApprovedRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UnstageSelected_OnClick(object sender, RoutedEventArgs e)
+    {
+        UnstageSelectedRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CommitStaged_OnClick(object sender, RoutedEventArgs e)
+    {
+        CommitStagedRequested?.Invoke(this, EventArgs.Empty);
     }
 }

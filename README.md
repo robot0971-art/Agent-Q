@@ -83,11 +83,15 @@ Start the CLI:
 dotnet run --project .\csharp\AgentQ.Cli
 ```
 
+On first interactive launch, run `/setup` when prompted. It walks through provider, model, base URL, and API key, then offers to save the configuration to `<user-profile>\.agentq\config.json`.
+
 Start the Windows desktop app:
 
 ```powershell
 dotnet run --project .\csharp\AgentQ.Desktop
 ```
+
+On first desktop launch, fill in the Settings panel and click Save before sending a message.
 
 Build the desktop app without launching it:
 
@@ -205,6 +209,8 @@ Expected success shape:
 
 Set the required environment variables in the same shell before running the smoke test.
 
+If you already saved configuration with `/setup` or `/config save`, the installed `agentq` command can use that saved config without shell-local environment variables.
+
 PowerShell:
 
 ```powershell
@@ -317,7 +323,10 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 Current local validation passed in this environment:
 
 - `dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj`: succeeded with `0` warnings and `0` errors
-- `dotnet test .\csharp\AgentQ.sln`: `91` tests passed
+- `dotnet test .\csharp\AgentQ.sln`: `112` tests passed
+- `dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release`: created `AgentQ.Tool.1.0.260520.12824.nupkg`
+- `dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool`: updated installed `agentq` to `1.0.260520.12824`
+- `agentq --prompt "hello" --json`: succeeded using saved `opencode-go` config
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
 

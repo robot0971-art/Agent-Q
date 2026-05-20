@@ -61,6 +61,72 @@ public sealed class DesktopGitService
             ct);
     }
 
+    public Task<GitCommandResult> StageFileAsync(
+        string workingDirectory,
+        GitChangedFile file,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["add", "--", file.Path],
+            TimeSpan.FromSeconds(30),
+            ct);
+    }
+
+    public async Task<GitCommandResult> StageFilesAsync(
+        string workingDirectory,
+        IReadOnlyList<GitChangedFile> files,
+        CancellationToken ct = default)
+    {
+        if (files.Count == 0)
+        {
+            return new GitCommandResult
+            {
+                ExitCode = 1,
+                StandardError = "No files selected to stage."
+            };
+        }
+
+        var arguments = new List<string> { "add", "--" };
+        arguments.AddRange(files.Select(file => file.Path));
+        return await RunGitAsync(workingDirectory, arguments, TimeSpan.FromSeconds(30), ct);
+    }
+
+    public Task<GitCommandResult> UnstageFileAsync(
+        string workingDirectory,
+        GitChangedFile file,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["restore", "--staged", "--", file.Path],
+            TimeSpan.FromSeconds(30),
+            ct);
+    }
+
+    public Task<GitCommandResult> CommitAsync(
+        string workingDirectory,
+        string message,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["commit", "-m", message],
+            TimeSpan.FromSeconds(60),
+            ct);
+    }
+
+    public Task<GitCommandResult> PullFastForwardOnlyAsync(
+        string workingDirectory,
+        CancellationToken ct = default)
+    {
+        return RunGitAsync(
+            workingDirectory,
+            ["pull", "--ff-only"],
+            TimeSpan.FromSeconds(60),
+            ct);
+    }
+
     private static async Task<GitCommandResult> RunGitAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,

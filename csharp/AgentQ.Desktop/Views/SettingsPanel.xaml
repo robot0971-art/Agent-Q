@@ -1,0 +1,96 @@
+<UserControl x:Class="AgentQ.Desktop.Views.SettingsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{DynamicResource PanelBg}"
+            BorderBrush="{DynamicResource BorderBrushSoft}"
+            BorderThickness="1"
+            CornerRadius="6"
+            Padding="10"
+            Margin="0,0,6,8">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,12">
+                <TextBlock Text="설정" Style="{DynamicResource PanelHeader}" />
+                <Button DockPanel.Dock="Right"
+                        Content="저장"
+                        Width="48"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Click="Save_OnClick" />
+            </DockPanel>
+
+            <TextBlock Text="Provider" Style="{DynamicResource LabelText}" />
+            <ComboBox x:Name="ProviderBox"
+                      Margin="0,0,0,8"
+                      IsEditable="False"
+                      ItemsSource="{Binding AvailableProviders}"
+                      SelectedItem="{Binding Provider, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Model" Style="{DynamicResource LabelText}" />
+            <ComboBox Margin="0,0,0,8"
+                      IsEditable="False"
+                      ItemsSource="{Binding AvailableModels}"
+                      SelectedItem="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Base URL" Style="{DynamicResource LabelText}" />
+            <TextBox Margin="0,0,0,8" Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="API Key" Style="{DynamicResource LabelText}" />
+            <PasswordBox x:Name="ApiKeyBox"
+                         Margin="0,0,0,8"
+                         PasswordChanged="ApiKeyBox_OnPasswordChanged" />
+
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Timeout (sec)" Style="{DynamicResource LabelText}" />
+                    <TextBox Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Max Tokens" Style="{DynamicResource LabelText}" />
+                    <TextBox Text="{Binding MaxTokens, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Font Size" Style="{DynamicResource LabelText}" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding DesktopFontSize, StringFormat={}{0:0}}"
+                           Foreground="{DynamicResource TextMuted}"
+                           FontSize="12" />
+            </Grid>
+            <Slider Minimum="11"
+                    Maximum="22"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    Value="{Binding DesktopFontSize, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Work Mode" Style="{DynamicResource LabelText}" Margin="0,10,0,0" />
+            <ComboBox Margin="0,0,0,6"
+                      IsEditable="False"
+                      ItemsSource="{Binding AvailableWorkModes}"
+                      SelectedItem="{Binding WorkMode, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock Text="{Binding WorkModeDescription}"
+                       Foreground="{DynamicResource TextMuted}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,2" />
+
+            <CheckBox Content="프로젝트 컨텍스트 자동 첨부"
+                      IsChecked="{Binding AutoAttachWorkspaceContext, UpdateSourceTrigger=PropertyChanged}"
+                      Foreground="{DynamicResource TextMain}"
+                      Margin="0,8,0,6" />
+            <CheckBox Content="링크 자동 읽기"
+                      IsChecked="{Binding AutoFetchLinks, UpdateSourceTrigger=PropertyChanged}"
+                      Foreground="{DynamicResource TextMain}" />
+        </StackPanel>
+    </Border>
+</UserControl>

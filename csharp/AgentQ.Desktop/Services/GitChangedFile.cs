@@ -33,6 +33,14 @@ public sealed class GitChangedFile : INotifyPropertyChanged
 
     public string ReviewStatusText => ReviewStatus.ToString();
 
+    public bool IsStaged => !string.IsNullOrWhiteSpace(Status) &&
+                            Status[0] != ' ' &&
+                            Status[0] != '?';
+
+    public bool IsUnstaged => !string.IsNullOrWhiteSpace(Status) &&
+                              Status.Length > 1 &&
+                              Status[1] != ' ';
+
     public string DisplayName => string.IsNullOrWhiteSpace(Status)
         ? Path
         : $"{Status}  {Path}";

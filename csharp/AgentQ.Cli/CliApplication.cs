@@ -78,6 +78,7 @@ public sealed class CliApplication
             return;
         }
 
+        ILlmProvider? provider = null;
         if (string.IsNullOrWhiteSpace(config.ApiKey) || string.IsNullOrWhiteSpace(config.Model))
         {
             if (invocation.IsNonInteractive)
@@ -92,19 +93,24 @@ public sealed class CliApplication
 
             AnsiConsole.Write(new Panel(
                 "[yellow]Model name or API key is missing.[/]\n\n" +
-                    "Set environment variables or use CLI commands.\n" +
-                    "Examples:\n" +
-                    "  [cyan]/model qwen-plus[/]\n" +
-                    "  [cyan]/base-url http://localhost:18080[/]\n" +
+                    "Run [cyan]/setup[/] to choose a provider, model, base URL, and API key.\n" +
+                    "Setup can save the configuration so future runs start ready.\n\n" +
+                    "Environment variables still work for temporary shell-local config:\n" +
+                    "  [cyan]set AGENTQ_MODEL=your-model[/]\n" +
                     "  [cyan]set AGENTQ_API_KEY=your-key[/]\n" +
                     "  [cyan]set OPENCODE_GO_API_KEY=your-key[/]")
             {
                 Header = new PanelHeader("[yellow]Missing Configuration[/]"),
                 Border = BoxBorder.Rounded
             });
+
+            if (AnsiConsole.Confirm("Run setup now?", defaultValue: true))
+            {
+                provider = await RunSetupAsync(config, _providerResolver, _toolRegistry, _configStore, _presenter);
+            }
         }
 
-        var provider = _providerResolver.CreateOrFallback(config);
+        provider ??= _providerResolver.CreateOrFallback(config);
         var history = _history;
         var toolRegistry = _toolRegistry;
         var permissionEnforcers = _permissionEnforcerFactory.Create(invocation, config);

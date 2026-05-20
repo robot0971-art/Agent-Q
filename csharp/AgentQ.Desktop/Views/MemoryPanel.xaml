@@ -1,0 +1,35 @@
+<UserControl x:Class="AgentQ.Desktop.Views.MemoryPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Content="Save summary"
+                    Width="96"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="SaveSessionSummary_OnClick" />
+            <Button Content="Load"
+                    Width="54"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Margin="0,0,6,0"
+                    Click="LoadSessionSummary_OnClick" />
+            <Button Content="Resume"
+                    Width="62"
+                    Height="26"
+                    Padding="0"
+                    FontSize="11"
+                    Click="ResumeSessionSummary_OnClick"
+                    IsEnabled="{Binding CanResumeSessionSummary}" />
+        </WrapPanel>
+        <TextBox Text="{Binding LatestSessionSummaryText}"
+                 IsReadOnly="True"
+                 FontFamily="Consolas"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" />
+    </DockPanel>
+</UserControl>

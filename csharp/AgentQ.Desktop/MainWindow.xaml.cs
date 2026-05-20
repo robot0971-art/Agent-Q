@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private readonly DesktopClipboardService _clipboardService;
     private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
     private readonly List<DesktopAttachment> _attachments = [];
-    private bool _messagesPinnedToBottom = true;
 
     public MainWindow(
         MainViewModel viewModel,
@@ -58,10 +57,20 @@ public partial class MainWindow : Window
         _clipboardService = clipboardService;
         _autoFixWorkflowService = autoFixWorkflowService;
         DataContext = _viewModel;
+        HookSettingsPanelEvents();
         HookVerificationPanelEvents();
+        HookPlanPanelEvents();
+        HookMemoryPanelEvents();
+        HookChatPanelEvents();
         HookGitPanelEvents();
-        _viewModel.Messages.CollectionChanged += (_, _) => ScrollMessagesToEndIfPinned();
+        _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
         Loaded += MainWindow_OnLoaded;
+    }
+
+    private void HookSettingsPanelEvents()
+    {
+        SettingsPanelView.SaveRequested += (_, _) => SaveSettings_OnClick(this, new RoutedEventArgs());
+        SettingsPanelView.ApiKeyChanged += (_, apiKey) => _viewModel.ApiKey = apiKey;
     }
 
     private void HookVerificationPanelEvents()
@@ -71,6 +80,37 @@ public partial class MainWindow : Window
         VerificationPanelView.AutoFixRequested += (_, _) => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs());
     }
 
+    private void HookPlanPanelEvents()
+    {
+        PlanPanelView.CreatePlanRequested += (_, _) => CreatePlan_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.ContinuePlanItemRequested += (_, _) => ContinuePlanItem_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.MarkPlanItemDoneRequested += (_, _) => MarkPlanItemDone_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.SaveCheckpointRequested += (_, _) => SaveCheckpoint_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.LoadCheckpointRequested += (_, _) => LoadCheckpoint_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.ResumeCheckpointRequested += (_, _) => ResumeCheckpoint_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.PlanAndRunRequested += (_, _) => PlanAndRun_OnClick(this, new RoutedEventArgs());
+        PlanPanelView.MarkDoneAndContinueRequested += (_, _) => MarkDoneAndContinue_OnClick(this, new RoutedEventArgs());
+    }
+
+    private void HookMemoryPanelEvents()
+    {
+        MemoryPanelView.SaveSessionSummaryRequested += (_, _) => SaveSessionSummary_OnClick(this, new RoutedEventArgs());
+        MemoryPanelView.LoadSessionSummaryRequested += (_, _) => LoadSessionSummary_OnClick(this, new RoutedEventArgs());
+        MemoryPanelView.ResumeSessionSummaryRequested += (_, _) => ResumeSessionSummary_OnClick(this, new RoutedEventArgs());
+    }
+
+    private void HookChatPanelEvents()
+    {
+        ChatPanelView.AttachFilesRequested += (_, _) => AttachFiles_OnClick(this, new RoutedEventArgs());
+        ChatPanelView.BrowseWorkspaceRequested += (_, _) => BrowseWorkspace_OnClick(this, new RoutedEventArgs());
+        ChatPanelView.ClearAttachmentsRequested += (_, _) => ClearAttachments_OnClick(this, new RoutedEventArgs());
+        ChatPanelView.SendRequested += async (_, _) => await SendCurrentMessageAsync();
+        ChatPanelView.ContinueLastRunRequested += (_, _) => ContinueLastRun_OnClick(this, new RoutedEventArgs());
+        ChatPanelView.StopAgentRequested += (_, _) => StopAgent_OnClick(this, new RoutedEventArgs());
+        ChatPanelView.CopyMessageRequested += (_, message) =>
+            _clipboardService.CopyMessage(_viewModel, message as ChatMessageViewModel);
+    }
+
     private void HookGitPanelEvents()
     {
         GitPanelView.StatusRequested += async (_, _) => await RefreshGitStatusAsync();
@@ -78,10 +118,15 @@ public partial class MainWindow : Window
         GitPanelView.ReviewRequested += (_, _) => ReviewGitChanges_OnClick(this, new RoutedEventArgs());
         GitPanelView.FixReviewRequested += (_, _) => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs());
         GitPanelView.CommitSummaryRequested += (_, _) => CommitSummary_OnClick(this, new RoutedEventArgs());
+        GitPanelView.PullFastForwardRequested += async (_, _) => await _gitPanelWorkflowService.PullFastForwardOnlyAsync(_viewModel, TrimForLog);
         GitPanelView.SelectedFileChanged += async (_, _) => await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
         GitPanelView.ApproveRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
         GitPanelView.RejectRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
         GitPanelView.NeedsEditRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit);
+        GitPanelView.StageSelectedRequested += async (_, _) => await _gitPanelWorkflowService.StageSelectedFileAsync(_viewModel, TrimForLog);
+        GitPanelView.StageApprovedRequested += async (_, _) => await _gitPanelWorkflowService.StageApprovedFilesAsync(_viewModel, TrimForLog);
+        GitPanelView.UnstageSelectedRequested += async (_, _) => await _gitPanelWorkflowService.UnstageSelectedFileAsync(_viewModel, TrimForLog);
+        GitPanelView.CommitStagedRequested += async (_, _) => await _gitPanelWorkflowService.CommitAsync(_viewModel, TrimForLog);
     }
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
@@ -90,7 +135,7 @@ public partial class MainWindow : Window
         if (saved != null)
         {
             _viewModel.ApplyConfiguration(saved);
-            ApiKeyBox.Password = saved.ApiKey;
+            SettingsPanelView.ApiKey = saved.ApiKey;
             _viewModel.StatusText = "Settings loaded";
         }
         else
@@ -103,16 +148,12 @@ public partial class MainWindow : Window
                 TimeoutSeconds = 30,
                 MaxTokens = 4096
             });
-            _viewModel.StatusText = "Enter an API key and save settings.";
+            _viewModel.StatusText = "First run: enter an API key, confirm provider/model, then save settings.";
+            _viewModel.AddLog("First run setup: enter an API key in Settings and click Save.");
         }
 
         _viewModel.AddLog("AgentQ Desktop started");
         await _workspaceContextWorkflowService.LoadWorkspaceContextAsync(_viewModel, TrimForLog);
-    }
-
-    private void ApiKeyBox_OnPasswordChanged(object sender, RoutedEventArgs e)
-    {
-        _viewModel.ApiKey = ApiKeyBox.Password;
     }
 
     private async void SaveSettings_OnClick(object sender, RoutedEventArgs e)
@@ -201,17 +242,6 @@ public partial class MainWindow : Window
         _attachmentSelectionService.ClearAttachments(_viewModel, _attachments);
     }
 
-    private void InputBox_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        _ = SendCurrentMessageAsync();
-    }
-
     private async void Send_OnClick(object sender, RoutedEventArgs e)
     {
         await SendCurrentMessageAsync();
@@ -256,11 +286,6 @@ public partial class MainWindow : Window
             $"Provider: {_viewModel.Provider}, Model: {_viewModel.Model}, Font size: {_viewModel.DesktopFontSize:0}";
     }
 
-    private void CopyMessage_OnClick(object sender, RoutedEventArgs e)
-    {
-        _clipboardService.CopyMessage(_viewModel, (sender as System.Windows.Controls.MenuItem)?.DataContext as ChatMessageViewModel);
-    }
-
     private void CopyLastAssistantMessage_OnClick(object sender, RoutedEventArgs e)
     {
         _clipboardService.CopyLastAssistantMessage(_viewModel);
@@ -269,26 +294,6 @@ public partial class MainWindow : Window
     private void CopyConversation_OnClick(object sender, RoutedEventArgs e)
     {
         _clipboardService.CopyConversation(_viewModel);
-    }
-
-    private void MessageTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (sender is System.Windows.Controls.TextBox textBox)
-        {
-            textBox.ScrollToEnd();
-        }
-    }
-
-    private void MessageTextBox_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        var scrollViewer = FindDescendant<ScrollViewer>(MessagesList);
-        if (scrollViewer == null)
-        {
-            return;
-        }
-
-        e.Handled = true;
-        SmoothScroll(scrollViewer, e.Delta);
     }
 
     private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -315,34 +320,6 @@ public partial class MainWindow : Window
         var targetOffset = scrollViewer.VerticalOffset - wheelDelta * MouseWheelScrollFactor;
         targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
         scrollViewer.ScrollToVerticalOffset(targetOffset);
-    }
-
-    private void ScrollMessagesToEndIfPinned()
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            var scrollViewer = FindDescendant<ScrollViewer>(MessagesList);
-            if (scrollViewer == null || !_messagesPinnedToBottom)
-            {
-                return;
-            }
-
-            scrollViewer.ScrollToEnd();
-        }, System.Windows.Threading.DispatcherPriority.Background);
-    }
-
-    private static bool IsNearBottom(ScrollViewer scrollViewer)
-    {
-        return scrollViewer.ScrollableHeight <= 0 ||
-               scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset < 80;
-    }
-
-    private void MessagesList_OnScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if (e.OriginalSource is ScrollViewer scrollViewer)
-        {
-            _messagesPinnedToBottom = IsNearBottom(scrollViewer);
-        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root)

@@ -23,6 +23,77 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopProviderModelCatalog_ProvidesDefaultsForKnownAndUnknownProviders()
+    {
+        Assert.Contains("opencode-go", DesktopProviderModelCatalog.Providers);
+        Assert.Equal("kimi-k2.6", DesktopProviderModelCatalog.GetDefaultModel("opencode-go"));
+        Assert.Equal("https://api.openai.com/v1", DesktopProviderModelCatalog.GetDefaultBaseUrl("openai", string.Empty));
+        Assert.Equal("default", DesktopProviderModelCatalog.GetDefaultModel("custom-provider"));
+        Assert.Equal("https://example.test", DesktopProviderModelCatalog.GetDefaultBaseUrl("custom-provider", "https://example.test"));
+    }
+
+    [Theory]
+    [InlineData("## main...origin/main [ahead 2, behind 3]", "Diverged from origin/main")]
+    [InlineData("## feature...origin/feature [gone]", "Upstream origin/feature is gone")]
+    [InlineData("## local-only", "No upstream is configured")]
+    [InlineData("## main...origin/main [behind 4]", "Pull is likely needed")]
+    public void GitBranchStatusAnalyzer_ExplainsRiskyBranchStates(string statusOutput, string expected)
+    {
+        var summary = GitBranchStatusAnalyzer.Analyze(statusOutput);
+
+        Assert.Contains(expected, summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("M ", true, false)]
+    [InlineData(" M", false, true)]
+    [InlineData("MM", true, true)]
+    [InlineData("??", false, true)]
+    public void GitChangedFile_ReportsStagedAndUnstagedState(string status, bool expectedStaged, bool expectedUnstaged)
+    {
+        var file = new GitChangedFile
+        {
+            Status = status,
+            Path = "README.md"
+        };
+
+        Assert.Equal(expectedStaged, file.IsStaged);
+        Assert.Equal(expectedUnstaged, file.IsUnstaged);
+    }
+
+    [Theory]
+    [InlineData("## main...origin/main [behind 2]", true, "Behind by 2")]
+    [InlineData("## main...origin/main", true, "Safe to check")]
+    [InlineData("## main...origin/main [ahead 1]", false, "local commits")]
+    [InlineData("## main...origin/main [ahead 1, behind 2]", false, "diverged")]
+    [InlineData("## feature...origin/feature [gone]", false, "upstream branch is gone")]
+    [InlineData("## local-only", false, "No upstream")]
+    public void GitPullSafetyAnalyzer_AllowsOnlySafeFastForwardPulls(string statusOutput, bool expectedCanPull, string expectedReason)
+    {
+        var analysis = GitPullSafetyAnalyzer.Analyze(statusOutput, []);
+
+        Assert.Equal(expectedCanPull, analysis.CanPull);
+        Assert.Contains(expectedReason, analysis.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitPullSafetyAnalyzer_BlocksDirtyWorkingTrees()
+    {
+        var analysis = GitPullSafetyAnalyzer.Analyze(
+            "## main...origin/main [behind 1]",
+            [
+                new GitChangedFile
+                {
+                    Status = " M",
+                    Path = "README.md"
+                }
+            ]);
+
+        Assert.False(analysis.CanPull);
+        Assert.Contains("local changes", analysis.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopPlanParser_ParsesCheckboxNumberedAndBulletItems()
     {
         var items = DesktopPlanParser.Parse(
