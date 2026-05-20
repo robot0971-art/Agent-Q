@@ -24,7 +24,7 @@
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="10,4">
-                        <TextBlock Text="새 대화" FontWeight="SemiBold" FontSize="12" />
+                        <TextBlock Text="{Binding ChatHeaderText}" FontWeight="SemiBold" FontSize="12" />
                     </Border>
                 </StackPanel>
             </Border>
@@ -89,12 +89,13 @@
                                          IsReadOnly="True"
                                          IsReadOnlyCaretVisible="False"
                                          AcceptsReturn="True"
+                                         Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                          PreviewMouseWheel="MessageTextBox_OnPreviewMouseWheel"
                                          TextChanged="MessageTextBox_OnTextChanged">
                                     <TextBox.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="복사" Command="ApplicationCommands.Copy" />
-                                            <MenuItem Header="메시지 전체 복사" Click="CopyMessage_OnClick" />
+                                        <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="{Binding CopyText}" Command="ApplicationCommands.Copy" />
+                                            <MenuItem Header="{Binding CopyWholeMessageText}" Click="CopyMessage_OnClick" />
                                         </ContextMenu>
                                     </TextBox.ContextMenu>
                                 </TextBox>
@@ -132,10 +133,10 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button Content="첨부 파일" Width="86" Height="28" Click="AttachFiles_OnClick" />
-                    <Button Content="코드 블록" Width="86" Height="28" Margin="6,0,0,0" />
-                    <Button Content="프로젝트 파일 추가" Width="124" Height="28" Margin="6,0,0,0" Click="BrowseWorkspace_OnClick" />
-                    <Button Content="첨부 지우기" Width="92" Height="28" Margin="6,0,0,0" Click="ClearAttachments_OnClick" />
+                    <Button Content="{Binding AttachFilesText}" Width="86" Height="28" Click="AttachFiles_OnClick" />
+                    <Button Content="{Binding CodeBlockText}" Width="86" Height="28" Margin="6,0,0,0" />
+                    <Button Content="{Binding AddProjectFileText}" Width="124" Height="28" Margin="6,0,0,0" Click="BrowseWorkspace_OnClick" />
+                    <Button Content="{Binding ClearAttachmentsText}" Width="92" Height="28" Margin="6,0,0,0" Click="ClearAttachments_OnClick" />
                 </StackPanel>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
@@ -164,7 +165,7 @@
                             Click="StopAgent_OnClick"
                             IsEnabled="{Binding IsBusy}" />
                     <Button Grid.Column="1"
-                            Content="전송&#x0a;Ctrl+Enter"
+                            Content="{Binding SendText}"
                             Style="{DynamicResource PrimaryButton}"
                             Margin="8,0,0,0"
                             Click="Send_OnClick" />

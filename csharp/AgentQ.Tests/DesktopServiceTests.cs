@@ -128,6 +128,37 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainViewModel_ToConfiguration_PersistsDesktopUiLanguage()
+    {
+        var viewModel = new MainViewModel
+        {
+            UiLanguage = "한국어"
+        };
+
+        var config = viewModel.ToConfiguration();
+
+        Assert.Equal("한국어", config.DesktopUiLanguage);
+    }
+
+    [Fact]
+    public void MainViewModel_ApplyConfiguration_RestoresDesktopUiLanguage()
+    {
+        var viewModel = new MainViewModel();
+
+        viewModel.ApplyConfiguration(new ProviderConfiguration
+        {
+            Provider = "opencode-go",
+            Model = "kimi-k2.6",
+            BaseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl,
+            DesktopUiLanguage = "한국어"
+        });
+
+        Assert.Equal("한국어", viewModel.UiLanguage);
+        Assert.Equal("설정", viewModel.SettingsHeaderText);
+        Assert.Equal("File", new MainViewModel().MenuFileText);
+    }
+
+    [Fact]
     public void DesktopAgentRunWorkflowService_RemoveThinkingPlaceholder_RemovesPendingAssistantMessage()
     {
         var viewModel = new MainViewModel();

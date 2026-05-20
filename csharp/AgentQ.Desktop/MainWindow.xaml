@@ -358,28 +358,28 @@
 
         <DockPanel Grid.Row="1" Background="#0B1118" LastChildFill="True">
             <Menu DockPanel.Dock="Left" Background="#0B1118" Foreground="{StaticResource TextMain}" BorderThickness="0" FontSize="12">
-                <MenuItem Header="파일">
-                    <MenuItem Header="프로젝트 폴더 선택" Click="BrowseWorkspace_OnClick" />
-                    <MenuItem Header="첨부 추가" Click="AttachFiles_OnClick" />
-                    <MenuItem Header="첨부 지우기" Click="ClearAttachments_OnClick" />
+                <MenuItem Header="{Binding MenuFileText}">
+                    <MenuItem Header="{Binding MenuSelectProjectFolderText}" Click="BrowseWorkspace_OnClick" />
+                    <MenuItem Header="{Binding MenuAddAttachmentText}" Click="AttachFiles_OnClick" />
+                    <MenuItem Header="{Binding MenuClearAttachmentsText}" Click="ClearAttachments_OnClick" />
                     <Separator />
-                    <MenuItem Header="종료" Click="Exit_OnClick" />
+                    <MenuItem Header="{Binding MenuExitText}" Click="Exit_OnClick" />
                 </MenuItem>
-                <MenuItem Header="편집">
-                    <MenuItem Header="마지막 답변 복사" Click="CopyLastAssistantMessage_OnClick" />
-                    <MenuItem Header="전체 대화 복사" Click="CopyConversation_OnClick" />
-                    <MenuItem Header="대화 초기화" Click="ClearConversation_OnClick" />
+                <MenuItem Header="{Binding MenuEditText}">
+                    <MenuItem Header="{Binding MenuCopyLastAnswerText}" Click="CopyLastAssistantMessage_OnClick" />
+                    <MenuItem Header="{Binding MenuCopyConversationText}" Click="CopyConversation_OnClick" />
+                    <MenuItem Header="{Binding MenuClearConversationText}" Click="ClearConversation_OnClick" />
                 </MenuItem>
-                <MenuItem Header="설정">
-                    <MenuItem Header="설정 저장" Click="SaveSettings_OnClick" />
+                <MenuItem Header="{Binding MenuSettingsText}">
+                    <MenuItem Header="{Binding MenuSaveSettingsText}" Click="SaveSettings_OnClick" />
                 </MenuItem>
-                <MenuItem Header="보기">
-                    <MenuItem Header="글자 크게" Click="IncreaseFontSize_OnClick" />
-                    <MenuItem Header="글자 작게" Click="DecreaseFontSize_OnClick" />
-                    <MenuItem Header="기본 글자 크기" Click="ResetFontSize_OnClick" />
+                <MenuItem Header="{Binding MenuViewText}">
+                    <MenuItem Header="{Binding MenuIncreaseFontText}" Click="IncreaseFontSize_OnClick" />
+                    <MenuItem Header="{Binding MenuDecreaseFontText}" Click="DecreaseFontSize_OnClick" />
+                    <MenuItem Header="{Binding MenuResetFontText}" Click="ResetFontSize_OnClick" />
                 </MenuItem>
-                <MenuItem Header="도움말">
-                    <MenuItem Header="상태 보기" Click="ShowStatus_OnClick" />
+                <MenuItem Header="{Binding MenuHelpText}">
+                    <MenuItem Header="{Binding MenuShowStatusText}" Click="ShowStatus_OnClick" />
                 </MenuItem>
             </Menu>
         </DockPanel>
@@ -416,15 +416,15 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <DockPanel Margin="0,0,0,10">
-                            <TextBlock Text="도구 (Tools)" Style="{StaticResource PanelHeader}" />
-                            <Button DockPanel.Dock="Right" Content="관리" Width="44" Height="24" Padding="0" FontSize="11" />
+                            <TextBlock Text="{Binding ToolsHeaderText}" Style="{StaticResource PanelHeader}" />
+                            <Button DockPanel.Dock="Right" Content="{Binding ManageText}" Width="54" Height="24" Padding="0" FontSize="11" />
                         </DockPanel>
                         <StackPanel Grid.Row="1">
-                            <CheckBox Content="read_file - 파일 내용을 읽습니다" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
-                            <CheckBox Content="write_file - 파일을 수정합니다" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
-                            <CheckBox Content="shell_execute - 명령을 실행합니다" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
-                            <CheckBox Content="search_files - 파일을 검색합니다" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
-                            <CheckBox Content="list_directory - 목록을 봅니다" IsChecked="True" Foreground="{StaticResource TextMain}" />
+                            <CheckBox Content="{Binding ReadFileToolText}" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
+                            <CheckBox Content="{Binding WriteFileToolText}" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
+                            <CheckBox Content="{Binding ShellExecuteToolText}" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
+                            <CheckBox Content="{Binding SearchFilesToolText}" IsChecked="True" Foreground="{StaticResource TextMain}" Margin="0,0,0,8" />
+                            <CheckBox Content="{Binding ListDirectoryToolText}" IsChecked="True" Foreground="{StaticResource TextMain}" />
                         </StackPanel>
                         <DockPanel Grid.Row="2" Margin="0,12,0,0">
                             <TextBlock Text="Allowlist Only" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" FontSize="12" />
@@ -445,8 +445,8 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <DockPanel Margin="0,0,0,10">
-                        <TextBlock Text="상태 패널" Style="{StaticResource PanelHeader}" />
-                        <Button DockPanel.Dock="Right" Content="비우기" Width="52" Height="24" Padding="0" FontSize="11" Click="ClearSidePanel_OnClick" />
+                        <TextBlock Text="{Binding StatusPanelText}" Style="{StaticResource PanelHeader}" />
+                        <Button DockPanel.Dock="Right" Content="{Binding ClearText}" Width="52" Height="24" Padding="0" FontSize="11" Click="ClearSidePanel_OnClick" />
                     </DockPanel>
                     <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
                         <TabItem Header="Verify">
@@ -464,7 +464,7 @@
                         <TabItem Header="Run">
                             <views:RunTimelinePanel />
                         </TabItem>
-                        <TabItem Header="작업 로그">
+                        <TabItem Header="{Binding RunLogText}">
                             <ListBox ItemsSource="{Binding Logs}" FontSize="12" Padding="6,0,0,0">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
@@ -473,13 +473,13 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
                         </TabItem>
-                        <TabItem Header="변경 Preview">
+                        <TabItem Header="{Binding ChangePreviewText}">
                             <views:FileChangeReviewPanel x:Name="FileChangeReviewPanelView" />
                         </TabItem>
                     </TabControl>
                     <WrapPanel Grid.Row="2" Margin="0,10,0,0">
                         <Border Background="#0B2A4A" BorderBrush="#1D4ED8" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
-                            <TextBlock Text="전체" Foreground="#93C5FD" FontSize="11" />
+                            <TextBlock Text="{Binding AllText}" Foreground="#93C5FD" FontSize="11" />
                         </Border>
                         <Border Background="#062B1A" BorderBrush="#15803D" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
                             <TextBlock Text="SUCCESS" Foreground="{StaticResource Success}" FontSize="11" />

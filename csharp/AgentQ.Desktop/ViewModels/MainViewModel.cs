@@ -20,6 +20,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private double _desktopFontSize = 14;
     private bool _autoAttachWorkspaceContext = true;
     private bool _autoFetchLinks = true;
+    private string _uiLanguage = "English";
     private AgentWorkMode _workMode = AgentWorkMode.Coding;
     private bool _isBusy;
     private bool _canFixLastVerificationFailure;
@@ -78,6 +79,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> AvailableModels { get; } = new(DesktopProviderModelCatalog.GetModels("opencode-go"));
 
     public ObservableCollection<AgentWorkMode> AvailableWorkModes { get; } = new(Enum.GetValues<AgentWorkMode>());
+
+    public ObservableCollection<string> AvailableUiLanguages { get; } = new(["English", "한국어"]);
 
     public string Provider
     {
@@ -187,6 +190,70 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _autoFetchLinks;
         set => SetField(ref _autoFetchLinks, value);
     }
+
+    public string UiLanguage
+    {
+        get => _uiLanguage;
+        set
+        {
+            if (!SetField(ref _uiLanguage, string.IsNullOrWhiteSpace(value) ? "English" : value))
+            {
+                return;
+            }
+
+            NotifyLocalizedTextChanged();
+        }
+    }
+
+    public bool IsKoreanUi => UiLanguage.Equals("한국어", StringComparison.OrdinalIgnoreCase) ||
+                              UiLanguage.Equals("Korean", StringComparison.OrdinalIgnoreCase);
+
+    public string MenuFileText => IsKoreanUi ? "파일" : "File";
+    public string MenuSelectProjectFolderText => IsKoreanUi ? "프로젝트 폴더 선택" : "Select project folder";
+    public string MenuAddAttachmentText => IsKoreanUi ? "첨부 추가" : "Add attachment";
+    public string MenuClearAttachmentsText => IsKoreanUi ? "첨부 지우기" : "Clear attachments";
+    public string MenuExitText => IsKoreanUi ? "종료" : "Exit";
+    public string MenuEditText => IsKoreanUi ? "편집" : "Edit";
+    public string MenuCopyLastAnswerText => IsKoreanUi ? "마지막 답변 복사" : "Copy last answer";
+    public string MenuCopyConversationText => IsKoreanUi ? "전체 대화 복사" : "Copy conversation";
+    public string MenuClearConversationText => IsKoreanUi ? "대화 초기화" : "Clear conversation";
+    public string MenuSettingsText => IsKoreanUi ? "설정" : "Settings";
+    public string MenuSaveSettingsText => IsKoreanUi ? "설정 저장" : "Save settings";
+    public string MenuViewText => IsKoreanUi ? "보기" : "View";
+    public string MenuIncreaseFontText => IsKoreanUi ? "글자 크게" : "Increase font";
+    public string MenuDecreaseFontText => IsKoreanUi ? "글자 작게" : "Decrease font";
+    public string MenuResetFontText => IsKoreanUi ? "기본 글자 크기" : "Reset font size";
+    public string MenuHelpText => IsKoreanUi ? "도움말" : "Help";
+    public string MenuShowStatusText => IsKoreanUi ? "상태 보기" : "Show status";
+    public string SettingsHeaderText => IsKoreanUi ? "설정" : "Settings";
+    public string SaveText => IsKoreanUi ? "저장" : "Save";
+    public string UiLanguageText => IsKoreanUi ? "UI 언어" : "UI Language";
+    public string ProjectContextAutoAttachText => IsKoreanUi ? "프로젝트 컨텍스트 자동 첨부" : "Auto attach project context";
+    public string AutoFetchLinksText => IsKoreanUi ? "링크 자동 읽기" : "Auto fetch links";
+    public string ProjectHeaderText => IsKoreanUi ? "프로젝트" : "Project";
+    public string ProjectFolderText => IsKoreanUi ? "프로젝트 폴더" : "Project folder";
+    public string BrowseFolderText => IsKoreanUi ? "폴더 선택" : "Browse";
+    public string OpenFolderText => IsKoreanUi ? "폴더 열기" : "Open";
+    public string ChatHeaderText => IsKoreanUi ? "새 대화" : "New chat";
+    public string AttachFilesText => IsKoreanUi ? "첨부 파일" : "Attach";
+    public string CodeBlockText => IsKoreanUi ? "코드 블록" : "Code block";
+    public string AddProjectFileText => IsKoreanUi ? "프로젝트 파일 추가" : "Add project file";
+    public string ClearAttachmentsText => IsKoreanUi ? "첨부 지우기" : "Clear";
+    public string SendText => IsKoreanUi ? "전송\nCtrl+Enter" : "Send\nCtrl+Enter";
+    public string CopyText => IsKoreanUi ? "복사" : "Copy";
+    public string CopyWholeMessageText => IsKoreanUi ? "메시지 전체 복사" : "Copy whole message";
+    public string ToolsHeaderText => IsKoreanUi ? "도구 (Tools)" : "Tools";
+    public string ManageText => IsKoreanUi ? "관리" : "Manage";
+    public string ReadFileToolText => IsKoreanUi ? "read_file - 파일 내용을 읽습니다" : "read_file - Read file contents";
+    public string WriteFileToolText => IsKoreanUi ? "write_file - 파일을 수정합니다" : "write_file - Edit files";
+    public string ShellExecuteToolText => IsKoreanUi ? "shell_execute - 명령을 실행합니다" : "shell_execute - Run commands";
+    public string SearchFilesToolText => IsKoreanUi ? "search_files - 파일을 검색합니다" : "search_files - Search files";
+    public string ListDirectoryToolText => IsKoreanUi ? "list_directory - 목록을 봅니다" : "list_directory - List directories";
+    public string StatusPanelText => IsKoreanUi ? "상태 패널" : "Status panel";
+    public string ClearText => IsKoreanUi ? "비우기" : "Clear";
+    public string RunLogText => IsKoreanUi ? "작업 로그" : "Run log";
+    public string ChangePreviewText => IsKoreanUi ? "변경 Preview" : "Change preview";
+    public string AllText => IsKoreanUi ? "전체" : "ALL";
 
     public AgentWorkMode WorkMode
     {
@@ -368,6 +435,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             DesktopAutoAttachWorkspaceContext = AutoAttachWorkspaceContext,
             DesktopAutoFetchLinks = AutoFetchLinks,
             DesktopWorkMode = WorkMode.ToString(),
+            DesktopUiLanguage = UiLanguage,
             DesktopMaxToolSteps = WorkMode switch
             {
                 AgentWorkMode.Readonly => 20,
@@ -391,6 +459,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DesktopFontSize = config.DesktopFontSize <= 0 ? 14 : config.DesktopFontSize;
         AutoAttachWorkspaceContext = config.DesktopAutoAttachWorkspaceContext;
         AutoFetchLinks = config.DesktopAutoFetchLinks;
+        UiLanguage = string.IsNullOrWhiteSpace(config.DesktopUiLanguage) ? "English" : config.DesktopUiLanguage;
         WorkMode = Enum.TryParse<AgentWorkMode>(config.DesktopWorkMode, ignoreCase: true, out var workMode)
             ? workMode
             : AgentWorkMode.Coding;
@@ -518,5 +587,64 @@ public sealed class MainViewModel : INotifyPropertyChanged
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
+    }
+
+    private void NotifyLocalizedTextChanged()
+    {
+        var names = new[]
+        {
+            nameof(IsKoreanUi),
+            nameof(MenuFileText),
+            nameof(MenuSelectProjectFolderText),
+            nameof(MenuAddAttachmentText),
+            nameof(MenuClearAttachmentsText),
+            nameof(MenuExitText),
+            nameof(MenuEditText),
+            nameof(MenuCopyLastAnswerText),
+            nameof(MenuCopyConversationText),
+            nameof(MenuClearConversationText),
+            nameof(MenuSettingsText),
+            nameof(MenuSaveSettingsText),
+            nameof(MenuViewText),
+            nameof(MenuIncreaseFontText),
+            nameof(MenuDecreaseFontText),
+            nameof(MenuResetFontText),
+            nameof(MenuHelpText),
+            nameof(MenuShowStatusText),
+            nameof(SettingsHeaderText),
+            nameof(SaveText),
+            nameof(UiLanguageText),
+            nameof(ProjectContextAutoAttachText),
+            nameof(AutoFetchLinksText),
+            nameof(ProjectHeaderText),
+            nameof(ProjectFolderText),
+            nameof(BrowseFolderText),
+            nameof(OpenFolderText),
+            nameof(ChatHeaderText),
+            nameof(AttachFilesText),
+            nameof(CodeBlockText),
+            nameof(AddProjectFileText),
+            nameof(ClearAttachmentsText),
+            nameof(SendText),
+            nameof(CopyText),
+            nameof(CopyWholeMessageText),
+            nameof(ToolsHeaderText),
+            nameof(ManageText),
+            nameof(ReadFileToolText),
+            nameof(WriteFileToolText),
+            nameof(ShellExecuteToolText),
+            nameof(SearchFilesToolText),
+            nameof(ListDirectoryToolText),
+            nameof(StatusPanelText),
+            nameof(ClearText),
+            nameof(RunLogText),
+            nameof(ChangePreviewText),
+            nameof(AllText)
+        };
+
+        foreach (var name in names)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
     }
 }

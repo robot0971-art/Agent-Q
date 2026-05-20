@@ -117,6 +117,11 @@ public class ProviderConfiguration
     public int DesktopMaxToolSteps { get; set; } = 0;
 
     /// <summary>
+    /// 데스크톱 UI 표시 언어
+    /// </summary>
+    public string DesktopUiLanguage { get; set; } = "English";
+
+    /// <summary>
     /// 단일 실행용 프롬프트
     /// </summary>
     public string Prompt { get; set; } = string.Empty;

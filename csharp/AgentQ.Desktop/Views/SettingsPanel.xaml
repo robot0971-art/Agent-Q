@@ -9,9 +9,9 @@
             Margin="0,0,6,8">
         <StackPanel>
             <DockPanel Margin="0,0,0,12">
-                <TextBlock Text="설정" Style="{DynamicResource PanelHeader}" />
+                <TextBlock Text="{Binding SettingsHeaderText}" Style="{DynamicResource PanelHeader}" />
                 <Button DockPanel.Dock="Right"
-                        Content="저장"
+                        Content="{Binding SaveText}"
                         Width="48"
                         Height="24"
                         Padding="0"
@@ -39,6 +39,12 @@
             <PasswordBox x:Name="ApiKeyBox"
                          Margin="0,0,0,8"
                          PasswordChanged="ApiKeyBox_OnPasswordChanged" />
+
+            <TextBlock Text="{Binding UiLanguageText}" Style="{DynamicResource LabelText}" />
+            <ComboBox Margin="0,0,0,8"
+                      IsEditable="False"
+                      ItemsSource="{Binding AvailableUiLanguages}"
+                      SelectedItem="{Binding UiLanguage, UpdateSourceTrigger=PropertyChanged}" />
 
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
@@ -84,11 +90,11 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,2" />
 
-            <CheckBox Content="프로젝트 컨텍스트 자동 첨부"
+            <CheckBox Content="{Binding ProjectContextAutoAttachText}"
                       IsChecked="{Binding AutoAttachWorkspaceContext, UpdateSourceTrigger=PropertyChanged}"
                       Foreground="{DynamicResource TextMain}"
                       Margin="0,8,0,6" />
-            <CheckBox Content="링크 자동 읽기"
+            <CheckBox Content="{Binding AutoFetchLinksText}"
                       IsChecked="{Binding AutoFetchLinks, UpdateSourceTrigger=PropertyChanged}"
                       Foreground="{DynamicResource TextMain}" />
         </StackPanel>

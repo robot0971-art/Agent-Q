@@ -8,8 +8,8 @@
             Padding="10"
             Margin="0,0,6,8">
         <StackPanel>
-            <TextBlock Text="프로젝트" Style="{DynamicResource PanelHeader}" Margin="0,0,0,10" />
-            <TextBlock Text="프로젝트 폴더" Style="{DynamicResource LabelText}" />
+            <TextBlock Text="{Binding ProjectHeaderText}" Style="{DynamicResource PanelHeader}" Margin="0,0,0,10" />
+            <TextBlock Text="{Binding ProjectFolderText}" Style="{DynamicResource LabelText}" />
             <TextBox Margin="0,0,0,8" Text="{Binding WorkspaceRoot, UpdateSourceTrigger=PropertyChanged}" />
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -17,8 +17,8 @@
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Button Content="폴더 선택" Click="BrowseWorkspace_OnClick" />
-                <Button Grid.Column="2" Content="폴더 열기" Click="OpenWorkspace_OnClick" />
+                <Button Content="{Binding BrowseFolderText}" Click="BrowseWorkspace_OnClick" />
+                <Button Grid.Column="2" Content="{Binding OpenFolderText}" Click="OpenWorkspace_OnClick" />
             </Grid>
             <Button Content="Analyze"
                     Height="26"
