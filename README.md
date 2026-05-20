@@ -324,6 +324,7 @@ The CI workflow:
 - packs the CLI as a .NET tool package
 - uploads CLI packages and test results as artifacts
 - builds the mock service Docker image on `ubuntu-latest`
+- starts the mock service container and runs a CLI JSON smoke test against it
 
 ## OpenCode Go
 

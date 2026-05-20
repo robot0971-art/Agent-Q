@@ -48,12 +48,61 @@ jobs:
           path: artifacts/test-results/*.trx
 
   docker-mockservice:
-    name: Docker mock service
+    name: Docker mock service smoke
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
       - name: Build mock service image
         run: docker build -f Dockerfile.mockservice -t agentq-mockservice:ci .
+
+      - name: Start mock service container
+        run: docker run -d --name agentq-mockservice -p 18080:18080 agentq-mockservice:ci
+
+      - name: Wait for mock service
+        shell: bash
+        run: |
+          for i in {1..30}; do
+            if curl -sS -o /dev/null http://localhost:18080/v1/messages; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs agentq-mockservice
+          exit 1
+
+      - name: Run CLI smoke test against mock service
+        shell: pwsh
+        env:
+          AGENTQ_PROVIDER: anthropic
+          AGENTQ_MODEL: demo-model
+          AGENTQ_API_KEY: demo-key
+          AGENTQ_BASE_URL: http://localhost:18080
+          AGENTQ_CONFIG_HOME: ${{ runner.temp }}/agentq-config
+        run: |
+          dotnet run --project ./csharp/AgentQ.Cli -- `
+            --prompt "PARITY_SCENARIO:plugin_tool_roundtrip" `
+            --allow-tool plugin_echo `
+            --json | Tee-Object -FilePath cli-smoke.json
+          $result = Get-Content cli-smoke.json -Raw | ConvertFrom-Json
+          if (-not $result.success) {
+            throw "CLI smoke test failed: $($result | ConvertTo-Json -Depth 10)"
+          }
+          if ($result.finalText -ne "plugin tool completed: hello from plugin parity") {
+            throw "Unexpected finalText: $($result.finalText)"
+          }
+
+      - name: Show mock service logs
+        if: always()
+        run: docker logs agentq-mockservice || true
+
+      - name: Stop mock service container
+        if: always()
+        run: docker rm -f agentq-mockservice || true
