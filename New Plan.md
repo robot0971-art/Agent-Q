@@ -79,6 +79,7 @@ Already separated:
 - Chat panel UserControl
 - Plan panel UserControl
 - Memory/session summary panel UserControl
+- File change review panel UserControl
 - Auto-fix workflow service
 - attachment selection workflow service
 - clipboard service
@@ -147,13 +148,13 @@ Priority: highest
 
 Current status:
 
-- Settings, Chat, Git, Verification, Plan, and Memory panels are separated
-- `MainWindow.xaml` and `MainWindow.xaml.cs` still own project, run timeline, and file-change review UI
+- Settings, Chat, Git, Verification, Plan, Memory, and File Change Review panels are separated
+- `MainWindow.xaml` and `MainWindow.xaml.cs` still own project and run timeline UI
 
 Target:
 
 - extract the next focused panel without changing behavior
-- prefer project/file-change review or run timeline next, depending on the most active workflow
+- prefer project or run timeline next, depending on the most active workflow
 - add or update tests only where service behavior changes
 
 Primary files:
@@ -215,4 +216,4 @@ Primary files:
 
 ## Immediate Next Step
 
-Choose the next desktop panel to extract, with project/file-change review and run timeline as the leading candidates.
+Choose the next desktop panel to extract, with project and run timeline as the leading candidates.

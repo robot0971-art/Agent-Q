@@ -645,54 +645,7 @@
                             </ListBox>
                         </TabItem>
                         <TabItem Header="변경 Preview">
-                            <DockPanel>
-                                <Button DockPanel.Dock="Top"
-                                        Content="Approve all &amp; verify"
-                                        Height="28"
-                                        Margin="0,0,0,8"
-                                        Click="ApproveAutoFixAndVerify_OnClick" />
-                                <ListBox x:Name="FileChangesList"
-                                         ItemsSource="{Binding FileChanges}"
-                                         FontSize="12"
-                                         HorizontalContentAlignment="Stretch"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                         ScrollViewer.CanContentScroll="False"
-                                         ScrollViewer.PanningMode="VerticalOnly"
-                                         PreviewMouseWheel="SmoothScrollViewer_OnPreviewMouseWheel">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="#0E151E" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="5" Padding="8" Margin="0,0,0,8">
-                                                <StackPanel>
-                                                    <DockPanel Margin="0,0,0,6">
-                                                        <TextBlock Text="{Binding RelativePath}" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" TextWrapping="Wrap" />
-                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Summary}" Foreground="{StaticResource Warning}" FontSize="11" Margin="6,0,0,0" />
-                                                    </DockPanel>
-                                                    <DockPanel Margin="0,0,0,6">
-                                                        <TextBlock Text="{Binding ChangedAtText}" Foreground="{StaticResource TextMuted}" FontSize="11" />
-                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ReviewStatusText}" Foreground="{StaticResource Accent}" FontSize="11" Margin="8,0,0,0" />
-                                                    </DockPanel>
-                                                    <WrapPanel Margin="0,0,0,8">
-                                                        <Button Content="Approve" Width="72" Height="24" Padding="0" FontSize="11" Click="ApproveFileChange_OnClick" />
-                                                        <Button Content="Needs edit" Width="82" Height="24" Padding="0" FontSize="11" Margin="6,0,0,0" Click="NeedsEditFileChange_OnClick" />
-                                                        <Button Content="Revert" Width="64" Height="24" Padding="0" FontSize="11" Margin="6,0,0,0" Click="RevertFileChange_OnClick" />
-                                                    </WrapPanel>
-                                                    <ItemsControl ItemsSource="{Binding DiffLines}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <DockPanel Margin="0,0,0,1">
-                                                                    <TextBlock Text="{Binding Prefix}" Width="16" FontFamily="Consolas" Foreground="{Binding Foreground}" />
-                                                                    <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" Foreground="{Binding Foreground}" />
-                                                                </DockPanel>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </DockPanel>
+                            <views:FileChangeReviewPanel x:Name="FileChangeReviewPanelView" />
                         </TabItem>
                     </TabControl>
                     <WrapPanel Grid.Row="2" Margin="0,10,0,0">

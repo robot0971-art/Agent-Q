@@ -62,6 +62,7 @@ public partial class MainWindow : Window
         HookPlanPanelEvents();
         HookMemoryPanelEvents();
         HookChatPanelEvents();
+        HookFileChangeReviewPanelEvents();
         HookGitPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
         Loaded += MainWindow_OnLoaded;
@@ -109,6 +110,18 @@ public partial class MainWindow : Window
         ChatPanelView.StopAgentRequested += (_, _) => StopAgent_OnClick(this, new RoutedEventArgs());
         ChatPanelView.CopyMessageRequested += (_, message) =>
             _clipboardService.CopyMessage(_viewModel, message as ChatMessageViewModel);
+    }
+
+    private void HookFileChangeReviewPanelEvents()
+    {
+        FileChangeReviewPanelView.ApproveRequested += (_, record) =>
+            _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.Approved);
+        FileChangeReviewPanelView.NeedsEditRequested += (_, record) =>
+            _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit);
+        FileChangeReviewPanelView.RevertRequested += async (_, record) =>
+            await _fileChangeReviewService.RevertAsync(_viewModel, record);
+        FileChangeReviewPanelView.ApproveAllAndVerifyRequested += async (_, _) =>
+            await _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(_viewModel, RunVerificationPlanAsync, SendCurrentMessageAsync);
     }
 
     private void HookGitPanelEvents()
@@ -666,37 +679,6 @@ public partial class MainWindow : Window
     private async Task RefreshGitDiffAsync()
     {
         await _gitPanelWorkflowService.RefreshDiffAsync(_viewModel, TrimForLog);
-    }
-
-    private void ApproveFileChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        _fileChangeReviewService.Mark(
-            _viewModel,
-            (sender as FrameworkElement)?.DataContext as FileChangeRecord,
-            FileChangeReviewStatus.Approved);
-    }
-
-    private void NeedsEditFileChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        _fileChangeReviewService.Mark(
-            _viewModel,
-            (sender as FrameworkElement)?.DataContext as FileChangeRecord,
-            FileChangeReviewStatus.NeedsEdit);
-    }
-
-    private async void RevertFileChange_OnClick(object sender, RoutedEventArgs e)
-    {
-        await _fileChangeReviewService.RevertAsync(
-            _viewModel,
-            (sender as FrameworkElement)?.DataContext as FileChangeRecord);
-    }
-
-    private async void ApproveAutoFixAndVerify_OnClick(object sender, RoutedEventArgs e)
-    {
-        await _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(
-            _viewModel,
-            RunVerificationPlanAsync,
-            SendCurrentMessageAsync);
     }
 
     private async void FixVerificationFailure_OnClick(object sender, RoutedEventArgs e)

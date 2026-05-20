@@ -16,7 +16,7 @@ AgentQ Desktop은 기존 AgentQ CLI의 provider, tool, permission 흐름을 재�
 - 파일 변경 기록, Git 상태/diff 조회
 - 계획 생성, 체크포인트 저장/불러오기, 세션 요약
 - 빌드/테스트 검증 명령 추천 및 실행 결과 카드
-- Settings, Chat, Git, 검증, Plan, Memory 패널의 UserControl 분리
+- Settings, Chat, Git, 검증, Plan, Memory, File Change Review 패널의 UserControl 분리
 - Auto Fix, 첨부 파일 선택, 클립보드 처리를 별도 서비스로 분리
 - provider별 모델 목록을 `DesktopProviderModelCatalog`로 분리
 - Git 브랜치 상태 안내: upstream 없음, upstream 삭제, ahead/behind/diverged 상태 표시
@@ -26,7 +26,7 @@ AgentQ Desktop은 기존 AgentQ CLI의 provider, tool, permission 흐름을 재�
 
 ## 권장 작업 순서
 
-1. project/file-change review 또는 run timeline 패널을 `MainWindow.xaml`에서 추가로 분리한다.
+1. project 또는 run timeline 패널을 `MainWindow.xaml`에서 추가로 분리한다.
 2. Git 브랜치 복구 동작을 브랜치 상태 안내와 연결해 안전하게 강화한다.
 3. Desktop 서비스 단위 테스트를 계속 보강한다.
 4. File change review 패널을 추가로 분리한다.
@@ -62,7 +62,7 @@ AgentQ Desktop은 기존 AgentQ CLI의 provider, tool, permission 흐름을 재�
 
 ## 구조 개선 방향
 
-현재 Desktop 기능은 `MainWindow.xaml`과 `MainWindow.xaml.cs`에서 점진적으로 분리 중입니다. Settings, Chat, Git, 검증, Plan, Memory 패널은 이미 UserControl로 분리되었지만, 메인 창은 아직 큽니다. 다음 단계에서는 프로젝트, 파일 변경 리뷰, run timeline 패널도 UserControl 또는 workflow/service로 분리해 변경 범위를 줄입니다.
+현재 Desktop 기능은 `MainWindow.xaml`과 `MainWindow.xaml.cs`에서 점진적으로 분리 중입니다. Settings, Chat, Git, 검증, Plan, Memory, File Change Review 패널은 이미 UserControl로 분리되었지만, 메인 창은 아직 큽니다. 다음 단계에서는 프로젝트와 run timeline 패널도 UserControl 또는 workflow/service로 분리해 변경 범위를 줄입니다.
 
 분리 후보:
 
