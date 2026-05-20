@@ -26,8 +26,8 @@ public sealed class DesktopPanelEventBinder
         projectPanel.LoadProjectConfigRequested += async (_, _) => await callbacks.LoadProjectConfigAsync();
 
         verificationPanel.RunRequested += async (_, plan) => await callbacks.RunVerificationPlanAsync(plan);
-        verificationPanel.FixFailureRequested += (_, _) => callbacks.FixVerificationFailure();
-        verificationPanel.AutoFixRequested += (_, _) => callbacks.AutoFixVerificationFailure();
+        verificationPanel.FixFailureRequested += async (_, _) => await callbacks.FixVerificationFailureAsync();
+        verificationPanel.AutoFixRequested += async (_, _) => await callbacks.AutoFixVerificationFailureAsync();
 
         planPanel.CreatePlanRequested += (_, _) => callbacks.CreatePlan();
         planPanel.ContinuePlanItemRequested += (_, _) => callbacks.ContinuePlanItem();
@@ -84,8 +84,8 @@ public sealed class DesktopPanelEventCallbacks
     public required Func<Task> SaveProjectConfigAsync { get; init; }
     public required Func<Task> LoadProjectConfigAsync { get; init; }
     public required Func<AgentVerificationPlan, Task> RunVerificationPlanAsync { get; init; }
-    public required Action FixVerificationFailure { get; init; }
-    public required Action AutoFixVerificationFailure { get; init; }
+    public required Func<Task> FixVerificationFailureAsync { get; init; }
+    public required Func<Task> AutoFixVerificationFailureAsync { get; init; }
     public required Action CreatePlan { get; init; }
     public required Action ContinuePlanItem { get; init; }
     public required Action MarkPlanItemDone { get; init; }

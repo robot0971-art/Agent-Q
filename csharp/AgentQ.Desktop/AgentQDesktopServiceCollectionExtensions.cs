@@ -21,6 +21,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<VerificationFailureClassifier>();
         services.AddSingleton<DesktopVerificationWorkflowService>();
         services.AddSingleton<DesktopVerificationPanelWorkflowService>();
+        services.AddSingleton<DesktopVerificationCommandService>();
         services.AddSingleton<DesktopGitService>();
         services.AddSingleton<DesktopGitPanelWorkflowService>();
         services.AddSingleton<DesktopGitCommandService>();

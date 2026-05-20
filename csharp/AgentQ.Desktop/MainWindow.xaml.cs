@@ -11,15 +11,14 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private readonly DesktopConfigService _configService;
-    private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
     private readonly DesktopGitCommandService _gitCommandService;
     private readonly DesktopPlanCommandService _planCommandService;
     private readonly DesktopWorkspaceCommandService _workspaceCommandService;
+    private readonly DesktopVerificationCommandService _verificationCommandService;
     private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
-    private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
     private readonly DesktopWindowCommandService _windowCommandService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly List<DesktopAttachment> _attachments = [];
@@ -27,30 +26,28 @@ public partial class MainWindow : Window
     public MainWindow(
         MainViewModel viewModel,
         DesktopConfigService configService,
-        DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
         DesktopGitPanelWorkflowService gitPanelWorkflowService,
         DesktopGitCommandService gitCommandService,
         DesktopPlanCommandService planCommandService,
         DesktopWorkspaceCommandService workspaceCommandService,
+        DesktopVerificationCommandService verificationCommandService,
         DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
-        DesktopAutoFixWorkflowService autoFixWorkflowService,
         DesktopWindowCommandService windowCommandService,
         DesktopPanelEventBinder panelEventBinder)
     {
         InitializeComponent();
         _viewModel = viewModel;
         _configService = configService;
-        _verificationPanelWorkflowService = verificationPanelWorkflowService;
         _gitPanelWorkflowService = gitPanelWorkflowService;
         _gitCommandService = gitCommandService;
         _planCommandService = planCommandService;
         _workspaceCommandService = workspaceCommandService;
+        _verificationCommandService = verificationCommandService;
         _workspaceContextWorkflowService = workspaceContextWorkflowService;
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
-        _autoFixWorkflowService = autoFixWorkflowService;
         _windowCommandService = windowCommandService;
         _panelEventBinder = panelEventBinder;
         DataContext = _viewModel;
@@ -84,9 +81,9 @@ public partial class MainWindow : Window
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
             SaveProjectConfigAsync = () => _workspaceCommandService.SaveProjectConfigAsync(_viewModel, TrimForLog),
             LoadProjectConfigAsync = () => _workspaceCommandService.LoadProjectConfigAsync(_viewModel),
-            RunVerificationPlanAsync = RunVerificationPlanAsync,
-            FixVerificationFailure = () => FixVerificationFailure_OnClick(this, new RoutedEventArgs()),
-            AutoFixVerificationFailure = () => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs()),
+            RunVerificationPlanAsync = plan => _verificationCommandService.RunVerificationPlanAsync(_viewModel, plan),
+            FixVerificationFailureAsync = () => _verificationCommandService.FixLastFailureAsync(_viewModel, SendCurrentMessageAsync),
+            AutoFixVerificationFailureAsync = () => _verificationCommandService.AutoFixLastFailureAsync(_viewModel, SendCurrentMessageAsync),
             CreatePlan = () => CreatePlan_OnClick(this, new RoutedEventArgs()),
             ContinuePlanItem = () => ContinuePlanItem_OnClick(this, new RoutedEventArgs()),
             MarkPlanItemDone = () => MarkPlanItemDone_OnClick(this, new RoutedEventArgs()),
@@ -108,7 +105,7 @@ public partial class MainWindow : Window
             MarkFileChangeNeedsEdit = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit),
             RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
             ApproveAllFileChangesAndVerifyAsync = () =>
-                _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(_viewModel, RunVerificationPlanAsync, SendCurrentMessageAsync),
+                _verificationCommandService.ApprovePendingChangesAndVerifyAsync(_viewModel, SendCurrentMessageAsync),
             RefreshGitStatusAsync = () => _gitCommandService.RefreshStatusAsync(_viewModel, TrimForLog),
             RefreshGitDiffAsync = () => _gitCommandService.RefreshDiffAsync(_viewModel, TrimForLog),
             ReviewGitChangesAsync = () => _gitCommandService.ReviewChangesAsync(_viewModel, SendCurrentMessageAsync, TrimForLog),
@@ -265,35 +262,6 @@ public partial class MainWindow : Window
         _windowCommandService.Close(this);
     }
 
-    private async Task<DesktopVerificationWorkflowResult?> RunVerificationPlanAsync(AgentVerificationPlan plan)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return null;
-        }
-
-        _viewModel.IsBusy = true;
-        var operationCts = new CancellationTokenSource();
-        _agentRunWorkflowService.SetActiveOperation(operationCts);
-
-        try
-        {
-            return await _verificationPanelWorkflowService.RunVerificationAsync(
-                _viewModel,
-                plan,
-                _workspaceContextWorkflowService.ProjectConfig?.VerificationCommands,
-                TimeSpan.FromMinutes(2),
-                operationCts.Token);
-        }
-        finally
-        {
-            _agentRunWorkflowService.ClearActiveOperation(operationCts);
-            operationCts.Dispose();
-            _viewModel.IsBusy = false;
-        }
-    }
-
     private async void CreatePlan_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.CreatePlanAsync(_viewModel, SendCurrentMessageAsync);
@@ -352,36 +320,6 @@ public partial class MainWindow : Window
     private async void ResumeSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.ResumeSessionSummaryAsync(_viewModel, SendCurrentMessageAsync);
-    }
-
-    private async void FixVerificationFailure_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        var fixPrompt = _verificationPanelWorkflowService.BuildFixPrompt();
-        if (string.IsNullOrWhiteSpace(fixPrompt))
-        {
-            _viewModel.StatusText = "No failed verification to fix";
-            return;
-        }
-
-        _viewModel.InputText = fixPrompt;
-        await SendCurrentMessageAsync(preserveLastVerificationFailure: true);
-    }
-
-    private async void AutoFixVerificationFailure_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        await _autoFixWorkflowService.RunAsync(_viewModel, maxAttempts: 3, SendCurrentMessageAsync);
     }
 
     private async Task SendCurrentMessageAsync(bool preserveLastVerificationFailure = false)
