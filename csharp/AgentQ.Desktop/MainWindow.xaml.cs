@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly DesktopWindowCommandService _windowCommandService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly DesktopProviderModelDiscoveryService _modelDiscoveryService;
+    private readonly ProjectMemoryService _projectMemoryService;
     private readonly List<DesktopAttachment> _attachments = [];
     private CancellationTokenSource? _modelRefreshCts;
 
@@ -36,7 +37,8 @@ public partial class MainWindow : Window
         DesktopFileChangeReviewService fileChangeReviewService,
         DesktopWindowCommandService windowCommandService,
         DesktopPanelEventBinder panelEventBinder,
-        DesktopProviderModelDiscoveryService modelDiscoveryService)
+        DesktopProviderModelDiscoveryService modelDiscoveryService,
+        ProjectMemoryService projectMemoryService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -51,6 +53,7 @@ public partial class MainWindow : Window
         _windowCommandService = windowCommandService;
         _panelEventBinder = panelEventBinder;
         _modelDiscoveryService = modelDiscoveryService;
+        _projectMemoryService = projectMemoryService;
         DataContext = _viewModel;
         HookPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
@@ -97,6 +100,8 @@ public partial class MainWindow : Window
             SaveSessionSummary = () => SaveSessionSummary_OnClick(this, new RoutedEventArgs()),
             LoadSessionSummary = () => LoadSessionSummary_OnClick(this, new RoutedEventArgs()),
             ResumeSessionSummary = () => ResumeSessionSummary_OnClick(this, new RoutedEventArgs()),
+            SaveSelectedMemoryLessonAsync = SaveSelectedMemoryLessonAsync,
+            DismissSelectedMemoryLesson = DismissSelectedMemoryLesson,
             AttachFiles = () => _workspaceCommandService.SelectAttachments(this, _viewModel, _attachments),
             ClearAttachments = () => _workspaceCommandService.ClearAttachments(_viewModel, _attachments),
             SendCurrentMessageAsync = () => SendCurrentMessageAsync(),
@@ -350,6 +355,33 @@ public partial class MainWindow : Window
     private async void ResumeSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.ResumeSessionSummaryAsync(_viewModel, SendCurrentMessageAsync);
+    }
+
+    private async Task SaveSelectedMemoryLessonAsync(ProjectMemoryLesson? lesson)
+    {
+        if (lesson == null)
+        {
+            _viewModel.StatusText = "No learning candidate selected";
+            return;
+        }
+
+        await _projectMemoryService.AddLocalLessonAsync(_viewModel.WorkspaceRoot, lesson, CancellationToken.None);
+        DismissSelectedMemoryLesson(lesson);
+        _viewModel.StatusText = "Learning saved to local memory";
+        _viewModel.AddLog($"Learning saved: {lesson.Title}");
+    }
+
+    private void DismissSelectedMemoryLesson(ProjectMemoryLesson? lesson)
+    {
+        if (lesson == null)
+        {
+            _viewModel.StatusText = "No learning candidate selected";
+            return;
+        }
+
+        _viewModel.PendingMemoryLessons.Remove(lesson);
+        _viewModel.SelectedPendingMemoryLesson = _viewModel.PendingMemoryLessons.FirstOrDefault();
+        _viewModel.StatusText = "Learning candidate dismissed";
     }
 
     private async Task SendCurrentMessageAsync(bool preserveLastVerificationFailure = false)

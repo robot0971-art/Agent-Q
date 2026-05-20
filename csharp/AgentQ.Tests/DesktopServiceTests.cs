@@ -150,6 +150,45 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_AddLocalLessonAsync_SavesApprovedLesson()
+    {
+        var root = CreateTempDirectory();
+        var service = new ProjectMemoryService();
+        await service.AddLocalLessonAsync(
+            root,
+            new ProjectMemoryLesson
+            {
+                Title = "Close desktop before tests",
+                Content = "AgentQ.Desktop.exe can lock the build output during dotnet test.",
+                Tags = ["desktop", "test"],
+                Confidence = 0.9,
+                Source = "approved candidate"
+            },
+            CancellationToken.None);
+
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+
+        Assert.Contains(memory.Lessons, lesson =>
+            lesson.Title == "Close desktop before tests" &&
+            lesson.Content.Contains("lock the build output", StringComparison.Ordinal));
+        Assert.True(File.Exists(Path.Combine(root, ".agentq", "memory.local.json")));
+    }
+
+    [Fact]
+    public void DesktopLearningSuggestionService_SuggestsStepLimitLesson()
+    {
+        var service = new DesktopLearningSuggestionService();
+        var viewModel = new MainViewModel();
+
+        var lessons = service.SuggestLessons(
+            "continue the task",
+            "Stopped after reaching the maximum tool steps (50).",
+            viewModel);
+
+        Assert.Contains(lessons, lesson => lesson.Title.Contains("Continue", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
     {
         using var factory = new StubHttpClientFactory(

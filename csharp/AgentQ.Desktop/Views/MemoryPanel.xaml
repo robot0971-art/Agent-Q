@@ -25,11 +25,60 @@
                     Click="ResumeSessionSummary_OnClick"
                     IsEnabled="{Binding CanResumeSessionSummary}" />
         </WrapPanel>
-        <TextBox Text="{Binding LatestSessionSummaryText}"
-                 IsReadOnly="True"
-                 FontFamily="Consolas"
-                 FontSize="11"
-                 TextWrapping="Wrap"
-                 VerticalScrollBarVisibility="Auto" />
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="130" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Learning candidates"
+                       Foreground="{StaticResource TextMuted}"
+                       FontSize="11"
+                       Margin="0,0,0,4" />
+            <ListBox Grid.Row="1"
+                     ItemsSource="{Binding PendingMemoryLessons}"
+                     SelectedItem="{Binding SelectedPendingMemoryLesson, Mode=TwoWay}"
+                     FontSize="11"
+                     HorizontalContentAlignment="Stretch"
+                     Margin="0,0,0,8">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,6">
+                            <TextBlock Text="{Binding Title}"
+                                       Foreground="{StaticResource TextMain}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Content}"
+                                       Foreground="{StaticResource TextMuted}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <WrapPanel Grid.Row="2" Margin="0,0,0,8">
+                <Button Content="Save lesson"
+                        Width="86"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="0,0,6,0"
+                        Click="SaveSelectedLesson_OnClick" />
+                <Button Content="Dismiss"
+                        Width="66"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Click="DismissSelectedLesson_OnClick" />
+            </WrapPanel>
+            <TextBox Grid.Row="3"
+                     Text="{Binding LatestSessionSummaryText}"
+                     IsReadOnly="True"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto" />
+        </Grid>
     </DockPanel>
 </UserControl>

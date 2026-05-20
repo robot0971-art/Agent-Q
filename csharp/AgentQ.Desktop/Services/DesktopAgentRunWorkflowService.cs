@@ -8,7 +8,8 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopAgentRunWorkflowService(
     DesktopAgentService agentService,
     DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
-    DesktopVerificationPanelWorkflowService verificationPanelWorkflowService)
+    DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
+    DesktopLearningSuggestionService learningSuggestionService)
 {
     private const string ThinkingPlaceholder = "생각중...";
     private const string ContinuationPrompt =
@@ -182,6 +183,7 @@ public sealed class DesktopAgentRunWorkflowService(
             }
 
             UpdateContinuationState(viewModel, fullText);
+            AddLearningCandidates(viewModel, prompt, fullText);
             viewModel.StatusText = "Response complete";
             viewModel.AddLog("Model call completed");
             var usage = _usageTracker.RecordEstimate(prompt, fullText);
@@ -291,6 +293,26 @@ public sealed class DesktopAgentRunWorkflowService(
         if (hitToolStepLimit)
         {
             viewModel.AddLog("Run can be continued from the tool step limit.");
+        }
+    }
+
+    private void AddLearningCandidates(MainViewModel viewModel, string prompt, string fullText)
+    {
+        foreach (var lesson in learningSuggestionService.SuggestLessons(prompt, fullText, viewModel))
+        {
+            if (viewModel.PendingMemoryLessons.Any(existing =>
+                    string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            viewModel.PendingMemoryLessons.Add(lesson);
+        }
+
+        if (viewModel.PendingMemoryLessons.Count > 0)
+        {
+            viewModel.SelectedPendingMemoryLesson ??= viewModel.PendingMemoryLessons[0];
+            viewModel.AddLog("Learning candidate prepared in Memory panel.");
         }
     }
 

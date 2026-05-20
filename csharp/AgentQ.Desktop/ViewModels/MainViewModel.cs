@@ -48,6 +48,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _canResumeSessionSummary;
     private GitChangedFile? _selectedGitChangedFile;
     private AgentPlanItem? _selectedPlanItem;
+    private ProjectMemoryLesson? _selectedPendingMemoryLesson;
     private AgentRunState _currentRunState = AgentRunState.Idle;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -73,6 +74,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> WorkspaceHints { get; } = [];
 
     public ObservableCollection<string> Attachments { get; } = [];
+
+    public ObservableCollection<ProjectMemoryLesson> PendingMemoryLessons { get; } = [];
 
     public ObservableCollection<string> AvailableProviders { get; } = new(DesktopProviderModelCatalog.Providers);
 
@@ -419,6 +422,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _selectedPlanItem;
         set => SetField(ref _selectedPlanItem, value);
+    }
+
+    public ProjectMemoryLesson? SelectedPendingMemoryLesson
+    {
+        get => _selectedPendingMemoryLesson;
+        set => SetField(ref _selectedPendingMemoryLesson, value);
     }
 
     public ProviderConfiguration ToConfiguration()
