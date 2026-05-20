@@ -11,4 +11,45 @@ public sealed class ProjectMemory
     public List<string> ProjectHints { get; set; } = [];
 
     public List<string> WorkspaceRules { get; set; } = [];
+
+    public List<ProjectMemoryLesson> Lessons { get; set; } = [];
+
+    public List<ProjectMemoryPreference> Preferences { get; set; } = [];
+
+    public List<ProjectMemoryCheck> Checks { get; set; } = [];
+}
+
+public sealed class ProjectMemoryLesson
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Content { get; set; } = string.Empty;
+
+    public List<string> Tags { get; set; } = [];
+
+    public double Confidence { get; set; } = 1;
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public DateTime? LastUsedAt { get; set; }
+
+    public string Source { get; set; } = string.Empty;
+}
+
+public sealed class ProjectMemoryPreference
+{
+    public string Key { get; set; } = string.Empty;
+
+    public string Value { get; set; } = string.Empty;
+}
+
+public sealed class ProjectMemoryCheck
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Command { get; set; } = string.Empty;
+
+    public string When { get; set; } = string.Empty;
 }

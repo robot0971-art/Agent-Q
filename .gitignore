@@ -62,6 +62,10 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# AgentQ local memory
+.agentq/memory.local.json
+.agentq/runs/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

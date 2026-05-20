@@ -45,6 +45,111 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.shared.json"),
+            """
+            {
+              "version": 1,
+              "workspaceRules": [ "Run dotnet test before commits." ],
+              "lessons": [
+                {
+                  "id": "desktop-exe-lock",
+                  "title": "Close desktop before tests",
+                  "content": "AgentQ.Desktop.exe can lock the build output during dotnet test.",
+                  "tags": [ "desktop", "test" ],
+                  "confidence": 0.95,
+                  "source": "test failure"
+                }
+              ],
+              "preferences": [
+                { "key": "shell", "value": "cmd" }
+              ],
+              "checks": [
+                { "name": "secret scan", "command": "rg sk-", "when": "before_push" }
+              ]
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "projectHints": [ "User prefers a single main branch." ],
+              "lessons": [
+                {
+                  "id": "local-language",
+                  "title": "Answer language",
+                  "content": "Answer in Korean unless the user asks otherwise.",
+                  "confidence": 0.9
+                }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+        var context = service.BuildContext(memory);
+
+        Assert.Contains("Run dotnet test before commits.", memory.WorkspaceRules);
+        Assert.Contains(memory.ProjectHints, hint => hint.Contains("memory.shared.json", StringComparison.Ordinal));
+        Assert.Contains(memory.ProjectHints, hint => hint.Contains("memory.local.json", StringComparison.Ordinal));
+        Assert.Contains(memory.Lessons, lesson => lesson.Id == "desktop-exe-lock");
+        Assert.Contains(memory.Lessons, lesson => lesson.Id == "local-language");
+        Assert.Contains(memory.Preferences, preference => preference.Key == "shell" && preference.Value == "cmd");
+        Assert.Contains(memory.Checks, check => check.Name == "secret scan");
+        Assert.Contains("Learned lessons:", context);
+        Assert.Contains("AgentQ.Desktop.exe can lock", context);
+        Assert.Contains("User/project preferences:", context);
+        Assert.Contains("Remembered checks:", context);
+    }
+
+    [Fact]
+    public async Task ProjectMemoryService_SkipsSensitiveMemoryEntries()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "projectHints": [ "api_key=sk-test-secret" ],
+              "lessons": [
+                {
+                  "id": "unsafe",
+                  "title": "Leaked token",
+                  "content": "Use bearer token abc.",
+                  "confidence": 1
+                }
+              ],
+              "preferences": [
+                { "key": "api", "value": "secret value" }
+              ],
+              "checks": [
+                { "name": "unsafe", "command": "echo sk-test-secret", "when": "never" }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+        var context = service.BuildContext(memory);
+
+        Assert.DoesNotContain(memory.ProjectHints, hint => hint.Contains("sk-test-secret", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(memory.Lessons, lesson => lesson.Id == "unsafe");
+        Assert.DoesNotContain(memory.Preferences, preference => preference.Key == "api");
+        Assert.DoesNotContain(memory.Checks, check => check.Name == "unsafe");
+        Assert.DoesNotContain("sk-test-secret", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("bearer token", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
     {
         using var factory = new StubHttpClientFactory(
