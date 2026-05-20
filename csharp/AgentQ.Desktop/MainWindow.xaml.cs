@@ -58,6 +58,7 @@ public partial class MainWindow : Window
         _autoFixWorkflowService = autoFixWorkflowService;
         DataContext = _viewModel;
         HookSettingsPanelEvents();
+        HookProjectPanelEvents();
         HookVerificationPanelEvents();
         HookPlanPanelEvents();
         HookMemoryPanelEvents();
@@ -72,6 +73,15 @@ public partial class MainWindow : Window
     {
         SettingsPanelView.SaveRequested += (_, _) => SaveSettings_OnClick(this, new RoutedEventArgs());
         SettingsPanelView.ApiKeyChanged += (_, apiKey) => _viewModel.ApiKey = apiKey;
+    }
+
+    private void HookProjectPanelEvents()
+    {
+        ProjectPanelView.BrowseWorkspaceRequested += (_, _) => BrowseWorkspace_OnClick(this, new RoutedEventArgs());
+        ProjectPanelView.OpenWorkspaceRequested += (_, _) => OpenWorkspace_OnClick(this, new RoutedEventArgs());
+        ProjectPanelView.RefreshWorkspaceAnalysisRequested += (_, _) => RefreshWorkspaceAnalysis_OnClick(this, new RoutedEventArgs());
+        ProjectPanelView.SaveProjectConfigRequested += (_, _) => SaveProjectConfig_OnClick(this, new RoutedEventArgs());
+        ProjectPanelView.LoadProjectConfigRequested += (_, _) => LoadProjectConfig_OnClick(this, new RoutedEventArgs());
     }
 
     private void HookVerificationPanelEvents()

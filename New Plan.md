@@ -81,6 +81,7 @@ Already separated:
 - Memory/session summary panel UserControl
 - File change review panel UserControl
 - Run timeline panel UserControl
+- Project panel UserControl
 - Auto-fix workflow service
 - attachment selection workflow service
 - clipboard service
@@ -149,13 +150,12 @@ Priority: highest
 
 Current status:
 
-- Settings, Chat, Git, Verification, Plan, Memory, File Change Review, and Run Timeline panels are separated
-- `MainWindow.xaml` and `MainWindow.xaml.cs` still own project UI
+- Settings, Chat, Project, Git, Verification, Plan, Memory, File Change Review, and Run Timeline panels are separated
+- `MainWindow.xaml` and `MainWindow.xaml.cs` now mainly coordinate events and workflows
 
 Target:
 
-- extract the next focused panel without changing behavior
-- extract project UI without changing behavior
+- continue reducing MainWindow code-behind by moving coordination logic into focused workflow classes
 - add or update tests only where service behavior changes
 
 Primary files:
@@ -217,4 +217,4 @@ Primary files:
 
 ## Immediate Next Step
 
-Extract the project panel, then revisit branch recovery UX.
+Revisit branch recovery UX, then continue reducing MainWindow code-behind.
