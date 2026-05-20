@@ -36,6 +36,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopAttachmentSelectionService>();
         services.AddSingleton<DesktopClipboardService>();
         services.AddSingleton<DesktopAutoFixWorkflowService>();
+        services.AddSingleton<DesktopPanelEventBinder>();
         services.AddSingleton<MainWindow>();
 
         return services;

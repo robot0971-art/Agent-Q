@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly DesktopAttachmentSelectionService _attachmentSelectionService;
     private readonly DesktopClipboardService _clipboardService;
     private readonly DesktopAutoFixWorkflowService _autoFixWorkflowService;
+    private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly List<DesktopAttachment> _attachments = [];
 
     public MainWindow(
@@ -41,7 +42,8 @@ public partial class MainWindow : Window
         DesktopCheckpointWorkflowService checkpointWorkflowService,
         DesktopAttachmentSelectionService attachmentSelectionService,
         DesktopClipboardService clipboardService,
-        DesktopAutoFixWorkflowService autoFixWorkflowService)
+        DesktopAutoFixWorkflowService autoFixWorkflowService,
+        DesktopPanelEventBinder panelEventBinder)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -56,102 +58,80 @@ public partial class MainWindow : Window
         _attachmentSelectionService = attachmentSelectionService;
         _clipboardService = clipboardService;
         _autoFixWorkflowService = autoFixWorkflowService;
+        _panelEventBinder = panelEventBinder;
         DataContext = _viewModel;
-        HookSettingsPanelEvents();
-        HookProjectPanelEvents();
-        HookVerificationPanelEvents();
-        HookPlanPanelEvents();
-        HookMemoryPanelEvents();
-        HookChatPanelEvents();
-        HookFileChangeReviewPanelEvents();
-        HookGitPanelEvents();
+        HookPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
         Loaded += MainWindow_OnLoaded;
     }
 
-    private void HookSettingsPanelEvents()
+    private void HookPanelEvents()
     {
-        SettingsPanelView.SaveRequested += (_, _) => SaveSettings_OnClick(this, new RoutedEventArgs());
-        SettingsPanelView.ApiKeyChanged += (_, apiKey) => _viewModel.ApiKey = apiKey;
+        _panelEventBinder.Bind(
+            SettingsPanelView,
+            ProjectPanelView,
+            VerificationPanelView,
+            PlanPanelView,
+            MemoryPanelView,
+            ChatPanelView,
+            FileChangeReviewPanelView,
+            GitPanelView,
+            CreatePanelEventCallbacks());
     }
 
-    private void HookProjectPanelEvents()
+    private DesktopPanelEventCallbacks CreatePanelEventCallbacks()
     {
-        ProjectPanelView.BrowseWorkspaceRequested += (_, _) => BrowseWorkspace_OnClick(this, new RoutedEventArgs());
-        ProjectPanelView.OpenWorkspaceRequested += (_, _) => OpenWorkspace_OnClick(this, new RoutedEventArgs());
-        ProjectPanelView.RefreshWorkspaceAnalysisRequested += (_, _) => RefreshWorkspaceAnalysis_OnClick(this, new RoutedEventArgs());
-        ProjectPanelView.SaveProjectConfigRequested += (_, _) => SaveProjectConfig_OnClick(this, new RoutedEventArgs());
-        ProjectPanelView.LoadProjectConfigRequested += (_, _) => LoadProjectConfig_OnClick(this, new RoutedEventArgs());
-    }
-
-    private void HookVerificationPanelEvents()
-    {
-        VerificationPanelView.RunRequested += async (_, plan) => await RunVerificationPlanAsync(plan);
-        VerificationPanelView.FixFailureRequested += (_, _) => FixVerificationFailure_OnClick(this, new RoutedEventArgs());
-        VerificationPanelView.AutoFixRequested += (_, _) => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs());
-    }
-
-    private void HookPlanPanelEvents()
-    {
-        PlanPanelView.CreatePlanRequested += (_, _) => CreatePlan_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.ContinuePlanItemRequested += (_, _) => ContinuePlanItem_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.MarkPlanItemDoneRequested += (_, _) => MarkPlanItemDone_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.SaveCheckpointRequested += (_, _) => SaveCheckpoint_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.LoadCheckpointRequested += (_, _) => LoadCheckpoint_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.ResumeCheckpointRequested += (_, _) => ResumeCheckpoint_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.PlanAndRunRequested += (_, _) => PlanAndRun_OnClick(this, new RoutedEventArgs());
-        PlanPanelView.MarkDoneAndContinueRequested += (_, _) => MarkDoneAndContinue_OnClick(this, new RoutedEventArgs());
-    }
-
-    private void HookMemoryPanelEvents()
-    {
-        MemoryPanelView.SaveSessionSummaryRequested += (_, _) => SaveSessionSummary_OnClick(this, new RoutedEventArgs());
-        MemoryPanelView.LoadSessionSummaryRequested += (_, _) => LoadSessionSummary_OnClick(this, new RoutedEventArgs());
-        MemoryPanelView.ResumeSessionSummaryRequested += (_, _) => ResumeSessionSummary_OnClick(this, new RoutedEventArgs());
-    }
-
-    private void HookChatPanelEvents()
-    {
-        ChatPanelView.AttachFilesRequested += (_, _) => AttachFiles_OnClick(this, new RoutedEventArgs());
-        ChatPanelView.BrowseWorkspaceRequested += (_, _) => BrowseWorkspace_OnClick(this, new RoutedEventArgs());
-        ChatPanelView.ClearAttachmentsRequested += (_, _) => ClearAttachments_OnClick(this, new RoutedEventArgs());
-        ChatPanelView.SendRequested += async (_, _) => await SendCurrentMessageAsync();
-        ChatPanelView.ContinueLastRunRequested += (_, _) => ContinueLastRun_OnClick(this, new RoutedEventArgs());
-        ChatPanelView.StopAgentRequested += (_, _) => StopAgent_OnClick(this, new RoutedEventArgs());
-        ChatPanelView.CopyMessageRequested += (_, message) =>
-            _clipboardService.CopyMessage(_viewModel, message as ChatMessageViewModel);
-    }
-
-    private void HookFileChangeReviewPanelEvents()
-    {
-        FileChangeReviewPanelView.ApproveRequested += (_, record) =>
-            _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.Approved);
-        FileChangeReviewPanelView.NeedsEditRequested += (_, record) =>
-            _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit);
-        FileChangeReviewPanelView.RevertRequested += async (_, record) =>
-            await _fileChangeReviewService.RevertAsync(_viewModel, record);
-        FileChangeReviewPanelView.ApproveAllAndVerifyRequested += async (_, _) =>
-            await _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(_viewModel, RunVerificationPlanAsync, SendCurrentMessageAsync);
-    }
-
-    private void HookGitPanelEvents()
-    {
-        GitPanelView.StatusRequested += async (_, _) => await RefreshGitStatusAsync();
-        GitPanelView.DiffRequested += async (_, _) => await RefreshGitDiffAsync();
-        GitPanelView.ReviewRequested += (_, _) => ReviewGitChanges_OnClick(this, new RoutedEventArgs());
-        GitPanelView.FixReviewRequested += (_, _) => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs());
-        GitPanelView.CommitSummaryRequested += (_, _) => CommitSummary_OnClick(this, new RoutedEventArgs());
-        GitPanelView.PullFastForwardRequested += async (_, _) => await _gitPanelWorkflowService.PullFastForwardOnlyAsync(_viewModel, TrimForLog);
-        GitPanelView.BackupBranchRequested += async (_, _) => await _gitPanelWorkflowService.CreateBackupBranchAsync(_viewModel, TrimForLog);
-        GitPanelView.CheckoutMainRequested += async (_, _) => await _gitPanelWorkflowService.CheckoutMainAsync(_viewModel, TrimForLog);
-        GitPanelView.SelectedFileChanged += async (_, _) => await _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel);
-        GitPanelView.ApproveRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved);
-        GitPanelView.RejectRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected);
-        GitPanelView.NeedsEditRequested += (_, _) => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit);
-        GitPanelView.StageSelectedRequested += async (_, _) => await _gitPanelWorkflowService.StageSelectedFileAsync(_viewModel, TrimForLog);
-        GitPanelView.StageApprovedRequested += async (_, _) => await _gitPanelWorkflowService.StageApprovedFilesAsync(_viewModel, TrimForLog);
-        GitPanelView.UnstageSelectedRequested += async (_, _) => await _gitPanelWorkflowService.UnstageSelectedFileAsync(_viewModel, TrimForLog);
-        GitPanelView.CommitStagedRequested += async (_, _) => await _gitPanelWorkflowService.CommitAsync(_viewModel, TrimForLog);
+        return new DesktopPanelEventCallbacks
+        {
+            SaveSettings = () => SaveSettings_OnClick(this, new RoutedEventArgs()),
+            UpdateApiKey = apiKey => _viewModel.ApiKey = apiKey,
+            BrowseWorkspace = () => BrowseWorkspace_OnClick(this, new RoutedEventArgs()),
+            OpenWorkspace = () => OpenWorkspace_OnClick(this, new RoutedEventArgs()),
+            RefreshWorkspaceAnalysis = () => RefreshWorkspaceAnalysis_OnClick(this, new RoutedEventArgs()),
+            SaveProjectConfig = () => SaveProjectConfig_OnClick(this, new RoutedEventArgs()),
+            LoadProjectConfig = () => LoadProjectConfig_OnClick(this, new RoutedEventArgs()),
+            RunVerificationPlanAsync = RunVerificationPlanAsync,
+            FixVerificationFailure = () => FixVerificationFailure_OnClick(this, new RoutedEventArgs()),
+            AutoFixVerificationFailure = () => AutoFixVerificationFailure_OnClick(this, new RoutedEventArgs()),
+            CreatePlan = () => CreatePlan_OnClick(this, new RoutedEventArgs()),
+            ContinuePlanItem = () => ContinuePlanItem_OnClick(this, new RoutedEventArgs()),
+            MarkPlanItemDone = () => MarkPlanItemDone_OnClick(this, new RoutedEventArgs()),
+            SaveCheckpoint = () => SaveCheckpoint_OnClick(this, new RoutedEventArgs()),
+            LoadCheckpoint = () => LoadCheckpoint_OnClick(this, new RoutedEventArgs()),
+            ResumeCheckpoint = () => ResumeCheckpoint_OnClick(this, new RoutedEventArgs()),
+            PlanAndRun = () => PlanAndRun_OnClick(this, new RoutedEventArgs()),
+            MarkDoneAndContinue = () => MarkDoneAndContinue_OnClick(this, new RoutedEventArgs()),
+            SaveSessionSummary = () => SaveSessionSummary_OnClick(this, new RoutedEventArgs()),
+            LoadSessionSummary = () => LoadSessionSummary_OnClick(this, new RoutedEventArgs()),
+            ResumeSessionSummary = () => ResumeSessionSummary_OnClick(this, new RoutedEventArgs()),
+            AttachFiles = () => AttachFiles_OnClick(this, new RoutedEventArgs()),
+            ClearAttachments = () => ClearAttachments_OnClick(this, new RoutedEventArgs()),
+            SendCurrentMessageAsync = () => SendCurrentMessageAsync(),
+            ContinueLastRun = () => ContinueLastRun_OnClick(this, new RoutedEventArgs()),
+            StopAgent = () => StopAgent_OnClick(this, new RoutedEventArgs()),
+            CopyMessage = message => _clipboardService.CopyMessage(_viewModel, message),
+            ApproveFileChange = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.Approved),
+            MarkFileChangeNeedsEdit = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit),
+            RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
+            ApproveAllFileChangesAndVerifyAsync = () =>
+                _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(_viewModel, RunVerificationPlanAsync, SendCurrentMessageAsync),
+            RefreshGitStatusAsync = RefreshGitStatusAsync,
+            RefreshGitDiffAsync = RefreshGitDiffAsync,
+            ReviewGitChanges = () => ReviewGitChanges_OnClick(this, new RoutedEventArgs()),
+            FixCodeReviewFindings = () => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs()),
+            CommitSummary = () => CommitSummary_OnClick(this, new RoutedEventArgs()),
+            PullFastForwardAsync = () => _gitPanelWorkflowService.PullFastForwardOnlyAsync(_viewModel, TrimForLog),
+            CreateBackupBranchAsync = () => _gitPanelWorkflowService.CreateBackupBranchAsync(_viewModel, TrimForLog),
+            CheckoutMainAsync = () => _gitPanelWorkflowService.CheckoutMainAsync(_viewModel, TrimForLog),
+            LoadSelectedGitFileDiffAsync = () => _gitPanelWorkflowService.LoadSelectedFileDiffAsync(_viewModel),
+            ApproveGitChange = () => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Approved),
+            RejectGitChange = () => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.Rejected),
+            MarkGitChangeNeedsEdit = () => _gitPanelWorkflowService.SetSelectedReviewStatus(_viewModel, GitChangeReviewStatus.NeedsEdit),
+            StageSelectedGitFileAsync = () => _gitPanelWorkflowService.StageSelectedFileAsync(_viewModel, TrimForLog),
+            StageApprovedGitFilesAsync = () => _gitPanelWorkflowService.StageApprovedFilesAsync(_viewModel, TrimForLog),
+            UnstageSelectedGitFileAsync = () => _gitPanelWorkflowService.UnstageSelectedFileAsync(_viewModel, TrimForLog),
+            CommitStagedGitFilesAsync = () => _gitPanelWorkflowService.CommitAsync(_viewModel, TrimForLog)
+        };
     }
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
