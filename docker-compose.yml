@@ -1,0 +1,10 @@
+services:
+  mockservice:
+    build:
+      context: .
+      dockerfile: Dockerfile.mockservice
+    image: agentq-mockservice:local
+    environment:
+      AGENTQ_MOCK_URL: http://*:18080/
+    ports:
+      - "18080:18080"

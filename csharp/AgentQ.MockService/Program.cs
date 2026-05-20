@@ -3,7 +3,13 @@
 Console.WriteLine("Starting AgentQ Mock Anthropic Service...");
 
 var service = new MockAnthropicService();
-await service.StartAsync("http://localhost:18080/");
+var listenUrl = Environment.GetEnvironmentVariable("AGENTQ_MOCK_URL");
+if (string.IsNullOrWhiteSpace(listenUrl))
+{
+    listenUrl = "http://localhost:18080/";
+}
+
+await service.StartAsync(listenUrl);
 
 Console.WriteLine($"Mock service listening on {service.BaseUrl}");
 Console.WriteLine("Press Ctrl+C to stop the service...");

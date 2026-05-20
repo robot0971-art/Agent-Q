@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY NuGet.Config ./
+COPY csharp/AgentQ.sln csharp/
+COPY csharp/AgentQ.Api/AgentQ.Api.csproj csharp/AgentQ.Api/
+COPY csharp/AgentQ.MockService/AgentQ.MockService.csproj csharp/AgentQ.MockService/
+RUN dotnet restore csharp/AgentQ.MockService/AgentQ.MockService.csproj
+
+COPY csharp/AgentQ.Api/ csharp/AgentQ.Api/
+COPY csharp/AgentQ.MockService/ csharp/AgentQ.MockService/
+RUN dotnet publish csharp/AgentQ.MockService/AgentQ.MockService.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+WORKDIR /app
+ENV AGENTQ_MOCK_URL=http://*:18080/
+EXPOSE 18080
+COPY --from=build /app ./
+ENTRYPOINT ["dotnet", "AgentQ.MockService.dll"]

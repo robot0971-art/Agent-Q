@@ -292,6 +292,39 @@ Run it with:
 dotnet run --project .\csharp\AgentQ.MockService
 ```
 
+The mock service listens on `http://localhost:18080/` by default. Override the listener prefix with `AGENTQ_MOCK_URL` when running in containers or another host environment.
+
+## Docker
+
+The Windows desktop app is not containerized because it is a WPF application. Docker support currently targets the mock provider service used by CLI and provider parity workflows.
+
+Build and run the mock service with Docker Compose:
+
+```powershell
+docker compose up --build mockservice
+```
+
+Or build the image directly:
+
+```powershell
+docker build -f .\Dockerfile.mockservice -t agentq-mockservice:local .
+docker run --rm -p 18080:18080 agentq-mockservice:local
+```
+
+The container sets `AGENTQ_MOCK_URL=http://*:18080/` so the service is reachable through the published port.
+
+## CI
+
+GitHub Actions is configured in `.github/workflows/ci.yml`.
+
+The CI workflow:
+
+- restores and builds `csharp/AgentQ.sln` on `windows-latest`
+- runs the full Release test suite
+- packs the CLI as a .NET tool package
+- uploads CLI packages and test results as artifacts
+- builds the mock service Docker image on `ubuntu-latest`
+
 ## OpenCode Go
 
 OpenCode Go can be used through AgentQ when you have an API key for one of the OpenAI-compatible Go models.
@@ -332,7 +365,7 @@ The repository can still be validated on a normal local machine or CI runner as 
 
 ## Current Priority
 
-1. split large desktop panels out of `MainWindow.xaml` and code-behind
-2. improve desktop Git stage/commit/pull workflows
-3. move provider model catalogs out of hardcoded UI state
-4. continue expanding desktop service tests
+1. harden CI, Docker, and repeatable release artifacts
+2. continue desktop regression coverage around Git and verification workflows
+3. improve release packaging for CLI and Windows desktop builds
+4. expand mock-service-backed integration coverage

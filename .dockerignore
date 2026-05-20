@@ -1,0 +1,12 @@
+.git
+.github
+.vs
+artifacts
+**/bin
+**/obj
+**/TestResults
+*.user
+*.suo
+*.nupkg
+*.snupkg
+*.binlog
