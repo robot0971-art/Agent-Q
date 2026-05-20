@@ -396,6 +396,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : AgentWorkMode.Coding;
     }
 
+    public void ApplyProviderModels(IReadOnlyList<string> models, bool preserveCurrentModel)
+    {
+        if (models.Count == 0)
+        {
+            return;
+        }
+
+        var currentModel = Model;
+        AvailableModels.Clear();
+        foreach (var model in models)
+        {
+            AvailableModels.Add(model);
+        }
+
+        if (preserveCurrentModel &&
+            !string.IsNullOrWhiteSpace(currentModel) &&
+            models.Contains(currentModel, StringComparer.OrdinalIgnoreCase))
+        {
+            Model = currentModel;
+            return;
+        }
+
+        Model = models.Contains(currentModel, StringComparer.OrdinalIgnoreCase)
+            ? currentModel
+            : models[0];
+    }
+
     public void AddLog(string message)
     {
         Logs.Add($"{DateTime.Now:HH:mm:ss}  INFO  {message}");

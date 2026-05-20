@@ -1,5 +1,7 @@
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
+using AgentQ.Core.Providers;
+using System.Net;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -40,6 +42,89 @@ public sealed class DesktopServiceTests
         Assert.Equal("https://api.openai.com/v1", DesktopProviderModelCatalog.GetDefaultBaseUrl("openai", string.Empty));
         Assert.Equal("default", DesktopProviderModelCatalog.GetDefaultModel("custom-provider"));
         Assert.Equal("https://example.test", DesktopProviderModelCatalog.GetDefaultBaseUrl("custom-provider", "https://example.test"));
+    }
+
+    [Fact]
+    public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
+    {
+        using var factory = new StubHttpClientFactory(
+            """
+            {
+              "data": [
+                { "id": "text-embedding-3-large" },
+                { "id": "gpt-5.9" },
+                { "id": "gpt-5.9-mini" }
+              ]
+            }
+            """);
+        var service = new DesktopProviderModelDiscoveryService(factory, CreateTempDirectory());
+
+        var models = await service.GetModelsAsync(new ProviderConfiguration
+        {
+            Provider = "openai",
+            BaseUrl = "https://api.openai.test/v1",
+            ApiKey = "test-key"
+        });
+
+        Assert.Contains("gpt-5.9", models);
+        Assert.Contains("gpt-5.9-mini", models);
+        Assert.DoesNotContain("text-embedding-3-large", models);
+        Assert.Equal("Bearer", factory.LastRequest?.Headers.Authorization?.Scheme);
+    }
+
+    [Fact]
+    public async Task DesktopProviderModelDiscoveryService_FetchesGoogleModels()
+    {
+        using var factory = new StubHttpClientFactory(
+            """
+            {
+              "models": [
+                { "name": "models/gemini-3.2-flash" },
+                { "name": "models/embedding-001" }
+              ]
+            }
+            """);
+        var service = new DesktopProviderModelDiscoveryService(factory, CreateTempDirectory());
+
+        var models = await service.GetModelsAsync(new ProviderConfiguration
+        {
+            Provider = "google",
+            ApiKey = "test-key"
+        });
+
+        Assert.Contains("gemini-3.2-flash", models);
+        Assert.DoesNotContain("embedding-001", models);
+        Assert.Contains("generativelanguage.googleapis.com", factory.LastRequest?.RequestUri?.Host);
+    }
+
+    [Fact]
+    public async Task DesktopProviderModelDiscoveryService_FallsBackToCatalogWhenDiscoveryFails()
+    {
+        using var factory = new StubHttpClientFactory("{}", HttpStatusCode.Unauthorized);
+        var service = new DesktopProviderModelDiscoveryService(factory, CreateTempDirectory());
+
+        var models = await service.GetModelsAsync(new ProviderConfiguration
+        {
+            Provider = "anthropic",
+            BaseUrl = "https://api.anthropic.com",
+            ApiKey = "bad-key"
+        });
+
+        Assert.Contains("claude-sonnet-4-6", models);
+    }
+
+    [Fact]
+    public void MainViewModel_ApplyProviderModels_SelectsFirstModelWhenCurrentIsUnavailable()
+    {
+        var viewModel = new MainViewModel
+        {
+            Model = "old-model"
+        };
+
+        viewModel.ApplyProviderModels(["new-model", "new-model-mini"], preserveCurrentModel: true);
+
+        Assert.Equal("new-model", viewModel.Model);
+        Assert.Equal(["new-model", "new-model-mini"], viewModel.AvailableModels);
     }
 
     [Theory]
@@ -249,5 +334,43 @@ public sealed class DesktopServiceTests
 
         Assert.Equal(VerificationFailureKind.MissingDependency, analysis.Kind);
         Assert.Contains("Missing command", analysis.Title, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CreateTempDirectory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "agentq-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private sealed class StubHttpClientFactory(string content, HttpStatusCode statusCode = HttpStatusCode.OK) : IHttpClientFactory, IDisposable
+    {
+        private readonly StubHttpMessageHandler _handler = new(content, statusCode);
+
+        public HttpRequestMessage? LastRequest => _handler.LastRequest;
+
+        public HttpClient CreateClient(string name)
+        {
+            return new HttpClient(_handler, disposeHandler: false);
+        }
+
+        public void Dispose()
+        {
+            _handler.Dispose();
+        }
+    }
+
+    private sealed class StubHttpMessageHandler(string content, HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(content)
+            });
+        }
     }
 }

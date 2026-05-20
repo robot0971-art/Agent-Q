@@ -11,8 +11,10 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddHttpClient("anthropic");
         services.AddHttpClient("openai");
         services.AddHttpClient("desktop-links", client => client.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("model-discovery", client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<LinkContentFetcher>();
+        services.AddSingleton<DesktopProviderModelDiscoveryService>();
         services.AddSingleton<ProjectMemoryService>();
         services.AddSingleton<WorkspaceIndexer>();
         services.AddSingleton<DesktopConfigService>();

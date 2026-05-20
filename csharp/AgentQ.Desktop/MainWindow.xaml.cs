@@ -1,4 +1,5 @@
 using System.Linq;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using AgentQ.Desktop.Services;
@@ -19,7 +20,9 @@ public partial class MainWindow : Window
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
     private readonly DesktopWindowCommandService _windowCommandService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
+    private readonly DesktopProviderModelDiscoveryService _modelDiscoveryService;
     private readonly List<DesktopAttachment> _attachments = [];
+    private CancellationTokenSource? _modelRefreshCts;
 
     public MainWindow(
         MainViewModel viewModel,
@@ -32,7 +35,8 @@ public partial class MainWindow : Window
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
         DesktopWindowCommandService windowCommandService,
-        DesktopPanelEventBinder panelEventBinder)
+        DesktopPanelEventBinder panelEventBinder,
+        DesktopProviderModelDiscoveryService modelDiscoveryService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -46,9 +50,11 @@ public partial class MainWindow : Window
         _fileChangeReviewService = fileChangeReviewService;
         _windowCommandService = windowCommandService;
         _panelEventBinder = panelEventBinder;
+        _modelDiscoveryService = modelDiscoveryService;
         DataContext = _viewModel;
         HookPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
+        _viewModel.PropertyChanged += ViewModel_OnPropertyChanged;
         Loaded += MainWindow_OnLoaded;
     }
 
@@ -70,7 +76,7 @@ public partial class MainWindow : Window
     {
         return new DesktopPanelEventCallbacks
         {
-            SaveSettingsAsync = () => _workspaceCommandService.SaveSettingsAsync(_viewModel),
+            SaveSettingsAsync = SaveSettingsAndRefreshModelsAsync,
             UpdateApiKey = apiKey => _viewModel.ApiKey = apiKey,
             BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
@@ -125,6 +131,7 @@ public partial class MainWindow : Window
     {
         var result = await _startupCommandService.InitializeAsync(_viewModel, TrimForLog);
         SettingsPanelView.ApiKey = result.ApiKey;
+        ScheduleProviderModelRefresh(preserveCurrentModel: true);
     }
 
     private async void Send_OnClick(object sender, RoutedEventArgs e)
@@ -134,7 +141,55 @@ public partial class MainWindow : Window
 
     private async void SaveSettings_OnClick(object sender, RoutedEventArgs e)
     {
+        await SaveSettingsAndRefreshModelsAsync();
+    }
+
+    private async Task SaveSettingsAndRefreshModelsAsync()
+    {
         await _workspaceCommandService.SaveSettingsAsync(_viewModel);
+        await RefreshProviderModelsAsync(preserveCurrentModel: true, CancellationToken.None);
+    }
+
+    private void ViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.Provider) or nameof(MainViewModel.BaseUrl) or nameof(MainViewModel.ApiKey))
+        {
+            ScheduleProviderModelRefresh(preserveCurrentModel: true);
+        }
+    }
+
+    private void ScheduleProviderModelRefresh(bool preserveCurrentModel)
+    {
+        _modelRefreshCts?.Cancel();
+        _modelRefreshCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _modelRefreshCts = cts;
+
+        _ = RefreshProviderModelsAfterDelayAsync(preserveCurrentModel, cts.Token);
+    }
+
+    private async Task RefreshProviderModelsAfterDelayAsync(bool preserveCurrentModel, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(450, cancellationToken);
+            await RefreshProviderModelsAsync(preserveCurrentModel, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshProviderModelsAsync(bool preserveCurrentModel, CancellationToken cancellationToken)
+    {
+        var models = await _modelDiscoveryService.GetModelsAsync(_viewModel.ToConfiguration(), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _viewModel.ApplyProviderModels(models, preserveCurrentModel);
+
+        if (!string.IsNullOrWhiteSpace(_viewModel.ApiKey))
+        {
+            _viewModel.AddLog($"Model list refreshed for {_viewModel.Provider}.");
+        }
     }
 
     private async void BrowseWorkspace_OnClick(object sender, RoutedEventArgs e)
