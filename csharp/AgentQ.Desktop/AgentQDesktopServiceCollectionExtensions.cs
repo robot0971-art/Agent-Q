@@ -23,6 +23,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopVerificationPanelWorkflowService>();
         services.AddSingleton<DesktopGitService>();
         services.AddSingleton<DesktopGitPanelWorkflowService>();
+        services.AddSingleton<DesktopGitCommandService>();
         services.AddSingleton<WorkspaceAnalysisService>();
         services.AddSingleton<ProjectAgentConfigService>();
         services.AddSingleton<AgentCheckpointService>();

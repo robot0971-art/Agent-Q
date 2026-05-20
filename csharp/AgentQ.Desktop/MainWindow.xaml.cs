@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly DesktopConfigService _configService;
     private readonly DesktopVerificationPanelWorkflowService _verificationPanelWorkflowService;
     private readonly DesktopGitPanelWorkflowService _gitPanelWorkflowService;
+    private readonly DesktopGitCommandService _gitCommandService;
     private readonly DesktopPlanCommandService _planCommandService;
     private readonly DesktopWorkspaceContextWorkflowService _workspaceContextWorkflowService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
         DesktopConfigService configService,
         DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
         DesktopGitPanelWorkflowService gitPanelWorkflowService,
+        DesktopGitCommandService gitCommandService,
         DesktopPlanCommandService planCommandService,
         DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
@@ -48,6 +50,7 @@ public partial class MainWindow : Window
         _configService = configService;
         _verificationPanelWorkflowService = verificationPanelWorkflowService;
         _gitPanelWorkflowService = gitPanelWorkflowService;
+        _gitCommandService = gitCommandService;
         _planCommandService = planCommandService;
         _workspaceContextWorkflowService = workspaceContextWorkflowService;
         _agentRunWorkflowService = agentRunWorkflowService;
@@ -112,11 +115,11 @@ public partial class MainWindow : Window
             RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
             ApproveAllFileChangesAndVerifyAsync = () =>
                 _autoFixWorkflowService.ApprovePendingChangesAndVerifyAsync(_viewModel, RunVerificationPlanAsync, SendCurrentMessageAsync),
-            RefreshGitStatusAsync = RefreshGitStatusAsync,
-            RefreshGitDiffAsync = RefreshGitDiffAsync,
-            ReviewGitChanges = () => ReviewGitChanges_OnClick(this, new RoutedEventArgs()),
-            FixCodeReviewFindings = () => FixCodeReviewFindings_OnClick(this, new RoutedEventArgs()),
-            CommitSummary = () => CommitSummary_OnClick(this, new RoutedEventArgs()),
+            RefreshGitStatusAsync = () => _gitCommandService.RefreshStatusAsync(_viewModel, TrimForLog),
+            RefreshGitDiffAsync = () => _gitCommandService.RefreshDiffAsync(_viewModel, TrimForLog),
+            ReviewGitChangesAsync = () => _gitCommandService.ReviewChangesAsync(_viewModel, SendCurrentMessageAsync, TrimForLog),
+            FixCodeReviewFindingsAsync = () => _gitCommandService.FixCodeReviewFindingsAsync(_viewModel, SendCurrentMessageAsync, TrimForLog),
+            CommitSummaryAsync = () => _gitCommandService.PrepareCommitSummaryAsync(_viewModel, SendCurrentMessageAsync, TrimForLog),
             PullFastForwardAsync = () => _gitPanelWorkflowService.PullFastForwardOnlyAsync(_viewModel, TrimForLog),
             CreateBackupBranchAsync = () => _gitPanelWorkflowService.CreateBackupBranchAsync(_viewModel, TrimForLog),
             CheckoutMainAsync = () => _gitPanelWorkflowService.CheckoutMainAsync(_viewModel, TrimForLog),
@@ -431,73 +434,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ReviewGitChanges_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        _viewModel.StatusText = "Preparing code review";
-
-        var result = await _gitPanelWorkflowService.PrepareCodeReviewAsync(_viewModel.WorkspaceRoot);
-        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
-        {
-            return;
-        }
-
-        var messageCountBeforeReview = _viewModel.Messages.Count;
-        _viewModel.InputText = result.Prompt;
-        await SendCurrentMessageAsync();
-        _gitPanelWorkflowService.CaptureLastCodeReview(_viewModel, messageCountBeforeReview);
-    }
-
-    private async void FixCodeReviewFindings_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(_gitPanelWorkflowService.LastCodeReviewText))
-        {
-            _viewModel.StatusText = "No code review to fix";
-            return;
-        }
-
-        var result = await _gitPanelWorkflowService.PrepareCodeReviewFixAsync(_viewModel.WorkspaceRoot);
-        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
-        {
-            return;
-        }
-
-        _viewModel.InputText = result.Prompt;
-        _viewModel.CanFixLastCodeReviewFindings = false;
-        await SendCurrentMessageAsync();
-    }
-
-    private async void CommitSummary_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsBusy)
-        {
-            _viewModel.StatusText = "AgentQ is busy";
-            return;
-        }
-
-        _viewModel.StatusText = "Preparing commit summary";
-
-        var result = await _gitPanelWorkflowService.PrepareCommitSummaryAsync(_viewModel.WorkspaceRoot);
-        if (!_gitPanelWorkflowService.ApplyPromptResult(_viewModel, result, TrimForLog))
-        {
-            return;
-        }
-
-        _viewModel.InputText = result.Prompt;
-        await SendCurrentMessageAsync();
-    }
-
     private async void CreatePlan_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.CreatePlanAsync(_viewModel, SendCurrentMessageAsync);
@@ -556,16 +492,6 @@ public partial class MainWindow : Window
     private async void ResumeSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.ResumeSessionSummaryAsync(_viewModel, SendCurrentMessageAsync);
-    }
-
-    private async Task RefreshGitStatusAsync()
-    {
-        await _gitPanelWorkflowService.RefreshStatusAsync(_viewModel, TrimForLog);
-    }
-
-    private async Task RefreshGitDiffAsync()
-    {
-        await _gitPanelWorkflowService.RefreshDiffAsync(_viewModel, TrimForLog);
     }
 
     private async void FixVerificationFailure_OnClick(object sender, RoutedEventArgs e)

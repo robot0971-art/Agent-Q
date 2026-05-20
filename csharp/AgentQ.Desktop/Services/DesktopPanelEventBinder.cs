@@ -57,9 +57,9 @@ public sealed class DesktopPanelEventBinder
 
         gitPanel.StatusRequested += async (_, _) => await callbacks.RefreshGitStatusAsync();
         gitPanel.DiffRequested += async (_, _) => await callbacks.RefreshGitDiffAsync();
-        gitPanel.ReviewRequested += (_, _) => callbacks.ReviewGitChanges();
-        gitPanel.FixReviewRequested += (_, _) => callbacks.FixCodeReviewFindings();
-        gitPanel.CommitSummaryRequested += (_, _) => callbacks.CommitSummary();
+        gitPanel.ReviewRequested += async (_, _) => await callbacks.ReviewGitChangesAsync();
+        gitPanel.FixReviewRequested += async (_, _) => await callbacks.FixCodeReviewFindingsAsync();
+        gitPanel.CommitSummaryRequested += async (_, _) => await callbacks.CommitSummaryAsync();
         gitPanel.PullFastForwardRequested += async (_, _) => await callbacks.PullFastForwardAsync();
         gitPanel.BackupBranchRequested += async (_, _) => await callbacks.CreateBackupBranchAsync();
         gitPanel.CheckoutMainRequested += async (_, _) => await callbacks.CheckoutMainAsync();
@@ -109,9 +109,9 @@ public sealed class DesktopPanelEventCallbacks
     public required Func<Task> ApproveAllFileChangesAndVerifyAsync { get; init; }
     public required Func<Task> RefreshGitStatusAsync { get; init; }
     public required Func<Task> RefreshGitDiffAsync { get; init; }
-    public required Action ReviewGitChanges { get; init; }
-    public required Action FixCodeReviewFindings { get; init; }
-    public required Action CommitSummary { get; init; }
+    public required Func<Task> ReviewGitChangesAsync { get; init; }
+    public required Func<Task> FixCodeReviewFindingsAsync { get; init; }
+    public required Func<Task> CommitSummaryAsync { get; init; }
     public required Func<Task> PullFastForwardAsync { get; init; }
     public required Func<Task> CreateBackupBranchAsync { get; init; }
     public required Func<Task> CheckoutMainAsync { get; init; }
