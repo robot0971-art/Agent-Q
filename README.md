@@ -334,14 +334,27 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`.
 Example:
 
 ```powershell
-git tag v0.1.0-beta.1
-git push origin v0.1.0-beta.1
+git tag v0.1.0-beta.4
+git push origin v0.1.0-beta.4
 ```
 
-The release workflow builds and tests the solution, packs the CLI using the tag version, publishes the Windows desktop app, and creates a draft GitHub Release with:
+The release workflow builds and tests the solution, packs the CLI using the tag version, publishes the Windows desktop app, builds an Inno Setup installer, and creates a draft GitHub Release with:
 
+- `AgentQ-Setup-<tag>.exe`
 - `AgentQ.Tool.<version>.nupkg`
 - `AgentQ.Desktop-win-x64-<tag>.zip`
+
+For most Windows users, download and run `AgentQ-Setup-<tag>.exe`. It installs AgentQ under `%LOCALAPPDATA%\Programs\AgentQ`, creates Start Menu shortcuts, offers an optional desktop shortcut, and includes an uninstaller.
+
+The ZIP artifact is a portable build for quick testing without installation. Extract it and run `AgentQ.Desktop.exe`.
+
+Release drafts remain private to repository collaborators until someone opens the draft and clicks **Publish release**. Beta releases should stay marked as **Pre-release**.
+
+The installer and desktop executable are not code-signed yet. Windows SmartScreen or Microsoft Edge may warn that the file is not commonly downloaded or has an unknown publisher. For internal beta testing, choose **Keep** or **More info -> Run anyway** only if you trust the release source.
+
+Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, and desktop workflow stability.
+
+초기 베타 버전입니다. 설치 파일 또는 무설치 ZIP을 사용해보시고, 설치 과정, provider/API 키 설정, 모델 선택, 데스크톱 작업 흐름에서 발견한 버그나 불편한 점, 개선 아이디어를 GitHub Issues로 알려주세요.
 
 ## OpenCode Go
 
@@ -373,17 +386,16 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 Current local validation passed in this environment:
 
-- `dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj`: succeeded with `0` warnings and `0` errors
-- `dotnet test .\csharp\AgentQ.sln`: `115` tests passed
-- `dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release`: created `AgentQ.Tool.1.0.260520.12824.nupkg`
-- `dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool`: updated installed `agentq` to `1.0.260520.12824`
-- `agentq --prompt "hello" --json`: succeeded using saved `opencode-go` config
+- `dotnet test .\csharp\AgentQ.sln -c Release`: `121` tests passed
+- GitHub Release workflow for `v0.1.0-beta.4`: succeeded
+- `AgentQ-Setup-v0.1.0-beta.4.exe`: built and uploaded to the draft prerelease
+- `AgentQ.Desktop-win-x64-v0.1.0-beta.4.zip`: built and uploaded to the draft prerelease
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
 
 ## Current Priority
 
-1. harden CI, Docker, and repeatable release artifacts
-2. continue desktop regression coverage around Git and verification workflows
-3. improve release packaging for CLI and Windows desktop builds
+1. publish and QA the beta release artifacts
+2. continue desktop regression coverage around run cancellation, Git, and verification workflows
+3. add code signing before broader Windows distribution
 4. expand mock-service-backed integration coverage
