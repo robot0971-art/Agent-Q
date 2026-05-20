@@ -127,6 +127,31 @@ public sealed class DesktopServiceTests
         Assert.Equal(["new-model", "new-model-mini"], viewModel.AvailableModels);
     }
 
+    [Fact]
+    public void DesktopAgentRunWorkflowService_RemoveThinkingPlaceholder_RemovesPendingAssistantMessage()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.Messages.Add(new ChatMessageViewModel { Role = "User", Content = "hello" });
+        viewModel.Messages.Add(new ChatMessageViewModel { Role = "AgentQ", Content = "생각중..." });
+
+        DesktopAgentRunWorkflowService.RemoveThinkingPlaceholder(viewModel);
+
+        Assert.Single(viewModel.Messages);
+        Assert.Equal("User", viewModel.Messages[0].Role);
+    }
+
+    [Fact]
+    public void DesktopAgentRunWorkflowService_RemoveThinkingPlaceholder_KeepsStartedAssistantMessage()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.Messages.Add(new ChatMessageViewModel { Role = "AgentQ", Content = "partial response" });
+
+        DesktopAgentRunWorkflowService.RemoveThinkingPlaceholder(viewModel);
+
+        Assert.Single(viewModel.Messages);
+        Assert.Equal("partial response", viewModel.Messages[0].Content);
+    }
+
     [Theory]
     [InlineData("## main...origin/main [ahead 2, behind 3]", "Diverged from origin/main")]
     [InlineData("## feature...origin/feature [gone]", "Upstream origin/feature is gone")]

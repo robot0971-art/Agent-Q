@@ -25,6 +25,7 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         _activeOperationCts?.Cancel();
+        RemoveThinkingPlaceholder(viewModel);
         viewModel.AddRunStep(AgentRunState.Cancelled, "Stop requested", "Cancelling the active model, tool, or verification operation.");
         viewModel.StatusText = "Stopping AgentQ";
         viewModel.AddLog("Stop requested");
@@ -197,6 +198,7 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         catch (OperationCanceledException)
         {
+            RemoveThinkingPlaceholder(viewModel);
             viewModel.AddRunStep(AgentRunState.Cancelled, "Run cancelled", "The request was cancelled or timed out.");
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
             viewModel.StatusText = "Request cancelled or timed out.";
@@ -263,6 +265,19 @@ public sealed class DesktopAgentRunWorkflowService(
         if (!string.IsNullOrWhiteSpace(log))
         {
             viewModel.AddLog(log);
+        }
+    }
+
+    public static void RemoveThinkingPlaceholder(MainViewModel viewModel)
+    {
+        for (var i = viewModel.Messages.Count - 1; i >= 0; i--)
+        {
+            var message = viewModel.Messages[i];
+            if (message.Role == "AgentQ" && message.Content == ThinkingPlaceholder)
+            {
+                viewModel.Messages.RemoveAt(i);
+                return;
+            }
         }
     }
 
