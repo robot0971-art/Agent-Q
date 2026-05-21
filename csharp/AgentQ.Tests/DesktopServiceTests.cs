@@ -745,6 +745,45 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ProjectMemoryService_BuildContext_SurfacesRelevantErrorHistory()
+    {
+        var service = new ProjectMemoryService();
+        var memory = new ProjectMemory
+        {
+            WorkspaceRoot = "C:\\repo",
+            Lessons =
+            [
+                new ProjectMemoryLesson
+                {
+                    Id = "embedding-404",
+                    Title = "Failure pattern: Embedding index failed",
+                    Content = "A previous failure happened with openai/text-embedding-3-small. Detail: OpenAI embedding request failed with status 404.",
+                    Tags = ["failure", "error-history", "embedding", "provider"],
+                    Confidence = 0.8,
+                    CreatedAt = DateTime.Now
+                },
+                new ProjectMemoryLesson
+                {
+                    Id = "style",
+                    Title = "Use compact UI",
+                    Content = "Use compact desktop UI spacing.",
+                    Tags = ["ui"],
+                    Confidence = 0.8,
+                    CreatedAt = DateTime.Now
+                }
+            ]
+        };
+
+        var context = service.BuildContext(memory, "embedding index failed with 404");
+
+        Assert.Contains("Previously seen failures:", context);
+        Assert.Contains("Embedding index failed", context);
+        Assert.True(
+            context.IndexOf("Previously seen failures:", StringComparison.Ordinal) <
+            context.IndexOf("Learned lessons:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ProjectMemoryService_SelectRelevantLessons_UsesRecencyAsTieBreaker()
     {
         var service = new ProjectMemoryService();

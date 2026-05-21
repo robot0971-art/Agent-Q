@@ -80,6 +80,17 @@ public sealed class DesktopAgentService
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
+            var errorHistoryLessons = touchedLessons
+                .Where(lesson => lesson.Tags.Any(tag => tag.Equals("error-history", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (errorHistoryLessons.Count > 0)
+            {
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.GatheringContext,
+                    "Evidence: previous failure memory",
+                    string.Join(", ", errorHistoryLessons.Select(lesson => string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title)));
+            }
+
             toolCallbacks?.OnRunStep?.Invoke(
                 AgentRunState.GatheringContext,
                 "Evidence: project memory",

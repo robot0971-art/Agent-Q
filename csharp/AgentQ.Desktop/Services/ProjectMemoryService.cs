@@ -92,13 +92,21 @@ public sealed class ProjectMemoryService
     public string BuildContext(ProjectMemory memory, string query)
     {
         var lessons = SelectRelevantLessons(memory.Lessons, query, 12);
+        var errorHistoryLessons = lessons
+            .Where(IsErrorHistoryLesson)
+            .Take(5)
+            .ToList();
+        var generalLessons = lessons
+            .Where(lesson => !IsErrorHistoryLesson(lesson))
+            .ToList();
         var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
         var checks = memory.Checks.Where(IsUsefulCheck).ToList();
 
         if (memory.VerificationCommands.Count == 0 &&
             memory.ProjectHints.Count == 0 &&
             memory.WorkspaceRules.Count == 0 &&
-            lessons.Count == 0 &&
+            generalLessons.Count == 0 &&
+            errorHistoryLessons.Count == 0 &&
             preferences.Count == 0 &&
             checks.Count == 0)
         {
@@ -136,10 +144,21 @@ public sealed class ProjectMemoryService
             }
         }
 
-        if (lessons.Count > 0)
+        if (errorHistoryLessons.Count > 0)
+        {
+            builder.AppendLine("Previously seen failures:");
+            foreach (var lesson in errorHistoryLessons)
+            {
+                var title = string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title;
+                var source = string.IsNullOrWhiteSpace(lesson.Source) ? "unknown source" : lesson.Source;
+                builder.AppendLine($"- {title}: {lesson.Content} (source: {source}, confidence: {lesson.Confidence:0.##})");
+            }
+        }
+
+        if (generalLessons.Count > 0)
         {
             builder.AppendLine("Learned lessons:");
-            foreach (var lesson in lessons)
+            foreach (var lesson in generalLessons)
             {
                 var title = string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title;
                 var source = string.IsNullOrWhiteSpace(lesson.Source) ? "unknown source" : lesson.Source;
@@ -592,6 +611,11 @@ public sealed class ProjectMemoryService
     private static double ScoreLesson(ProjectMemoryLesson lesson, IReadOnlySet<string> queryTerms)
     {
         var score = Math.Clamp(lesson.Confidence, 0, 1);
+        if (IsErrorHistoryLesson(lesson) && LooksLikeFailureQuery(queryTerms))
+        {
+            score += 2;
+        }
+
         if (queryTerms.Count == 0)
         {
             return score;
@@ -606,6 +630,34 @@ public sealed class ProjectMemoryService
         }
 
         return score;
+    }
+
+    private static bool IsErrorHistoryLesson(ProjectMemoryLesson lesson) =>
+        lesson.Tags.Any(tag => tag.Equals("error-history", StringComparison.OrdinalIgnoreCase));
+
+    private static bool LooksLikeFailureQuery(IReadOnlySet<string> queryTerms)
+    {
+        var failureTerms = new[]
+        {
+            "error",
+            "failed",
+            "failure",
+            "exception",
+            "build",
+            "test",
+            "verification",
+            "provider",
+            "model",
+            "embedding",
+            "timeout",
+            "cancelled",
+            "denied",
+            "blocked",
+            "400",
+            "404"
+        };
+
+        return failureTerms.Any(queryTerms.Contains);
     }
 
     private static bool LessonMatchesQuery(ProjectMemoryLesson lesson, IReadOnlySet<string> queryTerms)
