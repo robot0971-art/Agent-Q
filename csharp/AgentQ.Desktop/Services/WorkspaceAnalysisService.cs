@@ -54,6 +54,9 @@ public sealed class WorkspaceAnalysisService
         DetectRust(analysis, detectedTypes, frameworks);
         DetectUnity(analysis, detectedTypes, frameworks);
         DetectUnreal(analysis, detectedTypes, frameworks);
+        DetectDocker(analysis, detectedTypes, frameworks);
+        DetectDatabaseTooling(analysis, frameworks);
+        DetectMonorepoShape(analysis);
         DetectProjectMap(analysis);
         DetectKeyFiles(analysis);
 
@@ -269,6 +272,11 @@ public sealed class WorkspaceAnalysisService
         {
             frameworks.Add("Flask");
         }
+
+        if (content.Contains("sqlalchemy", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("SQLAlchemy");
+        }
     }
 
     private static void DetectNodeScripts(JsonElement root, WorkspaceAnalysis analysis, string projectRelativePath)
@@ -445,6 +453,60 @@ public sealed class WorkspaceAnalysisService
         analysis.Hints.Add("Cargo.toml detected.");
     }
 
+    private static void DetectDocker(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks)
+    {
+        if (!File.Exists(Path.Combine(analysis.WorkspaceRoot, "docker-compose.yml")) &&
+            !File.Exists(Path.Combine(analysis.WorkspaceRoot, "docker-compose.yaml")) &&
+            !File.Exists(Path.Combine(analysis.WorkspaceRoot, "compose.yml")) &&
+            !File.Exists(Path.Combine(analysis.WorkspaceRoot, "compose.yaml")))
+        {
+            return;
+        }
+
+        detectedTypes.Add("Docker");
+        frameworks.Add("Docker Compose");
+        AddUnique(analysis.VerificationCommands, "docker compose config");
+        AddUnique(analysis.VerificationCommands, "docker compose up --build");
+        analysis.Hints.Add("Docker Compose file detected.");
+    }
+
+    private static void DetectDatabaseTooling(WorkspaceAnalysis analysis, List<string> frameworks)
+    {
+        var alembicIni = FindProjectFile(analysis.WorkspaceRoot, "alembic.ini");
+        var hasAlembicDirectory = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "alembic")) ||
+                                  Directory.EnumerateDirectories(analysis.WorkspaceRoot)
+                                      .Where(directory => !ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                                      .Any(directory => Directory.Exists(Path.Combine(directory, "alembic")));
+        if (alembicIni != null || hasAlembicDirectory)
+        {
+            frameworks.Add("Alembic");
+            analysis.Hints.Add(alembicIni == null
+                ? "Alembic migration directory detected."
+                : $"Alembic config detected: {Path.GetRelativePath(analysis.WorkspaceRoot, alembicIni)}");
+        }
+    }
+
+    private static void DetectMonorepoShape(WorkspaceAnalysis analysis)
+    {
+        var frontend = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "frontend"));
+        var backend = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "backend"));
+        var apps = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "apps"));
+        var packages = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "packages"));
+
+        if (frontend && backend)
+        {
+            analysis.Hints.Add("Frontend/backend workspace detected.");
+        }
+
+        if (apps || packages)
+        {
+            analysis.Hints.Add("Monorepo-style apps/packages layout detected.");
+        }
+    }
+
     private static void DetectProjectMap(WorkspaceAnalysis analysis)
     {
         var roles = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -454,6 +516,8 @@ public sealed class WorkspaceAnalysisService
             ["Backend"] = ["backend", "server"],
             ["API layer"] = ["api", "controllers", "routes", "endpoints"],
             ["Database layer"] = ["db", "database", "data", "migrations", "repositories"],
+            ["Database models"] = ["models", "schemas", "backend/app/models", "backend/app/schemas", "server/app/models", "server/app/schemas"],
+            ["Database migrations"] = ["migrations", "alembic", "backend/alembic", "server/alembic"],
             ["Domain logic"] = ["domain", "core", "services", "features", "logic"],
             ["Tests"] = ["test", "tests", "__tests__", "spec", "specs"],
             ["Assets"] = ["assets", "public", "static", "wwwroot"],

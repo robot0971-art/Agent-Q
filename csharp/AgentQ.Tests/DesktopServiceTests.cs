@@ -163,12 +163,22 @@ public sealed class DesktopServiceTests
         Directory.CreateDirectory(Path.Combine(root, "frontend", "node_modules", "native"));
         Directory.CreateDirectory(Path.Combine(root, "backend"));
         Directory.CreateDirectory(Path.Combine(root, "backend", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app", "models"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app", "schemas"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "alembic"));
         Directory.CreateDirectory(Path.Combine(root, "backend", ".venv", "Lib", "site-packages", "native"));
         await File.WriteAllTextAsync(Path.Combine(root, "docker-compose.yml"), "services: {}");
         await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "package.json"),
             """{"dependencies":{"react":"latest"},"devDependencies":{"vite":"latest"},"scripts":{"build":"vite build"}}""");
-        await File.WriteAllTextAsync(Path.Combine(root, "backend", "requirements.txt"), "fastapi==0.111.0");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "requirements.txt"),
+            """
+            fastapi==0.111.0
+            sqlalchemy==2.0.30
+            alembic==1.13.1
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "backend", "alembic.ini"), "[alembic]");
         await File.WriteAllTextAsync(Path.Combine(root, "backend", "app", "main.py"), "from fastapi import FastAPI");
         await File.WriteAllTextAsync(Path.Combine(root, "backend", ".venv", "Lib", "site-packages", "native", "noise.h"), "#pragma once");
         await File.WriteAllTextAsync(Path.Combine(root, "frontend", "node_modules", "native", "noise.hpp"), "#pragma once");
@@ -178,12 +188,20 @@ public sealed class DesktopServiceTests
         Assert.Contains("Node", analysis.ProjectType);
         Assert.Contains("Python", analysis.ProjectType);
         Assert.DoesNotContain("C++", analysis.ProjectType);
+        Assert.Contains("Docker", analysis.ProjectType);
         Assert.Contains("Vite", analysis.Framework);
         Assert.Contains("FastAPI", analysis.Framework);
+        Assert.Contains("SQLAlchemy", analysis.Framework);
+        Assert.Contains("Alembic", analysis.Framework);
+        Assert.Contains("Docker Compose", analysis.Framework);
         Assert.Contains(analysis.VerificationCommands, command => command.Contains("cd frontend", StringComparison.OrdinalIgnoreCase) &&
                                                                   command.Contains("npm run build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("docker compose config", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Frontend", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Backend", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Database models", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Database migrations", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Frontend/backend workspace", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(Path.Combine("frontend", "package.json"), analysis.KeyFiles);
         Assert.Contains(Path.Combine("backend", "requirements.txt"), analysis.KeyFiles);
     }
