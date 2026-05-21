@@ -183,6 +183,33 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task EmbeddingIndexStore_SavesManifestUnderAgentQEmbeddings()
+    {
+        var root = CreateTempDirectory();
+        var store = new EmbeddingIndexStore();
+        var manifest = new EmbeddingIndexManifest
+        {
+            Provider = "openai",
+            Model = "text-embedding-3-small",
+            ChunkCount = 7,
+            FileCount = 3
+        };
+
+        await store.SaveManifestAsync(root, manifest, CancellationToken.None);
+
+        var paths = store.GetPaths(root);
+        Assert.EndsWith(Path.Combine(".agentq", "embeddings", "index.json"), paths.IndexPath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(paths.IndexPath));
+
+        var loaded = await store.LoadManifestAsync(root, CancellationToken.None);
+        Assert.NotNull(loaded);
+        Assert.Equal("openai", loaded.Provider);
+        Assert.Equal("text-embedding-3-small", loaded.Model);
+        Assert.Equal(7, loaded.ChunkCount);
+        Assert.Equal(3, loaded.FileCount);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();

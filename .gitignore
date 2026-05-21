@@ -65,6 +65,7 @@ artifacts/
 # AgentQ local memory
 .agentq/memory.local.json
 .agentq/runs/
+.agentq/embeddings/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

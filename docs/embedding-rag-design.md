@@ -99,6 +99,8 @@ This folder should not be committed.
 .agentq/embeddings/
 ```
 
+The repository ignores this path because vectors can be large, local to a machine, and derived from private project code. Shared retrieval behavior should be represented by source code and configuration, not by committing generated vectors.
+
 Suggested chunk metadata:
 
 - chunk id
