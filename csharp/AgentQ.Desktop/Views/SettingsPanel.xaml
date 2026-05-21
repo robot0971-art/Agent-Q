@@ -40,6 +40,23 @@
                          Margin="0,0,0,8"
                          PasswordChanged="ApiKeyBox_OnPasswordChanged" />
 
+            <TextBlock Text="Embedding Provider" Style="{DynamicResource LabelText}" />
+            <ComboBox Margin="0,0,0,8"
+                      IsEditable="False"
+                      ItemsSource="{Binding AvailableEmbeddingProviders}"
+                      SelectedItem="{Binding EmbeddingProvider, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Embedding Model" Style="{DynamicResource LabelText}" />
+            <TextBox Margin="0,0,0,8" Text="{Binding EmbeddingModel, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Embedding Base URL" Style="{DynamicResource LabelText}" />
+            <TextBox Margin="0,0,0,8" Text="{Binding EmbeddingBaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+
+            <TextBlock Text="Embedding API Key" Style="{DynamicResource LabelText}" />
+            <PasswordBox x:Name="EmbeddingApiKeyBox"
+                         Margin="0,0,0,8"
+                         PasswordChanged="EmbeddingApiKeyBox_OnPasswordChanged" />
+
             <TextBlock Text="{Binding UiLanguageText}" Style="{DynamicResource LabelText}" />
             <ComboBox Margin="0,0,0,8"
                       IsEditable="False"

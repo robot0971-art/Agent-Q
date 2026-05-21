@@ -151,7 +151,7 @@ When a text or file search returns no results, AgentQ can automatically retry wi
 
 AgentQ's planned semantic retrieval system is documented in [docs/embedding-rag-design.md](docs/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
 
-The desktop app includes an initial `semantic_search` tool for OpenAI embedding indexes. It searches `.agentq/embeddings/chunks.jsonl` by cosine similarity after an embedding vector index has been built. Use the Project panel's `Build embedding index` button to create the local vector index with OpenAI. OpenCode Go is currently used for chat completions only because its public Go endpoint does not expose an embeddings API.
+The desktop app includes an initial `semantic_search` tool for OpenAI embedding indexes. It searches `.agentq/embeddings/chunks.jsonl` by cosine similarity after an embedding vector index has been built. Chat provider and embedding provider settings are separate, so you can use OpenCode Go for chat while using OpenAI for embeddings. Use the Project panel's `Build embedding index` button to create the local vector index with the configured embedding provider.
 
 Install it as a .NET global tool:
 

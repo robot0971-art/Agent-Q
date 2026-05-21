@@ -18,6 +18,7 @@ public sealed class DesktopPanelEventBinder
     {
         settingsPanel.SaveRequested += async (_, _) => await callbacks.SaveSettingsAsync();
         settingsPanel.ApiKeyChanged += (_, apiKey) => callbacks.UpdateApiKey(apiKey);
+        settingsPanel.EmbeddingApiKeyChanged += (_, apiKey) => callbacks.UpdateEmbeddingApiKey(apiKey);
 
         projectPanel.BrowseWorkspaceRequested += async (_, _) => await callbacks.BrowseWorkspaceAsync();
         projectPanel.OpenWorkspaceRequested += (_, _) => callbacks.OpenWorkspace();
@@ -84,6 +85,7 @@ public sealed class DesktopPanelEventCallbacks
 {
     public required Func<Task> SaveSettingsAsync { get; init; }
     public required Action<string> UpdateApiKey { get; init; }
+    public required Action<string> UpdateEmbeddingApiKey { get; init; }
     public required Func<Task> BrowseWorkspaceAsync { get; init; }
     public required Action OpenWorkspace { get; init; }
     public required Func<Task> RefreshWorkspaceAnalysisAsync { get; init; }

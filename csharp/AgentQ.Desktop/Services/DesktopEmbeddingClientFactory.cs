@@ -8,15 +8,15 @@ public sealed class DesktopEmbeddingClientFactory
 
     public IEmbeddingClient Create(ProviderConfiguration config)
     {
-        if (!SupportsProvider(config.Provider))
+        if (!SupportsProvider(config.EmbeddingProvider))
         {
-            throw new NotSupportedException($"Embedding provider is not supported yet: {config.Provider}");
+            throw new NotSupportedException($"Embedding provider is not supported yet: {config.EmbeddingProvider}");
         }
 
-        var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl)
-            ? DesktopProviderModelCatalog.GetDefaultBaseUrl(config.Provider, string.Empty)
-            : config.BaseUrl;
-        return new OpenAiEmbeddingClient(OpenAiEmbeddingClient.CreateHttpClient(baseUrl, config.ApiKey));
+        var baseUrl = string.IsNullOrWhiteSpace(config.EmbeddingBaseUrl)
+            ? "https://api.openai.com/v1"
+            : config.EmbeddingBaseUrl;
+        return new OpenAiEmbeddingClient(OpenAiEmbeddingClient.CreateHttpClient(baseUrl, config.EmbeddingApiKey));
     }
 
     public static bool SupportsProvider(string provider)

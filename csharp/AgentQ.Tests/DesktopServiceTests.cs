@@ -26,6 +26,29 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainViewModel_ToConfiguration_PersistsEmbeddingSettingsSeparately()
+    {
+        var viewModel = new MainViewModel
+        {
+            Provider = "opencode-go",
+            ApiKey = "chat-key",
+            EmbeddingProvider = "openai",
+            EmbeddingModel = "text-embedding-3-small",
+            EmbeddingBaseUrl = "https://api.openai.test/v1",
+            EmbeddingApiKey = "embedding-key"
+        };
+
+        var config = viewModel.ToConfiguration();
+
+        Assert.Equal("opencode-go", config.Provider);
+        Assert.Equal("chat-key", config.ApiKey);
+        Assert.Equal("openai", config.EmbeddingProvider);
+        Assert.Equal("text-embedding-3-small", config.EmbeddingModel);
+        Assert.Equal("https://api.openai.test/v1", config.EmbeddingBaseUrl);
+        Assert.Equal("embedding-key", config.EmbeddingApiKey);
+    }
+
+    [Fact]
     public void DesktopProviderModelCatalog_ProvidesDefaultsForKnownAndUnknownProviders()
     {
         Assert.Contains("opencode-go", DesktopProviderModelCatalog.Providers);
@@ -288,6 +311,22 @@ public sealed class DesktopServiceTests
         Assert.False(DesktopEmbeddingClientFactory.SupportsProvider("opencode-go"));
         Assert.Equal("text-embedding-3-small", DesktopEmbeddingClientFactory.ResolveEmbeddingModel("openai"));
         Assert.Equal(string.Empty, DesktopEmbeddingClientFactory.ResolveEmbeddingModel("opencode-go"));
+    }
+
+    [Fact]
+    public void DesktopEmbeddingClientFactory_UsesEmbeddingConfiguration()
+    {
+        var factory = new DesktopEmbeddingClientFactory();
+        var client = factory.Create(new ProviderConfiguration
+        {
+            Provider = "opencode-go",
+            ApiKey = "chat-key",
+            EmbeddingProvider = "openai",
+            EmbeddingBaseUrl = "https://api.openai.test/v1",
+            EmbeddingApiKey = "embedding-key"
+        });
+
+        Assert.IsType<OpenAiEmbeddingClient>(client);
     }
 
     [Fact]

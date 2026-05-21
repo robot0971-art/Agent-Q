@@ -12,6 +12,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _model = "kimi-k2.6";
     private string _baseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl;
     private string _apiKey = string.Empty;
+    private string _embeddingProvider = "openai";
+    private string _embeddingModel = DesktopEmbeddingClientFactory.DefaultEmbeddingModel;
+    private string _embeddingBaseUrl = "https://api.openai.com/v1";
+    private string _embeddingApiKey = string.Empty;
     private string _workspaceRoot = Environment.CurrentDirectory;
     private string _inputText = string.Empty;
     private string _statusText = "Ready";
@@ -88,6 +92,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> AvailableModels { get; } = new(DesktopProviderModelCatalog.GetModels("opencode-go"));
 
+    public ObservableCollection<string> AvailableEmbeddingProviders { get; } = new(["openai", "none"]);
+
     public ObservableCollection<AgentWorkMode> AvailableWorkModes { get; } = new(Enum.GetValues<AgentWorkMode>());
 
     public ObservableCollection<string> AvailableUiLanguages { get; } = new(["English", "\uD55C\uAD6D\uC5B4"]);
@@ -123,6 +129,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _apiKey;
         set => SetField(ref _apiKey, value);
+    }
+
+    public string EmbeddingProvider
+    {
+        get => _embeddingProvider;
+        set
+        {
+            if (!SetField(ref _embeddingProvider, string.IsNullOrWhiteSpace(value) ? "none" : value))
+            {
+                return;
+            }
+
+            ApplyEmbeddingProviderDefaults();
+        }
+    }
+
+    public string EmbeddingModel
+    {
+        get => _embeddingModel;
+        set => SetField(ref _embeddingModel, value);
+    }
+
+    public string EmbeddingBaseUrl
+    {
+        get => _embeddingBaseUrl;
+        set => SetField(ref _embeddingBaseUrl, value);
+    }
+
+    public string EmbeddingApiKey
+    {
+        get => _embeddingApiKey;
+        set => SetField(ref _embeddingApiKey, value);
     }
 
     public string WorkspaceRoot
@@ -469,6 +507,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Model = Model,
             BaseUrl = BaseUrl,
             ApiKey = ApiKey,
+            EmbeddingProvider = EmbeddingProvider,
+            EmbeddingModel = EmbeddingModel,
+            EmbeddingBaseUrl = EmbeddingBaseUrl,
+            EmbeddingApiKey = EmbeddingApiKey,
             TimeoutSeconds = TimeoutSeconds,
             MaxTokens = MaxTokens,
             DesktopFontSize = DesktopFontSize,
@@ -494,6 +536,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Model = string.IsNullOrWhiteSpace(config.Model) ? DesktopProviderModelCatalog.GetDefaultModel(Provider) : config.Model;
         BaseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? ProviderConfiguration.OpenCodeGoDefaultBaseUrl : config.BaseUrl;
         ApiKey = config.ApiKey;
+        EmbeddingProvider = string.IsNullOrWhiteSpace(config.EmbeddingProvider) ? "openai" : config.EmbeddingProvider;
+        EmbeddingModel = string.IsNullOrWhiteSpace(config.EmbeddingModel) ? DesktopEmbeddingClientFactory.DefaultEmbeddingModel : config.EmbeddingModel;
+        EmbeddingBaseUrl = string.IsNullOrWhiteSpace(config.EmbeddingBaseUrl) ? "https://api.openai.com/v1" : config.EmbeddingBaseUrl;
+        EmbeddingApiKey = config.EmbeddingApiKey;
         TimeoutSeconds = config.TimeoutSeconds;
         MaxTokens = config.MaxTokens == 0 ? 4096 : config.MaxTokens;
         DesktopFontSize = config.DesktopFontSize <= 0 ? 14 : config.DesktopFontSize;
@@ -627,6 +673,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ApplyProviderDefaults()
     {
         BaseUrl = DesktopProviderModelCatalog.GetDefaultBaseUrl(Provider, BaseUrl);
+    }
+
+    private void ApplyEmbeddingProviderDefaults()
+    {
+        if (EmbeddingProvider.Equals("openai", StringComparison.OrdinalIgnoreCase))
+        {
+            EmbeddingBaseUrl = string.IsNullOrWhiteSpace(EmbeddingBaseUrl) ? "https://api.openai.com/v1" : EmbeddingBaseUrl;
+            EmbeddingModel = string.IsNullOrWhiteSpace(EmbeddingModel) ? DesktopEmbeddingClientFactory.DefaultEmbeddingModel : EmbeddingModel;
+            return;
+        }
+
+        if (EmbeddingProvider.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            EmbeddingModel = string.Empty;
+        }
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

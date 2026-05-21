@@ -82,6 +82,26 @@ public class ProviderConfiguration
     public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>
+    /// 임베딩 제공자 이름
+    /// </summary>
+    public string EmbeddingProvider { get; set; } = "openai";
+
+    /// <summary>
+    /// 임베딩 모델 이름
+    /// </summary>
+    public string EmbeddingModel { get; set; } = "text-embedding-3-small";
+
+    /// <summary>
+    /// 임베딩 API 기본 URL
+    /// </summary>
+    public string EmbeddingBaseUrl { get; set; } = "https://api.openai.com/v1";
+
+    /// <summary>
+    /// 임베딩 API 키
+    /// </summary>
+    public string EmbeddingApiKey { get; set; } = string.Empty;
+
+    /// <summary>
     /// 타임아웃 (초)
     /// </summary>
     public int TimeoutSeconds { get; set; } = 60; // Default timeout

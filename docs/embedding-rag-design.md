@@ -193,9 +193,9 @@ Recommended provider rollout:
 - V2: local/Ollama embedding provider
 - Later: Google, Anthropic-compatible options if practical
 
-Chat model selection and embedding model selection should stay separate. Mixing chat models and embedding models in the same dropdown would make provider selection confusing.
+Chat model selection and embedding model selection stay separate. For example, AgentQ can use OpenCode Go for chat/completion while using OpenAI for embedding index generation.
 
-The first implementation uses OpenAI's `/embeddings` endpoint and reuses the selected OpenAI API key when available. OpenCode Go is currently treated as chat-only for AgentQ embeddings because the public Go endpoint documents chat completions but does not expose a compatible embeddings API.
+The first implementation uses OpenAI's `/embeddings` endpoint through dedicated embedding settings. OpenCode Go is currently treated as chat-only for AgentQ embeddings because the public Go endpoint documents chat completions but does not expose a compatible embeddings API.
 
 ## Future Improvements
 

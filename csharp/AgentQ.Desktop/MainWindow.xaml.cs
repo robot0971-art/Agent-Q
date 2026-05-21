@@ -81,6 +81,7 @@ public partial class MainWindow : Window
         {
             SaveSettingsAsync = SaveSettingsAndRefreshModelsAsync,
             UpdateApiKey = apiKey => _viewModel.ApiKey = apiKey,
+            UpdateEmbeddingApiKey = apiKey => _viewModel.EmbeddingApiKey = apiKey,
             BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
@@ -140,6 +141,7 @@ public partial class MainWindow : Window
     {
         var result = await _startupCommandService.InitializeAsync(_viewModel, TrimForLog);
         SettingsPanelView.ApiKey = result.ApiKey;
+        SettingsPanelView.EmbeddingApiKey = _viewModel.EmbeddingApiKey;
         await RefreshSavedMemoryAsync();
         ScheduleProviderModelRefresh(preserveCurrentModel: true);
     }

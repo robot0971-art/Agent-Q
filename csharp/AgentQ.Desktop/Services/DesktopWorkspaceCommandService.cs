@@ -61,16 +61,16 @@ public sealed class DesktopWorkspaceCommandService(
     public async Task BuildEmbeddingIndexAsync(MainViewModel viewModel, Func<string, string> trimForLog)
     {
         var config = viewModel.ToConfiguration();
-        if (!DesktopEmbeddingClientFactory.SupportsProvider(config.Provider))
+        if (!DesktopEmbeddingClientFactory.SupportsProvider(config.EmbeddingProvider))
         {
-            viewModel.StatusText = config.Provider.Equals("opencode-go", StringComparison.OrdinalIgnoreCase)
-                ? "OpenCode Go does not expose embeddings. Select OpenAI to build the index."
-                : $"Embedding provider not supported: {config.Provider}";
-            viewModel.AddLog($"Embedding index skipped: unsupported provider {config.Provider}");
+            viewModel.StatusText = config.EmbeddingProvider.Equals("none", StringComparison.OrdinalIgnoreCase)
+                ? "Embedding provider is disabled."
+                : $"Embedding provider not supported: {config.EmbeddingProvider}";
+            viewModel.AddLog($"Embedding index skipped: unsupported provider {config.EmbeddingProvider}");
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        if (string.IsNullOrWhiteSpace(config.EmbeddingApiKey))
         {
             viewModel.StatusText = "Embedding index needs an API key.";
             viewModel.AddLog("Embedding index skipped: missing API key.");
@@ -86,8 +86,10 @@ public sealed class DesktopWorkspaceCommandService(
             var result = await embeddingIndexBuilder.BuildVectorIndexAsync(
                 viewModel.WorkspaceRoot,
                 client,
-                provider: config.Provider,
-                model: DesktopEmbeddingClientFactory.ResolveEmbeddingModel(config.Provider),
+                provider: config.EmbeddingProvider,
+                model: string.IsNullOrWhiteSpace(config.EmbeddingModel)
+                    ? DesktopEmbeddingClientFactory.ResolveEmbeddingModel(config.EmbeddingProvider)
+                    : config.EmbeddingModel,
                 maximumEmbeddedChunks: 200);
 
             viewModel.StatusText = $"Embedding index built: {result.Manifest.ChunkCount} chunks";
