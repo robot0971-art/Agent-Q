@@ -146,6 +146,10 @@ The desktop Project panel builds a lightweight project map during workspace anal
 
 When a text or file search returns no results, AgentQ can automatically retry with broader variants before handing the result back to the model. For example, a failed `grep_search` can retry with a case-insensitive pattern, and a failed `glob_search` can retry with a recursive path pattern. Retry attempts are recorded in the Evidence tab.
 
+## Embedding and RAG Design
+
+AgentQ's planned semantic retrieval system is documented in [docs/embedding-rag-design.md](docs/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
+
 Install it as a .NET global tool:
 
 ```powershell
