@@ -20,6 +20,26 @@ Current work is focused on desktop stabilization, regression coverage, and docum
 - Windows
 - .NET 10 SDK
 
+## Download and Install
+
+Download the latest beta from the GitHub Releases page:
+
+- [AgentQ Releases](https://github.com/robot0971-art/Agent-Q/releases)
+
+For most Windows users, choose `AgentQ-Setup-<version>.exe`. The ZIP file is a portable build for quick testing without installation.
+
+AgentQ is currently a beta app and the Windows installer is not code-signed yet. Microsoft Edge or Windows SmartScreen may show warnings such as "not commonly downloaded" or "unknown publisher." Only run installers downloaded from the official GitHub Releases page. If you trust the source, choose **Keep**, then **More info -> Run anyway**.
+
+### 다운로드 및 설치
+
+최신 베타는 GitHub Releases 페이지에서 받을 수 있습니다.
+
+- [AgentQ Releases](https://github.com/robot0971-art/Agent-Q/releases)
+
+일반 사용자는 `AgentQ-Setup-<version>.exe`를 받으면 됩니다. ZIP 파일은 설치 없이 빠르게 테스트하는 휴대용 버전입니다.
+
+AgentQ는 현재 베타 앱이며 Windows 설치 파일은 아직 코드 서명되지 않았습니다. 그래서 Microsoft Edge 또는 Windows SmartScreen에서 "일반적으로 다운로드되지 않음" 또는 "게시자를 확인할 수 없음" 같은 경고가 나올 수 있습니다. 공식 GitHub Releases 페이지에서 받은 파일만 실행하세요. 출처를 신뢰한다면 **유지**, 이후 **추가 정보 -> 실행**을 선택하면 됩니다.
+
 ## Project Layout
 
 ```text
@@ -152,6 +172,12 @@ When a text or file search returns no results, AgentQ can automatically retry wi
 AgentQ's planned semantic retrieval system is documented in [docs/embedding-rag-design.md](docs/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
 
 The desktop app includes an initial `semantic_search` tool for OpenAI embedding indexes. It searches `.agentq/embeddings/chunks.jsonl` by cosine similarity after an embedding vector index has been built. Chat provider and embedding provider settings are separate, so you can use OpenCode Go for chat while using OpenAI for embeddings. Use the Project panel's `Build embedding index` button to create the local vector index with the configured embedding provider.
+
+Embeddings are optional. If you do not want to use embeddings or pay for embedding API calls, set `Embedding Provider` to `none` and only enter the main chat provider API key. AgentQ will still use project map, file search, keyword search, and normal tool-based context gathering.
+
+### 임베딩 사용 여부
+
+임베딩은 선택 기능입니다. 임베딩 API 비용을 쓰고 싶지 않다면 `Embedding Provider`를 `none`으로 두고 기본 Provider API 키만 입력하면 됩니다. 이 경우 AgentQ는 프로젝트 맵, 파일 검색, 키워드 검색, 일반 도구 기반 컨텍스트 수집으로 동작합니다.
 
 Install it as a .NET global tool:
 
@@ -406,9 +432,9 @@ Release drafts remain private to repository collaborators until someone opens th
 
 The installer and desktop executable are not code-signed yet. Windows SmartScreen or Microsoft Edge may warn that the file is not commonly downloaded or has an unknown publisher. For internal beta testing, choose **Keep** or **More info -> Run anyway** only if you trust the release source.
 
-Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, and desktop workflow stability.
+Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, optional embeddings, and desktop workflow stability.
 
-초기 베타 버전입니다. 설치 파일 또는 무설치 ZIP을 사용해보시고, 설치 과정, provider/API 키 설정, 모델 선택, 데스크톱 작업 흐름에서 발견한 버그나 불편한 점, 개선 아이디어를 GitHub Issues로 알려주세요.
+베타 피드백을 환영합니다. 설치 파일 또는 휴대용 ZIP을 사용해보고, 설치 과정, Provider/API 키 설정, 모델 선택, 선택형 임베딩, 데스크톱 작업 흐름에서 발견한 버그나 불편한 점을 GitHub Issues로 알려주세요.
 
 ## OpenCode Go
 
@@ -440,7 +466,7 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 Current local validation passed in this environment:
 
-- `dotnet test .\csharp\AgentQ.sln -c Release`: `121` tests passed
+- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `154` tests passed
 - GitHub Release workflow for `v0.1.0-beta.4`: succeeded
 - `AgentQ-Setup-v0.1.0-beta.4.exe`: built and uploaded to the draft prerelease
 - `AgentQ.Desktop-win-x64-v0.1.0-beta.4.zip`: built and uploaded to the draft prerelease
