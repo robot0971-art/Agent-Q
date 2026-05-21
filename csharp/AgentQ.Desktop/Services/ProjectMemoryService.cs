@@ -11,6 +11,8 @@ public sealed class ProjectMemoryService
     private const string WorkspaceMemoryDirectoryName = ".agentq";
     private const string LocalMemoryFileName = "memory.local.json";
     private const string SharedMemoryFileName = "memory.shared.json";
+    private const int MaxMemoryTextLength = 1000;
+    private const int MaxMemoryCommandLength = 300;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -85,12 +87,16 @@ public sealed class ProjectMemoryService
 
     public string BuildContext(ProjectMemory memory)
     {
+        var lessons = memory.Lessons.Where(IsUsefulLesson).OrderByDescending(lesson => lesson.Confidence).Take(12).ToList();
+        var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
+        var checks = memory.Checks.Where(IsUsefulCheck).ToList();
+
         if (memory.VerificationCommands.Count == 0 &&
             memory.ProjectHints.Count == 0 &&
             memory.WorkspaceRules.Count == 0 &&
-            memory.Lessons.Count == 0 &&
-            memory.Preferences.Count == 0 &&
-            memory.Checks.Count == 0)
+            lessons.Count == 0 &&
+            preferences.Count == 0 &&
+            checks.Count == 0)
         {
             return string.Empty;
         }
@@ -126,29 +132,30 @@ public sealed class ProjectMemoryService
             }
         }
 
-        if (memory.Lessons.Count > 0)
+        if (lessons.Count > 0)
         {
             builder.AppendLine("Learned lessons:");
-            foreach (var lesson in memory.Lessons.OrderByDescending(lesson => lesson.Confidence).Take(12))
+            foreach (var lesson in lessons)
             {
                 var title = string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title;
-                builder.AppendLine($"- {title}: {lesson.Content}");
+                var source = string.IsNullOrWhiteSpace(lesson.Source) ? "unknown source" : lesson.Source;
+                builder.AppendLine($"- {title}: {lesson.Content} (source: {source}, confidence: {lesson.Confidence:0.##})");
             }
         }
 
-        if (memory.Preferences.Count > 0)
+        if (preferences.Count > 0)
         {
             builder.AppendLine("User/project preferences:");
-            foreach (var preference in memory.Preferences)
+            foreach (var preference in preferences)
             {
                 builder.AppendLine($"- {preference.Key}: {preference.Value}");
             }
         }
 
-        if (memory.Checks.Count > 0)
+        if (checks.Count > 0)
         {
             builder.AppendLine("Remembered checks:");
-            foreach (var check in memory.Checks)
+            foreach (var check in checks)
             {
                 var when = string.IsNullOrWhiteSpace(check.When) ? "manual" : check.When;
                 builder.AppendLine($"- {check.Name} ({when}): {check.Command}");
@@ -173,6 +180,8 @@ public sealed class ProjectMemoryService
         }
 
         lesson.CreatedAt = lesson.CreatedAt == default ? DateTime.Now : lesson.CreatedAt;
+        lesson.Confidence = Math.Clamp(lesson.Confidence, 0, 1);
+        lesson.Enabled = true;
         document.Lessons.RemoveAll(existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase));
         document.Lessons.Add(lesson);
         await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
@@ -345,19 +354,35 @@ public sealed class ProjectMemoryService
     }
 
     private static bool IsUsefulLesson(ProjectMemoryLesson lesson) =>
+        lesson.Enabled &&
+        !IsExpired(lesson.ExpiresAt) &&
         !string.IsNullOrWhiteSpace(lesson.Content) &&
+        lesson.Content.Length <= MaxMemoryTextLength &&
+        lesson.Title.Length <= 180 &&
         !LooksSensitive(lesson.Content) &&
-        !LooksSensitive(lesson.Title);
+        !LooksSensitive(lesson.Title) &&
+        !LooksSensitive(lesson.Source);
 
     private static bool IsUsefulPreference(ProjectMemoryPreference preference) =>
+        preference.Enabled &&
         !string.IsNullOrWhiteSpace(preference.Key) &&
         !string.IsNullOrWhiteSpace(preference.Value) &&
+        preference.Key.Length <= 120 &&
+        preference.Value.Length <= MaxMemoryTextLength &&
+        !LooksSensitive(preference.Key) &&
         !LooksSensitive(preference.Value);
 
     private static bool IsUsefulCheck(ProjectMemoryCheck check) =>
+        check.Enabled &&
         !string.IsNullOrWhiteSpace(check.Name) &&
         !string.IsNullOrWhiteSpace(check.Command) &&
-        !LooksSensitive(check.Command);
+        check.Name.Length <= 160 &&
+        check.Command.Length <= MaxMemoryCommandLength &&
+        !LooksSensitive(check.Command) &&
+        !LooksDangerousCommand(check.Command);
+
+    private static bool IsExpired(DateTime? expiresAt) =>
+        expiresAt.HasValue && expiresAt.Value <= DateTime.Now;
 
     private static bool LooksSensitive(string value)
     {
@@ -365,8 +390,19 @@ public sealed class ProjectMemoryService
                Regex.IsMatch(value, @"bearer\s+[A-Za-z0-9._-]{12,}", RegexOptions.IgnoreCase) ||
                value.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("apikey", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("authorization", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("token", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksDangerousCommand(string value)
+    {
+        return Regex.IsMatch(value, @"\brm\s+-rf\b", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"\bRemove-Item\b.*\b-Recurse\b", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"\bdel\s+/[sq]\b", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"\bformat\s+[A-Z]:", RegexOptions.IgnoreCase) ||
+               value.Contains("git reset --hard", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string CreateMemoryId(string title, string content)

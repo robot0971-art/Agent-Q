@@ -35,6 +35,10 @@ public sealed class ProjectMemoryLesson
 
     public DateTime? LastUsedAt { get; set; }
 
+    public DateTime? ExpiresAt { get; set; }
+
+    public bool Enabled { get; set; } = true;
+
     public string Source { get; set; } = string.Empty;
 }
 
@@ -43,6 +47,8 @@ public sealed class ProjectMemoryPreference
     public string Key { get; set; } = string.Empty;
 
     public string Value { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
 }
 
 public sealed class ProjectMemoryCheck
@@ -52,4 +58,6 @@ public sealed class ProjectMemoryCheck
     public string Command { get; set; } = string.Empty;
 
     public string When { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
 }

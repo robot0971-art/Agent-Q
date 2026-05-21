@@ -150,6 +150,64 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_SkipsDisabledExpiredAndDangerousMemoryEntries()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            $$"""
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "disabled",
+                  "title": "Disabled lesson",
+                  "content": "This disabled memory should not be used.",
+                  "enabled": false,
+                  "confidence": 0.9
+                },
+                {
+                  "id": "expired",
+                  "title": "Expired lesson",
+                  "content": "This expired memory should not be used.",
+                  "expiresAt": "{{DateTime.Now.AddDays(-1):O}}",
+                  "confidence": 0.9
+                },
+                {
+                  "id": "active",
+                  "title": "Active lesson",
+                  "content": "This active memory should be used.",
+                  "source": "test",
+                  "confidence": 0.8
+                }
+              ],
+              "preferences": [
+                { "key": "disabled", "value": "skip me", "enabled": false },
+                { "key": "language", "value": "Korean" }
+              ],
+              "checks": [
+                { "name": "danger", "command": "git reset --hard", "when": "never" },
+                { "name": "tests", "command": "dotnet test .\\csharp\\AgentQ.sln", "when": "before_push" }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+        var context = service.BuildContext(memory);
+
+        Assert.DoesNotContain("disabled memory", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("expired memory", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("skip me", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("git reset --hard", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("This active memory should be used.", context);
+        Assert.Contains("language: Korean", context);
+        Assert.Contains("dotnet test", context);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_AddLocalLessonAsync_SavesApprovedLesson()
     {
         var root = CreateTempDirectory();

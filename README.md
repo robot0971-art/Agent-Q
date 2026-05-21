@@ -106,6 +106,34 @@ AgentQ can read project memory from `.agentq/memory.shared.json` and `.agentq/me
 
 After a desktop run, the Memory panel may show learning candidates. These are only suggestions. AgentQ writes a lesson to `.agentq/memory.local.json` only after you approve it with Save lesson.
 
+Memory entries can be disabled with `enabled: false` or retired with `expiresAt`. AgentQ skips expired, disabled, overly long, sensitive, or dangerous entries before adding project memory to the model context.
+
+Example:
+
+```json
+{
+  "version": 1,
+  "workspaceRules": ["Run tests before committing desktop changes."],
+  "lessons": [
+    {
+      "id": "desktop-test-lock",
+      "title": "Close desktop before tests",
+      "content": "AgentQ.Desktop.exe can lock build outputs during dotnet test.",
+      "tags": ["desktop", "test"],
+      "confidence": 0.9,
+      "source": "approved learning candidate",
+      "enabled": true
+    }
+  ],
+  "preferences": [
+    { "key": "language", "value": "Korean", "enabled": true }
+  ],
+  "checks": [
+    { "name": "tests", "command": "dotnet test .\\csharp\\AgentQ.sln -c Release", "when": "before_push", "enabled": true }
+  ]
+}
+```
+
 Install it as a .NET global tool:
 
 ```powershell
