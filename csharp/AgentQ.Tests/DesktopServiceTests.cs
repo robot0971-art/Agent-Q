@@ -298,6 +298,85 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_TouchRelevantLocalLessons_UpdatesOnlyMatchingLocalLessons()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "desktop",
+                  "title": "Desktop test lock",
+                  "content": "Close AgentQ.Desktop.exe before running dotnet test.",
+                  "tags": [ "desktop", "test" ],
+                  "confidence": 0.8
+                },
+                {
+                  "id": "docker",
+                  "title": "Docker release build",
+                  "content": "Use docker buildx for container releases.",
+                  "tags": [ "docker" ],
+                  "confidence": 0.8
+                }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var touched = await service.TouchRelevantLocalLessonsAsync(
+            root,
+            "desktop test output is locked",
+            CancellationToken.None);
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+
+        Assert.Single(touched);
+        Assert.Equal("desktop", touched[0].Id);
+        Assert.NotNull(memory.Lessons.Single(lesson => lesson.Id == "desktop").LastUsedAt);
+        Assert.Null(memory.Lessons.Single(lesson => lesson.Id == "docker").LastUsedAt);
+    }
+
+    [Fact]
+    public async Task ProjectMemoryService_TouchRelevantLocalLessons_DoesNotModifySharedMemory()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        var sharedPath = Path.Combine(agentQDirectory, "memory.shared.json");
+        await File.WriteAllTextAsync(
+            sharedPath,
+            """
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "shared-desktop",
+                  "title": "Shared desktop test",
+                  "content": "Shared desktop test lesson.",
+                  "tags": [ "desktop" ],
+                  "confidence": 0.8
+                }
+              ]
+            }
+            """);
+        var before = await File.ReadAllTextAsync(sharedPath);
+
+        var service = new ProjectMemoryService();
+        var touched = await service.TouchRelevantLocalLessonsAsync(
+            root,
+            "desktop test",
+            CancellationToken.None);
+        var after = await File.ReadAllTextAsync(sharedPath);
+
+        Assert.Empty(touched);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
     public void DesktopLearningSuggestionService_SuggestsStepLimitLesson()
     {
         var service = new DesktopLearningSuggestionService();

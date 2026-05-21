@@ -72,6 +72,15 @@ public sealed class DesktopAgentService
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
         var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, ct);
+        var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
+        if (touchedLessons.Count > 0)
+        {
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.GatheringContext,
+                "Project memory used",
+                string.Join(", ", touchedLessons.Select(lesson => string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title)));
+        }
+
         _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
         var builder = new StringBuilder();
         var enforcer = permissionEnforcer ?? new DenyByDefaultPermissionEnforcer();

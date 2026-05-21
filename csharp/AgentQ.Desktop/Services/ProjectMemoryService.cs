@@ -189,6 +189,49 @@ public sealed class ProjectMemoryService
         await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMemoryLesson>> TouchRelevantLocalLessonsAsync(
+        string workspaceRoot,
+        string query,
+        CancellationToken ct,
+        int maxCount = 12)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var path = GetLocalMemoryPath(root);
+        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        if (document == null)
+        {
+            return [];
+        }
+
+        var queryTerms = ExtractTerms(query).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (queryTerms.Count == 0)
+        {
+            return [];
+        }
+
+        var touched = document.Lessons
+            .Where(IsUsefulLesson)
+            .Where(lesson => LessonMatchesQuery(lesson, queryTerms))
+            .OrderByDescending(lesson => ScoreLesson(lesson, queryTerms))
+            .ThenByDescending(lesson => lesson.Confidence)
+            .Take(Math.Clamp(maxCount, 1, 50))
+            .ToList();
+
+        if (touched.Count == 0)
+        {
+            return [];
+        }
+
+        var now = DateTime.Now;
+        foreach (var lesson in touched)
+        {
+            lesson.LastUsedAt = now;
+        }
+
+        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        return touched;
+    }
+
     public IReadOnlyList<ProjectMemoryLesson> SelectRelevantLessons(
         IEnumerable<ProjectMemoryLesson> lessons,
         string query,
@@ -454,6 +497,17 @@ public sealed class ProjectMemoryService
         }
 
         return score;
+    }
+
+    private static bool LessonMatchesQuery(ProjectMemoryLesson lesson, IReadOnlySet<string> queryTerms)
+    {
+        if (queryTerms.Count == 0)
+        {
+            return false;
+        }
+
+        return ExtractTerms($"{lesson.Title} {lesson.Content} {string.Join(' ', lesson.Tags)} {lesson.Source}")
+            .Any(queryTerms.Contains);
     }
 
     private static IEnumerable<string> ExtractTerms(string value)
