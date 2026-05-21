@@ -57,7 +57,7 @@ public sealed class WorkspaceAnalysisService
         DetectDocker(analysis, detectedTypes, frameworks);
         DetectDatabaseTooling(analysis, frameworks);
         DetectMonorepoShape(analysis);
-        DetectProjectMap(analysis);
+        DetectProjectMap(analysis, detectedTypes);
         DetectKeyFiles(analysis);
 
         analysis.ProjectType = detectedTypes.Count > 0
@@ -507,7 +507,7 @@ public sealed class WorkspaceAnalysisService
         }
     }
 
-    private static void DetectProjectMap(WorkspaceAnalysis analysis)
+    private static void DetectProjectMap(WorkspaceAnalysis analysis, IReadOnlyCollection<string> detectedTypes)
     {
         var roles = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
@@ -521,15 +521,39 @@ public sealed class WorkspaceAnalysisService
             ["Domain logic"] = ["domain", "core", "services", "features", "logic"],
             ["Tests"] = ["test", "tests", "__tests__", "spec", "specs"],
             ["Assets"] = ["assets", "public", "static", "wwwroot"],
-            ["Configuration"] = [".github", ".agentq", "config", "settings"],
-            ["C++ source"] = ["src", "source", "Source"],
-            ["C++ headers"] = ["include", "Includes"],
-            ["Go packages"] = ["cmd", "pkg", "internal"],
-            ["Rust crates"] = ["crates"],
-            ["Python packages"] = ["src", "scripts"],
-            ["Unity assets"] = ["Assets", "ProjectSettings", "Packages"],
-            ["Unreal project"] = ["Source", "Content", "Config", "Plugins"]
+            ["Configuration"] = [".github", ".agentq", "config", "settings"]
         };
+
+        if (detectedTypes.Contains("C++", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["C++ source"] = ["src", "source", "Source"];
+            roles["C++ headers"] = ["include", "Includes"];
+        }
+
+        if (detectedTypes.Contains("Go", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["Go packages"] = ["cmd", "pkg", "internal"];
+        }
+
+        if (detectedTypes.Contains("Rust", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["Rust crates"] = ["crates"];
+        }
+
+        if (detectedTypes.Contains("Python", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["Python packages"] = ["src", "scripts"];
+        }
+
+        if (detectedTypes.Contains("Unity", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["Unity assets"] = ["Assets", "ProjectSettings", "Packages"];
+        }
+
+        if (detectedTypes.Contains("Unreal", StringComparer.OrdinalIgnoreCase))
+        {
+            roles["Unreal project"] = ["Source", "Content", "Config", "Plugins"];
+        }
 
         foreach (var (role, names) in roles)
         {

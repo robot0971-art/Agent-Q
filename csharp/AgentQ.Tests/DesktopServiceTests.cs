@@ -207,6 +207,23 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_DoesNotLabelPythonSrcAsCppSource()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "tests"));
+        await File.WriteAllTextAsync(Path.Combine(root, "pyproject.toml"), """[project]\ndependencies = ["fastapi", "sqlalchemy"]""");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.py"), "from fastapi import FastAPI");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("Python", analysis.ProjectType);
+        Assert.DoesNotContain("C++", analysis.ProjectType);
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Python packages", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(analysis.ProjectMap, entry => entry.Contains("C++ source", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
