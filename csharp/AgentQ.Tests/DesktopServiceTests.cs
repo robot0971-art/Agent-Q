@@ -284,6 +284,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopEvidenceFormatter_ExplainsCSharpSymbolsInReadFile()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "Services"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "Services", "AuthService.cs"),
+            """
+            public sealed class AuthService
+            {
+                public bool Login(string email) => true;
+            }
+            """);
+
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = Path.Combine("Services", "AuthService.cs") },
+            root);
+
+        Assert.Contains("Contains symbols", evidence);
+        Assert.Contains("class AuthService", evidence);
+        Assert.Contains("method AuthService.Login", evidence);
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsBroadSearch()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(

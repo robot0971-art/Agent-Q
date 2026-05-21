@@ -43,15 +43,38 @@ public static class DesktopEvidenceFormatter
     private static string DescribePathReason(string path, string workspaceRoot)
     {
         var normalized = NormalizePath(path, workspaceRoot);
+        var symbolReason = DescribeSymbolReason(path, workspaceRoot);
         if (IsKeyProjectFile(normalized))
         {
-            return " Reason: key project file.";
+            return $" Reason: key project file.{symbolReason}";
         }
 
         var role = DetectPathRole(normalized);
         return string.IsNullOrWhiteSpace(role)
-            ? " Reason: model selected this path for workspace evidence."
-            : $" Reason: path maps to {role}.";
+            ? $" Reason: model selected this path for workspace evidence.{symbolReason}"
+            : $" Reason: path maps to {role}.{symbolReason}";
+    }
+
+    private static string DescribeSymbolReason(string path, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot) ||
+            !path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        var symbols = new WorkspaceSymbolIndexService()
+            .BuildForFile(workspaceRoot, path)
+            .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct" or "method")
+            .Take(3)
+            .Select(symbol => string.IsNullOrWhiteSpace(symbol.Container)
+                ? $"{symbol.Kind} {symbol.Name}"
+                : $"{symbol.Kind} {symbol.Container}.{symbol.Name}")
+            .ToList();
+
+        return symbols.Count == 0
+            ? string.Empty
+            : $" Contains symbols: {string.Join(", ", symbols)}.";
     }
 
     private static string DescribeCommandReason(string command)

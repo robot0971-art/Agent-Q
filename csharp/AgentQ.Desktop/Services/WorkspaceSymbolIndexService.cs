@@ -45,6 +45,31 @@ public sealed partial class WorkspaceSymbolIndexService
         return index;
     }
 
+    public IReadOnlyList<CodeSymbol> BuildForFile(string workspaceRoot, string path)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || string.IsNullOrWhiteSpace(path))
+        {
+            return [];
+        }
+
+        var fullPath = Path.IsPathFullyQualified(path)
+            ? path
+            : Path.Combine(workspaceRoot, path);
+
+        if (!File.Exists(fullPath) ||
+            !fullPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+            !IsInsideWorkspace(workspaceRoot, fullPath) ||
+            !TryGetFileInfo(fullPath, out var length) ||
+            length > MaximumFileBytes)
+        {
+            return [];
+        }
+
+        var symbols = new List<CodeSymbol>();
+        AddCSharpSymbols(Path.GetFullPath(workspaceRoot), Path.GetFullPath(fullPath), symbols);
+        return symbols;
+    }
+
     private static void AddCSharpSymbols(string workspaceRoot, string file, List<CodeSymbol> symbols)
     {
         string[] lines;
@@ -118,6 +143,20 @@ public sealed partial class WorkspaceSymbolIndexService
         catch
         {
             length = 0;
+            return false;
+        }
+    }
+
+    private static bool IsInsideWorkspace(string workspaceRoot, string path)
+    {
+        try
+        {
+            var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var fullPath = Path.GetFullPath(path);
+            return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
             return false;
         }
     }
