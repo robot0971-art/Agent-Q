@@ -159,6 +159,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
+    {
+        var retries = DesktopSearchRetryService.BuildRetryInputs(
+            "grep_search",
+            new Dictionary<string, object?> { ["pattern"] = "ProjectMap" },
+            """{"numMatches":0}""");
+
+        Assert.Contains(retries, retry => retry.TryGetValue("pattern", out var pattern) &&
+                                          string.Equals(pattern as string, "(?i)ProjectMap", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DesktopSearchRetryService_BuildsRecursiveGlobRetryWhenEmpty()
+    {
+        var retries = DesktopSearchRetryService.BuildRetryInputs(
+            "glob_search",
+            new Dictionary<string, object?> { ["pattern"] = "*.cs" },
+            """{"numFiles":0}""");
+
+        Assert.Contains(retries, retry => retry.TryGetValue("pattern", out var pattern) &&
+                                          string.Equals(pattern as string, "**/*.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();

@@ -490,6 +490,15 @@ public sealed class DesktopAgentService
                 {
                     var snapshot = await CaptureFileSnapshotAsync(tool.Name, parsedInput, workspaceRoot, ct);
                     var result = await tool.ExecuteAsync(parsedInput, ct);
+                    result = await DesktopSearchRetryService.ApplySearchRetriesAsync(
+                        tool,
+                        parsedInput,
+                        result,
+                        retryDetail => callbacks?.OnRunStep?.Invoke(
+                            AgentRunState.GatheringContext,
+                            "Evidence: search retry",
+                            retryDetail),
+                        ct);
                     if (result.IsError)
                     {
                         callbacks?.OnToolError?.Invoke(tool.Name, result.Content);
