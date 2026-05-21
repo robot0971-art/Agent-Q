@@ -109,6 +109,52 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_DetectsMultiLanguageProjects()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "include"));
+        Directory.CreateDirectory(Path.Combine(root, "cmd"));
+        Directory.CreateDirectory(Path.Combine(root, "Source"));
+        Directory.CreateDirectory(Path.Combine(root, "Content"));
+        Directory.CreateDirectory(Path.Combine(root, "Config"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"dependencies":{"next":"latest","react":"latest"},"devDependencies":{"typescript":"latest"},"scripts":{"build":"next build","lint":"next lint","test":"vitest"}}""");
+        await File.WriteAllTextAsync(Path.Combine(root, "pyproject.toml"), """[project]\ndependencies = ["fastapi"]""");
+        await File.WriteAllTextAsync(Path.Combine(root, "go.mod"), "module example.com/app");
+        await File.WriteAllTextAsync(Path.Combine(root, "Cargo.toml"), "[package]");
+        await File.WriteAllTextAsync(Path.Combine(root, "CMakeLists.txt"), "cmake_minimum_required(VERSION 3.20)");
+        await File.WriteAllTextAsync(Path.Combine(root, "Game.uproject"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(root, "include", "game.hpp"), "#pragma once");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "game.cpp"), "int main() { return 0; }");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("Node", analysis.ProjectType);
+        Assert.Contains("Python", analysis.ProjectType);
+        Assert.Contains("C++", analysis.ProjectType);
+        Assert.Contains("Go", analysis.ProjectType);
+        Assert.Contains("Rust", analysis.ProjectType);
+        Assert.Contains("Unreal", analysis.ProjectType);
+        Assert.Contains("Next.js", analysis.Framework);
+        Assert.Contains("FastAPI", analysis.Framework);
+        Assert.Contains("CMake", analysis.Framework);
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("npm run build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("python -m pytest", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("cmake --build build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("go test ./...", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("cargo test", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("C++ headers", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Go packages", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Unreal project", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("CMakeLists.txt", analysis.KeyFiles);
+        Assert.Contains("go.mod", analysis.KeyFiles);
+        Assert.Contains("Cargo.toml", analysis.KeyFiles);
+        Assert.Contains("Game.uproject", analysis.KeyFiles);
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(

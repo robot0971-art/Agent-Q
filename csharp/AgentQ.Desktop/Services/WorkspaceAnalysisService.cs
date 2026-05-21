@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -37,8 +38,12 @@ public sealed class WorkspaceAnalysisService
         DetectCommandFiles(analysis);
         DetectDotNet(analysis, detectedTypes, frameworks);
         await DetectNodeAsync(analysis, detectedTypes, frameworks, ct);
-        DetectUnity(analysis, detectedTypes, frameworks);
         DetectPython(analysis, detectedTypes, frameworks);
+        DetectCpp(analysis, detectedTypes, frameworks);
+        DetectGo(analysis, detectedTypes, frameworks);
+        DetectRust(analysis, detectedTypes, frameworks);
+        DetectUnity(analysis, detectedTypes, frameworks);
+        DetectUnreal(analysis, detectedTypes, frameworks);
         DetectProjectMap(analysis);
         DetectKeyFiles(analysis);
 
@@ -46,7 +51,7 @@ public sealed class WorkspaceAnalysisService
             ? string.Join(", ", detectedTypes.Distinct(StringComparer.OrdinalIgnoreCase))
             : "Unknown";
         analysis.Framework = frameworks.Count > 0
-            ? string.Join(", ", frameworks.Distinct(StringComparer.OrdinalIgnoreCase).Take(4))
+            ? string.Join(", ", frameworks.Distinct(StringComparer.OrdinalIgnoreCase).Take(8))
             : "Unknown";
 
         if (analysis.VerificationCommands.Count == 0)
@@ -226,6 +231,32 @@ public sealed class WorkspaceAnalysisService
         }
     }
 
+    private static void DetectPythonFrameworks(string root, List<string> frameworks)
+    {
+        var requirementsPath = Path.Combine(root, "requirements.txt");
+        var pyprojectPath = Path.Combine(root, "pyproject.toml");
+        var text = new StringBuilder();
+
+        TryAppendFileText(requirementsPath, text);
+        TryAppendFileText(pyprojectPath, text);
+
+        var content = text.ToString();
+        if (content.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("FastAPI");
+        }
+
+        if (content.Contains("django", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Django");
+        }
+
+        if (content.Contains("flask", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Flask");
+        }
+    }
+
     private static void DetectNodeScripts(JsonElement root, WorkspaceAnalysis analysis)
     {
         if (!root.TryGetProperty("scripts", out var scripts) || scripts.ValueKind != JsonValueKind.Object)
@@ -266,6 +297,25 @@ public sealed class WorkspaceAnalysisService
         var version = ReadUnityVersion(versionPath);
         frameworks.Add(string.IsNullOrWhiteSpace(version) ? "Unity" : $"Unity {version}");
         analysis.Hints.Add("Unity project structure detected.");
+        AddUnique(analysis.VerificationCommands, "Unity Test Runner");
+    }
+
+    private static void DetectUnreal(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks)
+    {
+        var uproject = Directory.EnumerateFiles(analysis.WorkspaceRoot, "*.uproject", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(uproject))
+        {
+            return;
+        }
+
+        detectedTypes.Add("Unreal");
+        frameworks.Add("Unreal Engine");
+        analysis.Hints.Add($"Unreal project file: {uproject}");
     }
 
     private static void DetectPython(
@@ -280,8 +330,97 @@ public sealed class WorkspaceAnalysisService
         }
 
         detectedTypes.Add("Python");
-        frameworks.Add("Python");
+        var frameworkCountBeforePython = frameworks.Count;
+        DetectPythonFrameworks(analysis.WorkspaceRoot, frameworks);
+        if (frameworks.Count == frameworkCountBeforePython)
+        {
+            frameworks.Add("Python");
+        }
+
+        if (File.Exists(Path.Combine(analysis.WorkspaceRoot, "pytest.ini")) ||
+            File.Exists(Path.Combine(analysis.WorkspaceRoot, "pyproject.toml")))
+        {
+            AddUnique(analysis.VerificationCommands, "python -m pytest");
+        }
+
         analysis.Hints.Add("Python project files detected.");
+    }
+
+    private static void DetectCpp(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks)
+    {
+        var hasCMake = File.Exists(Path.Combine(analysis.WorkspaceRoot, "CMakeLists.txt"));
+        var vcxproj = SafeEnumerateFiles(analysis.WorkspaceRoot, "*.vcxproj").Take(2).ToList();
+        var cppFiles = SafeEnumerateFiles(analysis.WorkspaceRoot, "*.cpp")
+            .Concat(SafeEnumerateFiles(analysis.WorkspaceRoot, "*.cc"))
+            .Concat(SafeEnumerateFiles(analysis.WorkspaceRoot, "*.cxx"))
+            .Take(2)
+            .ToList();
+        var headerFiles = SafeEnumerateFiles(analysis.WorkspaceRoot, "*.h")
+            .Concat(SafeEnumerateFiles(analysis.WorkspaceRoot, "*.hpp"))
+            .Take(2)
+            .ToList();
+
+        if (!hasCMake && vcxproj.Count == 0 && cppFiles.Count == 0 && headerFiles.Count == 0)
+        {
+            return;
+        }
+
+        detectedTypes.Add("C++");
+        if (hasCMake)
+        {
+            frameworks.Add("CMake");
+            AddUnique(analysis.VerificationCommands, "cmake -S . -B build");
+            AddUnique(analysis.VerificationCommands, "cmake --build build");
+            AddUnique(analysis.VerificationCommands, "ctest --test-dir build");
+            analysis.Hints.Add("CMakeLists.txt detected.");
+        }
+
+        if (vcxproj.Count > 0)
+        {
+            frameworks.Add("MSBuild");
+            analysis.Hints.Add("Visual C++ project detected.");
+        }
+
+        if (!hasCMake && vcxproj.Count == 0)
+        {
+            frameworks.Add("C++");
+        }
+    }
+
+    private static void DetectGo(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks)
+    {
+        if (!File.Exists(Path.Combine(analysis.WorkspaceRoot, "go.mod")))
+        {
+            return;
+        }
+
+        detectedTypes.Add("Go");
+        frameworks.Add("Go modules");
+        AddUnique(analysis.VerificationCommands, "go test ./...");
+        analysis.Hints.Add("go.mod detected.");
+    }
+
+    private static void DetectRust(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks)
+    {
+        if (!File.Exists(Path.Combine(analysis.WorkspaceRoot, "Cargo.toml")))
+        {
+            return;
+        }
+
+        detectedTypes.Add("Rust");
+        frameworks.Add("Cargo");
+        AddUnique(analysis.VerificationCommands, "cargo build");
+        AddUnique(analysis.VerificationCommands, "cargo test");
+        analysis.Hints.Add("Cargo.toml detected.");
     }
 
     private static void DetectProjectMap(WorkspaceAnalysis analysis)
@@ -295,7 +434,13 @@ public sealed class WorkspaceAnalysisService
             ["Tests"] = ["test", "tests", "__tests__", "spec", "specs"],
             ["Assets"] = ["assets", "public", "static", "wwwroot"],
             ["Configuration"] = [".github", ".agentq", "config", "settings"],
-            ["Unity assets"] = ["Assets", "ProjectSettings", "Packages"]
+            ["C++ source"] = ["src", "source", "Source"],
+            ["C++ headers"] = ["include", "Includes"],
+            ["Go packages"] = ["cmd", "pkg", "internal"],
+            ["Rust crates"] = ["crates"],
+            ["Python packages"] = ["src", "scripts"],
+            ["Unity assets"] = ["Assets", "ProjectSettings", "Packages"],
+            ["Unreal project"] = ["Source", "Content", "Config", "Plugins"]
         };
 
         foreach (var (role, names) in roles)
@@ -327,6 +472,10 @@ public sealed class WorkspaceAnalysisService
             "package.json",
             "pyproject.toml",
             "requirements.txt",
+            "pytest.ini",
+            "go.mod",
+            "Cargo.toml",
+            "CMakeLists.txt",
             "docker-compose.yml",
             "Dockerfile",
             "Program.cs",
@@ -351,6 +500,14 @@ public sealed class WorkspaceAnalysisService
                      .Where(name => !string.IsNullOrWhiteSpace(name)))
         {
             AddUnique(analysis.KeyFiles, solution!);
+        }
+
+        foreach (var project in Directory.EnumerateFiles(analysis.WorkspaceRoot, "*.uproject", SearchOption.TopDirectoryOnly)
+                     .Concat(Directory.EnumerateFiles(analysis.WorkspaceRoot, "*.vcxproj", SearchOption.TopDirectoryOnly))
+                     .Select(Path.GetFileName)
+                     .Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            AddUnique(analysis.KeyFiles, project!);
         }
     }
 
@@ -387,6 +544,23 @@ public sealed class WorkspaceAnalysisService
         foreach (var dependency in dependencies.EnumerateObject())
         {
             names.Add(dependency.Name);
+        }
+    }
+
+    private static void TryAppendFileText(string path, StringBuilder builder)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            builder.AppendLine(File.ReadAllText(path));
+        }
+        catch
+        {
+            // Best effort framework detection only.
         }
     }
 
