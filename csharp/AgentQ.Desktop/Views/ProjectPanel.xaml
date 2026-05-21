@@ -80,6 +80,31 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <TextBlock Text="Project map" Style="{DynamicResource LabelText}" />
+                    <ItemsControl ItemsSource="{Binding WorkspaceProjectMap}" Margin="0,0,0,6">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,1,0,1" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Key files" Style="{DynamicResource LabelText}" />
+                    <ItemsControl ItemsSource="{Binding WorkspaceKeyFiles}" Margin="0,0,0,6">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Foreground="{DynamicResource Accent}"
+                                           FontFamily="Consolas"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,1,0,1" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <ItemsControl ItemsSource="{Binding WorkspaceHints}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

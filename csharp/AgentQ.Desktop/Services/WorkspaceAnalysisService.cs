@@ -39,6 +39,8 @@ public sealed class WorkspaceAnalysisService
         await DetectNodeAsync(analysis, detectedTypes, frameworks, ct);
         DetectUnity(analysis, detectedTypes, frameworks);
         DetectPython(analysis, detectedTypes, frameworks);
+        DetectProjectMap(analysis);
+        DetectKeyFiles(analysis);
 
         analysis.ProjectType = detectedTypes.Count > 0
             ? string.Join(", ", detectedTypes.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -280,6 +282,76 @@ public sealed class WorkspaceAnalysisService
         detectedTypes.Add("Python");
         frameworks.Add("Python");
         analysis.Hints.Add("Python project files detected.");
+    }
+
+    private static void DetectProjectMap(WorkspaceAnalysis analysis)
+    {
+        var roles = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["UI layer"] = ["src", "app", "pages", "components", "views", "ui"],
+            ["API layer"] = ["api", "controllers", "routes", "endpoints"],
+            ["Database layer"] = ["db", "database", "data", "migrations", "repositories"],
+            ["Domain logic"] = ["domain", "core", "services", "features", "logic"],
+            ["Tests"] = ["test", "tests", "__tests__", "spec", "specs"],
+            ["Assets"] = ["assets", "public", "static", "wwwroot"],
+            ["Configuration"] = [".github", ".agentq", "config", "settings"],
+            ["Unity assets"] = ["Assets", "ProjectSettings", "Packages"]
+        };
+
+        foreach (var (role, names) in roles)
+        {
+            var matches = names
+                .Select(name => Path.Combine(analysis.WorkspaceRoot, name))
+                .Where(Directory.Exists)
+                .Select(path => Path.GetRelativePath(analysis.WorkspaceRoot, path))
+                .Take(4)
+                .ToList();
+
+            if (matches.Count > 0)
+            {
+                analysis.ProjectMap.Add($"{role}: {string.Join(", ", matches)}");
+            }
+        }
+
+        if (analysis.ProjectMap.Count == 0)
+        {
+            analysis.Hints.Add("No obvious project map folders detected yet.");
+        }
+    }
+
+    private static void DetectKeyFiles(WorkspaceAnalysis analysis)
+    {
+        var fileNames = new[]
+        {
+            "README.md",
+            "package.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "docker-compose.yml",
+            "Dockerfile",
+            "Program.cs",
+            "App.xaml",
+            "ProjectSettings/ProjectVersion.txt",
+            ".agentq/config.json",
+            ".agentq/memory.shared.json"
+        };
+
+        foreach (var fileName in fileNames)
+        {
+            var path = Path.Combine(analysis.WorkspaceRoot, fileName);
+            if (File.Exists(path))
+            {
+                analysis.KeyFiles.Add(fileName.Replace('/', Path.DirectorySeparatorChar));
+            }
+        }
+
+        foreach (var solution in Directory.EnumerateFiles(analysis.WorkspaceRoot, "*.sln", SearchOption.TopDirectoryOnly)
+                     .Concat(Directory.EnumerateFiles(analysis.WorkspaceRoot, "*.slnx", SearchOption.TopDirectoryOnly))
+                     .Select(Path.GetFileName)
+                     .Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            AddUnique(analysis.KeyFiles, solution!);
+        }
     }
 
     private static IEnumerable<string> ReadTargetFrameworks(string projectPath)

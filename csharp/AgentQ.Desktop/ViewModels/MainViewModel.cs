@@ -72,6 +72,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> WorkspaceVerificationCommands { get; } = [];
 
+    public ObservableCollection<string> WorkspaceProjectMap { get; } = [];
+
+    public ObservableCollection<string> WorkspaceKeyFiles { get; } = [];
+
     public ObservableCollection<string> WorkspaceHints { get; } = [];
 
     public ObservableCollection<string> Attachments { get; } = [];
@@ -577,6 +581,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var command in analysis.VerificationCommands)
         {
             WorkspaceVerificationCommands.Add(command);
+        }
+
+        WorkspaceProjectMap.Clear();
+        foreach (var entry in analysis.ProjectMap)
+        {
+            WorkspaceProjectMap.Add(entry);
+        }
+
+        WorkspaceKeyFiles.Clear();
+        foreach (var file in analysis.KeyFiles)
+        {
+            WorkspaceKeyFiles.Add(file);
         }
 
         WorkspaceHints.Clear();

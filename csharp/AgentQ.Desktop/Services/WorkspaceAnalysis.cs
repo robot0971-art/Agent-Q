@@ -18,6 +18,10 @@ public sealed class WorkspaceAnalysis
 
     public List<string> VerificationCommands { get; set; } = [];
 
+    public List<string> ProjectMap { get; set; } = [];
+
+    public List<string> KeyFiles { get; set; } = [];
+
     public List<string> Hints { get; set; } = [];
 
     public string Summary => $"{ProjectType} / {Framework}";

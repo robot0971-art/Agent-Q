@@ -138,6 +138,10 @@ Example:
 
 The desktop Evidence tab records evidence-oriented events instead of exposing hidden model reasoning. It can show when project memory was used, which files or patterns were searched, which commands ran, which files changed, and which verification plans were proposed.
 
+## Project Map
+
+The desktop Project panel builds a lightweight project map during workspace analysis. It detects common folder roles such as UI, API, database, domain logic, tests, assets, configuration, and Unity project folders, then lists key files such as `README.md`, `package.json`, solution files, Docker files, and `.agentq` project memory/config files.
+
 Install it as a .NET global tool:
 
 ```powershell

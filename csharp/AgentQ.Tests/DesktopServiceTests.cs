@@ -45,6 +45,25 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_BuildsProjectMapAndKeyFiles()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "api"));
+        Directory.CreateDirectory(Path.Combine(root, "tests"));
+        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "# Test");
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"scripts":{"test":"echo test"}}""");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("UI layer", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("API layer", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Tests", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("README.md", analysis.KeyFiles);
+        Assert.Contains("package.json", analysis.KeyFiles);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();
