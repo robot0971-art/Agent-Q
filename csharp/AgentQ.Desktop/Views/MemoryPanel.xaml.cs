@@ -15,6 +15,9 @@ public partial class MemoryPanel : System.Windows.Controls.UserControl
     public event EventHandler? ResumeSessionSummaryRequested;
     public event EventHandler<ProjectMemoryLesson?>? SaveSelectedLessonRequested;
     public event EventHandler<ProjectMemoryLesson?>? DismissSelectedLessonRequested;
+    public event EventHandler? RefreshSavedMemoryRequested;
+    public event EventHandler<ProjectMemoryLesson?>? DisableSavedMemoryRequested;
+    public event EventHandler<ProjectMemoryLesson?>? DeleteSavedMemoryRequested;
 
     private void SaveSessionSummary_OnClick(object sender, RoutedEventArgs e)
     {
@@ -42,6 +45,25 @@ public partial class MemoryPanel : System.Windows.Controls.UserControl
     {
         DismissSelectedLessonRequested?.Invoke(this, DataContext is ViewModels.MainViewModel viewModel
             ? viewModel.SelectedPendingMemoryLesson
+            : null);
+    }
+
+    private void RefreshSavedMemory_OnClick(object sender, RoutedEventArgs e)
+    {
+        RefreshSavedMemoryRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DisableSavedMemory_OnClick(object sender, RoutedEventArgs e)
+    {
+        DisableSavedMemoryRequested?.Invoke(this, DataContext is ViewModels.MainViewModel viewModel
+            ? viewModel.SelectedSavedMemoryLesson
+            : null);
+    }
+
+    private void DeleteSavedMemory_OnClick(object sender, RoutedEventArgs e)
+    {
+        DeleteSavedMemoryRequested?.Invoke(this, DataContext is ViewModels.MainViewModel viewModel
+            ? viewModel.SelectedSavedMemoryLesson
             : null);
     }
 }

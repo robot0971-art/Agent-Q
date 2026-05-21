@@ -189,6 +189,40 @@ public sealed class ProjectMemoryService
         await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMemoryLesson>> LoadLocalLessonsAsync(string workspaceRoot, CancellationToken ct)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var document = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct);
+        return document?.Lessons
+            .OrderByDescending(lesson => lesson.LastUsedAt ?? lesson.CreatedAt)
+            .ToList() ?? [];
+    }
+
+    public async Task<bool> DisableLocalLessonAsync(string workspaceRoot, string lessonId, CancellationToken ct)
+    {
+        return await UpdateLocalLessonAsync(workspaceRoot, lessonId, lesson => lesson.Enabled = false, ct);
+    }
+
+    public async Task<bool> DeleteLocalLessonAsync(string workspaceRoot, string lessonId, CancellationToken ct)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var path = GetLocalMemoryPath(root);
+        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        if (document == null)
+        {
+            return false;
+        }
+
+        var removed = document.Lessons.RemoveAll(lesson => string.Equals(lesson.Id, lessonId, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0)
+        {
+            return false;
+        }
+
+        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        return true;
+    }
+
     public async Task<IReadOnlyList<ProjectMemoryLesson>> TouchRelevantLocalLessonsAsync(
         string workspaceRoot,
         string query,
@@ -230,6 +264,31 @@ public sealed class ProjectMemoryService
 
         await SaveWorkspaceMemoryFileAsync(path, document, ct);
         return touched;
+    }
+
+    private async Task<bool> UpdateLocalLessonAsync(
+        string workspaceRoot,
+        string lessonId,
+        Action<ProjectMemoryLesson> update,
+        CancellationToken ct)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var path = GetLocalMemoryPath(root);
+        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        if (document == null)
+        {
+            return false;
+        }
+
+        var lesson = document.Lessons.FirstOrDefault(lesson => string.Equals(lesson.Id, lessonId, StringComparison.OrdinalIgnoreCase));
+        if (lesson == null)
+        {
+            return false;
+        }
+
+        update(lesson);
+        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        return true;
     }
 
     public IReadOnlyList<ProjectMemoryLesson> SelectRelevantLessons(

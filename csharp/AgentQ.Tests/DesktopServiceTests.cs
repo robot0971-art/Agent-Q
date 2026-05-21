@@ -377,6 +377,46 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_DisablesAndDeletesLocalLessons()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "keep",
+                  "title": "Keep lesson",
+                  "content": "Keep this local lesson.",
+                  "confidence": 0.8
+                },
+                {
+                  "id": "remove",
+                  "title": "Remove lesson",
+                  "content": "Remove this local lesson.",
+                  "confidence": 0.8
+                }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+
+        Assert.True(await service.DisableLocalLessonAsync(root, "keep", CancellationToken.None));
+        Assert.True(await service.DeleteLocalLessonAsync(root, "remove", CancellationToken.None));
+
+        var lessons = await service.LoadLocalLessonsAsync(root, CancellationToken.None);
+
+        var lesson = Assert.Single(lessons);
+        Assert.Equal("keep", lesson.Id);
+        Assert.False(lesson.Enabled);
+    }
+
+    [Fact]
     public void DesktopLearningSuggestionService_SuggestsStepLimitLesson()
     {
         var service = new DesktopLearningSuggestionService();

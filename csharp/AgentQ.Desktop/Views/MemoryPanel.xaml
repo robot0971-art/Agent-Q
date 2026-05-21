@@ -32,6 +32,9 @@
                 <RowDefinition Height="130" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="150" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding LearningCandidatesText}"
@@ -81,11 +84,63 @@
                         Click="DismissSelectedLesson_OnClick" />
             </WrapPanel>
             <TextBlock Grid.Row="4"
+                       Text="{Binding SavedMemoryText}"
+                       Foreground="{DynamicResource TextMuted}"
+                       FontSize="11"
+                       Margin="0,0,0,4" />
+            <ListBox Grid.Row="5"
+                     ItemsSource="{Binding SavedMemoryLessons}"
+                     SelectedItem="{Binding SelectedSavedMemoryLesson, Mode=TwoWay}"
+                     FontSize="11"
+                     HorizontalContentAlignment="Stretch"
+                     Margin="0,0,0,8">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,6">
+                            <TextBlock Text="{Binding Title}"
+                                       Foreground="{DynamicResource TextMain}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Content}"
+                                       Foreground="{DynamicResource TextMuted}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding LastUsedAt, StringFormat=Last used: {0:g}}"
+                                       Foreground="{DynamicResource TextMuted}"
+                                       FontSize="10"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <WrapPanel Grid.Row="6" Margin="0,0,0,8">
+                <Button Content="{Binding RefreshText}"
+                        Width="70"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="0,0,6,0"
+                        Click="RefreshSavedMemory_OnClick" />
+                <Button Content="{Binding DisableText}"
+                        Width="66"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="0,0,6,0"
+                        Click="DisableSavedMemory_OnClick" />
+                <Button Content="{Binding DeleteText}"
+                        Width="54"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Click="DeleteSavedMemory_OnClick" />
+            </WrapPanel>
+            <TextBlock Grid.Row="7"
                        Text="{Binding SessionSummaryText}"
                        Foreground="{DynamicResource TextMuted}"
                        FontSize="11"
                        Margin="0,0,0,4" />
-            <TextBox Grid.Row="5"
+            <TextBox Grid.Row="8"
                      Text="{Binding LatestSessionSummaryText}"
                      IsReadOnly="True"
                      FontFamily="Consolas"

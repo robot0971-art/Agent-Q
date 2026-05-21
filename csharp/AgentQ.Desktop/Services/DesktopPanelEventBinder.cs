@@ -43,6 +43,9 @@ public sealed class DesktopPanelEventBinder
         memoryPanel.ResumeSessionSummaryRequested += (_, _) => callbacks.ResumeSessionSummary();
         memoryPanel.SaveSelectedLessonRequested += async (_, lesson) => await callbacks.SaveSelectedMemoryLessonAsync(lesson);
         memoryPanel.DismissSelectedLessonRequested += (_, lesson) => callbacks.DismissSelectedMemoryLesson(lesson);
+        memoryPanel.RefreshSavedMemoryRequested += async (_, _) => await callbacks.RefreshSavedMemoryAsync();
+        memoryPanel.DisableSavedMemoryRequested += async (_, lesson) => await callbacks.DisableSavedMemoryAsync(lesson);
+        memoryPanel.DeleteSavedMemoryRequested += async (_, lesson) => await callbacks.DeleteSavedMemoryAsync(lesson);
 
         chatPanel.AttachFilesRequested += (_, _) => callbacks.AttachFiles();
         chatPanel.BrowseWorkspaceRequested += async (_, _) => await callbacks.BrowseWorkspaceAsync();
@@ -101,6 +104,9 @@ public sealed class DesktopPanelEventCallbacks
     public required Action ResumeSessionSummary { get; init; }
     public required Func<ProjectMemoryLesson?, Task> SaveSelectedMemoryLessonAsync { get; init; }
     public required Action<ProjectMemoryLesson?> DismissSelectedMemoryLesson { get; init; }
+    public required Func<Task> RefreshSavedMemoryAsync { get; init; }
+    public required Func<ProjectMemoryLesson?, Task> DisableSavedMemoryAsync { get; init; }
+    public required Func<ProjectMemoryLesson?, Task> DeleteSavedMemoryAsync { get; init; }
     public required Action AttachFiles { get; init; }
     public required Action ClearAttachments { get; init; }
     public required Func<Task> SendCurrentMessageAsync { get; init; }

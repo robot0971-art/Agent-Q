@@ -49,6 +49,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private GitChangedFile? _selectedGitChangedFile;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
+    private ProjectMemoryLesson? _selectedSavedMemoryLesson;
     private AgentRunState _currentRunState = AgentRunState.Idle;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -76,6 +77,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> Attachments { get; } = [];
 
     public ObservableCollection<ProjectMemoryLesson> PendingMemoryLessons { get; } = [];
+
+    public ObservableCollection<ProjectMemoryLesson> SavedMemoryLessons { get; } = [];
 
     public ObservableCollection<string> AvailableProviders { get; } = new(DesktopProviderModelCatalog.Providers);
 
@@ -266,6 +269,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         : "After a run, AgentQ may suggest rules worth remembering. Only approved items are saved to this project's local memory.";
     public string SaveLessonText => IsKoreanUi ? "\uD559\uC2B5 \uC800\uC7A5" : "Save lesson";
     public string DismissText => IsKoreanUi ? "\uBB34\uC2DC" : "Dismiss";
+    public string SavedMemoryText => IsKoreanUi ? "\uC800\uC7A5\uB41C \uBA54\uBAA8\uB9AC" : "Saved memory";
+    public string RefreshText => IsKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh";
+    public string DisableText => IsKoreanUi ? "\uBE44\uD65C\uC131" : "Disable";
+    public string DeleteText => IsKoreanUi ? "\uC0AD\uC81C" : "Delete";
     public string SessionSummaryText => IsKoreanUi ? "\uC138\uC158 \uC694\uC57D" : "Session summary";
     public AgentWorkMode WorkMode
     {
@@ -437,6 +444,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _selectedPendingMemoryLesson;
         set => SetField(ref _selectedPendingMemoryLesson, value);
+    }
+
+    public ProjectMemoryLesson? SelectedSavedMemoryLesson
+    {
+        get => _selectedSavedMemoryLesson;
+        set => SetField(ref _selectedSavedMemoryLesson, value);
     }
 
     public ProviderConfiguration ToConfiguration()
@@ -665,6 +678,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(LearningCandidatesHelpText),
             nameof(SaveLessonText),
             nameof(DismissText),
+            nameof(SavedMemoryText),
+            nameof(RefreshText),
+            nameof(DisableText),
+            nameof(DeleteText),
             nameof(SessionSummaryText)
         };
 

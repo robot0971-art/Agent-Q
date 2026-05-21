@@ -102,6 +102,9 @@ public partial class MainWindow : Window
             ResumeSessionSummary = () => ResumeSessionSummary_OnClick(this, new RoutedEventArgs()),
             SaveSelectedMemoryLessonAsync = SaveSelectedMemoryLessonAsync,
             DismissSelectedMemoryLesson = DismissSelectedMemoryLesson,
+            RefreshSavedMemoryAsync = RefreshSavedMemoryAsync,
+            DisableSavedMemoryAsync = DisableSavedMemoryAsync,
+            DeleteSavedMemoryAsync = DeleteSavedMemoryAsync,
             AttachFiles = () => _workspaceCommandService.SelectAttachments(this, _viewModel, _attachments),
             ClearAttachments = () => _workspaceCommandService.ClearAttachments(_viewModel, _attachments),
             SendCurrentMessageAsync = () => SendCurrentMessageAsync(),
@@ -136,6 +139,7 @@ public partial class MainWindow : Window
     {
         var result = await _startupCommandService.InitializeAsync(_viewModel, TrimForLog);
         SettingsPanelView.ApiKey = result.ApiKey;
+        await RefreshSavedMemoryAsync();
         ScheduleProviderModelRefresh(preserveCurrentModel: true);
     }
 
@@ -367,8 +371,60 @@ public partial class MainWindow : Window
 
         await _projectMemoryService.AddLocalLessonAsync(_viewModel.WorkspaceRoot, lesson, CancellationToken.None);
         DismissSelectedMemoryLesson(lesson);
+        await RefreshSavedMemoryAsync();
         _viewModel.StatusText = "Learning saved to local memory";
         _viewModel.AddLog($"Learning saved: {lesson.Title}");
+    }
+
+    private async Task RefreshSavedMemoryAsync()
+    {
+        var lessons = await _projectMemoryService.LoadLocalLessonsAsync(_viewModel.WorkspaceRoot, CancellationToken.None);
+        _viewModel.SavedMemoryLessons.Clear();
+        foreach (var lesson in lessons)
+        {
+            _viewModel.SavedMemoryLessons.Add(lesson);
+        }
+
+        _viewModel.SelectedSavedMemoryLesson = _viewModel.SavedMemoryLessons.FirstOrDefault();
+        _viewModel.StatusText = $"Loaded {lessons.Count} local memory lesson(s)";
+    }
+
+    private async Task DisableSavedMemoryAsync(ProjectMemoryLesson? lesson)
+    {
+        if (lesson == null || string.IsNullOrWhiteSpace(lesson.Id))
+        {
+            _viewModel.StatusText = "No saved memory selected";
+            return;
+        }
+
+        if (await _projectMemoryService.DisableLocalLessonAsync(_viewModel.WorkspaceRoot, lesson.Id, CancellationToken.None))
+        {
+            await RefreshSavedMemoryAsync();
+            _viewModel.StatusText = "Saved memory disabled";
+            _viewModel.AddLog($"Memory disabled: {lesson.Title}");
+            return;
+        }
+
+        _viewModel.StatusText = "Saved memory was not found";
+    }
+
+    private async Task DeleteSavedMemoryAsync(ProjectMemoryLesson? lesson)
+    {
+        if (lesson == null || string.IsNullOrWhiteSpace(lesson.Id))
+        {
+            _viewModel.StatusText = "No saved memory selected";
+            return;
+        }
+
+        if (await _projectMemoryService.DeleteLocalLessonAsync(_viewModel.WorkspaceRoot, lesson.Id, CancellationToken.None))
+        {
+            await RefreshSavedMemoryAsync();
+            _viewModel.StatusText = "Saved memory deleted";
+            _viewModel.AddLog($"Memory deleted: {lesson.Title}");
+            return;
+        }
+
+        _viewModel.StatusText = "Saved memory was not found";
     }
 
     private void DismissSelectedMemoryLesson(ProjectMemoryLesson? lesson)
