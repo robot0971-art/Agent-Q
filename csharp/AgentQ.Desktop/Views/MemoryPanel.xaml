@@ -35,12 +35,12 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding LearningCandidatesText}"
-                       Foreground="{StaticResource TextMuted}"
+                       Foreground="{DynamicResource TextMuted}"
                        FontSize="11"
                        Margin="0,0,0,4" />
             <TextBlock Grid.Row="1"
                        Text="{Binding LearningCandidatesHelpText}"
-                       Foreground="{StaticResource TextMuted}"
+                       Foreground="{DynamicResource TextMuted}"
                        FontSize="10"
                        TextWrapping="Wrap"
                        Margin="0,0,0,6" />
@@ -54,11 +54,11 @@
                     <DataTemplate>
                         <StackPanel Margin="0,0,0,6">
                             <TextBlock Text="{Binding Title}"
-                                       Foreground="{StaticResource TextMain}"
+                                       Foreground="{DynamicResource TextMain}"
                                        FontWeight="SemiBold"
                                        TextWrapping="Wrap" />
                             <TextBlock Text="{Binding Content}"
-                                       Foreground="{StaticResource TextMuted}"
+                                       Foreground="{DynamicResource TextMuted}"
                                        TextWrapping="Wrap"
                                        Margin="0,2,0,0" />
                         </StackPanel>
@@ -82,7 +82,7 @@
             </WrapPanel>
             <TextBlock Grid.Row="4"
                        Text="{Binding SessionSummaryText}"
-                       Foreground="{StaticResource TextMuted}"
+                       Foreground="{DynamicResource TextMuted}"
                        FontSize="11"
                        Margin="0,0,0,4" />
             <TextBox Grid.Row="5"
