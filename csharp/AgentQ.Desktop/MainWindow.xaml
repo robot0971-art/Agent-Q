@@ -326,7 +326,7 @@
             <RowDefinition Height="42" />
             <RowDefinition Height="28" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="34" />
+            <RowDefinition Height="40" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
@@ -496,7 +496,7 @@
             </Border>
         </Grid>
 
-        <Grid Grid.Row="3" Background="#0B1118">
+        <Grid Grid.Row="3" Background="#0E151E" MinHeight="40">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -504,11 +504,15 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
-                <Ellipse Width="9" Height="9" Fill="{StaticResource Success}" Margin="0,0,8,0" />
-                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" FontSize="12" />
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
+                <Ellipse Width="11" Height="11" Fill="{Binding StatusAccentBrush}" Margin="0,0,9,0" />
+                <TextBlock Text="{Binding StatusText}"
+                           Foreground="{Binding StatusAccentBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" />
             </StackPanel>
-            <TextBlock Grid.Column="1" Text="{Binding UsageText}" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12" />
+            <TextBlock Grid.Column="1" Text="{Binding UsageText}" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold" />
             <TextBlock Grid.Column="2" Text="{Binding Model, StringFormat=Model: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
             <TextBlock Grid.Column="3" Text="{Binding Provider, StringFormat=Provider: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
             <TextBlock Grid.Column="4" Text="v0.2.0" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />

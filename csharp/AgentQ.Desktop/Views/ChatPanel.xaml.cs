@@ -69,7 +69,14 @@ public partial class ChatPanel : System.Windows.Controls.UserControl
 
     private void CopyMessage_OnClick(object sender, RoutedEventArgs e)
     {
-        CopyMessageRequested?.Invoke(this, (sender as System.Windows.Controls.MenuItem)?.DataContext);
+        var message = sender switch
+        {
+            System.Windows.Controls.MenuItem menuItem => menuItem.DataContext,
+            System.Windows.Controls.Button button => button.Tag,
+            _ => null
+        };
+
+        CopyMessageRequested?.Invoke(this, message);
     }
 
     private void InputBox_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)

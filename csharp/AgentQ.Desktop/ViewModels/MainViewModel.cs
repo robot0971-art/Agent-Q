@@ -178,7 +178,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string StatusText
     {
         get => _statusText;
-        set => SetField(ref _statusText, value);
+        set
+        {
+            if (!SetField(ref _statusText, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusAccentBrush)));
+        }
+    }
+
+    public string StatusAccentBrush
+    {
+        get
+        {
+            if (StatusText.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("blocked", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("denied", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#F87171";
+            }
+
+            if (StatusText.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("needs", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#FBBF24";
+            }
+
+            if (StatusText.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("saved", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("built", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("succeeded", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("passed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#37D67A";
+            }
+
+            return "#B7C4D1";
+        }
     }
 
     public int TimeoutSeconds

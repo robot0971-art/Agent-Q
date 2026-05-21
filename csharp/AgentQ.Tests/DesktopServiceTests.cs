@@ -49,6 +49,27 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainViewModel_StatusAccentBrush_HighlightsErrorStatus()
+    {
+        var viewModel = new MainViewModel
+        {
+            StatusText = "Embedding index failed: model not found"
+        };
+
+        Assert.Equal("#F87171", viewModel.StatusAccentBrush);
+    }
+
+    [Fact]
+    public void ModelReasoningTagFilter_StripsThinkTagsFromProviderOutput()
+    {
+        var text = "찾아보겠습니다.</think>`EmbeddingIndexBuilder.cs` 확인<think>hidden</think>완료";
+
+        var filtered = ModelReasoningTagFilter.Strip(text);
+
+        Assert.Equal("찾아보겠습니다.`EmbeddingIndexBuilder.cs` 확인완료", filtered);
+    }
+
+    [Fact]
     public void DesktopProviderModelCatalog_ProvidesDefaultsForKnownAndUnknownProviders()
     {
         Assert.Contains("opencode-go", DesktopProviderModelCatalog.Providers);

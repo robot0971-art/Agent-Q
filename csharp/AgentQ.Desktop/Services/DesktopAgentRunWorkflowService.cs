@@ -169,6 +169,19 @@ public sealed class DesktopAgentRunWorkflowService(
                     operationCts.Token),
                 operationCts.Token);
             FlushAssistantDelta();
+            fullText = ModelReasoningTagFilter.Strip(fullText);
+
+            if (assistantIndex >= 0 &&
+                assistantIndex < viewModel.Messages.Count &&
+                !string.Equals(viewModel.Messages[assistantIndex].Content, fullText, StringComparison.Ordinal))
+            {
+                viewModel.Messages[assistantIndex] = new ChatMessageViewModel
+                {
+                    Role = "AgentQ",
+                    Content = string.IsNullOrWhiteSpace(fullText) ? viewModel.Messages[assistantIndex].Content : fullText,
+                    CreatedAt = assistantMessage.CreatedAt
+                };
+            }
 
             if (string.IsNullOrWhiteSpace(fullText) &&
                 assistantIndex >= 0 &&
@@ -330,12 +343,15 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         var currentContent = viewModel.Messages[assistantIndex].Content;
+        var nextContent = currentContent == ThinkingPlaceholder
+            ? delta
+            : currentContent + delta;
+        nextContent = ModelReasoningTagFilter.Strip(nextContent);
+
         viewModel.Messages[assistantIndex] = new ChatMessageViewModel
         {
             Role = assistantMessage.Role,
-            Content = currentContent == ThinkingPlaceholder
-                ? delta
-                : currentContent + delta,
+            Content = nextContent,
             CreatedAt = assistantMessage.CreatedAt
         };
     }
