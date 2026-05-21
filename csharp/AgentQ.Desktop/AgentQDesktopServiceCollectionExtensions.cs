@@ -19,6 +19,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopLearningSuggestionService>();
         services.AddSingleton<WorkspaceIndexer>();
         services.AddSingleton<EmbeddingIndexStore>();
+        services.AddSingleton<EmbeddingIndexBuilder>();
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopAgentService>();

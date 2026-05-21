@@ -210,6 +210,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task EmbeddingIndexBuilder_BuildsTextChunksAndSkipsIgnoredDirectories()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "bin"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "AuthService.cs"),
+            string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"public void Login{i}() {{ }}")));
+        await File.WriteAllTextAsync(Path.Combine(root, "bin", "Generated.cs"), "should be ignored");
+
+        var store = new EmbeddingIndexStore();
+        var builder = new EmbeddingIndexBuilder(store);
+        var result = await builder.BuildTextChunkIndexAsync(root, ct: CancellationToken.None);
+        var loadedChunks = await store.LoadChunksAsync(root, CancellationToken.None);
+
+        Assert.True(File.Exists(result.Paths.ChunksPath));
+        Assert.True(result.Manifest.ChunkCount > 0);
+        Assert.Equal(result.Manifest.ChunkCount, loadedChunks.Count);
+        Assert.Contains(loadedChunks, chunk => chunk.RelativePath == "src/AuthService.cs");
+        Assert.DoesNotContain(loadedChunks, chunk => chunk.RelativePath.Contains("bin", StringComparison.OrdinalIgnoreCase));
+        Assert.All(loadedChunks, chunk => Assert.NotEmpty(chunk.FileHash));
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();
