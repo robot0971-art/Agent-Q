@@ -466,12 +466,36 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 Current local validation passed in this environment:
 
-- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `154` tests passed
+- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `159` tests passed
 - GitHub Release workflow for `v0.1.0-beta.4`: succeeded
 - `AgentQ-Setup-v0.1.0-beta.4.exe`: built and uploaded to the draft prerelease
 - `AgentQ.Desktop-win-x64-v0.1.0-beta.4.zip`: built and uploaded to the draft prerelease
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
+
+## Roadmap
+
+Near-term priorities:
+
+- publish `v0.1.0-beta.6` with memory candidates, error-history reuse, settings simplification, and desktop UX polish
+- expand the Project Map into a multi-language workspace understanding layer
+- introduce a Language Worker Architecture so AgentQ Desktop/Core can remain C# while language-specific analysis uses the best tools from each ecosystem
+- add Symbol Index and dependency graph support for code structure understanding
+- improve RAG reranking with project map signals, memory, symbols, Git recency, and embeddings
+- improve confidence UI, planning workflow, Git integration, and release trust
+
+### 로드맵
+
+가까운 우선순위:
+
+- 메모리 후보, error-history 재활용, 설정 단순화, 데스크톱 UX 개선을 포함한 `v0.1.0-beta.6` 배포
+- Project Map을 다국어 프로젝트 이해 계층으로 확장
+- AgentQ Desktop/Core는 C#으로 유지하고, 언어별 분석은 각 생태계의 도구를 쓰는 Language Worker Architecture 도입
+- 코드 구조 이해를 위한 Symbol Index와 dependency graph 추가
+- project map, memory, symbol, Git 최신성, embedding을 함께 쓰는 RAG reranking 개선
+- confidence UI, planning workflow, Git 연동, 릴리즈 신뢰도 개선
+
+See [docs/language-worker-architecture.md](docs/language-worker-architecture.md) for the planned C# core plus language worker design.
 
 ## Current Priority
 
