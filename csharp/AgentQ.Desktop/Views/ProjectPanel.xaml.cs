@@ -15,6 +15,8 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
 
     public event EventHandler? RefreshWorkspaceAnalysisRequested;
 
+    public event EventHandler? BuildEmbeddingIndexRequested;
+
     public event EventHandler? SaveProjectConfigRequested;
 
     public event EventHandler? LoadProjectConfigRequested;
@@ -32,6 +34,11 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
     private void RefreshWorkspaceAnalysis_OnClick(object sender, RoutedEventArgs e)
     {
         RefreshWorkspaceAnalysisRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void BuildEmbeddingIndex_OnClick(object sender, RoutedEventArgs e)
+    {
+        BuildEmbeddingIndexRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void SaveProjectConfig_OnClick(object sender, RoutedEventArgs e)

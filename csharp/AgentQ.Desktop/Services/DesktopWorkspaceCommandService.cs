@@ -8,6 +8,8 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopWorkspaceCommandService(
     DesktopConfigService configService,
     DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
+    EmbeddingIndexBuilder embeddingIndexBuilder,
+    DesktopEmbeddingClientFactory embeddingClientFactory,
     DesktopAttachmentSelectionService attachmentSelectionService,
     DesktopClipboardService clipboardService)
 {
@@ -54,6 +56,50 @@ public sealed class DesktopWorkspaceCommandService(
     public async Task RefreshWorkspaceAnalysisAsync(MainViewModel viewModel, Func<string, string> trimForLog)
     {
         await workspaceContextWorkflowService.RefreshWorkspaceAnalysisAsync(viewModel, trimForLog);
+    }
+
+    public async Task BuildEmbeddingIndexAsync(MainViewModel viewModel, Func<string, string> trimForLog)
+    {
+        var config = viewModel.ToConfiguration();
+        if (!DesktopEmbeddingClientFactory.SupportsProvider(config.Provider))
+        {
+            viewModel.StatusText = $"Embedding provider not supported: {config.Provider}";
+            viewModel.AddLog($"Embedding index skipped: unsupported provider {config.Provider}");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        {
+            viewModel.StatusText = "Embedding index needs an API key.";
+            viewModel.AddLog("Embedding index skipped: missing API key.");
+            return;
+        }
+
+        try
+        {
+            viewModel.IsBusy = true;
+            viewModel.StatusText = "Building embedding index...";
+            viewModel.AddLog("Embedding index build started");
+            var client = embeddingClientFactory.Create(config);
+            var result = await embeddingIndexBuilder.BuildVectorIndexAsync(
+                viewModel.WorkspaceRoot,
+                client,
+                provider: config.Provider,
+                model: DesktopEmbeddingClientFactory.ResolveEmbeddingModel(config.Provider),
+                maximumEmbeddedChunks: 200);
+
+            viewModel.StatusText = $"Embedding index built: {result.Manifest.ChunkCount} chunks";
+            viewModel.AddLog($"Embedding index built: {result.Manifest.FileCount} files, {result.Manifest.ChunkCount} chunks -> {result.Paths.ChunksPath}");
+        }
+        catch (Exception ex)
+        {
+            viewModel.StatusText = $"Embedding index failed: {ex.Message}";
+            viewModel.AddLog($"Embedding index failed: {trimForLog(ex.Message)}");
+        }
+        finally
+        {
+            viewModel.IsBusy = false;
+        }
     }
 
     public async Task SaveProjectConfigAsync(MainViewModel viewModel, Func<string, string> trimForLog)

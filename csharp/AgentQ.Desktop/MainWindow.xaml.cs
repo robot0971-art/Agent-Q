@@ -84,6 +84,7 @@ public partial class MainWindow : Window
             BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
+            BuildEmbeddingIndexAsync = () => _workspaceCommandService.BuildEmbeddingIndexAsync(_viewModel, TrimForLog),
             SaveProjectConfigAsync = () => _workspaceCommandService.SaveProjectConfigAsync(_viewModel, TrimForLog),
             LoadProjectConfigAsync = () => _workspaceCommandService.LoadProjectConfigAsync(_viewModel),
             RunVerificationPlanAsync = plan => _verificationCommandService.RunVerificationPlanAsync(_viewModel, plan),

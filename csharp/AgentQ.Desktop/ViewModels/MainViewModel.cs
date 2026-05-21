@@ -244,6 +244,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ProjectFolderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354" : "Project folder";
     public string BrowseFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC120\uD0DD" : "Browse";
     public string OpenFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC5F4\uAE30" : "Open";
+    public string BuildEmbeddingIndexText => IsKoreanUi ? "\uC784\uBCA0\uB529 \uC778\uB371\uC2A4 \uC0DD\uC131" : "Build embedding index";
     public string ChatHeaderText => IsKoreanUi ? "\uC0C8 \uB300\uD654" : "New chat";
     public string AttachFilesText => IsKoreanUi ? "\uCCA8\uBD80" : "Attach";
     public string CodeBlockText => IsKoreanUi ? "\uCF54\uB4DC \uBE14\uB85D" : "Code block";
@@ -671,6 +672,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(ProjectFolderText),
             nameof(BrowseFolderText),
             nameof(OpenFolderText),
+            nameof(BuildEmbeddingIndexText),
             nameof(ChatHeaderText),
             nameof(AttachFilesText),
             nameof(CodeBlockText),
