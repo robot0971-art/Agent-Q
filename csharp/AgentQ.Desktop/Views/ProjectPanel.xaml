@@ -21,11 +21,17 @@
                 <Button Grid.Column="2" Content="{Binding OpenFolderText}" Click="OpenWorkspace_OnClick" />
             </Grid>
             <Button Content="Analyze"
-                    Height="26"
-                    Margin="0,8,0,8"
+                    Height="34"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Padding="10,0"
+                    Margin="0,10,0,8"
                     Click="RefreshWorkspaceAnalysis_OnClick" />
             <Button Content="{Binding BuildEmbeddingIndexText}"
-                    Height="26"
+                    Height="34"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Padding="10,0"
                     Margin="0,0,0,8"
                     Click="BuildEmbeddingIndex_OnClick" />
             <Border Background="#0E151E"
