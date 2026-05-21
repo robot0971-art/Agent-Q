@@ -58,14 +58,14 @@ public static class DesktopEvidenceFormatter
     private static string DescribeSymbolReason(string path, string workspaceRoot)
     {
         if (string.IsNullOrWhiteSpace(workspaceRoot) ||
-            !path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            !IsSupportedSymbolPath(path))
         {
             return string.Empty;
         }
 
         var symbols = new WorkspaceSymbolIndexService()
             .BuildForFile(workspaceRoot, path)
-            .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct" or "method")
+            .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct" or "method" or "function")
             .Take(3)
             .Select(symbol => string.IsNullOrWhiteSpace(symbol.Container)
                 ? $"{symbol.Kind} {symbol.Name}"
@@ -75,6 +75,17 @@ public static class DesktopEvidenceFormatter
         return symbols.Count == 0
             ? string.Empty
             : $" Contains symbols: {string.Join(", ", symbols)}.";
+    }
+
+    private static bool IsSupportedSymbolPath(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".py", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".jsx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DescribeCommandReason(string command)

@@ -261,6 +261,48 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_BuildsPythonAndTypeScriptSymbolIndex()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "backend"));
+        Directory.CreateDirectory(Path.Combine(root, "frontend"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "service.py"),
+            """
+            class StockService:
+                async def refresh_prices(self):
+                    return True
+
+            def create_app():
+                return object()
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "App.tsx"),
+            """
+            export class DashboardView {
+                render() {
+                    return null;
+                }
+            }
+
+            export const useStocks = () => [];
+            export function formatPrice(value: number) {
+                return value.toString();
+            }
+            """);
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.True(analysis.SymbolCount >= 6);
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("class StockService", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("function StockService.refresh_prices", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("function create_app", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("class DashboardView", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("function useStocks", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("function formatPrice", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
@@ -305,6 +347,28 @@ public sealed class DesktopServiceTests
         Assert.Contains("Contains symbols", evidence);
         Assert.Contains("class AuthService", evidence);
         Assert.Contains("method AuthService.Login", evidence);
+    }
+
+    [Fact]
+    public async Task DesktopEvidenceFormatter_ExplainsPythonSymbolsInReadFile()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "worker.py"),
+            """
+            class JobRunner:
+                def run(self):
+                    return True
+            """);
+
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = "worker.py" },
+            root);
+
+        Assert.Contains("Contains symbols", evidence);
+        Assert.Contains("class JobRunner", evidence);
+        Assert.Contains("function JobRunner.run", evidence);
     }
 
     [Fact]

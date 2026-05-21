@@ -639,7 +639,7 @@ public sealed class WorkspaceAnalysisService
 
         foreach (var symbol in symbolIndex.Symbols
                      .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct")
-                     .Concat(symbolIndex.Symbols.Where(symbol => symbol.Kind == "method"))
+                     .Concat(symbolIndex.Symbols.Where(symbol => symbol.Kind is "method" or "function"))
                      .Take(8))
         {
             analysis.KeySymbols.Add(symbol.DisplayName);

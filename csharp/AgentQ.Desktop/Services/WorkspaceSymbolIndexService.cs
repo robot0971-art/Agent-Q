@@ -31,7 +31,7 @@ public sealed partial class WorkspaceSymbolIndexService
             return index;
         }
 
-        foreach (var file in SafeEnumerateFiles(workspaceRoot, "*.cs").Take(MaximumFiles))
+        foreach (var file in SafeEnumerateCodeFiles(workspaceRoot).Take(MaximumFiles))
         {
             if (!TryGetFileInfo(file, out var length) || length > MaximumFileBytes)
             {
@@ -39,7 +39,7 @@ public sealed partial class WorkspaceSymbolIndexService
             }
 
             index.FilesIndexed++;
-            AddCSharpSymbols(workspaceRoot, file, index.Symbols);
+            AddSymbolsForFile(workspaceRoot, file, index.Symbols);
         }
 
         return index;
@@ -57,7 +57,7 @@ public sealed partial class WorkspaceSymbolIndexService
             : Path.Combine(workspaceRoot, path);
 
         if (!File.Exists(fullPath) ||
-            !fullPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+            !IsSupportedCodeFile(fullPath) ||
             !IsInsideWorkspace(workspaceRoot, fullPath) ||
             !TryGetFileInfo(fullPath, out var length) ||
             length > MaximumFileBytes)
@@ -66,8 +66,32 @@ public sealed partial class WorkspaceSymbolIndexService
         }
 
         var symbols = new List<CodeSymbol>();
-        AddCSharpSymbols(Path.GetFullPath(workspaceRoot), Path.GetFullPath(fullPath), symbols);
+        AddSymbolsForFile(Path.GetFullPath(workspaceRoot), Path.GetFullPath(fullPath), symbols);
         return symbols;
+    }
+
+    private static void AddSymbolsForFile(string workspaceRoot, string file, List<CodeSymbol> symbols)
+    {
+        var extension = Path.GetExtension(file);
+        if (extension.Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            AddCSharpSymbols(workspaceRoot, file, symbols);
+            return;
+        }
+
+        if (extension.Equals(".py", StringComparison.OrdinalIgnoreCase))
+        {
+            AddPythonSymbols(workspaceRoot, file, symbols);
+            return;
+        }
+
+        if (extension.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".jsx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase))
+        {
+            AddJavaScriptSymbols(workspaceRoot, file, symbols);
+        }
     }
 
     private static void AddCSharpSymbols(string workspaceRoot, string file, List<CodeSymbol> symbols)
@@ -133,6 +157,140 @@ public sealed partial class WorkspaceSymbolIndexService
     private static bool IsIgnoredMethodLikeToken(string value) =>
         value is "if" or "for" or "foreach" or "while" or "switch" or "catch" or "using" or "lock";
 
+    private static void AddPythonSymbols(string workspaceRoot, string file, List<CodeSymbol> symbols)
+    {
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines(file);
+        }
+        catch
+        {
+            return;
+        }
+
+        var relativePath = Path.GetRelativePath(workspaceRoot, file);
+        string? currentClass = null;
+        var currentClassIndent = -1;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var rawLine = lines[i];
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var indent = rawLine.Length - rawLine.TrimStart().Length;
+            if (currentClassIndent >= 0 && indent <= currentClassIndent)
+            {
+                currentClass = null;
+                currentClassIndent = -1;
+            }
+
+            var classMatch = PythonClassRegex().Match(line);
+            if (classMatch.Success)
+            {
+                currentClass = classMatch.Groups["name"].Value;
+                currentClassIndent = indent;
+                symbols.Add(new CodeSymbol
+                {
+                    Name = currentClass,
+                    Kind = "class",
+                    Language = "Python",
+                    RelativePath = relativePath,
+                    Line = i + 1
+                });
+                continue;
+            }
+
+            var functionMatch = PythonFunctionRegex().Match(line);
+            if (functionMatch.Success)
+            {
+                symbols.Add(new CodeSymbol
+                {
+                    Name = functionMatch.Groups["name"].Value,
+                    Kind = "function",
+                    Language = "Python",
+                    RelativePath = relativePath,
+                    Line = i + 1,
+                    Container = currentClass
+                });
+            }
+        }
+    }
+
+    private static void AddJavaScriptSymbols(string workspaceRoot, string file, List<CodeSymbol> symbols)
+    {
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines(file);
+        }
+        catch
+        {
+            return;
+        }
+
+        var relativePath = Path.GetRelativePath(workspaceRoot, file);
+        var language = Path.GetExtension(file).Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+                       Path.GetExtension(file).Equals(".jsx", StringComparison.OrdinalIgnoreCase)
+            ? "JavaScript"
+            : "TypeScript";
+        string? currentClass = null;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var classMatch = JavaScriptClassRegex().Match(line);
+            if (classMatch.Success)
+            {
+                currentClass = classMatch.Groups["name"].Value;
+                symbols.Add(new CodeSymbol
+                {
+                    Name = currentClass,
+                    Kind = "class",
+                    Language = language,
+                    RelativePath = relativePath,
+                    Line = i + 1
+                });
+                continue;
+            }
+
+            var functionMatch = JavaScriptFunctionRegex().Match(line);
+            if (!functionMatch.Success)
+            {
+                functionMatch = JavaScriptArrowFunctionRegex().Match(line);
+            }
+
+            if (functionMatch.Success)
+            {
+                symbols.Add(new CodeSymbol
+                {
+                    Name = functionMatch.Groups["name"].Value,
+                    Kind = "function",
+                    Language = language,
+                    RelativePath = relativePath,
+                    Line = i + 1,
+                    Container = IsLikelyClassMethod(line) ? currentClass : null
+                });
+            }
+        }
+    }
+
+    private static bool IsLikelyClassMethod(string line) =>
+        !line.Contains("function", StringComparison.Ordinal) &&
+        !line.Contains("=>", StringComparison.Ordinal) &&
+        !line.StartsWith("export ", StringComparison.Ordinal) &&
+        !line.StartsWith("const ", StringComparison.Ordinal) &&
+        !line.StartsWith("let ", StringComparison.Ordinal);
+
     private static bool TryGetFileInfo(string file, out long length)
     {
         try
@@ -161,7 +319,7 @@ public sealed partial class WorkspaceSymbolIndexService
         }
     }
 
-    private static IEnumerable<string> SafeEnumerateFiles(string root, string pattern)
+    private static IEnumerable<string> SafeEnumerateCodeFiles(string root)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -173,7 +331,7 @@ public sealed partial class WorkspaceSymbolIndexService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(current, pattern);
+                files = Directory.EnumerateFiles(current).Where(IsSupportedCodeFile);
             }
             catch
             {
@@ -205,9 +363,35 @@ public sealed partial class WorkspaceSymbolIndexService
         }
     }
 
+    private static bool IsSupportedCodeFile(string file)
+    {
+        var extension = Path.GetExtension(file);
+        return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".py", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".jsx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase);
+    }
+
     [GeneratedRegex("""\b(?<kind>class|record|struct|interface|enum)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)""")]
     private static partial Regex CSharpTypeRegex();
 
     [GeneratedRegex("""\b(?:public|private|protected|internal|static|virtual|override|sealed|async|partial|extern|\s)+\s*(?:[\w<>\[\],\?\.]+\s+)+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(""")]
     private static partial Regex CSharpMethodRegex();
+
+    [GeneratedRegex("""^class\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)""")]
+    private static partial Regex PythonClassRegex();
+
+    [GeneratedRegex("""^(?:async\s+)?def\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(""")]
+    private static partial Regex PythonFunctionRegex();
+
+    [GeneratedRegex("""^(?:export\s+default\s+|export\s+)?class\s+(?<name>[A-Za-z_$][A-Za-z0-9_$]*)""")]
+    private static partial Regex JavaScriptClassRegex();
+
+    [GeneratedRegex("""^(?:export\s+)?(?:async\s+)?function\s+(?<name>[A-Za-z_$][A-Za-z0-9_$]*)\s*\(|^(?:public\s+|private\s+|protected\s+|async\s+|static\s+)*(?<name>[A-Za-z_$][A-Za-z0-9_$]*)\s*\(""")]
+    private static partial Regex JavaScriptFunctionRegex();
+
+    [GeneratedRegex("""^(?:export\s+)?(?:const|let|var)\s+(?<name>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>""")]
+    private static partial Regex JavaScriptArrowFunctionRegex();
 }
