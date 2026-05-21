@@ -87,6 +87,7 @@ public sealed class DesktopAgentService
         var includeTransientContext = !string.IsNullOrWhiteSpace(transientContext);
         var fileChanges = new List<FileChangeRecord>();
         var executedCommands = new List<string>();
+        var executedToolCount = 0;
 
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
 
@@ -114,11 +115,20 @@ public sealed class DesktopAgentService
 
             if (response.ToolUses.Count == 0)
             {
-                ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                ReportConfidence(
+                    builder.ToString(),
+                    executedToolCount,
+                    fileChanges,
+                    executedCommands,
+                    verificationPlans,
+                    touchedLessons.Count,
+                    toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished without more tool calls.");
                 return builder.ToString();
             }
 
+            executedToolCount += response.ToolUses.Count;
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.RunningTool, $"Executing {response.ToolUses.Count} tool call(s)", null);
             var toolResults = await ExecuteToolsAsync(
                 response.ToolUses,
@@ -144,7 +154,15 @@ public sealed class DesktopAgentService
         builder.AppendLine(stoppedMessage);
         onDelta?.Invoke(Environment.NewLine + stoppedMessage);
         _messages.Add(ChatMessage.AssistantText(stoppedMessage));
-        ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+        var stoppedVerificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+        ReportConfidence(
+            builder.ToString(),
+            executedToolCount,
+            fileChanges,
+            executedCommands,
+            stoppedVerificationPlans,
+            touchedLessons.Count,
+            toolCallbacks);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool step limit reached", stoppedMessage);
         return builder.ToString();
     }
@@ -518,13 +536,14 @@ public sealed class DesktopAgentService
         return results;
     }
 
-    private static void ReportVerificationPlans(
+    private static IReadOnlyList<AgentVerificationPlan> ReportVerificationPlans(
         IReadOnlyList<FileChangeRecord> fileChanges,
         IReadOnlyList<string> executedCommands,
         ProjectMemory projectMemory,
         DesktopToolCallbacks? callbacks)
     {
-        foreach (var plan in DesktopVerificationSelector.SelectPlans(fileChanges, executedCommands, projectMemory))
+        var plans = DesktopVerificationSelector.SelectPlans(fileChanges, executedCommands, projectMemory);
+        foreach (var plan in plans)
         {
             callbacks?.OnVerificationPlan?.Invoke(plan);
             callbacks?.OnRunStep?.Invoke(
@@ -532,6 +551,31 @@ public sealed class DesktopAgentService
                 plan.Title,
                 plan.AlreadySatisfied ? plan.Reason : plan.Detail);
         }
+
+        return plans;
+    }
+
+    private static void ReportConfidence(
+        string responseText,
+        int toolCallCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        IReadOnlyList<string> executedCommands,
+        IReadOnlyList<AgentVerificationPlan> verificationPlans,
+        int touchedMemoryCount,
+        DesktopToolCallbacks? callbacks)
+    {
+        var confidence = DesktopConfidenceAssessor.Assess(
+            responseText,
+            toolCallCount,
+            fileChanges,
+            executedCommands,
+            verificationPlans,
+            touchedMemoryCount);
+
+        callbacks?.OnRunStep?.Invoke(
+            confidence.Score >= 55 ? AgentRunState.Done : AgentRunState.Failed,
+            $"Confidence: {confidence.Level}",
+            confidence.DisplayText);
     }
 
     private static void TrackExecutedCommand(

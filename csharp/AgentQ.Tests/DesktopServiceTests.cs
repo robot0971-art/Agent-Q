@@ -98,6 +98,67 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopConfidenceAssessor_RatesVerifiedToolBackedRunHigh()
+    {
+        var assessment = DesktopConfidenceAssessor.Assess(
+            "Done",
+            toolCallCount: 3,
+            fileChanges:
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\csharp\\AgentQ.Desktop\\Services\\Test.cs",
+                    RelativePath = "csharp/AgentQ.Desktop/Services/Test.cs",
+                    DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "changed" }]
+                }
+            ],
+            executedCommands: ["dotnet test .\\csharp\\AgentQ.sln -c Release"],
+            verificationPlans:
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Verification already ran",
+                    AlreadySatisfied = true
+                }
+            ],
+            touchedMemoryCount: 1);
+
+        Assert.Equal("High", assessment.Level);
+        Assert.Contains(assessment.Signals, signal => signal.Contains("verification", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(assessment.Warnings);
+    }
+
+    [Fact]
+    public void DesktopConfidenceAssessor_WarnsWhenChangesAreUnverified()
+    {
+        var assessment = DesktopConfidenceAssessor.Assess(
+            "Changed the file",
+            toolCallCount: 1,
+            fileChanges:
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\csharp\\AgentQ.Desktop\\Services\\Test.cs",
+                    RelativePath = "csharp/AgentQ.Desktop/Services/Test.cs",
+                    DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "changed" }]
+                }
+            ],
+            executedCommands: [],
+            verificationPlans:
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Suggested verification",
+                    Command = "dotnet build csharp\\AgentQ.Desktop\\AgentQ.Desktop.csproj"
+                }
+            ],
+            touchedMemoryCount: 0);
+
+        Assert.Equal("Low", assessment.Level);
+        Assert.Contains(assessment.Warnings, warning => warning.Contains("without a completed build/test", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();
