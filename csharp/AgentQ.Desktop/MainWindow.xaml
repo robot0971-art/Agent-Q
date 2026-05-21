@@ -461,7 +461,7 @@
                         <TabItem Header="Git">
                             <views:GitPanel x:Name="GitPanelView" />
                         </TabItem>
-                        <TabItem Header="Run">
+                        <TabItem Header="{Binding EvidenceTrailText}">
                             <views:RunTimelinePanel />
                         </TabItem>
                         <TabItem Header="{Binding RunLogText}">

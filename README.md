@@ -136,7 +136,7 @@ Example:
 
 ## Evidence Trail
 
-The desktop run timeline records evidence-oriented events instead of exposing hidden model reasoning. It can show when project memory was used, which files or patterns were searched, which commands ran, which files changed, and which verification plans were proposed.
+The desktop Evidence tab records evidence-oriented events instead of exposing hidden model reasoning. It can show when project memory was used, which files or patterns were searched, which commands ran, which files changed, and which verification plans were proposed.
 
 Install it as a .NET global tool:
 

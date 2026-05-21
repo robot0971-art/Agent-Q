@@ -260,6 +260,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string RunLogText => IsKoreanUi ? "\uC791\uC5C5 \uB85C\uADF8" : "Run log";
     public string ChangePreviewText => IsKoreanUi ? "\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30" : "Change preview";
     public string AllText => IsKoreanUi ? "\uC804\uCCB4" : "ALL";
+    public string EvidenceTrailText => IsKoreanUi ? "\uADFC\uAC70 \uD750\uB984" : "Evidence";
+    public string EvidenceTrailHelpText => IsKoreanUi
+        ? "\uC228\uC740 \uC0AC\uACE0 \uACFC\uC815\uC774 \uC544\uB2CC, \uC0AC\uC6A9\uD55C \uBA54\uBAA8\uB9AC, \uD30C\uC77C, \uAC80\uC0C9, \uBA85\uB839, \uAC80\uC99D \uD750\uB984\uC744 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4."
+        : "Shows used memory, files, searches, commands, changes, and verification flow instead of hidden model reasoning.";
     public string SaveSummaryText => IsKoreanUi ? "\uC694\uC57D \uC800\uC7A5" : "Save summary";
     public string LoadText => IsKoreanUi ? "\uBD88\uB7EC\uC624\uAE30" : "Load";
     public string ResumeText => IsKoreanUi ? "\uC774\uC5B4\uC11C" : "Resume";
@@ -671,6 +675,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(RunLogText),
             nameof(ChangePreviewText),
             nameof(AllText),
+            nameof(EvidenceTrailText),
+            nameof(EvidenceTrailHelpText),
             nameof(SaveSummaryText),
             nameof(LoadText),
             nameof(ResumeText),
