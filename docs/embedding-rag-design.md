@@ -195,6 +195,8 @@ Recommended provider rollout:
 
 Chat model selection and embedding model selection should stay separate. Mixing chat models and embedding models in the same dropdown would make provider selection confusing.
 
+The first implementation uses the OpenAI-compatible `/embeddings` endpoint and reuses the selected OpenAI API key when available.
+
 ## Future Improvements
 
 - AST-based symbol indexing

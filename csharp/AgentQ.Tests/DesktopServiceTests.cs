@@ -2,6 +2,7 @@ using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Providers;
 using System.Net;
+using System.Text.Json;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -231,6 +232,41 @@ public sealed class DesktopServiceTests
         Assert.Contains(loadedChunks, chunk => chunk.RelativePath == "src/AuthService.cs");
         Assert.DoesNotContain(loadedChunks, chunk => chunk.RelativePath.Contains("bin", StringComparison.OrdinalIgnoreCase));
         Assert.All(loadedChunks, chunk => Assert.NotEmpty(chunk.FileHash));
+    }
+
+    [Fact]
+    public async Task OpenAiEmbeddingClient_SendsEmbeddingRequestAndReturnsVectors()
+    {
+        using var factory = new StubHttpClientFactory(
+            """
+            {
+              "data": [
+                { "index": 1, "embedding": [0.3, 0.4] },
+                { "index": 0, "embedding": [0.1, 0.2] }
+              ]
+            }
+            """);
+        using var client = factory.CreateClient("openai");
+        client.BaseAddress = new Uri("https://api.openai.test/v1/");
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "test-key");
+        var embeddingClient = new OpenAiEmbeddingClient(client);
+
+        var vectors = await embeddingClient.CreateEmbeddingsAsync(
+            ["first chunk", "second chunk"],
+            "text-embedding-3-small",
+            CancellationToken.None);
+
+        Assert.Equal("/v1/embeddings", factory.LastRequest?.RequestUri?.AbsolutePath);
+        Assert.Equal("Bearer", factory.LastRequest?.Headers.Authorization?.Scheme);
+        Assert.Equal("test-key", factory.LastRequest?.Headers.Authorization?.Parameter);
+        Assert.Equal(2, vectors.Count);
+        Assert.Equal([0.1f, 0.2f], vectors[0]);
+        Assert.Equal([0.3f, 0.4f], vectors[1]);
+
+        var body = factory.LastRequestBody;
+        using var document = JsonDocument.Parse(body);
+        Assert.Equal("text-embedding-3-small", document.RootElement.GetProperty("model").GetString());
+        Assert.Equal(2, document.RootElement.GetProperty("input").GetArrayLength());
     }
 
     [Fact]
@@ -1065,6 +1101,8 @@ public sealed class DesktopServiceTests
 
         public HttpRequestMessage? LastRequest => _handler.LastRequest;
 
+        public string LastRequestBody => _handler.LastRequestBody;
+
         public HttpClient CreateClient(string name)
         {
             return new HttpClient(_handler, disposeHandler: false);
@@ -1080,9 +1118,12 @@ public sealed class DesktopServiceTests
     {
         public HttpRequestMessage? LastRequest { get; private set; }
 
+        public string LastRequestBody { get; private set; } = string.Empty;
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             LastRequest = request;
+            LastRequestBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty;
             return Task.FromResult(new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(content)
