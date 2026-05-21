@@ -208,9 +208,11 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
     {
         var selectedPath = viewModel.SelectedGitChangedFile?.Path;
         var branchSummary = GitBranchStatusAnalyzer.Analyze(snapshot.Status.DisplayOutput);
-        viewModel.GitStatusText = string.IsNullOrWhiteSpace(branchSummary)
-            ? snapshot.Status.DisplayOutput
-            : $"{snapshot.Status.DisplayOutput}{Environment.NewLine}{Environment.NewLine}{branchSummary}";
+        var recoveryAdvice = GitBranchRecoveryAnalyzer.BuildRecoveryAdvice(snapshot.Status.DisplayOutput, snapshot.ChangedFiles);
+        viewModel.GitStatusText = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            new[] { snapshot.Status.DisplayOutput, branchSummary, recoveryAdvice }
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
         viewModel.GitDiffText = snapshot.DiffStat.DisplayOutput;
         ApplyChangedFiles(viewModel, snapshot.ChangedFiles, selectedPath);
         viewModel.GitLastUpdatedText = CurrentTimestamp();

@@ -1508,7 +1508,38 @@ public sealed class DesktopServiceTests
     {
         var branchName = GitBranchRecoveryAnalyzer.CreateBackupBranchName(new DateTime(2026, 5, 20, 10, 30, 45));
 
-        Assert.Equal("backup/desktop-recovery-20260520-103045", branchName);
+        Assert.Equal("backup/20260520-103045", branchName);
+    }
+
+    [Theory]
+    [InlineData("## main...origin/main [behind 2]", "Pull --ff-only")]
+    [InlineData("## feature...origin/feature [ahead 1]", "Local commits exist")]
+    [InlineData("## feature...origin/feature [ahead 1, behind 2]", "Branch diverged")]
+    [InlineData("## feature...origin/feature [gone]", "Upstream is gone")]
+    [InlineData("## local-only", "No upstream")]
+    [InlineData("## HEAD (no branch)", "Detached HEAD")]
+    public void GitBranchRecoveryAnalyzer_BuildsRecoveryAdvice(string statusOutput, string expected)
+    {
+        var advice = GitBranchRecoveryAnalyzer.BuildRecoveryAdvice(statusOutput, []);
+
+        Assert.Contains(expected, advice, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GitBranchRecoveryAnalyzer_PrioritizesLocalChangesInRecoveryAdvice()
+    {
+        var advice = GitBranchRecoveryAnalyzer.BuildRecoveryAdvice(
+            "## main...origin/main [behind 2]",
+            [
+                new GitChangedFile
+                {
+                    Status = " M",
+                    Path = "README.md"
+                }
+            ]);
+
+        Assert.Contains("1 local change", advice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Commit or stash", advice, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
