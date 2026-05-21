@@ -78,6 +78,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> WorkspaceProjectMap { get; } = [];
 
+    public ObservableCollection<string> WorkspaceKeySymbols { get; } = [];
+
     public ObservableCollection<string> WorkspaceKeyFiles { get; } = [];
 
     public ObservableCollection<string> WorkspaceHints { get; } = [];
@@ -685,6 +687,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var entry in analysis.ProjectMap)
         {
             WorkspaceProjectMap.Add(entry);
+        }
+
+        WorkspaceKeySymbols.Clear();
+        foreach (var symbol in analysis.KeySymbols)
+        {
+            WorkspaceKeySymbols.Add(symbol);
         }
 
         WorkspaceKeyFiles.Clear();

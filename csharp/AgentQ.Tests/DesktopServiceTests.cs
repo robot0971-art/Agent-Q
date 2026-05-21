@@ -224,6 +224,43 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_BuildsCSharpSymbolIndex()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "bin"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "AuthService.cs"),
+            """
+            namespace Demo;
+
+            public sealed class AuthService
+            {
+                public Task<bool> LoginAsync(string email) => Task.FromResult(true);
+            }
+
+            public record LoginRequest(string Email);
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "bin", "Noise.cs"),
+            """
+            public sealed class BuildOutputNoise
+            {
+                public void IgnoreMe() { }
+            }
+            """);
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.True(analysis.SymbolCount >= 3);
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("class AuthService", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("method AuthService.LoginAsync", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("record LoginRequest", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(analysis.KeySymbols, symbol => symbol.Contains("BuildOutputNoise", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("symbol index", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(

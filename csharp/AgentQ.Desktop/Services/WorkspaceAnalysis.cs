@@ -20,6 +20,10 @@ public sealed class WorkspaceAnalysis
 
     public List<string> ProjectMap { get; set; } = [];
 
+    public int SymbolCount { get; set; }
+
+    public List<string> KeySymbols { get; set; } = [];
+
     public List<string> KeyFiles { get; set; } = [];
 
     public List<string> Hints { get; set; } = [];

@@ -58,6 +58,7 @@ public sealed class WorkspaceAnalysisService
         DetectDatabaseTooling(analysis, frameworks);
         DetectMonorepoShape(analysis);
         DetectProjectMap(analysis, detectedTypes);
+        DetectSymbols(analysis);
         DetectKeyFiles(analysis);
 
         analysis.ProjectType = detectedTypes.Count > 0
@@ -628,6 +629,25 @@ public sealed class WorkspaceAnalysisService
                      .Take(8))
         {
             AddUnique(analysis.KeyFiles, Path.GetRelativePath(analysis.WorkspaceRoot, projectFile));
+        }
+    }
+
+    private static void DetectSymbols(WorkspaceAnalysis analysis)
+    {
+        var symbolIndex = new WorkspaceSymbolIndexService().Build(analysis.WorkspaceRoot);
+        analysis.SymbolCount = symbolIndex.SymbolCount;
+
+        foreach (var symbol in symbolIndex.Symbols
+                     .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct")
+                     .Concat(symbolIndex.Symbols.Where(symbol => symbol.Kind == "method"))
+                     .Take(8))
+        {
+            analysis.KeySymbols.Add(symbol.DisplayName);
+        }
+
+        if (symbolIndex.SymbolCount > 0)
+        {
+            analysis.Hints.Add($"C# symbol index: {symbolIndex.SymbolCount:0} symbols in {symbolIndex.FilesIndexed:0} files.");
         }
     }
 
