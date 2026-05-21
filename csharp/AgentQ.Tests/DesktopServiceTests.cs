@@ -233,6 +233,89 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_AddLocalLessonAsync_MergesDuplicateLessons()
+    {
+        var root = CreateTempDirectory();
+        var service = new ProjectMemoryService();
+
+        await service.AddLocalLessonAsync(
+            root,
+            new ProjectMemoryLesson
+            {
+                Id = "first",
+                Title = "Close desktop before tests",
+                Content = "Close AgentQ.Desktop.exe before running dotnet test.",
+                Tags = ["desktop"],
+                Confidence = 0.5,
+                Source = "first"
+            },
+            CancellationToken.None);
+        await service.AddLocalLessonAsync(
+            root,
+            new ProjectMemoryLesson
+            {
+                Id = "second",
+                Title = "Close desktop before tests",
+                Content = "Close AgentQ.Desktop.exe before running dotnet test.",
+                Tags = ["test"],
+                Confidence = 0.9,
+                Source = "second"
+            },
+            CancellationToken.None);
+
+        var lessons = await service.LoadLocalLessonsAsync(root, CancellationToken.None);
+
+        var lesson = Assert.Single(lessons);
+        Assert.Equal("first", lesson.Id);
+        Assert.Equal(0.9, lesson.Confidence);
+        Assert.Contains("desktop", lesson.Tags);
+        Assert.Contains("test", lesson.Tags);
+    }
+
+    [Fact]
+    public void ProjectMemoryService_BuildContext_SkipsLowConfidenceAndStaleLessons()
+    {
+        var service = new ProjectMemoryService();
+        var memory = new ProjectMemory
+        {
+            WorkspaceRoot = "C:\\repo",
+            Lessons =
+            [
+                new ProjectMemoryLesson
+                {
+                    Id = "low",
+                    Title = "Low confidence",
+                    Content = "This low confidence memory should not be used.",
+                    Confidence = 0.1,
+                    CreatedAt = DateTime.Now
+                },
+                new ProjectMemoryLesson
+                {
+                    Id = "stale",
+                    Title = "Stale lesson",
+                    Content = "This stale memory should not be used.",
+                    Confidence = 0.9,
+                    CreatedAt = DateTime.Now.AddDays(-200)
+                },
+                new ProjectMemoryLesson
+                {
+                    Id = "fresh",
+                    Title = "Fresh lesson",
+                    Content = "This fresh memory should be used.",
+                    Confidence = 0.9,
+                    CreatedAt = DateTime.Now
+                }
+            ]
+        };
+
+        var context = service.BuildContext(memory);
+
+        Assert.DoesNotContain("low confidence memory", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stale memory", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fresh memory", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ProjectMemoryService_BuildContext_PrioritizesRelevantLessons()
     {
         var service = new ProjectMemoryService();

@@ -13,6 +13,8 @@ public sealed class ProjectMemoryService
     private const string SharedMemoryFileName = "memory.shared.json";
     private const int MaxMemoryTextLength = 1000;
     private const int MaxMemoryCommandLength = 300;
+    private const double MinUsefulLessonConfidence = 0.2;
+    private const int StaleUnusedLessonDays = 180;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -184,7 +186,27 @@ public sealed class ProjectMemoryService
         lesson.CreatedAt = lesson.CreatedAt == default ? DateTime.Now : lesson.CreatedAt;
         lesson.Confidence = Math.Clamp(lesson.Confidence, 0, 1);
         lesson.Enabled = true;
-        document.Lessons.RemoveAll(existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase));
+
+        var duplicate = document.Lessons.FirstOrDefault(existing => LessonsMatch(existing, lesson));
+        if (duplicate != null)
+        {
+            lesson.Id = string.IsNullOrWhiteSpace(duplicate.Id) ? lesson.Id : duplicate.Id;
+            lesson.CreatedAt = duplicate.CreatedAt == default ? lesson.CreatedAt : duplicate.CreatedAt;
+            lesson.LastUsedAt = duplicate.LastUsedAt ?? lesson.LastUsedAt;
+            lesson.Confidence = Math.Max(duplicate.Confidence, lesson.Confidence);
+            lesson.Tags = duplicate.Tags.Concat(lesson.Tags)
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (string.IsNullOrWhiteSpace(lesson.Source))
+            {
+                lesson.Source = duplicate.Source;
+            }
+        }
+
+        document.Lessons.RemoveAll(existing =>
+            string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase) ||
+            LessonsMatch(existing, lesson));
         document.Lessons.Add(lesson);
         await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
     }
@@ -483,6 +505,8 @@ public sealed class ProjectMemoryService
         lesson.Enabled &&
         !IsExpired(lesson.ExpiresAt) &&
         !string.IsNullOrWhiteSpace(lesson.Content) &&
+        lesson.Confidence >= MinUsefulLessonConfidence &&
+        !IsStaleUnusedLesson(lesson) &&
         lesson.Content.Length <= MaxMemoryTextLength &&
         lesson.Title.Length <= 180 &&
         !LooksSensitive(lesson.Content) &&
@@ -509,6 +533,12 @@ public sealed class ProjectMemoryService
 
     private static bool IsExpired(DateTime? expiresAt) =>
         expiresAt.HasValue && expiresAt.Value <= DateTime.Now;
+
+    private static bool IsStaleUnusedLesson(ProjectMemoryLesson lesson)
+    {
+        var lastRelevantAt = lesson.LastUsedAt ?? lesson.CreatedAt;
+        return lastRelevantAt != default && lastRelevantAt <= DateTime.Now.AddDays(-StaleUnusedLessonDays);
+    }
 
     private static bool LooksSensitive(string value)
     {
@@ -537,6 +567,26 @@ public sealed class ProjectMemoryService
         var normalized = seed.Trim().ToLowerInvariant();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
         return $"lesson-{hash[..12]}";
+    }
+
+    private static bool LessonsMatch(ProjectMemoryLesson left, ProjectMemoryLesson right)
+    {
+        if (!string.IsNullOrWhiteSpace(left.Id) &&
+            !string.IsNullOrWhiteSpace(right.Id) &&
+            string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(CreateLessonFingerprint(left), CreateLessonFingerprint(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CreateLessonFingerprint(ProjectMemoryLesson lesson)
+    {
+        var seed = string.IsNullOrWhiteSpace(lesson.Title)
+            ? lesson.Content
+            : $"{lesson.Title}\n{lesson.Content}";
+        return Regex.Replace(seed.Trim().ToLowerInvariant(), @"\s+", " ");
     }
 
     private static double ScoreLesson(ProjectMemoryLesson lesson, IReadOnlySet<string> queryTerms)
