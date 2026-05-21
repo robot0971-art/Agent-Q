@@ -276,12 +276,12 @@ public sealed class DesktopServiceTests
     {
         var viewModel = new MainViewModel
         {
-            UiLanguage = "한국어"
+            UiLanguage = "\uD55C\uAD6D\uC5B4"
         };
 
         var config = viewModel.ToConfiguration();
 
-        Assert.Equal("한국어", config.DesktopUiLanguage);
+        Assert.Equal("\uD55C\uAD6D\uC5B4", config.DesktopUiLanguage);
     }
 
     [Fact]
@@ -294,11 +294,13 @@ public sealed class DesktopServiceTests
             Provider = "opencode-go",
             Model = "kimi-k2.6",
             BaseUrl = ProviderConfiguration.OpenCodeGoDefaultBaseUrl,
-            DesktopUiLanguage = "한국어"
+            DesktopUiLanguage = "\uD55C\uAD6D\uC5B4"
         });
 
-        Assert.Equal("한국어", viewModel.UiLanguage);
-        Assert.Equal("설정", viewModel.SettingsHeaderText);
+        Assert.Equal("\uD55C\uAD6D\uC5B4", viewModel.UiLanguage);
+        Assert.Equal("\uC124\uC815", viewModel.SettingsHeaderText);
+        Assert.Equal("\uD559\uC2B5 \uD6C4\uBCF4", viewModel.LearningCandidatesText);
+        Assert.Equal("Learning candidates", new MainViewModel().LearningCandidatesText);
         Assert.Equal("File", new MainViewModel().MenuFileText);
     }
 
@@ -307,7 +309,7 @@ public sealed class DesktopServiceTests
     {
         var viewModel = new MainViewModel();
         viewModel.Messages.Add(new ChatMessageViewModel { Role = "User", Content = "hello" });
-        viewModel.Messages.Add(new ChatMessageViewModel { Role = "AgentQ", Content = "생각중..." });
+        viewModel.Messages.Add(new ChatMessageViewModel { Role = "AgentQ", Content = "\uC0DD\uAC01\uC911..." });
 
         DesktopAgentRunWorkflowService.RemoveThinkingPlaceholder(viewModel);
 

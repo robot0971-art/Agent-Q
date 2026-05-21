@@ -3,21 +3,21 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DockPanel>
         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <Button Content="Save summary"
+            <Button Content="{Binding SaveSummaryText}"
                     Width="96"
                     Height="26"
                     Padding="0"
                     FontSize="11"
                     Margin="0,0,6,0"
                     Click="SaveSessionSummary_OnClick" />
-            <Button Content="Load"
+            <Button Content="{Binding LoadText}"
                     Width="54"
                     Height="26"
                     Padding="0"
                     FontSize="11"
                     Margin="0,0,6,0"
                     Click="LoadSessionSummary_OnClick" />
-            <Button Content="Resume"
+            <Button Content="{Binding ResumeText}"
                     Width="62"
                     Height="26"
                     Padding="0"
@@ -28,15 +28,23 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="130" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Text="Learning candidates"
+            <TextBlock Text="{Binding LearningCandidatesText}"
                        Foreground="{StaticResource TextMuted}"
                        FontSize="11"
                        Margin="0,0,0,4" />
-            <ListBox Grid.Row="1"
+            <TextBlock Grid.Row="1"
+                       Text="{Binding LearningCandidatesHelpText}"
+                       Foreground="{StaticResource TextMuted}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,6" />
+            <ListBox Grid.Row="2"
                      ItemsSource="{Binding PendingMemoryLessons}"
                      SelectedItem="{Binding SelectedPendingMemoryLesson, Mode=TwoWay}"
                      FontSize="11"
@@ -57,22 +65,27 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <WrapPanel Grid.Row="2" Margin="0,0,0,8">
-                <Button Content="Save lesson"
+            <WrapPanel Grid.Row="3" Margin="0,0,0,8">
+                <Button Content="{Binding SaveLessonText}"
                         Width="86"
                         Height="24"
                         Padding="0"
                         FontSize="11"
                         Margin="0,0,6,0"
                         Click="SaveSelectedLesson_OnClick" />
-                <Button Content="Dismiss"
+                <Button Content="{Binding DismissText}"
                         Width="66"
                         Height="24"
                         Padding="0"
                         FontSize="11"
                         Click="DismissSelectedLesson_OnClick" />
             </WrapPanel>
-            <TextBox Grid.Row="3"
+            <TextBlock Grid.Row="4"
+                       Text="{Binding SessionSummaryText}"
+                       Foreground="{StaticResource TextMuted}"
+                       FontSize="11"
+                       Margin="0,0,0,4" />
+            <TextBox Grid.Row="5"
                      Text="{Binding LatestSessionSummaryText}"
                      IsReadOnly="True"
                      FontFamily="Consolas"

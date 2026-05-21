@@ -49,6 +49,7 @@ csharp/
 - retry wrapper for transient provider failures
 - Windows desktop chat UI
 - desktop workspace analysis, Git diff/status panels, checkpoints, session summaries, and verification result cards
+- project memory files and approved learning candidates for repeatable desktop runs
 
 ## Built-in Tools
 
@@ -98,6 +99,12 @@ Build the desktop app without launching it:
 ```powershell
 dotnet build .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj
 ```
+
+## Project Memory
+
+AgentQ can read project memory from `.agentq/memory.shared.json` and `.agentq/memory.local.json` in the selected workspace. Shared memory is intended for team-safe rules and verification commands that can be committed; local memory is ignored by Git and is meant for private notes, preferences, and approved lessons.
+
+After a desktop run, the Memory panel may show learning candidates. These are only suggestions. AgentQ writes a lesson to `.agentq/memory.local.json` only after you approve it with Save lesson.
 
 Install it as a .NET global tool:
 

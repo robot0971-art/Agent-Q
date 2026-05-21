@@ -43,7 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _workspaceAnalysisUpdatedText = "Not analyzed yet.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
-    private string _usageText = "사용량 정보 없음";
+    private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private GitChangedFile? _selectedGitChangedFile;
@@ -83,7 +83,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AgentWorkMode> AvailableWorkModes { get; } = new(Enum.GetValues<AgentWorkMode>());
 
-    public ObservableCollection<string> AvailableUiLanguages { get; } = new(["English", "한국어"]);
+    public ObservableCollection<string> AvailableUiLanguages { get; } = new(["English", "\uD55C\uAD6D\uC5B4"]);
 
     public string Provider
     {
@@ -208,56 +208,65 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsKoreanUi => UiLanguage.Equals("한국어", StringComparison.OrdinalIgnoreCase) ||
+    public bool IsKoreanUi => UiLanguage.Equals("\uD55C\uAD6D\uC5B4", StringComparison.OrdinalIgnoreCase) ||
                               UiLanguage.Equals("Korean", StringComparison.OrdinalIgnoreCase);
 
-    public string MenuFileText => IsKoreanUi ? "파일" : "File";
-    public string MenuSelectProjectFolderText => IsKoreanUi ? "프로젝트 폴더 선택" : "Select project folder";
-    public string MenuAddAttachmentText => IsKoreanUi ? "첨부 추가" : "Add attachment";
-    public string MenuClearAttachmentsText => IsKoreanUi ? "첨부 지우기" : "Clear attachments";
-    public string MenuExitText => IsKoreanUi ? "종료" : "Exit";
-    public string MenuEditText => IsKoreanUi ? "편집" : "Edit";
-    public string MenuCopyLastAnswerText => IsKoreanUi ? "마지막 답변 복사" : "Copy last answer";
-    public string MenuCopyConversationText => IsKoreanUi ? "전체 대화 복사" : "Copy conversation";
-    public string MenuClearConversationText => IsKoreanUi ? "대화 초기화" : "Clear conversation";
-    public string MenuSettingsText => IsKoreanUi ? "설정" : "Settings";
-    public string MenuSaveSettingsText => IsKoreanUi ? "설정 저장" : "Save settings";
-    public string MenuViewText => IsKoreanUi ? "보기" : "View";
-    public string MenuIncreaseFontText => IsKoreanUi ? "글자 크게" : "Increase font";
-    public string MenuDecreaseFontText => IsKoreanUi ? "글자 작게" : "Decrease font";
-    public string MenuResetFontText => IsKoreanUi ? "기본 글자 크기" : "Reset font size";
-    public string MenuHelpText => IsKoreanUi ? "도움말" : "Help";
-    public string MenuShowStatusText => IsKoreanUi ? "상태 보기" : "Show status";
-    public string SettingsHeaderText => IsKoreanUi ? "설정" : "Settings";
-    public string SaveText => IsKoreanUi ? "저장" : "Save";
-    public string UiLanguageText => IsKoreanUi ? "UI 언어" : "UI Language";
-    public string ProjectContextAutoAttachText => IsKoreanUi ? "프로젝트 컨텍스트 자동 첨부" : "Auto attach project context";
-    public string AutoFetchLinksText => IsKoreanUi ? "링크 자동 읽기" : "Auto fetch links";
-    public string ProjectHeaderText => IsKoreanUi ? "프로젝트" : "Project";
-    public string ProjectFolderText => IsKoreanUi ? "프로젝트 폴더" : "Project folder";
-    public string BrowseFolderText => IsKoreanUi ? "폴더 선택" : "Browse";
-    public string OpenFolderText => IsKoreanUi ? "폴더 열기" : "Open";
-    public string ChatHeaderText => IsKoreanUi ? "새 대화" : "New chat";
-    public string AttachFilesText => IsKoreanUi ? "첨부 파일" : "Attach";
-    public string CodeBlockText => IsKoreanUi ? "코드 블록" : "Code block";
-    public string AddProjectFileText => IsKoreanUi ? "프로젝트 파일 추가" : "Add project file";
-    public string ClearAttachmentsText => IsKoreanUi ? "첨부 지우기" : "Clear";
-    public string SendText => IsKoreanUi ? "전송\nCtrl+Enter" : "Send\nCtrl+Enter";
-    public string CopyText => IsKoreanUi ? "복사" : "Copy";
-    public string CopyWholeMessageText => IsKoreanUi ? "메시지 전체 복사" : "Copy whole message";
-    public string ToolsHeaderText => IsKoreanUi ? "도구 (Tools)" : "Tools";
-    public string ManageText => IsKoreanUi ? "관리" : "Manage";
-    public string ReadFileToolText => IsKoreanUi ? "read_file - 파일 내용을 읽습니다" : "read_file - Read file contents";
-    public string WriteFileToolText => IsKoreanUi ? "write_file - 파일을 수정합니다" : "write_file - Edit files";
-    public string ShellExecuteToolText => IsKoreanUi ? "shell_execute - 명령을 실행합니다" : "shell_execute - Run commands";
-    public string SearchFilesToolText => IsKoreanUi ? "search_files - 파일을 검색합니다" : "search_files - Search files";
-    public string ListDirectoryToolText => IsKoreanUi ? "list_directory - 목록을 봅니다" : "list_directory - List directories";
-    public string StatusPanelText => IsKoreanUi ? "상태 패널" : "Status panel";
-    public string ClearText => IsKoreanUi ? "비우기" : "Clear";
-    public string RunLogText => IsKoreanUi ? "작업 로그" : "Run log";
-    public string ChangePreviewText => IsKoreanUi ? "변경 Preview" : "Change preview";
-    public string AllText => IsKoreanUi ? "전체" : "ALL";
-
+    public string MenuFileText => IsKoreanUi ? "\uD30C\uC77C" : "File";
+    public string MenuSelectProjectFolderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354 \uC120\uD0DD" : "Select project folder";
+    public string MenuAddAttachmentText => IsKoreanUi ? "\uCCA8\uBD80 \uCD94\uAC00" : "Add attachment";
+    public string MenuClearAttachmentsText => IsKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear attachments";
+    public string MenuExitText => IsKoreanUi ? "\uC885\uB8CC" : "Exit";
+    public string MenuEditText => IsKoreanUi ? "\uD3B8\uC9D1" : "Edit";
+    public string MenuCopyLastAnswerText => IsKoreanUi ? "\uB9C8\uC9C0\uB9C9 \uB2F5\uBCC0 \uBCF5\uC0AC" : "Copy last answer";
+    public string MenuCopyConversationText => IsKoreanUi ? "\uC804\uCCB4 \uB300\uD654 \uBCF5\uC0AC" : "Copy conversation";
+    public string MenuClearConversationText => IsKoreanUi ? "\uB300\uD654 \uCD08\uAE30\uD654" : "Clear conversation";
+    public string MenuSettingsText => IsKoreanUi ? "\uC124\uC815" : "Settings";
+    public string MenuSaveSettingsText => IsKoreanUi ? "\uC124\uC815 \uC800\uC7A5" : "Save settings";
+    public string MenuViewText => IsKoreanUi ? "\uBCF4\uAE30" : "View";
+    public string MenuIncreaseFontText => IsKoreanUi ? "\uAE00\uC790 \uD06C\uAC8C" : "Increase font";
+    public string MenuDecreaseFontText => IsKoreanUi ? "\uAE00\uC790 \uC791\uAC8C" : "Decrease font";
+    public string MenuResetFontText => IsKoreanUi ? "\uAE30\uBCF8 \uAE00\uC790 \uD06C\uAE30" : "Reset font size";
+    public string MenuHelpText => IsKoreanUi ? "\uB3C4\uC6C0\uB9D0" : "Help";
+    public string MenuShowStatusText => IsKoreanUi ? "\uC0C1\uD0DC \uBCF4\uAE30" : "Show status";
+    public string SettingsHeaderText => IsKoreanUi ? "\uC124\uC815" : "Settings";
+    public string SaveText => IsKoreanUi ? "\uC800\uC7A5" : "Save";
+    public string UiLanguageText => IsKoreanUi ? "UI \uC5B8\uC5B4" : "UI Language";
+    public string ProjectContextAutoAttachText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uCEE8\uD14D\uC2A4\uD2B8 \uC790\uB3D9 \uCCA8\uBD80" : "Auto attach project context";
+    public string AutoFetchLinksText => IsKoreanUi ? "\uB9C1\uD06C \uC790\uB3D9 \uC77D\uAE30" : "Auto fetch links";
+    public string ProjectHeaderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8" : "Project";
+    public string ProjectFolderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354" : "Project folder";
+    public string BrowseFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC120\uD0DD" : "Browse";
+    public string OpenFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC5F4\uAE30" : "Open";
+    public string ChatHeaderText => IsKoreanUi ? "\uC0C8 \uB300\uD654" : "New chat";
+    public string AttachFilesText => IsKoreanUi ? "\uCCA8\uBD80" : "Attach";
+    public string CodeBlockText => IsKoreanUi ? "\uCF54\uB4DC \uBE14\uB85D" : "Code block";
+    public string AddProjectFileText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C \uCD94\uAC00" : "Add project file";
+    public string ClearAttachmentsText => IsKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear";
+    public string SendText => IsKoreanUi ? "\uC804\uC1A1\nCtrl+Enter" : "Send\nCtrl+Enter";
+    public string CopyText => IsKoreanUi ? "\uBCF5\uC0AC" : "Copy";
+    public string CopyWholeMessageText => IsKoreanUi ? "\uBA54\uC2DC\uC9C0 \uC804\uCCB4 \uBCF5\uC0AC" : "Copy whole message";
+    public string ToolsHeaderText => IsKoreanUi ? "\uB3C4\uAD6C" : "Tools";
+    public string ManageText => IsKoreanUi ? "\uAD00\uB9AC" : "Manage";
+    public string ReadFileToolText => IsKoreanUi ? "read_file - \uD30C\uC77C \uB0B4\uC6A9\uC744 \uC77D\uC2B5\uB2C8\uB2E4" : "read_file - Read file contents";
+    public string WriteFileToolText => IsKoreanUi ? "write_file - \uD30C\uC77C\uC744 \uC218\uC815\uD569\uB2C8\uB2E4" : "write_file - Edit files";
+    public string ShellExecuteToolText => IsKoreanUi ? "shell_execute - \uBA85\uB839\uC744 \uC2E4\uD589\uD569\uB2C8\uB2E4" : "shell_execute - Run commands";
+    public string SearchFilesToolText => IsKoreanUi ? "search_files - \uD30C\uC77C\uC744 \uAC80\uC0C9\uD569\uB2C8\uB2E4" : "search_files - Search files";
+    public string ListDirectoryToolText => IsKoreanUi ? "list_directory - \uBAA9\uB85D\uC744 \uBD05\uB2C8\uB2E4" : "list_directory - List directories";
+    public string StatusPanelText => IsKoreanUi ? "\uC0C1\uD0DC \uD328\uB110" : "Status panel";
+    public string ClearText => IsKoreanUi ? "\uBE44\uC6B0\uAE30" : "Clear";
+    public string RunLogText => IsKoreanUi ? "\uC791\uC5C5 \uB85C\uADF8" : "Run log";
+    public string ChangePreviewText => IsKoreanUi ? "\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30" : "Change preview";
+    public string AllText => IsKoreanUi ? "\uC804\uCCB4" : "ALL";
+    public string SaveSummaryText => IsKoreanUi ? "\uC694\uC57D \uC800\uC7A5" : "Save summary";
+    public string LoadText => IsKoreanUi ? "\uBD88\uB7EC\uC624\uAE30" : "Load";
+    public string ResumeText => IsKoreanUi ? "\uC774\uC5B4\uC11C" : "Resume";
+    public string LearningCandidatesText => IsKoreanUi ? "\uD559\uC2B5 \uD6C4\uBCF4" : "Learning candidates";
+    public string LearningCandidatesHelpText => IsKoreanUi
+        ? "\uC791\uC5C5 \uD6C4 AgentQ\uAC00 \uB2E4\uC74C\uC5D0 \uAE30\uC5B5\uD558\uBA74 \uC88B\uC744 \uADDC\uCE59\uC744 \uC81C\uC548\uD569\uB2C8\uB2E4. \uC2B9\uC778\uD55C \uD56D\uBAA9\uB9CC \uC774 \uD504\uB85C\uC81D\uD2B8\uC758 \uB85C\uCEEC \uBA54\uBAA8\uB9AC\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4."
+        : "After a run, AgentQ may suggest rules worth remembering. Only approved items are saved to this project's local memory.";
+    public string SaveLessonText => IsKoreanUi ? "\uD559\uC2B5 \uC800\uC7A5" : "Save lesson";
+    public string DismissText => IsKoreanUi ? "\uBB34\uC2DC" : "Dismiss";
+    public string SessionSummaryText => IsKoreanUi ? "\uC138\uC158 \uC694\uC57D" : "Session summary";
     public AgentWorkMode WorkMode
     {
         get => _workMode;
@@ -648,7 +657,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(ClearText),
             nameof(RunLogText),
             nameof(ChangePreviewText),
-            nameof(AllText)
+            nameof(AllText),
+            nameof(SaveSummaryText),
+            nameof(LoadText),
+            nameof(ResumeText),
+            nameof(LearningCandidatesText),
+            nameof(LearningCandidatesHelpText),
+            nameof(SaveLessonText),
+            nameof(DismissText),
+            nameof(SessionSummaryText)
         };
 
         foreach (var name in names)
