@@ -25,6 +25,9 @@ public sealed class DesktopAgentService
         Assume the user is working on Windows. Prefer safe, concise guidance.
         You can use tools to read files, search the workspace, edit files, write files, and run shell commands.
         Prefer inspecting files before editing. After making code changes, run focused build or test commands when useful.
+        For code navigation, prefer symbol_search first when the user mentions a function, class, component, method, or likely identifier.
+        Use semantic_search when embeddings are available and the request is meaning-based; use grep_search/glob_search for broad text or file pattern fallback.
+        After symbol_search or search results identify candidate files, read the most relevant files before editing.
         For coding tasks, work in a loop: plan briefly, gather context, act with tools, observe results, repair failures, then verify.
         Treat build, test, and command failures as diagnostic input. Fix what you can before asking the user to intervene.
         Keep tool use scoped to the selected workspace and explain important changes clearly.
@@ -309,6 +312,8 @@ public sealed class DesktopAgentService
         builder.AppendLine("This context is not part of the saved conversation history.");
         builder.AppendLine("Use the workspace snapshot for repository questions, but say when a file may be missing from the snapshot.");
         builder.AppendLine($"Current AgentQ work mode: {config.DesktopWorkMode}.");
+        builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
+        builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
 
         if (!string.IsNullOrWhiteSpace(workspaceContext))
         {

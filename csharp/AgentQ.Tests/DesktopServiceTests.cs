@@ -2,6 +2,7 @@ using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Providers;
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using Xunit;
 
@@ -9,6 +10,17 @@ namespace AgentQ.Tests;
 
 public sealed class DesktopServiceTests
 {
+    [Fact]
+    public void DesktopAgentService_SystemPrompt_PrioritizesSymbolSearchForCodeNavigation()
+    {
+        var field = typeof(DesktopAgentService).GetField("SystemPrompt", BindingFlags.NonPublic | BindingFlags.Static);
+        var prompt = Assert.IsType<string>(field?.GetValue(null));
+
+        Assert.Contains("prefer symbol_search first", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("semantic_search", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData(AgentWorkMode.Readonly, 20)]
     [InlineData(AgentWorkMode.Coding, 50)]
