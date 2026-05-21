@@ -389,7 +389,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="360" />
             </Grid.ColumnDefinitions>
 
             <ScrollViewer Grid.Column="0"

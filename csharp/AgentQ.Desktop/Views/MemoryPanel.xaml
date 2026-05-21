@@ -29,10 +29,10 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="130" />
+                <RowDefinition Height="210" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="150" />
+                <RowDefinition Height="210" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -50,12 +50,19 @@
             <ListBox Grid.Row="2"
                      ItemsSource="{Binding PendingMemoryLessons}"
                      SelectedItem="{Binding SelectedPendingMemoryLesson, Mode=TwoWay}"
-                     FontSize="11"
+                     FontSize="12"
                      HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      Margin="0,0,0,8">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Margin="0,0,0,6">
+                        <Border Background="#111C28"
+                                BorderBrush="{DynamicResource BorderBrushSoft}"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                Margin="0,0,0,8">
+                            <StackPanel>
                             <TextBlock Text="{Binding Title}"
                                        Foreground="{DynamicResource TextMain}"
                                        FontWeight="SemiBold"
@@ -63,8 +70,9 @@
                             <TextBlock Text="{Binding Content}"
                                        Foreground="{DynamicResource TextMuted}"
                                        TextWrapping="Wrap"
-                                       Margin="0,2,0,0" />
-                        </StackPanel>
+                                       Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
@@ -91,25 +99,33 @@
             <ListBox Grid.Row="5"
                      ItemsSource="{Binding SavedMemoryLessons}"
                      SelectedItem="{Binding SelectedSavedMemoryLesson, Mode=TwoWay}"
-                     FontSize="11"
+                     FontSize="12"
                      HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      Margin="0,0,0,8">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Margin="0,0,0,6">
-                            <TextBlock Text="{Binding Title}"
-                                       Foreground="{DynamicResource TextMain}"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Content}"
-                                       Foreground="{DynamicResource TextMuted}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,2,0,0" />
-                            <TextBlock Text="{Binding LastUsedAt, StringFormat=Last used: {0:g}}"
-                                       Foreground="{DynamicResource TextMuted}"
-                                       FontSize="10"
-                                       Margin="0,2,0,0" />
-                        </StackPanel>
+                        <Border Background="#111C28"
+                                BorderBrush="{DynamicResource BorderBrushSoft}"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Content}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding LastUsedAt, StringFormat=Last used: {0:g}}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           FontSize="10"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
