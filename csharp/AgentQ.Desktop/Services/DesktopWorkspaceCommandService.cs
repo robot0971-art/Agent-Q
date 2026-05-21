@@ -11,7 +11,8 @@ public sealed class DesktopWorkspaceCommandService(
     EmbeddingIndexBuilder embeddingIndexBuilder,
     DesktopEmbeddingClientFactory embeddingClientFactory,
     DesktopAttachmentSelectionService attachmentSelectionService,
-    DesktopClipboardService clipboardService)
+    DesktopClipboardService clipboardService,
+    DesktopLearningSuggestionService learningSuggestionService)
 {
     public async Task SaveSettingsAsync(MainViewModel viewModel)
     {
@@ -99,6 +100,16 @@ public sealed class DesktopWorkspaceCommandService(
         {
             viewModel.StatusText = $"Embedding index failed: {ex.Message}";
             viewModel.AddLog($"Embedding index failed: {trimForLog(ex.Message)}");
+            AddMemoryCandidate(
+                viewModel,
+                learningSuggestionService.CreateFailureLesson(
+                    "Embedding index failed",
+                    ex.Message,
+                    config.EmbeddingProvider,
+                    string.IsNullOrWhiteSpace(config.EmbeddingModel)
+                        ? DesktopEmbeddingClientFactory.ResolveEmbeddingModel(config.EmbeddingProvider)
+                        : config.EmbeddingModel,
+                    "embedding failure"));
         }
         finally
         {
@@ -165,6 +176,20 @@ public sealed class DesktopWorkspaceCommandService(
     public void CopyConversation(MainViewModel viewModel)
     {
         clipboardService.CopyConversation(viewModel);
+    }
+
+    private static void AddMemoryCandidate(MainViewModel viewModel, ProjectMemoryLesson lesson)
+    {
+        if (viewModel.PendingMemoryLessons.Any(existing =>
+                string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase)) ||
+            viewModel.SavedMemoryLessons.Any(existing =>
+                string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        viewModel.PendingMemoryLessons.Add(lesson);
+        viewModel.SelectedPendingMemoryLesson ??= lesson;
     }
 }
 

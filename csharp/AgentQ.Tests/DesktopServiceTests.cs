@@ -904,6 +904,44 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopLearningSuggestionService_ClassifiesProviderFailureMemory()
+    {
+        var service = new DesktopLearningSuggestionService();
+        var viewModel = new MainViewModel
+        {
+            Provider = "opencode-go",
+            Model = "kimi-k2.6"
+        };
+        viewModel.AddRunStep(
+            AgentRunState.Failed,
+            "Run failed",
+            "OpenAI-compatible request failed with status 400 (Bad Request).");
+
+        var lessons = service.SuggestLessons("hello", "failed", viewModel);
+
+        var lesson = Assert.Single(lessons, item => item.Tags.Contains("error-history"));
+        Assert.Contains("opencode-go/kimi-k2.6", lesson.Content);
+        Assert.Contains("provider", lesson.Tags);
+    }
+
+    [Fact]
+    public void DesktopLearningSuggestionService_ClassifiesEmbeddingFailureMemory()
+    {
+        var service = new DesktopLearningSuggestionService();
+
+        var lesson = service.CreateFailureLesson(
+            "Embedding index failed",
+            "OpenAI embedding request failed with status 404 (Not Found).",
+            "openai",
+            "text-embedding-3-small",
+            "embedding failure");
+
+        Assert.Contains("embedding", lesson.Tags);
+        Assert.Contains("provider", lesson.Tags);
+        Assert.Contains("openai/text-embedding-3-small", lesson.Content);
+    }
+
+    [Fact]
     public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
     {
         using var factory = new StubHttpClientFactory(

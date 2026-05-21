@@ -66,13 +66,27 @@ public sealed class DesktopLearningSuggestionService
         var failedStep = viewModel.RunSteps.LastOrDefault(step => step.State == AgentRunState.Failed);
         if (failedStep != null && !string.IsNullOrWhiteSpace(failedStep.Title))
         {
-            lessons.Add(CreateLesson(
-                $"Failure pattern: {failedStep.Title}",
-                string.IsNullOrWhiteSpace(failedStep.Detail)
-                    ? $"A previous run failed at: {failedStep.Title}."
-                    : $"A previous run failed at: {failedStep.Title}. Detail: {Trim(failedStep.Detail, 180)}",
-                ["failure", "desktop"],
+            lessons.Add(CreateFailureLesson(
+                failedStep.Title,
+                failedStep.Detail,
+                viewModel.Provider,
+                viewModel.Model,
                 "run failure"));
+        }
+
+        var failedVerification = viewModel.VerificationResults.FirstOrDefault(result =>
+            string.Equals(result.Status, "FAILED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.Status, "WARNING", StringComparison.OrdinalIgnoreCase));
+        if (failedVerification != null)
+        {
+            lessons.Add(CreateFailureLesson(
+                $"Verification failed: {failedVerification.Title}",
+                string.IsNullOrWhiteSpace(failedVerification.Command)
+                    ? failedVerification.Detail
+                    : $"{failedVerification.Detail} Command: {failedVerification.Command}. Output: {failedVerification.OutputPreview}",
+                viewModel.Provider,
+                viewModel.Model,
+                "verification failure"));
         }
 
         var succeededVerification = viewModel.VerificationResults.FirstOrDefault(result =>
@@ -101,6 +115,27 @@ public sealed class DesktopLearningSuggestionService
             .Select(group => group.First())
             .Take(3)
             .ToList();
+    }
+
+    public ProjectMemoryLesson CreateFailureLesson(
+        string title,
+        string? detail,
+        string provider,
+        string model,
+        string source)
+    {
+        var tags = ClassifyFailureTags(title, detail);
+        var providerText = string.IsNullOrWhiteSpace(provider) ? "unknown provider" : provider;
+        var modelText = string.IsNullOrWhiteSpace(model) ? "unknown model" : model;
+        var detailText = string.IsNullOrWhiteSpace(detail)
+            ? "No detail was captured."
+            : Trim(detail, 220);
+
+        return CreateLesson(
+            $"Failure pattern: {Trim(title, 72)}",
+            $"A previous failure happened with {providerText}/{modelText}. Detail: {detailText}",
+            tags,
+            source);
     }
 
     private static ProjectMemoryLesson CreateLesson(
@@ -132,5 +167,55 @@ public sealed class DesktopLearningSuggestionService
     {
         value = value.ReplaceLineEndings(" ").Trim();
         return value.Length <= maxLength ? value : value[..maxLength] + "...";
+    }
+
+    private static IReadOnlyList<string> ClassifyFailureTags(string title, string? detail)
+    {
+        var text = $"{title} {detail}".ToLowerInvariant();
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "failure",
+            "error-history"
+        };
+
+        if (text.Contains("embedding"))
+        {
+            tags.Add("embedding");
+        }
+
+        if (text.Contains("provider") ||
+            text.Contains("model") ||
+            text.Contains("api") ||
+            text.Contains("400") ||
+            text.Contains("404") ||
+            text.Contains("request failed"))
+        {
+            tags.Add("provider");
+        }
+
+        if (text.Contains("verification") ||
+            text.Contains("test") ||
+            text.Contains("build") ||
+            text.Contains("exit code"))
+        {
+            tags.Add("verification");
+        }
+
+        if (text.Contains("tool failed") || text.Contains("tool error"))
+        {
+            tags.Add("tool");
+        }
+
+        if (text.Contains("cancelled") || text.Contains("timed out") || text.Contains("timeout"))
+        {
+            tags.Add("timeout");
+        }
+
+        if (text.Contains("permission") || text.Contains("denied") || text.Contains("blocked"))
+        {
+            tags.Add("permission");
+        }
+
+        return tags.ToList();
     }
 }
