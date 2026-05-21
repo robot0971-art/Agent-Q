@@ -395,6 +395,18 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopEvidenceFormatter_ExplainsSymbolSearch()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "symbol_search",
+            new Dictionary<string, object?> { ["query"] = "LoginAsync" },
+            "C:\\repo");
+
+        Assert.Contains("Symbol search query: LoginAsync", evidence);
+        Assert.Contains("symbol index lookup", evidence);
+    }
+
+    [Fact]
     public void DesktopConfidenceAssessor_RatesVerifiedToolBackedRunHigh()
     {
         var assessment = DesktopConfidenceAssessor.Assess(
@@ -694,6 +706,41 @@ public sealed class DesktopServiceTests
         var first = document.RootElement.GetProperty("results")[0];
         Assert.Equal("src/AuthService.cs", first.GetProperty("RelativePath").GetString());
         Assert.True(first.GetProperty("Score").GetDouble() > 0.99);
+    }
+
+    [Fact]
+    public async Task DesktopSymbolSearchTool_ReturnsMatchingSymbols()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "backend"));
+        Directory.CreateDirectory(Path.Combine(root, "frontend"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "auth.py"),
+            """
+            class AuthService:
+                def login_user(self):
+                    return True
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "auth.ts"),
+            """
+            export function loginUser() {
+                return true;
+            }
+            """);
+        var tool = new DesktopSymbolSearchTool(root);
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "login", ["limit"] = 5 },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        using var document = JsonDocument.Parse(result.Content);
+        Assert.True(document.RootElement.GetProperty("indexedSymbols").GetInt32() >= 3);
+        Assert.True(document.RootElement.GetProperty("numResults").GetInt32() >= 2);
+        var results = document.RootElement.GetProperty("results").EnumerateArray().ToList();
+        Assert.Contains(results, item => item.GetProperty("Name").GetString() == "login_user");
+        Assert.Contains(results, item => item.GetProperty("Name").GetString() == "loginUser");
     }
 
     [Fact]

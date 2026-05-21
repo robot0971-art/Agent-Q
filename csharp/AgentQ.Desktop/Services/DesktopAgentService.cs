@@ -790,6 +790,7 @@ public sealed class DesktopAgentService
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
+        registry.Register(new DesktopSymbolSearchTool(workspaceRoot));
         if (DesktopEmbeddingClientFactory.SupportsProvider(config.Provider))
         {
             registry.Register(new DesktopSemanticSearchTool(
