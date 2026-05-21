@@ -452,7 +452,7 @@ public sealed class DesktopAgentService
                 var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
                 TrackExecutedCommand(tool.Name, parsedInput, executedCommands);
                 var inputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
-                var evidence = DescribeToolEvidence(tool.Name, parsedInput);
+                var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(tool.Name, parsedInput, workspaceRoot);
                 if (!string.IsNullOrWhiteSpace(evidence))
                 {
                     callbacks?.OnRunStep?.Invoke(AgentRunState.RunningTool, $"Evidence: {tool.Name}", evidence);
@@ -548,54 +548,6 @@ public sealed class DesktopAgentService
         }
 
         executedCommands.Add(command);
-    }
-
-    private static string DescribeToolEvidence(string toolName, IReadOnlyDictionary<string, object?> input)
-    {
-        return toolName switch
-        {
-            "read_file" => TryGetString(input, "path", out var path)
-                ? $"Read file: {path}"
-                : "Read file evidence requested.",
-            "grep_search" => TryGetString(input, "pattern", out var pattern)
-                ? $"Searched text pattern: {pattern}{FormatOptionalPath(input)}"
-                : "Searched workspace text.",
-            "glob_search" => TryGetString(input, "pattern", out var glob)
-                ? $"Searched file pattern: {glob}{FormatOptionalPath(input)}"
-                : "Searched workspace files.",
-            "bash" => TryGetString(input, "command", out var command)
-                ? $"Ran command: {command}"
-                : "Ran shell command.",
-            "write_file" or "edit_file" => TryGetString(input, "path", out var target)
-                ? $"Prepared file mutation: {target}"
-                : "Prepared file mutation.",
-            _ => string.Empty
-        };
-    }
-
-    private static string FormatOptionalPath(IReadOnlyDictionary<string, object?> input)
-    {
-        return TryGetString(input, "path", out var path) && !string.IsNullOrWhiteSpace(path)
-            ? $" in {path}"
-            : string.Empty;
-    }
-
-    private static bool TryGetString(IReadOnlyDictionary<string, object?> input, string key, out string value)
-    {
-        if (input.TryGetValue(key, out var raw) && raw is string text && !string.IsNullOrWhiteSpace(text))
-        {
-            value = TrimEvidence(text);
-            return true;
-        }
-
-        value = string.Empty;
-        return false;
-    }
-
-    private static string TrimEvidence(string value)
-    {
-        value = value.ReplaceLineEndings(" ").Trim();
-        return value.Length <= 220 ? value : value[..220] + "...";
     }
 
     private static async Task<bool> RequestToolPermissionAsync(

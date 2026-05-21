@@ -64,6 +64,40 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = "src/components/LoginView.xaml" },
+            "C:\\repo");
+
+        Assert.Contains("Read file: src/components/LoginView.xaml", evidence);
+        Assert.Contains("UI layer", evidence);
+    }
+
+    [Fact]
+    public void DesktopEvidenceFormatter_ExplainsKeyProjectFile()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = "README.md" },
+            "C:\\repo");
+
+        Assert.Contains("key project file", evidence);
+    }
+
+    [Fact]
+    public void DesktopEvidenceFormatter_ExplainsBroadSearch()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "grep_search",
+            new Dictionary<string, object?> { ["pattern"] = "ProjectMap" },
+            "C:\\repo");
+
+        Assert.Contains("broad workspace search", evidence);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();

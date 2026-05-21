@@ -136,7 +136,7 @@ Example:
 
 ## Evidence Trail
 
-The desktop Evidence tab records evidence-oriented events instead of exposing hidden model reasoning. It can show when project memory was used, which files or patterns were searched, which commands ran, which files changed, and which verification plans were proposed.
+The desktop Evidence tab records evidence-oriented events instead of exposing hidden model reasoning. It can show when project memory was used, which files or patterns were searched, which commands ran, which files changed, and which verification plans were proposed. File and search evidence also includes a short reason when the path maps to a known project role such as UI, API, tests, configuration, assets, database, or domain logic.
 
 ## Project Map
 
