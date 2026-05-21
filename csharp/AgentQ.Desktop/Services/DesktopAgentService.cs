@@ -248,7 +248,7 @@ public sealed class DesktopAgentService
         var linkedContext = config.DesktopAutoFetchLinks
             ? await _linkContentFetcher.BuildContextAsync(userText, ct)
             : string.Empty;
-        var memoryContext = _projectMemoryService.BuildContext(projectMemory);
+        var memoryContext = _projectMemoryService.BuildContext(projectMemory, userText);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&

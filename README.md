@@ -106,7 +106,7 @@ AgentQ can read project memory from `.agentq/memory.shared.json` and `.agentq/me
 
 After a desktop run, the Memory panel may show learning candidates. These are only suggestions. AgentQ writes a lesson to `.agentq/memory.local.json` only after you approve it with Save lesson.
 
-Memory entries can be disabled with `enabled: false` or retired with `expiresAt`. AgentQ skips expired, disabled, overly long, sensitive, or dangerous entries before adding project memory to the model context.
+Memory entries can be disabled with `enabled: false` or retired with `expiresAt`. AgentQ skips expired, disabled, overly long, sensitive, or dangerous entries before adding project memory to the model context. For desktop runs, learned lessons are ranked against the current request so the most relevant approved memory is shown to the model first.
 
 Example:
 

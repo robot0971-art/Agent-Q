@@ -233,6 +233,71 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ProjectMemoryService_BuildContext_PrioritizesRelevantLessons()
+    {
+        var service = new ProjectMemoryService();
+        var memory = new ProjectMemory
+        {
+            WorkspaceRoot = "C:\\repo",
+            Lessons =
+            [
+                new ProjectMemoryLesson
+                {
+                    Id = "docker",
+                    Title = "Docker release build",
+                    Content = "Use docker buildx when packaging Linux containers.",
+                    Tags = ["docker", "release"],
+                    Confidence = 0.7,
+                    CreatedAt = DateTime.Now.AddDays(-1),
+                    Source = "test"
+                },
+                new ProjectMemoryLesson
+                {
+                    Id = "desktop",
+                    Title = "Desktop test lock",
+                    Content = "Close AgentQ.Desktop.exe before running dotnet test because it can lock build outputs.",
+                    Tags = ["desktop", "test"],
+                    Confidence = 0.7,
+                    CreatedAt = DateTime.Now,
+                    Source = "test"
+                }
+            ]
+        };
+
+        var context = service.BuildContext(memory, "desktop test fails because build output is locked");
+
+        Assert.True(
+            context.IndexOf("Desktop test lock", StringComparison.Ordinal) <
+            context.IndexOf("Docker release build", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ProjectMemoryService_SelectRelevantLessons_UsesRecencyAsTieBreaker()
+    {
+        var service = new ProjectMemoryService();
+        var oldLesson = new ProjectMemoryLesson
+        {
+            Id = "old",
+            Title = "Same topic",
+            Content = "Use dotnet test for verification.",
+            Confidence = 0.7,
+            CreatedAt = DateTime.Now.AddDays(-10)
+        };
+        var recentLesson = new ProjectMemoryLesson
+        {
+            Id = "recent",
+            Title = "Same topic",
+            Content = "Use dotnet test for verification.",
+            Confidence = 0.7,
+            LastUsedAt = DateTime.Now
+        };
+
+        var selected = service.SelectRelevantLessons([oldLesson, recentLesson], "dotnet test", maxCount: 2);
+
+        Assert.Equal("recent", selected[0].Id);
+    }
+
+    [Fact]
     public void DesktopLearningSuggestionService_SuggestsStepLimitLesson()
     {
         var service = new DesktopLearningSuggestionService();

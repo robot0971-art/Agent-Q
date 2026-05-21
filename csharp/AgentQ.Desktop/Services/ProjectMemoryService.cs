@@ -85,9 +85,11 @@ public sealed class ProjectMemoryService
         }
     }
 
-    public string BuildContext(ProjectMemory memory)
+    public string BuildContext(ProjectMemory memory) => BuildContext(memory, query: string.Empty);
+
+    public string BuildContext(ProjectMemory memory, string query)
     {
-        var lessons = memory.Lessons.Where(IsUsefulLesson).OrderByDescending(lesson => lesson.Confidence).Take(12).ToList();
+        var lessons = SelectRelevantLessons(memory.Lessons, query, 12);
         var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
         var checks = memory.Checks.Where(IsUsefulCheck).ToList();
 
@@ -185,6 +187,28 @@ public sealed class ProjectMemoryService
         document.Lessons.RemoveAll(existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase));
         document.Lessons.Add(lesson);
         await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
+    }
+
+    public IReadOnlyList<ProjectMemoryLesson> SelectRelevantLessons(
+        IEnumerable<ProjectMemoryLesson> lessons,
+        string query,
+        int maxCount = 12)
+    {
+        var queryTerms = ExtractTerms(query).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return lessons
+            .Where(IsUsefulLesson)
+            .Select(lesson => new
+            {
+                Lesson = lesson,
+                Score = ScoreLesson(lesson, queryTerms)
+            })
+            .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.Lesson.Confidence)
+            .ThenByDescending(item => item.Lesson.LastUsedAt ?? item.Lesson.CreatedAt)
+            .Take(Math.Clamp(maxCount, 1, 50))
+            .Select(item => item.Lesson)
+            .ToList();
     }
 
     private ProjectMemory Discover(string root)
@@ -411,6 +435,33 @@ public sealed class ProjectMemoryService
         var normalized = seed.Trim().ToLowerInvariant();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
         return $"lesson-{hash[..12]}";
+    }
+
+    private static double ScoreLesson(ProjectMemoryLesson lesson, IReadOnlySet<string> queryTerms)
+    {
+        var score = Math.Clamp(lesson.Confidence, 0, 1);
+        if (queryTerms.Count == 0)
+        {
+            return score;
+        }
+
+        foreach (var term in ExtractTerms($"{lesson.Title} {lesson.Content} {string.Join(' ', lesson.Tags)} {lesson.Source}"))
+        {
+            if (queryTerms.Contains(term))
+            {
+                score += 1;
+            }
+        }
+
+        return score;
+    }
+
+    private static IEnumerable<string> ExtractTerms(string value)
+    {
+        foreach (Match match in Regex.Matches(value, @"[\p{L}\p{N}_\.-]{3,}", RegexOptions.IgnoreCase))
+        {
+            yield return match.Value.ToLowerInvariant();
+        }
     }
 
     private static string GetSharedMemoryPath(string workspaceRoot) =>
