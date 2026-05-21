@@ -20,5 +20,5 @@ public sealed class EmbeddingIndexChunk
 
     public string Model { get; init; } = string.Empty;
 
-    public float[] Vector { get; init; } = [];
+    public float[] Vector { get; set; } = [];
 }

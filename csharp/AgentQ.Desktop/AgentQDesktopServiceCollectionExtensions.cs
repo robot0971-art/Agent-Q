@@ -20,6 +20,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<WorkspaceIndexer>();
         services.AddSingleton<EmbeddingIndexStore>();
         services.AddSingleton<EmbeddingIndexBuilder>();
+        services.AddSingleton<DesktopEmbeddingClientFactory>();
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopAgentService>();

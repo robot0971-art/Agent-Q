@@ -269,6 +269,37 @@ public sealed class DesktopServiceTests
         Assert.Equal(2, document.RootElement.GetProperty("input").GetArrayLength());
     }
 
+    [Theory]
+    [InlineData("openai")]
+    [InlineData("opencode-go")]
+    public void DesktopEmbeddingClientFactory_SupportsInitialProviders(string provider)
+    {
+        Assert.True(DesktopEmbeddingClientFactory.SupportsProvider(provider));
+        Assert.Equal("text-embedding-3-small", DesktopEmbeddingClientFactory.ResolveEmbeddingModel(provider));
+    }
+
+    [Fact]
+    public async Task EmbeddingIndexBuilder_FillsVectorsWithEmbeddingClient()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "AuthService.cs"), "public void Login() { }");
+
+        var store = new EmbeddingIndexStore();
+        var builder = new EmbeddingIndexBuilder(store);
+        var result = await builder.BuildVectorIndexAsync(
+            root,
+            new FakeEmbeddingClient(),
+            provider: "opencode-go",
+            model: "text-embedding-3-small",
+            maximumEmbeddedChunks: 10,
+            ct: CancellationToken.None);
+
+        var loadedChunks = await store.LoadChunksAsync(root, CancellationToken.None);
+        Assert.Equal("opencode-go", result.Manifest.Provider);
+        Assert.Contains(loadedChunks, chunk => chunk.Vector.Length == 2);
+    }
+
     [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
@@ -1128,6 +1159,20 @@ public sealed class DesktopServiceTests
             {
                 Content = new StringContent(content)
             });
+        }
+    }
+
+    private sealed class FakeEmbeddingClient : IEmbeddingClient
+    {
+        public Task<IReadOnlyList<float[]>> CreateEmbeddingsAsync(
+            IReadOnlyList<string> inputs,
+            string model,
+            CancellationToken ct = default)
+        {
+            IReadOnlyList<float[]> vectors = inputs
+                .Select((_, index) => new[] { (float)index, (float)(index + 1) })
+                .ToList();
+            return Task.FromResult(vectors);
         }
     }
 }

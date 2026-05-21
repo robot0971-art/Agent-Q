@@ -24,6 +24,40 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
         string model = "text-embedding-3-small",
         CancellationToken ct = default)
     {
+        return await BuildIndexAsync(
+            workspaceRoot,
+            provider,
+            model,
+            embeddingClient: null,
+            maximumEmbeddedChunks: 0,
+            ct);
+    }
+
+    public async Task<EmbeddingIndexBuildResult> BuildVectorIndexAsync(
+        string workspaceRoot,
+        IEmbeddingClient embeddingClient,
+        string provider = "openai",
+        string model = "text-embedding-3-small",
+        int maximumEmbeddedChunks = 100,
+        CancellationToken ct = default)
+    {
+        return await BuildIndexAsync(
+            workspaceRoot,
+            provider,
+            model,
+            embeddingClient,
+            maximumEmbeddedChunks,
+            ct);
+    }
+
+    private async Task<EmbeddingIndexBuildResult> BuildIndexAsync(
+        string workspaceRoot,
+        string provider,
+        string model,
+        IEmbeddingClient? embeddingClient,
+        int maximumEmbeddedChunks,
+        CancellationToken ct)
+    {
         var paths = store.GetPaths(workspaceRoot);
         var root = paths.WorkspaceRoot;
         if (!Directory.Exists(root))
@@ -46,6 +80,11 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
             chunks.AddRange(fileChunks);
         }
 
+        if (embeddingClient != null && maximumEmbeddedChunks > 0 && chunks.Count > 0)
+        {
+            await FillVectorsAsync(chunks, embeddingClient, model, maximumEmbeddedChunks, ct);
+        }
+
         await store.SaveChunksAsync(root, chunks, ct);
 
         var manifest = new EmbeddingIndexManifest
@@ -64,6 +103,33 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
             Paths = paths,
             Chunks = chunks
         };
+    }
+
+    private static async Task FillVectorsAsync(
+        List<EmbeddingIndexChunk> chunks,
+        IEmbeddingClient embeddingClient,
+        string model,
+        int maximumEmbeddedChunks,
+        CancellationToken ct)
+    {
+        const int batchSize = 32;
+        var limitedChunks = chunks.Take(maximumEmbeddedChunks).ToList();
+
+        for (var offset = 0; offset < limitedChunks.Count; offset += batchSize)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batch = limitedChunks.Skip(offset).Take(batchSize).ToList();
+            var vectors = await embeddingClient.CreateEmbeddingsAsync(batch.Select(chunk => chunk.Content).ToList(), model, ct);
+            if (vectors.Count != batch.Count)
+            {
+                throw new InvalidOperationException($"Embedding response count mismatch. Expected {batch.Count}, got {vectors.Count}.");
+            }
+
+            for (var i = 0; i < batch.Count; i++)
+            {
+                batch[i].Vector = vectors[i];
+            }
+        }
     }
 
     private static async Task<IReadOnlyList<EmbeddingIndexChunk>> BuildChunksForFileAsync(
