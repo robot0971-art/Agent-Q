@@ -10,7 +10,17 @@ public sealed class WorkspaceAnalysisService
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".git", ".vs", "bin", "obj", "node_modules", "artifacts", ".codex-build"
+        ".git",
+        ".vs",
+        "bin",
+        "obj",
+        "node_modules",
+        "artifacts",
+        ".codex-build",
+        ".venv",
+        "venv",
+        "env",
+        "__pycache__"
     };
 
     public async Task<WorkspaceAnalysis> AnalyzeAsync(string workspaceRoot, CancellationToken ct = default)
@@ -175,14 +185,18 @@ public sealed class WorkspaceAnalysisService
         List<string> frameworks,
         CancellationToken ct)
     {
-        var packageJson = Path.Combine(analysis.WorkspaceRoot, "package.json");
-        if (!File.Exists(packageJson))
+        var packageJson = FindProjectFile(analysis.WorkspaceRoot, "package.json");
+        if (packageJson == null)
         {
             return;
         }
 
         detectedTypes.Add("Node");
-        analysis.Hints.Add("package.json detected.");
+        var projectDirectory = Path.GetDirectoryName(packageJson) ?? analysis.WorkspaceRoot;
+        var projectRelativePath = Path.GetRelativePath(analysis.WorkspaceRoot, projectDirectory);
+        analysis.Hints.Add(projectDirectory.Equals(analysis.WorkspaceRoot, StringComparison.OrdinalIgnoreCase)
+            ? "package.json detected."
+            : $"package.json detected in {projectRelativePath}.");
 
         try
         {
@@ -190,13 +204,13 @@ public sealed class WorkspaceAnalysisService
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
             var root = document.RootElement;
             DetectNodeFrameworks(root, frameworks);
-            DetectNodeScripts(root, analysis);
+            DetectNodeScripts(root, analysis, projectRelativePath);
         }
         catch
         {
             frameworks.Add("Node");
-            AddUnique(analysis.VerificationCommands, "npm test");
-            AddUnique(analysis.VerificationCommands, "npm run build");
+            AddNodeCommand(analysis, projectRelativePath, "npm test");
+            AddNodeCommand(analysis, projectRelativePath, "npm run build");
         }
     }
 
@@ -257,7 +271,7 @@ public sealed class WorkspaceAnalysisService
         }
     }
 
-    private static void DetectNodeScripts(JsonElement root, WorkspaceAnalysis analysis)
+    private static void DetectNodeScripts(JsonElement root, WorkspaceAnalysis analysis, string projectRelativePath)
     {
         if (!root.TryGetProperty("scripts", out var scripts) || scripts.ValueKind != JsonValueKind.Object)
         {
@@ -266,17 +280,17 @@ public sealed class WorkspaceAnalysisService
 
         if (scripts.TryGetProperty("test", out _))
         {
-            AddUnique(analysis.VerificationCommands, "npm test");
+            AddNodeCommand(analysis, projectRelativePath, "npm test");
         }
 
         if (scripts.TryGetProperty("build", out _))
         {
-            AddUnique(analysis.VerificationCommands, "npm run build");
+            AddNodeCommand(analysis, projectRelativePath, "npm run build");
         }
 
         if (scripts.TryGetProperty("lint", out _))
         {
-            AddUnique(analysis.VerificationCommands, "npm run lint");
+            AddNodeCommand(analysis, projectRelativePath, "npm run lint");
         }
     }
 
@@ -323,27 +337,35 @@ public sealed class WorkspaceAnalysisService
         List<string> detectedTypes,
         List<string> frameworks)
     {
-        if (!File.Exists(Path.Combine(analysis.WorkspaceRoot, "pyproject.toml")) &&
-            !File.Exists(Path.Combine(analysis.WorkspaceRoot, "requirements.txt")))
+        var pyproject = FindProjectFile(analysis.WorkspaceRoot, "pyproject.toml");
+        var requirements = FindProjectFile(analysis.WorkspaceRoot, "requirements.txt");
+        if (pyproject == null && requirements == null)
         {
             return;
         }
 
         detectedTypes.Add("Python");
+        var projectFile = pyproject ?? requirements!;
+        var projectDirectory = Path.GetDirectoryName(projectFile) ?? analysis.WorkspaceRoot;
+        var projectRelativePath = Path.GetRelativePath(analysis.WorkspaceRoot, projectDirectory);
         var frameworkCountBeforePython = frameworks.Count;
-        DetectPythonFrameworks(analysis.WorkspaceRoot, frameworks);
+        DetectPythonFrameworks(projectDirectory, frameworks);
         if (frameworks.Count == frameworkCountBeforePython)
         {
             frameworks.Add("Python");
         }
 
-        if (File.Exists(Path.Combine(analysis.WorkspaceRoot, "pytest.ini")) ||
-            File.Exists(Path.Combine(analysis.WorkspaceRoot, "pyproject.toml")))
+        if (File.Exists(Path.Combine(projectDirectory, "pytest.ini")) ||
+            File.Exists(Path.Combine(projectDirectory, "pyproject.toml")) ||
+            Directory.Exists(Path.Combine(projectDirectory, "tests")) ||
+            Directory.Exists(Path.Combine(projectDirectory, "test")))
         {
-            AddUnique(analysis.VerificationCommands, "python -m pytest");
+            AddPythonCommand(analysis, projectRelativePath, "python -m pytest");
         }
 
-        analysis.Hints.Add("Python project files detected.");
+        analysis.Hints.Add(projectDirectory.Equals(analysis.WorkspaceRoot, StringComparison.OrdinalIgnoreCase)
+            ? "Python project files detected."
+            : $"Python project files detected in {projectRelativePath}.");
     }
 
     private static void DetectCpp(
@@ -428,6 +450,8 @@ public sealed class WorkspaceAnalysisService
         var roles = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["UI layer"] = ["src", "app", "pages", "components", "views", "ui"],
+            ["Frontend"] = ["frontend", "client", "web"],
+            ["Backend"] = ["backend", "server"],
             ["API layer"] = ["api", "controllers", "routes", "endpoints"],
             ["Database layer"] = ["db", "database", "data", "migrations", "repositories"],
             ["Domain logic"] = ["domain", "core", "services", "features", "logic"],
@@ -508,6 +532,14 @@ public sealed class WorkspaceAnalysisService
                      .Where(name => !string.IsNullOrWhiteSpace(name)))
         {
             AddUnique(analysis.KeyFiles, project!);
+        }
+
+        foreach (var projectFile in FindProjectFiles(analysis.WorkspaceRoot, "package.json")
+                     .Concat(FindProjectFiles(analysis.WorkspaceRoot, "requirements.txt"))
+                     .Concat(FindProjectFiles(analysis.WorkspaceRoot, "pyproject.toml"))
+                     .Take(8))
+        {
+            AddUnique(analysis.KeyFiles, Path.GetRelativePath(analysis.WorkspaceRoot, projectFile));
         }
     }
 
@@ -632,6 +664,55 @@ public sealed class WorkspaceAnalysisService
         if (File.Exists(Path.Combine(analysis.WorkspaceRoot, fileName)))
         {
             AddUnique(analysis.VerificationCommands, command);
+        }
+    }
+
+    private static void AddNodeCommand(WorkspaceAnalysis analysis, string projectRelativePath, string command)
+    {
+        AddUnique(analysis.VerificationCommands, PrefixCommand(projectRelativePath, command));
+    }
+
+    private static void AddPythonCommand(WorkspaceAnalysis analysis, string projectRelativePath, string command)
+    {
+        AddUnique(analysis.VerificationCommands, PrefixCommand(projectRelativePath, command));
+    }
+
+    private static string PrefixCommand(string projectRelativePath, string command)
+    {
+        return string.IsNullOrWhiteSpace(projectRelativePath) || projectRelativePath == "."
+            ? command
+            : $"cmd /c cd {projectRelativePath} && {command}";
+    }
+
+    private static string? FindProjectFile(string root, string fileName) =>
+        FindProjectFiles(root, fileName).FirstOrDefault();
+
+    private static IEnumerable<string> FindProjectFiles(string root, string fileName)
+    {
+        var topLevel = Path.Combine(root, fileName);
+        if (File.Exists(topLevel))
+        {
+            yield return topLevel;
+        }
+
+        IEnumerable<string> directories;
+        try
+        {
+            directories = Directory.EnumerateDirectories(root)
+                .Where(directory => !ExcludedDirectories.Contains(Path.GetFileName(directory)));
+        }
+        catch
+        {
+            yield break;
+        }
+
+        foreach (var directory in directories)
+        {
+            var candidate = Path.Combine(directory, fileName);
+            if (File.Exists(candidate))
+            {
+                yield return candidate;
+            }
         }
     }
 

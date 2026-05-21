@@ -155,6 +155,40 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_DetectsNestedFrontendBackendWithoutDependencyNoise()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "frontend"));
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src"));
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "node_modules", "native"));
+        Directory.CreateDirectory(Path.Combine(root, "backend"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", ".venv", "Lib", "site-packages", "native"));
+        await File.WriteAllTextAsync(Path.Combine(root, "docker-compose.yml"), "services: {}");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "package.json"),
+            """{"dependencies":{"react":"latest"},"devDependencies":{"vite":"latest"},"scripts":{"build":"vite build"}}""");
+        await File.WriteAllTextAsync(Path.Combine(root, "backend", "requirements.txt"), "fastapi==0.111.0");
+        await File.WriteAllTextAsync(Path.Combine(root, "backend", "app", "main.py"), "from fastapi import FastAPI");
+        await File.WriteAllTextAsync(Path.Combine(root, "backend", ".venv", "Lib", "site-packages", "native", "noise.h"), "#pragma once");
+        await File.WriteAllTextAsync(Path.Combine(root, "frontend", "node_modules", "native", "noise.hpp"), "#pragma once");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("Node", analysis.ProjectType);
+        Assert.Contains("Python", analysis.ProjectType);
+        Assert.DoesNotContain("C++", analysis.ProjectType);
+        Assert.Contains("Vite", analysis.Framework);
+        Assert.Contains("FastAPI", analysis.Framework);
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("cd frontend", StringComparison.OrdinalIgnoreCase) &&
+                                                                  command.Contains("npm run build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Frontend", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Backend", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(Path.Combine("frontend", "package.json"), analysis.KeyFiles);
+        Assert.Contains(Path.Combine("backend", "requirements.txt"), analysis.KeyFiles);
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
