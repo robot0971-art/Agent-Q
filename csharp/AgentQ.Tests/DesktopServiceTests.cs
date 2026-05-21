@@ -346,12 +346,34 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void DesktopEmbeddingClientFactory_SupportsOpenAiOnlyForInitialEmbeddings()
+    public void DesktopEmbeddingClientFactory_SupportsOpenAiAndCustomEmbeddings()
     {
         Assert.True(DesktopEmbeddingClientFactory.SupportsProvider("openai"));
+        Assert.True(DesktopEmbeddingClientFactory.SupportsProvider("custom"));
         Assert.False(DesktopEmbeddingClientFactory.SupportsProvider("opencode-go"));
         Assert.Equal("text-embedding-3-small", DesktopEmbeddingClientFactory.ResolveEmbeddingModel("openai"));
         Assert.Equal(string.Empty, DesktopEmbeddingClientFactory.ResolveEmbeddingModel("opencode-go"));
+    }
+
+    [Fact]
+    public void MainViewModel_ShowsBaseUrlOnlyForCustomProviders()
+    {
+        var viewModel = new MainViewModel();
+
+        viewModel.Provider = "opencode-go";
+        viewModel.EmbeddingProvider = "openai";
+        Assert.False(viewModel.ShowBaseUrlSettings);
+        Assert.True(viewModel.ShowEmbeddingSettings);
+        Assert.False(viewModel.ShowEmbeddingBaseUrlSettings);
+
+        viewModel.Provider = "custom";
+        viewModel.EmbeddingProvider = "custom";
+        Assert.True(viewModel.ShowBaseUrlSettings);
+        Assert.True(viewModel.ShowEmbeddingSettings);
+        Assert.True(viewModel.ShowEmbeddingBaseUrlSettings);
+
+        viewModel.EmbeddingProvider = "none";
+        Assert.False(viewModel.ShowEmbeddingSettings);
     }
 
     [Fact]

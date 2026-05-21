@@ -32,8 +32,20 @@
                       ItemsSource="{Binding AvailableModels}"
                       SelectedItem="{Binding Model, UpdateSourceTrigger=PropertyChanged}" />
 
-            <TextBlock Text="Base URL" Style="{DynamicResource LabelText}" />
-            <TextBox Margin="0,0,0,8" Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+            <StackPanel Margin="0,0,0,8">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ShowBaseUrlSettings}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="Base URL" Style="{DynamicResource LabelText}" />
+                <TextBox Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
 
             <TextBlock Text="API Key" Style="{DynamicResource LabelText}" />
             <PasswordBox x:Name="ApiKeyBox"
@@ -46,16 +58,40 @@
                       ItemsSource="{Binding AvailableEmbeddingProviders}"
                       SelectedItem="{Binding EmbeddingProvider, UpdateSourceTrigger=PropertyChanged}" />
 
-            <TextBlock Text="Embedding Model" Style="{DynamicResource LabelText}" />
-            <TextBox Margin="0,0,0,8" Text="{Binding EmbeddingModel, UpdateSourceTrigger=PropertyChanged}" />
+            <StackPanel Margin="0,0,0,8">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ShowEmbeddingSettings}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
 
-            <TextBlock Text="Embedding Base URL" Style="{DynamicResource LabelText}" />
-            <TextBox Margin="0,0,0,8" Text="{Binding EmbeddingBaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="Embedding Model" Style="{DynamicResource LabelText}" />
+                <TextBox Margin="0,0,0,8" Text="{Binding EmbeddingModel, UpdateSourceTrigger=PropertyChanged}" />
 
-            <TextBlock Text="Embedding API Key" Style="{DynamicResource LabelText}" />
-            <PasswordBox x:Name="EmbeddingApiKeyBox"
-                         Margin="0,0,0,8"
-                         PasswordChanged="EmbeddingApiKeyBox_OnPasswordChanged" />
+                <StackPanel Margin="0,0,0,8">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowEmbeddingBaseUrlSettings}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Embedding Base URL" Style="{DynamicResource LabelText}" />
+                    <TextBox Text="{Binding EmbeddingBaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+
+                <TextBlock Text="Embedding API Key" Style="{DynamicResource LabelText}" />
+                <PasswordBox x:Name="EmbeddingApiKeyBox"
+                             PasswordChanged="EmbeddingApiKeyBox_OnPasswordChanged" />
+            </StackPanel>
 
             <TextBlock Text="{Binding UiLanguageText}" Style="{DynamicResource LabelText}" />
             <ComboBox Margin="0,0,0,8"

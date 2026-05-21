@@ -77,6 +77,10 @@ public static class DesktopProviderModelCatalog
             "deepseek-v4-flash",
             "deepseek-chat",
             "deepseek-reasoner"
+        ],
+        ["custom"] =
+        [
+            "default"
         ]
     };
 

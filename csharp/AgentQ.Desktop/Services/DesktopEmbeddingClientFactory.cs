@@ -15,13 +15,36 @@ public sealed class DesktopEmbeddingClientFactory
 
         var baseUrl = string.IsNullOrWhiteSpace(config.EmbeddingBaseUrl)
             ? "https://api.openai.com/v1"
-            : config.EmbeddingBaseUrl;
+            : NormalizeEmbeddingBaseUrl(config.EmbeddingBaseUrl);
         return new OpenAiEmbeddingClient(OpenAiEmbeddingClient.CreateHttpClient(baseUrl, config.EmbeddingApiKey));
+    }
+
+    private static string NormalizeEmbeddingBaseUrl(string baseUrl)
+    {
+        var url = baseUrl.Trim();
+
+        // Remove trailing slash for consistent processing
+        url = url.TrimEnd('/');
+
+        // If URL ends with /embeddings, remove it (user mistakenly included the endpoint)
+        if (url.EndsWith("/embeddings", StringComparison.OrdinalIgnoreCase))
+        {
+            url = url[..^"/embeddings".Length];
+        }
+
+        // If URL doesn't end with /v1, append it
+        if (!url.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+        {
+            url += "/v1";
+        }
+
+        return url + "/";
     }
 
     public static bool SupportsProvider(string provider)
     {
-        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase);
+        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ||
+               provider.Equals("custom", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string ResolveEmbeddingModel(string provider)

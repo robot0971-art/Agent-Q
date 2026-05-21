@@ -92,7 +92,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> AvailableModels { get; } = new(DesktopProviderModelCatalog.GetModels("opencode-go"));
 
-    public ObservableCollection<string> AvailableEmbeddingProviders { get; } = new(["openai", "none"]);
+    public ObservableCollection<string> AvailableEmbeddingProviders { get; } = new(["openai", "none", "custom"]);
 
     public ObservableCollection<AgentWorkMode> AvailableWorkModes { get; } = new(Enum.GetValues<AgentWorkMode>());
 
@@ -110,6 +110,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             RefreshModelsForProvider(preserveCurrentModel: false);
             ApplyProviderDefaults();
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowBaseUrlSettings)));
         }
     }
 
@@ -142,6 +143,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             ApplyEmbeddingProviderDefaults();
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmbeddingSettings)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmbeddingBaseUrlSettings)));
         }
     }
 
@@ -222,6 +225,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return "#B7C4D1";
         }
     }
+
+    public bool ShowBaseUrlSettings => Provider.Equals("custom", StringComparison.OrdinalIgnoreCase);
+
+    public bool ShowEmbeddingSettings => !EmbeddingProvider.Equals("none", StringComparison.OrdinalIgnoreCase);
+
+    public bool ShowEmbeddingBaseUrlSettings => EmbeddingProvider.Equals("custom", StringComparison.OrdinalIgnoreCase);
 
     public int TimeoutSeconds
     {
@@ -726,6 +735,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (EmbeddingProvider.Equals("custom", StringComparison.OrdinalIgnoreCase))
+        {
+            EmbeddingModel = string.IsNullOrWhiteSpace(EmbeddingModel) ? DesktopEmbeddingClientFactory.DefaultEmbeddingModel : EmbeddingModel;
+            return;
+        }
+
         if (EmbeddingProvider.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             EmbeddingModel = string.Empty;
@@ -767,6 +782,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(MenuHelpText),
             nameof(MenuShowStatusText),
             nameof(SettingsHeaderText),
+            nameof(ShowBaseUrlSettings),
+            nameof(ShowEmbeddingSettings),
+            nameof(ShowEmbeddingBaseUrlSettings),
             nameof(SaveText),
             nameof(UiLanguageText),
             nameof(ProjectContextAutoAttachText),
