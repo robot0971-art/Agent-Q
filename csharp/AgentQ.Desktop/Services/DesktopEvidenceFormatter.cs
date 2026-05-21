@@ -20,6 +20,9 @@ public static class DesktopEvidenceFormatter
             "glob_search" => TryGetString(input, "pattern", out var glob)
                 ? $"Searched file pattern: {glob}{FormatOptionalPath(input, workspaceRoot)}"
                 : "Searched workspace files. Reason: broad search to discover relevant project files.",
+            "semantic_search" => TryGetString(input, "query", out var query)
+                ? $"Semantic search query: {query}. Reason: meaning-based lookup against the local embedding index."
+                : "Semantic search requested against the local embedding index.",
             "bash" => TryGetString(input, "command", out var command)
                 ? $"Ran command: {command}{DescribeCommandReason(command)}"
                 : "Ran shell command.",

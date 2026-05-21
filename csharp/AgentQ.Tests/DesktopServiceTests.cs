@@ -99,6 +99,18 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopEvidenceFormatter_ExplainsSemanticSearch()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "semantic_search",
+            new Dictionary<string, object?> { ["query"] = "login flow" },
+            "C:\\repo");
+
+        Assert.Contains("Semantic search query: login flow", evidence);
+        Assert.Contains("meaning-based lookup", evidence);
+    }
+
+    [Fact]
     public void DesktopConfidenceAssessor_RatesVerifiedToolBackedRunHigh()
     {
         var assessment = DesktopConfidenceAssessor.Assess(
@@ -298,6 +310,48 @@ public sealed class DesktopServiceTests
         var loadedChunks = await store.LoadChunksAsync(root, CancellationToken.None);
         Assert.Equal("opencode-go", result.Manifest.Provider);
         Assert.Contains(loadedChunks, chunk => chunk.Vector.Length == 2);
+    }
+
+    [Fact]
+    public async Task DesktopSemanticSearchTool_ReturnsHighestSimilarityChunk()
+    {
+        var root = CreateTempDirectory();
+        var store = new EmbeddingIndexStore();
+        await store.SaveChunksAsync(
+            root,
+            [
+                new EmbeddingIndexChunk
+                {
+                    Id = "auth",
+                    RelativePath = "src/AuthService.cs",
+                    Content = "public void Login() { }",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [0, 1]
+                },
+                new EmbeddingIndexChunk
+                {
+                    Id = "billing",
+                    RelativePath = "src/BillingService.cs",
+                    Content = "public void Charge() { }",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [1, 0]
+                }
+            ],
+            CancellationToken.None);
+        var tool = new DesktopSemanticSearchTool(store, new FakeEmbeddingClient(), root, "text-embedding-3-small");
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "login issue", ["limit"] = 1 },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        using var document = JsonDocument.Parse(result.Content);
+        Assert.Equal(1, document.RootElement.GetProperty("numResults").GetInt32());
+        var first = document.RootElement.GetProperty("results")[0];
+        Assert.Equal("src/AuthService.cs", first.GetProperty("RelativePath").GetString());
+        Assert.True(first.GetProperty("Score").GetDouble() > 0.99);
     }
 
     [Fact]

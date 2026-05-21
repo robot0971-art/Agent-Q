@@ -59,6 +59,7 @@ csharp/
 - `edit_file`
 - `grep_search`
 - `glob_search`
+- `semantic_search`
 - `plugin_echo`
 
 ## Environment Variables
@@ -149,6 +150,8 @@ When a text or file search returns no results, AgentQ can automatically retry wi
 ## Embedding and RAG Design
 
 AgentQ's planned semantic retrieval system is documented in [docs/embedding-rag-design.md](docs/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
+
+The desktop app includes an initial `semantic_search` tool for OpenAI-compatible embedding indexes. It searches `.agentq/embeddings/chunks.jsonl` by cosine similarity after an embedding vector index has been built.
 
 Install it as a .NET global tool:
 

@@ -40,19 +40,24 @@ public sealed class DesktopAgentService
     private readonly LinkContentFetcher _linkContentFetcher;
     private readonly ProjectMemoryService _projectMemoryService;
     private readonly WorkspaceIndexer _workspaceIndexer;
+    private readonly EmbeddingIndexStore _embeddingIndexStore;
+    private readonly DesktopEmbeddingClientFactory _embeddingClientFactory;
     private readonly List<ChatMessage> _messages = [];
-    private readonly ToolRegistry _toolRegistry = CreateToolRegistry();
 
     public DesktopAgentService(
         IHttpClientFactory httpClientFactory,
         LinkContentFetcher linkContentFetcher,
         ProjectMemoryService projectMemoryService,
-        WorkspaceIndexer workspaceIndexer)
+        WorkspaceIndexer workspaceIndexer,
+        EmbeddingIndexStore embeddingIndexStore,
+        DesktopEmbeddingClientFactory embeddingClientFactory)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
         _projectMemoryService = projectMemoryService;
         _workspaceIndexer = workspaceIndexer;
+        _embeddingIndexStore = embeddingIndexStore;
+        _embeddingClientFactory = embeddingClientFactory;
     }
 
     public async Task<string> SendAsync(
@@ -88,6 +93,7 @@ public sealed class DesktopAgentService
         var fileChanges = new List<FileChangeRecord>();
         var executedCommands = new List<string>();
         var executedToolCount = 0;
+        var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
 
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
 
@@ -97,6 +103,7 @@ public sealed class DesktopAgentService
             var response = await GenerateAssistantTurnAsync(
                 provider,
                 config,
+                toolRegistry,
                 maxToolSteps,
                 includeTransientContext ? transientContext : null,
                 builder,
@@ -132,6 +139,7 @@ public sealed class DesktopAgentService
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.RunningTool, $"Executing {response.ToolUses.Count} tool call(s)", null);
             var toolResults = await ExecuteToolsAsync(
                 response.ToolUses,
+                toolRegistry,
                 enforcer,
                 toolCallbacks,
                 effectiveWorkspaceRoot,
@@ -170,6 +178,7 @@ public sealed class DesktopAgentService
     private async Task<DesktopAssistantTurn> GenerateAssistantTurnAsync(
         ILlmProvider provider,
         ProviderConfiguration config,
+        ToolRegistry toolRegistry,
         int maxToolSteps,
         string? transientContext,
         StringBuilder textBuilder,
@@ -191,7 +200,7 @@ public sealed class DesktopAgentService
         var assistantText = new StringBuilder();
         var reasoningContent = new StringBuilder();
         var toolUses = new List<ChatContent>();
-        var tools = _toolRegistry.GetToolDefinitions().Select(tool => new ToolDefinition
+        var tools = toolRegistry.GetToolDefinitions().Select(tool => new ToolDefinition
         {
             Name = tool.Name,
             Description = tool.Description,
@@ -443,6 +452,7 @@ public sealed class DesktopAgentService
 
     private async Task<List<ChatContent>> ExecuteToolsAsync(
         IReadOnlyList<ChatContent> toolUses,
+        ToolRegistry toolRegistry,
         IPermissionEnforcer enforcer,
         DesktopToolCallbacks? callbacks,
         string workspaceRoot,
@@ -459,7 +469,7 @@ public sealed class DesktopAgentService
             {
                 var toolName = toolUse.ToolName ?? string.Empty;
                 var toolId = toolUse.ToolId ?? string.Empty;
-                var tool = _toolRegistry.Get(toolName);
+                var tool = toolRegistry.Get(toolName);
                 if (tool == null)
                 {
                     callbacks?.OnToolError?.Invoke(toolName, $"Tool not found: {toolName}");
@@ -760,7 +770,7 @@ public sealed class DesktopAgentService
         return value[..MaxToolResultChars] + Environment.NewLine + "[tool result truncated]";
     }
 
-    private static ToolRegistry CreateToolRegistry()
+    private ToolRegistry CreateToolRegistry(ProviderConfiguration config, string workspaceRoot)
     {
         var registry = new ToolRegistry();
         registry.Register(new BashTool());
@@ -769,6 +779,15 @@ public sealed class DesktopAgentService
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
+        if (DesktopEmbeddingClientFactory.SupportsProvider(config.Provider))
+        {
+            registry.Register(new DesktopSemanticSearchTool(
+                _embeddingIndexStore,
+                _embeddingClientFactory.Create(config),
+                workspaceRoot,
+                DesktopEmbeddingClientFactory.ResolveEmbeddingModel(config.Provider)));
+        }
+
         registry.Register(new PluginEchoTool());
         return registry;
     }
