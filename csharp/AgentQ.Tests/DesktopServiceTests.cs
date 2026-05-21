@@ -240,6 +240,26 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopLearningSuggestionService_SuggestsWorkspaceMemoryCandidates()
+    {
+        var service = new DesktopLearningSuggestionService();
+        var analysis = new WorkspaceAnalysis
+        {
+            ProjectType = ".NET",
+            Framework = "net10.0-windows",
+            ProjectMap = ["UI layer: csharp/AgentQ.Desktop", "Tests: csharp/AgentQ.Tests"],
+            VerificationCommands = ["dotnet build", "dotnet test"],
+            KeyFiles = ["README.md", "AgentQ.sln"]
+        };
+
+        var lessons = service.SuggestWorkspaceLessons(analysis);
+
+        Assert.Contains(lessons, lesson => lesson.Tags.Contains("project-map"));
+        Assert.Contains(lessons, lesson => lesson.Tags.Contains("verification"));
+        Assert.Contains(lessons, lesson => lesson.Content.Contains("README.md", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task EmbeddingIndexStore_SavesManifestUnderAgentQEmbeddings()
     {
         var root = CreateTempDirectory();

@@ -4,6 +4,49 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopLearningSuggestionService
 {
+    public IReadOnlyList<ProjectMemoryLesson> SuggestWorkspaceLessons(WorkspaceAnalysis analysis)
+    {
+        var lessons = new List<ProjectMemoryLesson>();
+
+        if (!analysis.ProjectType.Equals("Unknown", StringComparison.OrdinalIgnoreCase) ||
+            !analysis.Framework.Equals("Unknown", StringComparison.OrdinalIgnoreCase) ||
+            analysis.ProjectMap.Count > 0)
+        {
+            var projectMap = analysis.ProjectMap.Count == 0
+                ? "No clear project map folders detected yet."
+                : string.Join("; ", analysis.ProjectMap.Take(5));
+            lessons.Add(CreateLesson(
+                $"Project profile: {analysis.ProjectType}",
+                $"This workspace appears to be {analysis.ProjectType} using {analysis.Framework}. Key areas: {projectMap}",
+                ["workspace", "project-map", "profile"],
+                "workspace analysis"));
+        }
+
+        if (analysis.VerificationCommands.Count > 0)
+        {
+            lessons.Add(CreateLesson(
+                "Workspace verification commands",
+                $"Use these detected verification commands for this workspace: {string.Join("; ", analysis.VerificationCommands.Take(4))}.",
+                ["workspace", "verification", "command"],
+                "workspace analysis"));
+        }
+
+        if (analysis.KeyFiles.Count > 0)
+        {
+            lessons.Add(CreateLesson(
+                "Workspace key files",
+                $"Important files detected in this workspace: {string.Join(", ", analysis.KeyFiles.Take(8))}.",
+                ["workspace", "key-files"],
+                "workspace analysis"));
+        }
+
+        return lessons
+            .GroupBy(lesson => lesson.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(3)
+            .ToList();
+    }
+
     public IReadOnlyList<ProjectMemoryLesson> SuggestLessons(
         string prompt,
         string response,

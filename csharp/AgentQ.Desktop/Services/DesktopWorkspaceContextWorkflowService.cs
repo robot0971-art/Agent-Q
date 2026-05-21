@@ -6,7 +6,8 @@ public sealed class DesktopWorkspaceContextWorkflowService(
     WorkspaceAnalysisService workspaceAnalysisService,
     ProjectAgentConfigService projectConfigService,
     AgentSessionSummaryService sessionSummaryService,
-    DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService)
+    DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
+    DesktopLearningSuggestionService learningSuggestionService)
 {
     private AgentSessionSummary? _lastSessionSummary;
 
@@ -62,6 +63,7 @@ public sealed class DesktopWorkspaceContextWorkflowService(
                 () => workspaceAnalysisService.AnalyzeAsync(workspaceRoot, ct),
                 ct);
             viewModel.ApplyWorkspaceAnalysis(analysis);
+            AddWorkspaceMemoryCandidates(viewModel, analysis);
             viewModel.StatusText = "Workspace analysis refreshed";
             viewModel.AddLog($"Workspace analyzed: {analysis.Summary}");
         }
@@ -132,6 +134,27 @@ public sealed class DesktopWorkspaceContextWorkflowService(
         if (Enum.TryParse<AgentWorkMode>(config.WorkMode, ignoreCase: true, out var mode))
         {
             viewModel.WorkMode = mode;
+        }
+    }
+
+    private void AddWorkspaceMemoryCandidates(MainViewModel viewModel, WorkspaceAnalysis analysis)
+    {
+        foreach (var lesson in learningSuggestionService.SuggestWorkspaceLessons(analysis))
+        {
+            if (viewModel.PendingMemoryLessons.Any(existing =>
+                    string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase)) ||
+                viewModel.SavedMemoryLessons.Any(existing =>
+                    string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            viewModel.PendingMemoryLessons.Add(lesson);
+        }
+
+        if (viewModel.PendingMemoryLessons.Count > 0)
+        {
+            viewModel.SelectedPendingMemoryLesson ??= viewModel.PendingMemoryLessons[0];
         }
     }
 }
