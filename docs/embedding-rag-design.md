@@ -195,7 +195,7 @@ Recommended provider rollout:
 
 Chat model selection and embedding model selection should stay separate. Mixing chat models and embedding models in the same dropdown would make provider selection confusing.
 
-The first implementation uses the OpenAI-compatible `/embeddings` endpoint and reuses the selected API key when available. The initial supported providers are OpenAI and OpenCode Go because both are handled through the OpenAI-compatible embedding client.
+The first implementation uses OpenAI's `/embeddings` endpoint and reuses the selected OpenAI API key when available. OpenCode Go is currently treated as chat-only for AgentQ embeddings because the public Go endpoint documents chat completions but does not expose a compatible embeddings API.
 
 ## Future Improvements
 

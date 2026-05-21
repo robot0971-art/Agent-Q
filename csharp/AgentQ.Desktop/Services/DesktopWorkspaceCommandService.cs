@@ -63,7 +63,9 @@ public sealed class DesktopWorkspaceCommandService(
         var config = viewModel.ToConfiguration();
         if (!DesktopEmbeddingClientFactory.SupportsProvider(config.Provider))
         {
-            viewModel.StatusText = $"Embedding provider not supported: {config.Provider}";
+            viewModel.StatusText = config.Provider.Equals("opencode-go", StringComparison.OrdinalIgnoreCase)
+                ? "OpenCode Go does not expose embeddings. Select OpenAI to build the index."
+                : $"Embedding provider not supported: {config.Provider}";
             viewModel.AddLog($"Embedding index skipped: unsupported provider {config.Provider}");
             return;
         }

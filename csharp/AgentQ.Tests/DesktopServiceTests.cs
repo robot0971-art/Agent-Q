@@ -281,13 +281,13 @@ public sealed class DesktopServiceTests
         Assert.Equal(2, document.RootElement.GetProperty("input").GetArrayLength());
     }
 
-    [Theory]
-    [InlineData("openai")]
-    [InlineData("opencode-go")]
-    public void DesktopEmbeddingClientFactory_SupportsInitialProviders(string provider)
+    [Fact]
+    public void DesktopEmbeddingClientFactory_SupportsOpenAiOnlyForInitialEmbeddings()
     {
-        Assert.True(DesktopEmbeddingClientFactory.SupportsProvider(provider));
-        Assert.Equal("text-embedding-3-small", DesktopEmbeddingClientFactory.ResolveEmbeddingModel(provider));
+        Assert.True(DesktopEmbeddingClientFactory.SupportsProvider("openai"));
+        Assert.False(DesktopEmbeddingClientFactory.SupportsProvider("opencode-go"));
+        Assert.Equal("text-embedding-3-small", DesktopEmbeddingClientFactory.ResolveEmbeddingModel("openai"));
+        Assert.Equal(string.Empty, DesktopEmbeddingClientFactory.ResolveEmbeddingModel("opencode-go"));
     }
 
     [Fact]

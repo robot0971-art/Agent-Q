@@ -11,6 +11,7 @@
         Background="#070C12"
         FontFamily="Segoe UI"
         Icon="Assets/app-icon.ico"
+        WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize">
     <shell:WindowChrome.WindowChrome>

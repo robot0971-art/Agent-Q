@@ -16,7 +16,10 @@ public partial class App : System.Windows.Application
         services.AddAgentQDesktop();
 
         _serviceProvider = services.BuildServiceProvider();
-        _serviceProvider.GetRequiredService<MainWindow>().Show();
+        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+        MainWindow = mainWindow;
+        mainWindow.Show();
+        mainWindow.Activate();
     }
 
     private async void App_OnExit(object sender, ExitEventArgs e)

@@ -21,8 +21,7 @@ public sealed class DesktopEmbeddingClientFactory
 
     public static bool SupportsProvider(string provider)
     {
-        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ||
-               provider.Equals("opencode-go", StringComparison.OrdinalIgnoreCase);
+        return provider.Equals("openai", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string ResolveEmbeddingModel(string provider)
