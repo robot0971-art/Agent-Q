@@ -44,13 +44,18 @@ public sealed class DesktopWorkspaceContextWorkflowService(
         var config = DesktopProjectConfigBuilder.Build(
             viewModel.WorkMode,
             viewModel.WorkspaceVerificationCommands,
-            viewModel.WorkspaceHints);
+            viewModel.WorkspaceHints,
+            ProjectConfig?.McpServers);
         await projectConfigService.SaveAsync(viewModel.WorkspaceRoot, config, ct);
         ProjectConfig = config;
         viewModel.ProjectConfigText = DesktopProjectConfigBuilder.BuildDisplay(config);
         viewModel.HasProjectConfig = true;
         viewModel.StatusText = "Project config saved";
         viewModel.AddLog("Project config saved");
+        foreach (var warning in McpServerRegistry.Validate(config))
+        {
+            viewModel.AddLog(warning);
+        }
     }
 
     public async Task RefreshWorkspaceAnalysisAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)

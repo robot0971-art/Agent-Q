@@ -5,7 +5,8 @@ public static class DesktopProjectConfigBuilder
     public static ProjectAgentConfig Build(
         AgentWorkMode workMode,
         IEnumerable<string> workspaceVerificationCommands,
-        IEnumerable<string> workspaceHints)
+        IEnumerable<string> workspaceHints,
+        IEnumerable<McpServerConfig>? existingMcpServers = null)
     {
         var commands = workspaceVerificationCommands
             .Where(command => !string.IsNullOrWhiteSpace(command))
@@ -27,7 +28,8 @@ public static class DesktopProjectConfigBuilder
         {
             WorkMode = workMode.ToString(),
             VerificationCommands = commands,
-            WorkspaceRules = rules
+            WorkspaceRules = rules,
+            McpServers = existingMcpServers?.ToList() ?? []
         };
     }
 
@@ -55,6 +57,16 @@ public static class DesktopProjectConfigBuilder
             foreach (var rule in config.WorkspaceRules)
             {
                 builder.AppendLine($"- {rule}");
+            }
+        }
+
+        if (config.McpServers.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("MCP servers:");
+            foreach (var server in config.McpServers)
+            {
+                builder.AppendLine($"- {server.DisplayText}");
             }
         }
 

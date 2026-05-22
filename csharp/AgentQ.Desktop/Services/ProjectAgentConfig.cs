@@ -8,5 +8,7 @@ public sealed class ProjectAgentConfig
 
     public List<string> WorkspaceRules { get; set; } = [];
 
+    public List<McpServerConfig> McpServers { get; set; } = [];
+
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }

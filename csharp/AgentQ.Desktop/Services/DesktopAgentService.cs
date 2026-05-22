@@ -83,6 +83,7 @@ public sealed class DesktopAgentService
         var effectiveWorkspaceRoot = ResolveWorkspaceRoot(workspaceRoot);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
+        var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
         var routingRecommendation = DesktopModelRoutingAdvisor.Recommend(userText, taskProfile, config, workMode);
@@ -92,7 +93,7 @@ public sealed class DesktopAgentService
             routingRecommendation.CurrentModelMatches
                 ? $"Current model matches route. {routingRecommendation.DisplayText}"
                 : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
-        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, taskProfile, ct);
+        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, ct);
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
@@ -305,6 +306,7 @@ public sealed class DesktopAgentService
         string userText,
         string workspaceRoot,
         ProjectMemory projectMemory,
+        ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
         CancellationToken ct)
     {
@@ -315,10 +317,12 @@ public sealed class DesktopAgentService
             ? await _linkContentFetcher.BuildContextAsync(userText, ct)
             : string.Empty;
         var memoryContext = _projectMemoryService.BuildContext(projectMemory, userText);
+        var mcpContext = McpServerRegistry.BuildContext(projectConfig);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
-            string.IsNullOrWhiteSpace(memoryContext))
+            string.IsNullOrWhiteSpace(memoryContext) &&
+            string.IsNullOrWhiteSpace(mcpContext))
         {
             return string.Empty;
         }
@@ -344,6 +348,12 @@ public sealed class DesktopAgentService
         {
             builder.AppendLine();
             builder.AppendLine(memoryContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(mcpContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(mcpContext);
         }
 
         if (!string.IsNullOrWhiteSpace(linkedContext))

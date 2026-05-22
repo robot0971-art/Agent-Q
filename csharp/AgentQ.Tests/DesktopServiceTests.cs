@@ -854,6 +854,87 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectAgentConfigService_RoundTripsMcpServers()
+    {
+        var root = CreateTempDirectory();
+        var service = new ProjectAgentConfigService();
+        var config = new ProjectAgentConfig
+        {
+            WorkMode = AgentWorkMode.Coding.ToString(),
+            McpServers =
+            [
+                new McpServerConfig
+                {
+                    Name = "blender",
+                    Command = "uvx",
+                    Args = ["blender-mcp"],
+                    Tags = ["blender", "3d"]
+                }
+            ]
+        };
+
+        await service.SaveAsync(root, config, CancellationToken.None);
+        var loaded = await service.LoadAsync(root, CancellationToken.None);
+
+        Assert.NotNull(loaded);
+        var server = Assert.Single(loaded.McpServers);
+        Assert.Equal("blender", server.Name);
+        Assert.Equal("uvx", server.Command);
+        Assert.Equal("blender-mcp", Assert.Single(server.Args));
+    }
+
+    [Fact]
+    public void McpServerRegistry_BuildsContextForEnabledServers()
+    {
+        var config = new ProjectAgentConfig
+        {
+            McpServers =
+            [
+                new McpServerConfig
+                {
+                    Name = "unity",
+                    Command = "node",
+                    Args = ["unity-mcp.js"]
+                },
+                new McpServerConfig
+                {
+                    Name = "disabled",
+                    Command = "node",
+                    Enabled = false
+                }
+            ]
+        };
+
+        var context = McpServerRegistry.BuildContext(config);
+
+        Assert.Contains("Configured MCP servers", context);
+        Assert.Contains("unity", context);
+        Assert.DoesNotContain("disabled", context);
+        Assert.Empty(McpServerRegistry.Validate(config));
+    }
+
+    [Fact]
+    public void DesktopProjectConfigBuilder_PreservesExistingMcpServers()
+    {
+        var existing =
+            new McpServerConfig
+            {
+                Name = "unreal",
+                Command = "python",
+                Args = ["unreal_mcp.py"]
+            };
+
+        var config = DesktopProjectConfigBuilder.Build(
+            AgentWorkMode.Coding,
+            ["cmd /c test.cmd"],
+            ["hint"],
+            [existing]);
+
+        Assert.Equal("unreal", Assert.Single(config.McpServers).Name);
+        Assert.Contains("MCP servers", DesktopProjectConfigBuilder.BuildDisplay(config));
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(
