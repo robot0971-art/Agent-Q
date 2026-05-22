@@ -413,6 +413,96 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task PythonWorkerHost_ExtractsFastApiSqlAlchemyAndPytestSignals()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "tests"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "requirements.txt"),
+            """
+            fastapi==0.111.0
+            sqlalchemy==2.0.0
+            pytest==8.0.0
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "main.py"),
+            """
+            from fastapi import FastAPI
+            from sqlalchemy.orm import DeclarativeBase
+
+            app = FastAPI()
+
+            class Base(DeclarativeBase):
+                pass
+
+            class User(Base):
+                __tablename__ = "users"
+
+            @app.get("/users")
+            async def list_users():
+                return []
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "tests", "test_users.py"),
+            """
+            def test_users():
+                assert True
+            """);
+
+        var result = await new PythonWorkerHost().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Requirements, item => item.Path == "backend/requirements.txt");
+        Assert.Contains(result.Imports, item => item.Module == "fastapi");
+        Assert.Contains(result.FastApiRoutes, route => route.Route == "/users" && route.Method == "GET");
+        Assert.Contains(result.SqlAlchemyModels, model => model.Name == "User");
+        Assert.Contains(result.PytestTargets, target => target.Path == "backend/tests/test_users.py");
+        Assert.Contains(result.Symbols, symbol => symbol.Name == "list_users");
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_UsesPythonWorkerResults()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "tests"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "requirements.txt"),
+            """
+            fastapi
+            sqlalchemy
+            pytest
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "main.py"),
+            """
+            from fastapi import FastAPI
+
+            app = FastAPI()
+
+            class User:
+                __tablename__ = "users"
+
+            @app.post("/users")
+            def create_user():
+                return {}
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "backend", "tests", "test_api.py"), "def test_api(): assert True");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("FastAPI", analysis.Framework);
+        Assert.Contains("SQLAlchemy", analysis.Framework);
+        Assert.Contains("pytest", analysis.Framework);
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Python worker indexed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("route POST /users", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("model User", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("FastAPI routes", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("python -m pytest", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(

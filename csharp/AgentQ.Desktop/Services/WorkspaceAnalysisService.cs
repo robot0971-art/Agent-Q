@@ -60,6 +60,7 @@ public sealed class WorkspaceAnalysisService
         DetectProjectMap(analysis, detectedTypes);
         DetectSymbols(analysis);
         await DetectTypeScriptWorkerAsync(analysis, frameworks, ct);
+        await DetectPythonWorkerAsync(analysis, frameworks, ct);
         DetectKeyFiles(analysis);
 
         analysis.ProjectType = detectedTypes.Count > 0
@@ -743,6 +744,101 @@ public sealed class WorkspaceAnalysisService
         if (dependencies.Contains("typescript"))
         {
             frameworks.Add("TypeScript");
+        }
+    }
+
+    private static async Task DetectPythonWorkerAsync(
+        WorkspaceAnalysis analysis,
+        List<string> frameworks,
+        CancellationToken ct)
+    {
+        var result = await new PythonWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        if (result == null)
+        {
+            return;
+        }
+
+        if (result.Warnings.Count > 0)
+        {
+            analysis.Hints.AddRange(result.Warnings.Select(warning => $"Python worker: {warning}").Take(3));
+        }
+
+        if (result.Pyprojects.Count == 0 &&
+            result.Requirements.Count == 0 &&
+            result.Symbols.Count == 0 &&
+            result.Imports.Count == 0)
+        {
+            return;
+        }
+
+        analysis.Hints.Add($"Python worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.FastApiRoutes.Count:0} FastAPI routes.");
+
+        foreach (var pyproject in result.Pyprojects.Take(6))
+        {
+            AddUnique(analysis.KeyFiles, pyproject.Path);
+            AddPythonWorkerFrameworks(pyproject.Dependencies, frameworks);
+        }
+
+        foreach (var requirements in result.Requirements.Take(6))
+        {
+            AddUnique(analysis.KeyFiles, requirements.Path);
+            AddPythonWorkerFrameworks(requirements.Dependencies, frameworks);
+        }
+
+        if (result.PytestTargets.Count > 0)
+        {
+            AddPythonCommand(analysis, ".", "python -m pytest");
+        }
+
+        foreach (var entry in result.ProjectMap.Take(8))
+        {
+            AddUnique(analysis.ProjectMap, $"{entry.Role}: {entry.Path}");
+        }
+
+        foreach (var route in result.FastApiRoutes.Take(10))
+        {
+            AddUnique(analysis.KeySymbols, $"route {route.Method} {route.Route} -> {route.Name} ({route.Path}:{route.Line:0})");
+            frameworks.Add("FastAPI");
+        }
+
+        foreach (var model in result.SqlAlchemyModels.Take(10))
+        {
+            AddUnique(analysis.KeySymbols, $"model {model.Name} ({model.Path}:{model.Line:0})");
+            frameworks.Add("SQLAlchemy");
+        }
+
+        foreach (var symbol in result.Symbols.Take(10))
+        {
+            AddUnique(analysis.KeySymbols, $"{symbol.Kind} {symbol.Name} ({symbol.Path}:{symbol.Line:0})");
+        }
+    }
+
+    private static void AddPythonWorkerFrameworks(IEnumerable<string> dependencies, List<string> frameworks)
+    {
+        var joined = string.Join('\n', dependencies);
+        if (joined.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("FastAPI");
+        }
+
+        if (joined.Contains("django", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Django");
+        }
+
+        if (joined.Contains("flask", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Flask");
+        }
+
+        if (joined.Contains("sqlalchemy", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("SQLAlchemy");
+        }
+
+        if (joined.Contains("pytest", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("pytest");
         }
     }
 
