@@ -86,6 +86,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("Dynamic task guidance", prompt);
         Assert.Contains("Context prioritization", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(profile.ContextHint, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Execution strategy", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Patch the minimal root cause", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
     }
@@ -119,9 +121,22 @@ public sealed class DesktopServiceTests
         var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
 
         Assert.Equal(DesktopTaskKind.VerificationFailure, profile.Kind);
+        Assert.Contains("Execution strategy (verification failure)", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Classify the failure", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Verification failure response rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Prefer fixing one failure class at a time", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("narrowest useful verification command", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopExecutionStrategyCatalog_ReturnsAnalysisWorkflow()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("analyze the architecture");
+        var strategy = DesktopExecutionStrategyCatalog.ForProfile(profile);
+
+        Assert.Equal(DesktopTaskKind.Analysis, strategy.Kind);
+        Assert.Contains(strategy.Steps, step => step.Contains("workspace snapshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(strategy.Steps, step => step.Contains("confirmed facts", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

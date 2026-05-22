@@ -358,6 +358,7 @@ public sealed class DesktopAgentService
         builder.AppendLine($"Current AgentQ work mode: {config.DesktopWorkMode}.");
         builder.AppendLine($"Current task profile: {taskProfile.Label}.");
         builder.AppendLine(taskProfile.ContextHint);
+        builder.AppendLine(DesktopExecutionStrategyCatalog.ForProfile(taskProfile).FormatForPrompt());
         builder.AppendLine("Codebase discovery hint: use hybrid_search first when you need ranked candidate files with reasons.");
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
         builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
