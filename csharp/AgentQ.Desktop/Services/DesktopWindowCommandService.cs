@@ -11,8 +11,6 @@ public sealed class DesktopWindowCommandService(
     DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
     DesktopAutoFixWorkflowService autoFixWorkflowService)
 {
-    private const double MouseWheelScrollFactor = 0.35;
-
     public void IncreaseFontSize(MainViewModel viewModel)
     {
         viewModel.DesktopFontSize += 1;
@@ -45,11 +43,7 @@ public sealed class DesktopWindowCommandService(
 
     public void ClearSidePanel(MainViewModel viewModel)
     {
-        viewModel.Logs.Clear();
-        viewModel.RunSteps.Clear();
-        viewModel.VerificationPlans.Clear();
-        viewModel.VerificationResults.Clear();
-        viewModel.FileChanges.Clear();
+        viewModel.ClearSidePanelState();
         gitPanelWorkflowService.ClearPanel(viewModel);
         verificationPanelWorkflowService.ClearFailure(viewModel);
         autoFixWorkflowService.ClearPendingReview();
@@ -75,11 +69,6 @@ public sealed class DesktopWindowCommandService(
         SmoothScroll(scrollViewer, e.Delta);
     }
 
-    public void Exit(Window window)
-    {
-        window.Close();
-    }
-
     public void HandleTitleBarMouseDown(Window window, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
@@ -88,7 +77,19 @@ public sealed class DesktopWindowCommandService(
             return;
         }
 
-        window.DragMove();
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        try
+        {
+            window.DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // WPF can throw when the mouse capture state changes during a drag.
+        }
     }
 
     public void Minimize(Window window)
@@ -110,7 +111,7 @@ public sealed class DesktopWindowCommandService(
 
     private static void SmoothScroll(ScrollViewer scrollViewer, int wheelDelta)
     {
-        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * MouseWheelScrollFactor;
+        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * DesktopUiConstants.MouseWheelScrollFactor;
         targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
         scrollViewer.ScrollToVerticalOffset(targetOffset);
     }

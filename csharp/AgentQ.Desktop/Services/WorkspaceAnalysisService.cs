@@ -8,6 +8,8 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class WorkspaceAnalysisService
 {
+    private readonly WorkspaceSymbolIndexService _symbolIndexService;
+
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
@@ -22,6 +24,11 @@ public sealed class WorkspaceAnalysisService
         "env",
         "__pycache__"
     };
+
+    public WorkspaceAnalysisService(WorkspaceSymbolIndexService? symbolIndexService = null)
+    {
+        _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
+    }
 
     public async Task<WorkspaceAnalysis> AnalyzeAsync(string workspaceRoot, CancellationToken ct = default)
     {
@@ -663,9 +670,9 @@ public sealed class WorkspaceAnalysisService
         return path.Replace('\\', '/').Trim();
     }
 
-    private static void DetectSymbols(WorkspaceAnalysis analysis)
+    private void DetectSymbols(WorkspaceAnalysis analysis)
     {
-        var symbolIndex = new WorkspaceSymbolIndexService().Build(analysis.WorkspaceRoot);
+        var symbolIndex = _symbolIndexService.Build(analysis.WorkspaceRoot);
         analysis.SymbolCount = symbolIndex.SymbolCount;
 
         foreach (var symbol in symbolIndex.Symbols

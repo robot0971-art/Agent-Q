@@ -19,6 +19,11 @@ public sealed class LinkContentFetcher
         _httpClientFactory = httpClientFactory;
     }
 
+    public static bool ContainsUrl(string text)
+    {
+        return !string.IsNullOrWhiteSpace(text) && UrlRegex.IsMatch(text);
+    }
+
     public async Task<string> BuildContextAsync(string text, CancellationToken ct)
     {
         var urls = UrlRegex.Matches(text)
@@ -37,38 +42,73 @@ public sealed class LinkContentFetcher
         builder.AppendLine("Link auto-read is enabled. AgentQ attempted to fetch the URL(s) below.");
         builder.AppendLine("Use successful fetches as evidence. If a fetch failed, mention the failure reason and ask for pasted text or a local file only as a fallback.");
 
-        foreach (var url in urls)
+        var results = await FetchAsync(text, ct);
+        foreach (var result in results)
         {
             builder.AppendLine();
-            builder.AppendLine($"URL: {url}");
-            builder.AppendLine(await FetchSummaryAsync(url, ct));
+            builder.AppendLine($"URL: {result.Url}");
+            builder.AppendLine(FormatResult(result));
         }
 
         return builder.ToString().Trim();
     }
 
-    private async Task<string> FetchSummaryAsync(string url, CancellationToken ct)
+    public async Task<IReadOnlyList<LinkFetchResult>> FetchAsync(string text, CancellationToken ct)
     {
+        var urls = UrlRegex.Matches(text)
+            .Select(match => match.Value.TrimEnd('.', ',', ')', ']', '}'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToList();
+
+        var results = new List<LinkFetchResult>();
+        foreach (var url in urls)
+        {
+            results.Add(await FetchAsync(new Uri(url), ct));
+        }
+
+        return results;
+    }
+
+    private async Task<LinkFetchResult> FetchAsync(Uri uri, CancellationToken ct)
+    {
+        var url = uri.ToString();
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.UserAgent.ParseAdd("AgentQ-Desktop/1.0");
             request.Headers.Accept.ParseAdd("text/html, text/plain;q=0.9, */*;q=0.1");
 
             var httpClient = _httpClientFactory.CreateClient("desktop-links");
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
             if (!response.IsSuccessStatusCode)
             {
-                return $"Fetch failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}.";
+                return new LinkFetchResult
+                {
+                    Url = url,
+                    Status = LinkFetchStatus.HttpError,
+                    HttpStatusCode = (int)response.StatusCode,
+                    HttpReasonPhrase = response.ReasonPhrase,
+                    ContentType = mediaType,
+                    FailureReason = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}"
+                };
             }
 
-            var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
             if (!mediaType.Contains("html", StringComparison.OrdinalIgnoreCase) &&
                 !mediaType.Contains("text", StringComparison.OrdinalIgnoreCase))
             {
-                return string.IsNullOrWhiteSpace(mediaType)
-                    ? "Fetch failed: unsupported or missing content type."
-                    : $"Fetch failed: unsupported content type {mediaType}.";
+                return new LinkFetchResult
+                {
+                    Url = url,
+                    Status = LinkFetchStatus.UnsupportedContentType,
+                    HttpStatusCode = (int)response.StatusCode,
+                    HttpReasonPhrase = response.ReasonPhrase,
+                    ContentType = mediaType,
+                    FailureReason = string.IsNullOrWhiteSpace(mediaType)
+                        ? "unsupported or missing content type"
+                        : $"unsupported content type {mediaType}"
+                };
             }
 
             var content = await response.Content.ReadAsStringAsync(ct);
@@ -82,17 +122,63 @@ public sealed class LinkContentFetcher
                 plainText = plainText[..6000] + "...";
             }
 
-            return string.IsNullOrWhiteSpace(plainText)
-                ? "Fetch failed: no readable text found."
-                : $"Fetch succeeded. Readable text excerpt: {plainText}";
+            if (string.IsNullOrWhiteSpace(plainText))
+            {
+                return new LinkFetchResult
+                {
+                    Url = url,
+                    Status = LinkFetchStatus.EmptyContent,
+                    HttpStatusCode = (int)response.StatusCode,
+                    HttpReasonPhrase = response.ReasonPhrase,
+                    ContentType = mediaType,
+                    FailureReason = "no readable text found"
+                };
+            }
+
+            return new LinkFetchResult
+            {
+                Url = url,
+                Status = LinkFetchStatus.Succeeded,
+                HttpStatusCode = (int)response.StatusCode,
+                HttpReasonPhrase = response.ReasonPhrase,
+                ContentType = mediaType,
+                Excerpt = plainText
+            };
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or UriFormatException)
         {
-            var reason = ex is TaskCanceledException
-                ? "timeout or cancellation"
-                : ex.GetType().Name;
-            return $"Fetch failed: {reason}. {ex.Message}";
+            return new LinkFetchResult
+            {
+                Url = url,
+                Status = ex switch
+                {
+                    TaskCanceledException => LinkFetchStatus.TimeoutOrCancellation,
+                    UriFormatException => LinkFetchStatus.InvalidUrl,
+                    _ => LinkFetchStatus.RequestFailed
+                },
+                FailureReason = ex is TaskCanceledException
+                    ? $"timeout or cancellation. {ex.Message}"
+                    : $"{ex.GetType().Name}. {ex.Message}"
+            };
         }
+    }
+
+    private static string FormatResult(LinkFetchResult result)
+    {
+        if (result.Succeeded)
+        {
+            return $"Fetch succeeded. Status: HTTP {result.HttpStatusCode}. Content type: {result.ContentType}. Readable text excerpt: {result.Excerpt}";
+        }
+
+        return result.Status switch
+        {
+            LinkFetchStatus.HttpError => $"Fetch failed: HTTP {result.HttpStatusCode} {result.HttpReasonPhrase}. Failure reason: {result.FailureReason}.",
+            LinkFetchStatus.UnsupportedContentType => $"Fetch failed: unsupported content type. Content type: {result.ContentType}. Failure reason: {result.FailureReason}.",
+            LinkFetchStatus.EmptyContent => $"Fetch failed: no readable text found. Failure reason: {result.FailureReason}.",
+            LinkFetchStatus.TimeoutOrCancellation => $"Fetch failed: timeout or cancellation. Failure reason: {result.FailureReason}.",
+            LinkFetchStatus.InvalidUrl => $"Fetch failed: invalid URL. Failure reason: {result.FailureReason}.",
+            _ => $"Fetch failed: request failed. Failure reason: {result.FailureReason}."
+        };
     }
 
     private static string HtmlToText(string html)

@@ -4,6 +4,14 @@ namespace AgentQ.Desktop.Services;
 
 public static class DesktopPromptAssemblyService
 {
+    private static readonly IReadOnlyList<IDesktopPromptRule> PromptRules =
+    [
+        new ContextPrioritizationPromptRule(),
+        new LinkHandlingPromptRule(),
+        new VerificationFailurePromptRule(),
+        new EvidenceBackedPromptRule()
+    ];
+
     public static DesktopTaskProfile BuildTaskProfile(string userText)
     {
         var kind = DesktopTaskClassifier.Classify(userText);
@@ -75,17 +83,81 @@ public static class DesktopPromptAssemblyService
         builder.AppendLine();
         builder.AppendLine("Dynamic task guidance:");
         builder.AppendLine(profile.SystemHint);
-        if (profile.Kind is DesktopTaskKind.Analysis or DesktopTaskKind.Documentation or DesktopTaskKind.CodeReview)
+
+        foreach (var rule in PromptRules.Where(rule => rule.Applies(profile)))
         {
             builder.AppendLine();
-            builder.AppendLine("Evidence-backed response rules:");
-            builder.AppendLine("- Ground technology stack, package, framework, and architecture claims in inspected files or tool output.");
-            builder.AppendLine("- Include a short Evidence section with the most relevant file paths, commands, or search results used.");
-            builder.AppendLine("- Include a short Needs verification section for anything inferred from naming, folder layout, memory, or incomplete search results.");
-            builder.AppendLine("- Do not claim that a dependency, worker library, incremental index strategy, or release state exists unless a supporting file or command output was inspected.");
-            builder.AppendLine("- For URL questions, if linked page context is attached, report whether the fetch succeeded or failed instead of saying external websites are inaccessible.");
+            builder.AppendLine(rule.Build(profile));
         }
 
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public interface IDesktopPromptRule
+{
+    bool Applies(DesktopTaskProfile profile);
+
+    string Build(DesktopTaskProfile profile);
+}
+
+public sealed class ContextPrioritizationPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => !string.IsNullOrWhiteSpace(profile.ContextHint);
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Context prioritization:");
+        builder.AppendLine(profile.ContextHint);
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class LinkHandlingPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => true;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Link handling rules:");
+        builder.AppendLine("- AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled.");
+        builder.AppendLine("- Never answer that AgentQ categorically cannot access external websites; explain the link auto-read setting, fetch result, or fallback instead.");
+        builder.AppendLine("- If no URL is present, ask the user to send the URL. If a fetch fails, report the failure reason and suggest pasted text or a local file as fallback.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class VerificationFailurePromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => profile.Kind is DesktopTaskKind.VerificationFailure;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Verification failure response rules:");
+        builder.AppendLine("- Prefer fixing one failure class at a time.");
+        builder.AppendLine("- Treat compiler, linter, and test output as primary evidence.");
+        builder.AppendLine("- Rerun the narrowest useful verification command before broad checks.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class EvidenceBackedPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) =>
+        profile.Kind is DesktopTaskKind.Analysis or DesktopTaskKind.Documentation or DesktopTaskKind.CodeReview;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Evidence-backed response rules:");
+        builder.AppendLine("- Ground technology stack, package, framework, and architecture claims in inspected files or tool output.");
+        builder.AppendLine("- Include a short Evidence section with the most relevant file paths, commands, or search results used.");
+        builder.AppendLine("- Include a short Needs verification section for anything inferred from naming, folder layout, memory, or incomplete search results.");
+        builder.AppendLine("- Do not claim that a dependency, worker library, incremental index strategy, or release state exists unless a supporting file or command output was inspected.");
+        builder.AppendLine("- For URL questions, report whether link auto-read is enabled, whether the fetch succeeded or failed, and what evidence was available.");
         return builder.ToString().TrimEnd();
     }
 }

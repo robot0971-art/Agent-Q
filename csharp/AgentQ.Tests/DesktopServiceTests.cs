@@ -22,6 +22,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confirmed facts", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("can attempt to read HTTP/HTTPS links", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -82,8 +84,44 @@ public sealed class DesktopServiceTests
 
         Assert.Equal(DesktopTaskKind.BugFix, profile.Kind);
         Assert.Contains("Dynamic task guidance", prompt);
+        Assert.Contains("Context prioritization", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(profile.ContextHint, prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsLinkCapabilityRulesForGeneralTasks()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("can you read this link?");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.General, profile.Kind);
+        Assert.Contains("Link handling rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fetch HTTP/HTTPS URLs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never answer that AgentQ categorically cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("If no URL is present, ask the user to send the URL", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("https://example.com", true)]
+    [InlineData("Please read https://example.com/page.", true)]
+    [InlineData("no link here", false)]
+    public void LinkContentFetcher_DetectsHttpUrls(string text, bool expected)
+    {
+        Assert.Equal(expected, LinkContentFetcher.ContainsUrl(text));
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsVerificationFailureRules()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("verify command output and fix the failing check");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.VerificationFailure, profile.Kind);
+        Assert.Contains("Verification failure response rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer fixing one failure class at a time", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("narrowest useful verification command", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -126,6 +164,21 @@ public sealed class DesktopServiceTests
         var config = viewModel.ToConfiguration();
 
         Assert.Equal(expectedMaxToolSteps, config.DesktopMaxToolSteps);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MainViewModel_ToConfiguration_PersistsAutoFetchLinks(bool enabled)
+    {
+        var viewModel = new MainViewModel
+        {
+            AutoFetchLinks = enabled
+        };
+
+        var config = viewModel.ToConfiguration();
+
+        Assert.Equal(enabled, config.DesktopAutoFetchLinks);
     }
 
     [Fact]
@@ -704,6 +757,23 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task LinkContentFetcher_ReturnsStructuredSuccessResult()
+    {
+        using var factory = new StubHttpClientFactory(
+            "<html><body><h1>Hello link</h1><p>Readable page text.</p></body></html>",
+            contentType: "text/html");
+        var results = await new LinkContentFetcher(factory).FetchAsync("please read https://example.test/page", CancellationToken.None);
+
+        var result = Assert.Single(results);
+        Assert.True(result.Succeeded);
+        Assert.Equal(LinkFetchStatus.Succeeded, result.Status);
+        Assert.Equal("https://example.test/page", result.Url);
+        Assert.Equal(200, result.HttpStatusCode);
+        Assert.Equal("text/html", result.ContentType);
+        Assert.Contains("Hello link", result.Excerpt);
+    }
+
+    [Fact]
     public async Task LinkContentFetcher_ReportsHttpFailureReason()
     {
         using var factory = new StubHttpClientFactory("forbidden", HttpStatusCode.Forbidden);
@@ -713,6 +783,31 @@ public sealed class DesktopServiceTests
         Assert.Contains("URL: https://example.test/private", context);
         Assert.Contains("Fetch failed: HTTP 403", context);
         Assert.Contains("failure reason", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LinkContentFetcher_ReturnsStructuredHttpFailureResult()
+    {
+        using var factory = new StubHttpClientFactory("forbidden", HttpStatusCode.Forbidden);
+        var results = await new LinkContentFetcher(factory).FetchAsync("please read https://example.test/private", CancellationToken.None);
+
+        var result = Assert.Single(results);
+        Assert.False(result.Succeeded);
+        Assert.Equal(LinkFetchStatus.HttpError, result.Status);
+        Assert.Equal(403, result.HttpStatusCode);
+        Assert.Contains("403", result.FailureReason);
+    }
+
+    [Fact]
+    public async Task LinkContentFetcher_ReturnsUnsupportedContentTypeResult()
+    {
+        using var factory = new StubHttpClientFactory("binary", contentType: "application/octet-stream");
+        var results = await new LinkContentFetcher(factory).FetchAsync("please read https://example.test/file", CancellationToken.None);
+
+        var result = Assert.Single(results);
+        Assert.Equal(LinkFetchStatus.UnsupportedContentType, result.Status);
+        Assert.Equal("application/octet-stream", result.ContentType);
+        Assert.Contains("unsupported content type", result.FailureReason);
     }
 
     [Fact]

@@ -9,11 +9,15 @@ public sealed class DesktopHybridSearchTool(
     string workspaceRoot,
     EmbeddingIndexStore embeddingIndexStore,
     IEmbeddingClient? embeddingClient,
-    string embeddingModel) : ITool
+    string embeddingModel,
+    WorkspaceSymbolIndexService? symbolIndexService = null,
+    WorkspaceAnalysisService? workspaceAnalysisService = null) : ITool
 {
     private const int MaximumKeywordFiles = 800;
     private const int MaximumKeywordMatches = 80;
     private const int MaximumFileBytes = 512 * 1024;
+    private readonly WorkspaceSymbolIndexService _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
+    private readonly WorkspaceAnalysisService _workspaceAnalysisService = workspaceAnalysisService ?? new WorkspaceAnalysisService();
 
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -95,7 +99,7 @@ public sealed class DesktopHybridSearchTool(
 
     private void AddSymbolSignals(Dictionary<string, HybridCandidate> candidates, string query)
     {
-        var symbols = new WorkspaceSymbolIndexService().Build(workspaceRoot).Symbols;
+        var symbols = _symbolIndexService.Build(workspaceRoot).Symbols;
         foreach (var symbol in symbols)
         {
             var score = ScoreSymbol(symbol, query);
@@ -130,7 +134,7 @@ public sealed class DesktopHybridSearchTool(
                 break;
             }
 
-            string[] lines;
+            IEnumerable<string> lines;
             try
             {
                 if (new FileInfo(file).Length > MaximumFileBytes)
@@ -138,16 +142,17 @@ public sealed class DesktopHybridSearchTool(
                     continue;
                 }
 
-                lines = File.ReadAllLines(file);
+                lines = File.ReadLines(file);
             }
             catch
             {
                 continue;
             }
 
-            for (var i = 0; i < lines.Length; i++)
+            var lineNumber = 0;
+            foreach (var line in lines)
             {
-                var line = lines[i];
+                lineNumber++;
                 var matchedToken = tokens.FirstOrDefault(token => line.Contains(token, StringComparison.OrdinalIgnoreCase));
                 if (matchedToken == null)
                 {
@@ -159,8 +164,8 @@ public sealed class DesktopHybridSearchTool(
                 var candidate = GetCandidate(candidates, relativePath);
                 candidate.Score += 24;
                 candidate.Sources.Add("keyword");
-                candidate.Lines.Add(i + 1);
-                candidate.Reasons.Add($"keyword: '{matchedToken}' at line {i + 1}");
+                candidate.Lines.Add(lineNumber);
+                candidate.Reasons.Add($"keyword: '{matchedToken}' at line {lineNumber}");
 
                 if (matches >= MaximumKeywordMatches)
                 {
@@ -183,7 +188,7 @@ public sealed class DesktopHybridSearchTool(
             return;
         }
 
-        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(workspaceRoot, ct);
+        var analysis = await _workspaceAnalysisService.AnalyzeAsync(workspaceRoot, ct);
         foreach (var keyFile in analysis.KeyFiles)
         {
             if (!tokens.Any(token => keyFile.Contains(token, StringComparison.OrdinalIgnoreCase)))

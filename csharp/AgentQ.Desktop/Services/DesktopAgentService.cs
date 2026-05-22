@@ -35,6 +35,9 @@ public sealed class DesktopAgentService
         For project analysis, documentation, architecture summaries, and reviews, include the main evidence you inspected.
         Separate confirmed facts from assumptions or items that still need verification.
         Do not invent exact dependencies, package names, indexing strategies, release state, or implementation details when you have not inspected supporting files or command output.
+        AgentQ Desktop can attempt to read HTTP/HTTPS links when link auto-read is enabled.
+        Never answer that AgentQ categorically cannot access external websites; describe the current link auto-read setting, fetch result, or fallback instead.
+        If the user asks whether links can be read without providing a URL, ask them to send the URL.
         If link auto-read is enabled and linked page context is attached, do not claim that AgentQ cannot access external URLs.
         For URL questions, use the linked page context when fetch succeeded; when it failed, report the fetch failure reason and suggest pasted text or a local file as fallback.
         """;
@@ -53,6 +56,8 @@ public sealed class DesktopAgentService
     private readonly DesktopEmbeddingClientFactory _embeddingClientFactory;
     private readonly FileMutationSnapshotService _fileMutationSnapshotService;
     private readonly ToolReplayService _toolReplayService;
+    private readonly WorkspaceSymbolIndexService _symbolIndexService;
+    private readonly WorkspaceAnalysisService _workspaceAnalysisService;
     private readonly List<ChatMessage> _messages = [];
 
     public DesktopAgentService(
@@ -63,7 +68,9 @@ public sealed class DesktopAgentService
         EmbeddingIndexStore embeddingIndexStore,
         DesktopEmbeddingClientFactory embeddingClientFactory,
         FileMutationSnapshotService fileMutationSnapshotService,
-        ToolReplayService toolReplayService)
+        ToolReplayService toolReplayService,
+        WorkspaceSymbolIndexService symbolIndexService,
+        WorkspaceAnalysisService workspaceAnalysisService)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -73,6 +80,8 @@ public sealed class DesktopAgentService
         _embeddingClientFactory = embeddingClientFactory;
         _fileMutationSnapshotService = fileMutationSnapshotService;
         _toolReplayService = toolReplayService;
+        _symbolIndexService = symbolIndexService;
+        _workspaceAnalysisService = workspaceAnalysisService;
     }
 
     public async Task<string> SendAsync(
@@ -330,11 +339,14 @@ public sealed class DesktopAgentService
             : string.Empty;
         var memoryContext = _projectMemoryService.BuildContext(projectMemory, userText);
         var mcpContext = McpServerRegistry.BuildContext(projectConfig);
+        var hasLinkIntent = HasLinkIntent(userText);
+        var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
             string.IsNullOrWhiteSpace(memoryContext) &&
-            string.IsNullOrWhiteSpace(mcpContext))
+            string.IsNullOrWhiteSpace(mcpContext) &&
+            string.IsNullOrWhiteSpace(linkStatusContext))
         {
             return string.Empty;
         }
@@ -350,9 +362,11 @@ public sealed class DesktopAgentService
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
         builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
-        if (config.DesktopAutoFetchLinks)
+        builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
+
+        if (!string.IsNullOrWhiteSpace(linkStatusContext))
         {
-            builder.AppendLine("Link auto-read rule: linked URLs were fetched when possible. Do not say AgentQ cannot access URLs if linked page context is present; report fetch success or failure evidence instead.");
+            builder.AppendLine(linkStatusContext);
         }
 
         if (!string.IsNullOrWhiteSpace(workspaceContext))
@@ -380,6 +394,45 @@ public sealed class DesktopAgentService
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildLinkStatusContext(
+        ProviderConfiguration config,
+        string userText,
+        string linkedContext,
+        bool hasLinkIntent)
+    {
+        var containsUrl = LinkContentFetcher.ContainsUrl(userText);
+        if (!hasLinkIntent && !containsUrl && string.IsNullOrWhiteSpace(linkedContext))
+        {
+            return string.Empty;
+        }
+
+        if (config.DesktopAutoFetchLinks)
+        {
+            if (!string.IsNullOrWhiteSpace(linkedContext))
+            {
+                return "Link auto-read status: enabled. Linked page context is attached below; use it as evidence and report fetch success or failure.";
+            }
+
+            return containsUrl
+                ? "Link auto-read status: enabled, but no linked page context was attached. Report that no readable linked context was available and ask for pasted text or a local file as fallback."
+                : "Link auto-read status: enabled, but no HTTP/HTTPS URL was detected in the current user message. Ask the user to send the URL.";
+        }
+
+        return "Link auto-read status: disabled in the current run configuration. Tell the user link auto-read is disabled in settings, and ask them to enable it, paste the content, or attach a local file.";
+    }
+
+    private static bool HasLinkIntent(string text)
+    {
+        return !string.IsNullOrWhiteSpace(text) &&
+               (text.Contains("link", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("url", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("website", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("web site", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("링크", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("사이트", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("웹사이트", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<ChatMessage> CreateUserMessageAsync(
@@ -928,7 +981,7 @@ public sealed class DesktopAgentService
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
-        registry.Register(new DesktopSymbolSearchTool(workspaceRoot));
+        registry.Register(new DesktopSymbolSearchTool(workspaceRoot, _symbolIndexService));
         var embeddingClient = DesktopEmbeddingClientFactory.SupportsProvider(config.EmbeddingProvider)
             ? _embeddingClientFactory.Create(config)
             : null;
@@ -937,7 +990,9 @@ public sealed class DesktopAgentService
             workspaceRoot,
             _embeddingIndexStore,
             embeddingClient,
-            embeddingModel));
+            embeddingModel,
+            _symbolIndexService,
+            _workspaceAnalysisService));
         if (embeddingClient != null)
         {
             registry.Register(new DesktopSemanticSearchTool(

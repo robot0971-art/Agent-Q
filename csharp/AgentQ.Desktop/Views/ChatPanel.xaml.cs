@@ -2,12 +2,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using AgentQ.Desktop.Services;
 
 namespace AgentQ.Desktop.Views;
 
 public partial class ChatPanel : System.Windows.Controls.UserControl
 {
-    private const double MouseWheelScrollFactor = 0.35;
     private bool _messagesPinnedToBottom = true;
 
     public ChatPanel()
@@ -120,7 +120,7 @@ public partial class ChatPanel : System.Windows.Controls.UserControl
 
     private static void SmoothScroll(ScrollViewer scrollViewer, int wheelDelta)
     {
-        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * MouseWheelScrollFactor;
+        var targetOffset = scrollViewer.VerticalOffset - wheelDelta * DesktopUiConstants.MouseWheelScrollFactor;
         targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
         scrollViewer.ScrollToVerticalOffset(targetOffset);
     }

@@ -3,8 +3,12 @@ using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopSymbolSearchTool(string workspaceRoot) : ITool
+public sealed class DesktopSymbolSearchTool(
+    string workspaceRoot,
+    WorkspaceSymbolIndexService? symbolIndexService = null) : ITool
 {
+    private readonly WorkspaceSymbolIndexService _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
+
     public string Name => "symbol_search";
 
     public string Description => "Search project symbols by name, kind, language, and path using the local workspace symbol index";
@@ -37,7 +41,7 @@ public sealed class DesktopSymbolSearchTool(string workspaceRoot) : ITool
         TryGetString(input, "language", out var language);
         TryGetString(input, "path", out var path);
 
-        var index = new WorkspaceSymbolIndexService().Build(workspaceRoot);
+        var index = _symbolIndexService.Build(workspaceRoot);
         var results = index.Symbols
             .Select(symbol => new SymbolSearchMatch(symbol, Score(symbol, query, kind, language, path)))
             .Where(match => match.Score > 0)

@@ -666,6 +666,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CanFixLastVerificationFailure = false;
     }
 
+    public void ClearSidePanelState()
+    {
+        Logs.Clear();
+        RunSteps.Clear();
+        VerificationPlans.Clear();
+        VerificationResults.Clear();
+        FileChanges.Clear();
+    }
+
     public void AddVerificationResult(VerificationResultCard result)
     {
         VerificationResults.Insert(0, result);

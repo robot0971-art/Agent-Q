@@ -28,6 +28,13 @@ public sealed class ProjectMemoryService
         ".agentq",
         "project-memory");
 
+    private readonly WorkspaceAnalysisService _workspaceAnalysisService;
+
+    public ProjectMemoryService(WorkspaceAnalysisService? workspaceAnalysisService = null)
+    {
+        _workspaceAnalysisService = workspaceAnalysisService ?? new WorkspaceAnalysisService();
+    }
+
     public async Task<ProjectMemory> LoadOrDiscoverAsync(string workspaceRoot, CancellationToken ct)
     {
         var root = Path.GetFullPath(workspaceRoot);
@@ -473,12 +480,12 @@ public sealed class ProjectMemoryService
         }
     }
 
-    private static async Task EnrichContextBankAsync(string root, ProjectMemory memory, CancellationToken ct)
+    private async Task EnrichContextBankAsync(string root, ProjectMemory memory, CancellationToken ct)
     {
         WorkspaceAnalysis analysis;
         try
         {
-            analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, ct);
+            analysis = await _workspaceAnalysisService.AnalyzeAsync(root, ct);
         }
         catch
         {

@@ -283,7 +283,7 @@ public partial class MainWindow : Window
 
     private void Exit_OnClick(object sender, RoutedEventArgs e)
     {
-        _windowCommandService.Exit(this);
+        _windowCommandService.Close(this);
     }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

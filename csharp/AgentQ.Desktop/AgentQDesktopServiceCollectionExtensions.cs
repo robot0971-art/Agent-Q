@@ -20,6 +20,8 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<ProjectMemoryService>();
         services.AddSingleton<DesktopLearningSuggestionService>();
         services.AddSingleton<WorkspaceIndexer>();
+        services.AddSingleton<WorkspaceSymbolIndexService>();
+        services.AddSingleton<WorkspaceAnalysisService>();
         services.AddSingleton<EmbeddingIndexStore>();
         services.AddSingleton<EmbeddingIndexBuilder>();
         services.AddSingleton<DesktopEmbeddingClientFactory>();
@@ -34,7 +36,6 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopGitService>();
         services.AddSingleton<DesktopGitPanelWorkflowService>();
         services.AddSingleton<DesktopGitCommandService>();
-        services.AddSingleton<WorkspaceAnalysisService>();
         services.AddSingleton<ProjectAgentConfigService>();
         services.AddSingleton<AgentCheckpointService>();
         services.AddSingleton<FileMutationSnapshotService>();

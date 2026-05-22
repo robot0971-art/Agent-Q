@@ -8,8 +8,6 @@ namespace AgentQ.Desktop.Views;
 
 public partial class FileChangeReviewPanel : System.Windows.Controls.UserControl
 {
-    private const double MouseWheelScrollFactor = 0.35;
-
     public FileChangeReviewPanel()
     {
         InitializeComponent();
@@ -74,7 +72,7 @@ public partial class FileChangeReviewPanel : System.Windows.Controls.UserControl
         }
 
         e.Handled = true;
-        var targetOffset = scrollViewer.VerticalOffset - e.Delta * MouseWheelScrollFactor;
+        var targetOffset = scrollViewer.VerticalOffset - e.Delta * DesktopUiConstants.MouseWheelScrollFactor;
         targetOffset = Math.Clamp(targetOffset, 0, scrollViewer.ScrollableHeight);
         scrollViewer.ScrollToVerticalOffset(targetOffset);
     }

@@ -119,6 +119,7 @@ public sealed class DesktopAgentRunWorkflowService(
             var config = viewModel.ToConfiguration();
             var workspaceRoot = viewModel.WorkspaceRoot;
             var workMode = viewModel.WorkMode;
+            viewModel.AddLog($"Link auto-read: {(config.DesktopAutoFetchLinks ? "enabled" : "disabled")}");
             _activeWorkspaceRoot = workspaceRoot;
             _activeProvider = config.Provider;
             _activeModel = config.Model;

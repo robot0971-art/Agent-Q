@@ -144,11 +144,11 @@
                        Margin="0,0,0,2" />
 
             <CheckBox Content="{Binding ProjectContextAutoAttachText}"
-                      IsChecked="{Binding AutoAttachWorkspaceContext, UpdateSourceTrigger=PropertyChanged}"
+                      IsChecked="{Binding AutoAttachWorkspaceContext, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                       Foreground="{DynamicResource TextMain}"
                       Margin="0,8,0,6" />
             <CheckBox Content="{Binding AutoFetchLinksText}"
-                      IsChecked="{Binding AutoFetchLinks, UpdateSourceTrigger=PropertyChanged}"
+                      IsChecked="{Binding AutoFetchLinks, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                       Foreground="{DynamicResource TextMain}" />
         </StackPanel>
     </Border>
