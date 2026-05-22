@@ -17,6 +17,42 @@ public sealed class ProjectMemory
     public List<ProjectMemoryPreference> Preferences { get; set; } = [];
 
     public List<ProjectMemoryCheck> Checks { get; set; } = [];
+
+    public ProjectContextBank ContextBank { get; set; } = new();
+}
+
+public sealed class ProjectContextBank
+{
+    public List<ProjectMemoryFact> Stack { get; set; } = [];
+
+    public List<ProjectMemoryFact> Rules { get; set; } = [];
+
+    public List<ProjectMemoryFact> Preferences { get; set; } = [];
+
+    public List<ProjectMemoryFact> ForbiddenPatterns { get; set; } = [];
+
+    public List<ProjectMemoryFact> KeyCommands { get; set; } = [];
+
+    public List<ProjectMemoryFact> KeyFiles { get; set; } = [];
+
+    public List<ProjectMemoryFact> KeySymbols { get; set; } = [];
+
+    public List<ProjectMemoryFact> RecurringErrors { get; set; } = [];
+}
+
+public sealed class ProjectMemoryFact
+{
+    public string Key { get; set; } = string.Empty;
+
+    public string Value { get; set; } = string.Empty;
+
+    public List<string> Tags { get; set; } = [];
+
+    public double Confidence { get; set; } = 1;
+
+    public bool Enabled { get; set; } = true;
+
+    public string Source { get; set; } = string.Empty;
 }
 
 public sealed class ProjectMemoryLesson

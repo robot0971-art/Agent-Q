@@ -13,6 +13,7 @@ public sealed class ProjectMemoryService
     private const string SharedMemoryFileName = "memory.shared.json";
     private const int MaxMemoryTextLength = 1000;
     private const int MaxMemoryCommandLength = 300;
+    private const int MaxContextBankFactLength = 500;
     private const double MinUsefulLessonConfidence = 0.2;
     private const int StaleUnusedLessonDays = 180;
 
@@ -42,6 +43,7 @@ public sealed class ProjectMemoryService
                 {
                     ApplyLocalConfig(root, memory);
                     await ApplyWorkspaceMemoryAsync(root, memory, ct);
+                    await EnrichContextBankAsync(root, memory, ct);
                     return memory;
                 }
             }
@@ -52,6 +54,7 @@ public sealed class ProjectMemoryService
         }
 
         var discovered = Discover(root);
+        await EnrichContextBankAsync(root, discovered, ct);
         await SaveAsync(discovered, ct);
         await ApplyWorkspaceMemoryAsync(root, discovered, ct);
         return discovered;
@@ -101,6 +104,7 @@ public sealed class ProjectMemoryService
             .ToList();
         var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
         var checks = memory.Checks.Where(IsUsefulCheck).ToList();
+        var contextFacts = SelectRelevantContextFacts(memory.ContextBank, query, 16);
 
         if (memory.VerificationCommands.Count == 0 &&
             memory.ProjectHints.Count == 0 &&
@@ -108,7 +112,8 @@ public sealed class ProjectMemoryService
             generalLessons.Count == 0 &&
             errorHistoryLessons.Count == 0 &&
             preferences.Count == 0 &&
-            checks.Count == 0)
+            checks.Count == 0 &&
+            contextFacts.Count == 0)
         {
             return string.Empty;
         }
@@ -141,6 +146,15 @@ public sealed class ProjectMemoryService
             foreach (var rule in memory.WorkspaceRules)
             {
                 builder.AppendLine($"- {rule}");
+            }
+        }
+
+        if (contextFacts.Count > 0)
+        {
+            builder.AppendLine("Context bank:");
+            foreach (var entry in contextFacts)
+            {
+                builder.AppendLine($"- {entry.Category}: {entry.Fact.Key} = {entry.Fact.Value}");
             }
         }
 
@@ -433,6 +447,108 @@ public sealed class ProjectMemoryService
         {
             AddUnique(memory.Checks, check, existing => string.Equals(existing.Name, check.Name, StringComparison.OrdinalIgnoreCase));
         }
+
+        ApplyContextBank(memory.ContextBank, file.ContextBank);
+    }
+
+    private static void ApplyContextBank(ProjectContextBank target, ProjectContextBank source)
+    {
+        AddUniqueFacts(target.Stack, source.Stack);
+        AddUniqueFacts(target.Rules, source.Rules);
+        AddUniqueFacts(target.Preferences, source.Preferences);
+        AddUniqueFacts(target.ForbiddenPatterns, source.ForbiddenPatterns);
+        AddUniqueFacts(target.KeyCommands, source.KeyCommands);
+        AddUniqueFacts(target.KeyFiles, source.KeyFiles);
+        AddUniqueFacts(target.KeySymbols, source.KeySymbols);
+        AddUniqueFacts(target.RecurringErrors, source.RecurringErrors);
+    }
+
+    private static void AddUniqueFacts(List<ProjectMemoryFact> target, IEnumerable<ProjectMemoryFact> additions)
+    {
+        foreach (var fact in additions.Where(IsUsefulFact))
+        {
+            AddUnique(target, fact, existing =>
+                string.Equals(existing.Key, fact.Key, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(existing.Value, fact.Value, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static async Task EnrichContextBankAsync(string root, ProjectMemory memory, CancellationToken ct)
+    {
+        WorkspaceAnalysis analysis;
+        try
+        {
+            analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, ct);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(analysis.ProjectType) && analysis.ProjectType != "Unknown")
+        {
+            AddFact(memory.ContextBank.Stack, "project-type", analysis.ProjectType, "workspace-analysis");
+        }
+
+        if (!string.IsNullOrWhiteSpace(analysis.Framework) && analysis.Framework != "Unknown")
+        {
+            AddFact(memory.ContextBank.Stack, "framework", analysis.Framework, "workspace-analysis");
+        }
+
+        foreach (var command in analysis.VerificationCommands.Take(8))
+        {
+            AddFact(memory.ContextBank.KeyCommands, command, command, "workspace-analysis", ["verification"]);
+        }
+
+        foreach (var file in analysis.KeyFiles.Take(12))
+        {
+            AddFact(memory.ContextBank.KeyFiles, file, file, "workspace-analysis");
+        }
+
+        foreach (var symbol in analysis.KeySymbols.Take(12))
+        {
+            AddFact(memory.ContextBank.KeySymbols, symbol, symbol, "workspace-analysis");
+        }
+
+        foreach (var rule in memory.WorkspaceRules.Take(12))
+        {
+            AddFact(memory.ContextBank.Rules, "workspace-rule", rule, "workspace-memory");
+        }
+
+        foreach (var preference in memory.Preferences.Where(IsUsefulPreference).Take(12))
+        {
+            AddFact(memory.ContextBank.Preferences, preference.Key, preference.Value, "workspace-memory");
+        }
+
+        foreach (var lesson in memory.Lessons.Where(IsErrorHistoryLesson).Take(12))
+        {
+            AddFact(memory.ContextBank.RecurringErrors, string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title, lesson.Content, "workspace-memory", lesson.Tags);
+        }
+    }
+
+    private static void AddFact(
+        List<ProjectMemoryFact> facts,
+        string key,
+        string value,
+        string source,
+        IEnumerable<string>? tags = null)
+    {
+        var fact = new ProjectMemoryFact
+        {
+            Key = key,
+            Value = value,
+            Source = source,
+            Tags = tags?.Where(tag => !string.IsNullOrWhiteSpace(tag)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? []
+        };
+
+        if (!IsUsefulFact(fact))
+        {
+            return;
+        }
+
+        AddUnique(facts, fact, existing =>
+            string.Equals(existing.Key, fact.Key, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(existing.Value, fact.Value, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<ProjectMemoryFile?> LoadWorkspaceMemoryFileAsync(string path, CancellationToken ct)
@@ -549,6 +665,17 @@ public sealed class ProjectMemoryService
         check.Command.Length <= MaxMemoryCommandLength &&
         !LooksSensitive(check.Command) &&
         !LooksDangerousCommand(check.Command);
+
+    private static bool IsUsefulFact(ProjectMemoryFact fact) =>
+        fact.Enabled &&
+        !string.IsNullOrWhiteSpace(fact.Key) &&
+        !string.IsNullOrWhiteSpace(fact.Value) &&
+        fact.Key.Length <= 180 &&
+        fact.Value.Length <= MaxContextBankFactLength &&
+        fact.Confidence >= MinUsefulLessonConfidence &&
+        !LooksSensitive(fact.Key) &&
+        !LooksSensitive(fact.Value) &&
+        !LooksSensitive(fact.Source);
 
     private static bool IsExpired(DateTime? expiresAt) =>
         expiresAt.HasValue && expiresAt.Value <= DateTime.Now;
@@ -671,6 +798,99 @@ public sealed class ProjectMemoryService
             .Any(queryTerms.Contains);
     }
 
+    private static IReadOnlyList<ContextBankEntry> SelectRelevantContextFacts(
+        ProjectContextBank contextBank,
+        string query,
+        int maxCount)
+    {
+        var queryTerms = ExtractTerms(query).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return EnumerateContextFacts(contextBank)
+            .Where(entry => IsUsefulFact(entry.Fact))
+            .Select(entry => new
+            {
+                Entry = entry,
+                Score = ScoreFact(entry, queryTerms)
+            })
+            .Where(item => queryTerms.Count == 0 || item.Score > item.Entry.Fact.Confidence)
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Entry.Category, StringComparer.OrdinalIgnoreCase)
+            .Take(Math.Clamp(maxCount, 1, 50))
+            .Select(item => item.Entry)
+            .ToList();
+    }
+
+    private static IEnumerable<ContextBankEntry> EnumerateContextFacts(ProjectContextBank contextBank)
+    {
+        foreach (var fact in contextBank.Stack)
+        {
+            yield return new ContextBankEntry("stack", fact);
+        }
+
+        foreach (var fact in contextBank.Rules)
+        {
+            yield return new ContextBankEntry("rule", fact);
+        }
+
+        foreach (var fact in contextBank.Preferences)
+        {
+            yield return new ContextBankEntry("preference", fact);
+        }
+
+        foreach (var fact in contextBank.ForbiddenPatterns)
+        {
+            yield return new ContextBankEntry("forbidden", fact);
+        }
+
+        foreach (var fact in contextBank.KeyCommands)
+        {
+            yield return new ContextBankEntry("command", fact);
+        }
+
+        foreach (var fact in contextBank.KeyFiles)
+        {
+            yield return new ContextBankEntry("file", fact);
+        }
+
+        foreach (var fact in contextBank.KeySymbols)
+        {
+            yield return new ContextBankEntry("symbol", fact);
+        }
+
+        foreach (var fact in contextBank.RecurringErrors)
+        {
+            yield return new ContextBankEntry("recurring-error", fact);
+        }
+    }
+
+    private static double ScoreFact(ContextBankEntry entry, IReadOnlySet<string> queryTerms)
+    {
+        var score = Math.Clamp(entry.Fact.Confidence, 0, 1);
+        if (queryTerms.Count == 0 && (entry.Category is "rule" or "forbidden"))
+        {
+            score += 0.25;
+        }
+
+        if (entry.Category == "recurring-error" && LooksLikeFailureQuery(queryTerms))
+        {
+            score += 2;
+        }
+
+        if (queryTerms.Count == 0)
+        {
+            return score;
+        }
+
+        foreach (var term in ExtractTerms($"{entry.Category} {entry.Fact.Key} {entry.Fact.Value} {string.Join(' ', entry.Fact.Tags)} {entry.Fact.Source}"))
+        {
+            if (queryTerms.Contains(term))
+            {
+                score += 1;
+            }
+        }
+
+        return score;
+    }
+
     private static IEnumerable<string> ExtractTerms(string value)
     {
         foreach (Match match in Regex.Matches(value, @"[\p{L}\p{N}_\.-]{3,}", RegexOptions.IgnoreCase))
@@ -709,5 +929,9 @@ public sealed class ProjectMemoryService
         public List<ProjectMemoryPreference> Preferences { get; set; } = [];
 
         public List<ProjectMemoryCheck> Checks { get; set; } = [];
+
+        public ProjectContextBank ContextBank { get; set; } = new();
     }
+
+    private sealed record ContextBankEntry(string Category, ProjectMemoryFact Fact);
 }

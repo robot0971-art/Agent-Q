@@ -919,6 +919,73 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ProjectMemoryService_LoadsAndQueriesContextBank()
+    {
+        var root = CreateTempDirectory();
+        var agentQDirectory = Path.Combine(root, ".agentq");
+        Directory.CreateDirectory(agentQDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(agentQDirectory, "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "contextBank": {
+                "stack": [
+                  { "key": "frontend", "value": "React + Vite", "tags": [ "frontend" ] }
+                ],
+                "preferences": [
+                  { "key": "language", "value": "Korean" }
+                ],
+                "forbiddenPatterns": [
+                  { "key": "state", "value": "Do not add Redux to this project." }
+                ],
+                "keyCommands": [
+                  { "key": "frontend-build", "value": "cmd /c cd frontend && npm run build" }
+                ],
+                "keyFiles": [
+                  { "key": "frontend-package", "value": "frontend/package.json" }
+                ],
+                "keySymbols": [
+                  { "key": "DashboardView", "value": "class DashboardView (frontend/src/App.tsx:1)" }
+                ],
+                "recurringErrors": [
+                  { "key": "vite-build", "value": "Vite build can fail when generated files are stale.", "tags": [ "error-history", "vite" ] }
+                ]
+              }
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+        var context = service.BuildContext(memory, "vite frontend build error");
+
+        Assert.Contains(memory.ContextBank.Stack, fact => fact.Value == "React + Vite");
+        Assert.Contains(memory.ContextBank.KeySymbols, fact => fact.Key == "DashboardView");
+        Assert.Contains("Context bank:", context);
+        Assert.Contains("frontend-build", context);
+        Assert.Contains("vite-build", context);
+        Assert.DoesNotContain("Do not add Redux", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProjectMemoryService_EnrichesContextBankFromWorkspaceAnalysis()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"dependencies":{"react":"latest"},"devDependencies":{"vite":"latest"},"scripts":{"build":"vite build"}}""");
+
+        var service = new ProjectMemoryService();
+        var memory = await service.LoadOrDiscoverAsync(root, CancellationToken.None);
+        var context = service.BuildContext(memory, "react vite build");
+
+        Assert.Contains(memory.ContextBank.Stack, fact => fact.Key == "project-type" && fact.Value.Contains("Node", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(memory.ContextBank.Stack, fact => fact.Key == "framework" && fact.Value.Contains("Vite", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(memory.ContextBank.KeyCommands, fact => fact.Value.Contains("npm run build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Context bank:", context);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_SkipsSensitiveMemoryEntries()
     {
         var root = CreateTempDirectory();
