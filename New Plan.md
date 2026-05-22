@@ -10,20 +10,4 @@ AgentQ is now in beta hardening. The next work should make AgentQ's analysis ans
 
 ## Active Work Queue
 
-### 1. Beta 8 release bundle
-
-Goal:
-
-- Package the next beta after evidence-backed analysis and UI polish are verified.
-
-Expected behavior:
-
-- README reflects the new beta behavior.
-- Release tag is created only after build and tests pass.
-- GitHub release draft contains installer, portable ZIP, and CLI package.
-
-Primary files:
-
-- `README.md`
-- `.github/workflows/release.yml`
-- `installer/AgentQ.Desktop.iss`
+All listed beta 8 hardening items are complete.
