@@ -47,6 +47,7 @@ public sealed class DesktopAgentService
     private readonly EmbeddingIndexStore _embeddingIndexStore;
     private readonly DesktopEmbeddingClientFactory _embeddingClientFactory;
     private readonly FileMutationSnapshotService _fileMutationSnapshotService;
+    private readonly ToolReplayService _toolReplayService;
     private readonly List<ChatMessage> _messages = [];
 
     public DesktopAgentService(
@@ -56,7 +57,8 @@ public sealed class DesktopAgentService
         WorkspaceIndexer workspaceIndexer,
         EmbeddingIndexStore embeddingIndexStore,
         DesktopEmbeddingClientFactory embeddingClientFactory,
-        FileMutationSnapshotService fileMutationSnapshotService)
+        FileMutationSnapshotService fileMutationSnapshotService,
+        ToolReplayService toolReplayService)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -65,6 +67,7 @@ public sealed class DesktopAgentService
         _embeddingIndexStore = embeddingIndexStore;
         _embeddingClientFactory = embeddingClientFactory;
         _fileMutationSnapshotService = fileMutationSnapshotService;
+        _toolReplayService = toolReplayService;
     }
 
     public async Task<string> SendAsync(
@@ -120,6 +123,7 @@ public sealed class DesktopAgentService
         var includeTransientContext = !string.IsNullOrWhiteSpace(transientContext);
         var fileChanges = new List<FileChangeRecord>();
         var executedCommands = new List<string>();
+        var replayEntries = new List<ToolReplayEntry>();
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
 
@@ -161,6 +165,7 @@ public sealed class DesktopAgentService
                     touchedLessons.Count,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished without more tool calls.");
+                await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
 
@@ -175,6 +180,7 @@ public sealed class DesktopAgentService
                 workMode,
                 fileChanges,
                 executedCommands,
+                replayEntries,
                 ct);
             if (toolResults.Count > 0)
             {
@@ -201,6 +207,7 @@ public sealed class DesktopAgentService
             touchedLessons.Count,
             toolCallbacks);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool step limit reached", stoppedMessage);
+        await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
         return builder.ToString();
     }
 
@@ -504,6 +511,7 @@ public sealed class DesktopAgentService
         AgentWorkMode workMode,
         List<FileChangeRecord> fileChanges,
         List<string> executedCommands,
+        List<ToolReplayEntry> replayEntries,
         CancellationToken ct)
     {
         var results = new List<ChatContent>();
@@ -518,6 +526,7 @@ public sealed class DesktopAgentService
                 if (tool == null)
                 {
                     callbacks?.OnToolError?.Invoke(toolName, $"Tool not found: {toolName}");
+                    replayEntries.Add(CreateReplayEntry(toolName, toolId, "{}", $"Tool not found: {toolName}", isError: true, DateTime.UtcNow));
                     results.Add(ChatContent.CreateToolResult(toolId, $"Tool not found: {toolName}", true));
                     continue;
                 }
@@ -535,11 +544,13 @@ public sealed class DesktopAgentService
                     !await RequestToolPermissionAsync(tool, inputJson, workMode, enforcer, callbacks))
                 {
                     callbacks?.OnPermissionDenied?.Invoke(tool.Name);
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, "Permission denied by user", isError: true, DateTime.UtcNow));
                     results.Add(ChatContent.CreateToolResult(toolId, "Permission denied by user", true));
                     continue;
                 }
 
                 callbacks?.OnToolExecution?.Invoke(tool.Name);
+                var startedAt = DateTime.UtcNow;
 
                 try
                 {
@@ -586,12 +597,15 @@ public sealed class DesktopAgentService
                     {
                         callbacks?.OnToolOutput?.Invoke(tool.Name, $"Tool result was truncated to {MaxToolResultChars} chars before being sent back to the model.");
                     }
+
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, result.Content, result.IsError, startedAt));
                 }
                 catch (Exception ex)
                 {
                     var message = $"Error: {ex.Message}";
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, $"Tool failed: {tool.Name}", message);
                     callbacks?.OnToolError?.Invoke(tool.Name, message);
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, message, isError: true, startedAt));
                     results.Add(ChatContent.CreateToolResult(toolId, message, true));
                 }
             }
@@ -617,6 +631,68 @@ public sealed class DesktopAgentService
         }
 
         return plans;
+    }
+
+    private async Task SaveReplayAsync(
+        string workspaceRoot,
+        ProviderConfiguration config,
+        string userText,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        DesktopToolCallbacks? callbacks,
+        CancellationToken ct)
+    {
+        if (replayEntries.Count == 0)
+        {
+            return;
+        }
+
+        var path = await _toolReplayService.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = workspaceRoot,
+                Provider = config.Provider,
+                Model = config.Model,
+                PromptPreview = TrimReplayText(userText, 800),
+                Entries = replayEntries.ToList()
+            },
+            ct);
+
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            callbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Tool replay saved", path);
+        }
+    }
+
+    private static ToolReplayEntry CreateReplayEntry(
+        string toolName,
+        string toolId,
+        string inputJson,
+        string result,
+        bool isError,
+        DateTime startedAt)
+    {
+        var completedAt = DateTime.UtcNow;
+        return new ToolReplayEntry
+        {
+            StartedAt = startedAt.ToLocalTime(),
+            CompletedAt = completedAt.ToLocalTime(),
+            ToolName = toolName,
+            ToolUseId = toolId,
+            InputJson = TrimReplayText(inputJson, 8000),
+            ResultPreview = TrimReplayText(result, 8000),
+            IsError = isError,
+            DurationMs = Math.Max(0, (int)(completedAt - startedAt).TotalMilliseconds)
+        };
+    }
+
+    private static string TrimReplayText(string value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxChars)
+        {
+            return value;
+        }
+
+        return value[..maxChars] + Environment.NewLine + "[replay text truncated]";
     }
 
     private static void ReportConfidence(

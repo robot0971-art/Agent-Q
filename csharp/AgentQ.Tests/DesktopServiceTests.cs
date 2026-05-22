@@ -935,6 +935,43 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ToolReplayService_SavesAndLoadsLatestSession()
+    {
+        var root = CreateTempDirectory();
+        var service = new ToolReplayService();
+
+        var path = await service.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                PromptPreview = "change file",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "read_file",
+                        ToolUseId = "tool-1",
+                        InputJson = "{\"path\":\"README.md\"}",
+                        ResultPreview = "{\"content\":\"hello\"}",
+                        IsError = false,
+                        DurationMs = 12
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(path);
+        Assert.True(File.Exists(path));
+
+        var loaded = await service.LoadLatestAsync(root, CancellationToken.None);
+        Assert.NotNull(loaded);
+        Assert.Equal("openai", loaded.Provider);
+        Assert.Equal("read_file", Assert.Single(loaded.Entries).ToolName);
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(

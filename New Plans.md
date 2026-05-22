@@ -2,6 +2,4 @@
 
 Implementation rule: finish items from top to bottom, then remove completed items from this file in the same order.
 
-## 1. Multi-Agent / Tool Replay
-- Split Planner, Coder, Reviewer, and Tester roles only after the single-agent loop is reliable.
-- Add replayable tool timelines and deterministic rerun support later.
+All listed v1 items are complete.

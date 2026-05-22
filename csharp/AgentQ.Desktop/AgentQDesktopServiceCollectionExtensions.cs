@@ -16,6 +16,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<LinkContentFetcher>();
         services.AddSingleton<DesktopProviderModelDiscoveryService>();
         services.AddSingleton<DesktopTelemetryService>();
+        services.AddSingleton<ToolReplayService>();
         services.AddSingleton<ProjectMemoryService>();
         services.AddSingleton<DesktopLearningSuggestionService>();
         services.AddSingleton<WorkspaceIndexer>();
