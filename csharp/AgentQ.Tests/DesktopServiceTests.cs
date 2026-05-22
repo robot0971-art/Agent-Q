@@ -680,6 +680,69 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopVerificationSelector_SelectsFrontendBuildForTypeScriptChanges()
+    {
+        var plans = DesktopVerificationSelector.SelectPlans(
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\frontend\\src\\App.tsx",
+                    RelativePath = "frontend/src/App.tsx"
+                }
+            ],
+            executedCommands: []);
+
+        var plan = Assert.Single(plans);
+        Assert.Equal("Focused verification", plan.Title);
+        Assert.Equal("cmd /c cd frontend && npm run build", plan.Command);
+        Assert.True(VerificationCommandPolicy.IsAllowed(plan.Command));
+    }
+
+    [Fact]
+    public void DesktopVerificationSelector_SelectsBackendPytestForPythonChanges()
+    {
+        var plans = DesktopVerificationSelector.SelectPlans(
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\backend\\app\\main.py",
+                    RelativePath = "backend/app/main.py"
+                }
+            ],
+            executedCommands: []);
+
+        var plan = Assert.Single(plans);
+        Assert.Equal("Focused verification", plan.Title);
+        Assert.Equal("cmd /c cd backend && python -m pytest", plan.Command);
+        Assert.True(VerificationCommandPolicy.IsAllowed(plan.Command));
+    }
+
+    [Fact]
+    public void DesktopVerificationSelector_SelectsDockerComposeConfigForComposeChanges()
+    {
+        var plans = DesktopVerificationSelector.SelectPlans(
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\docker-compose.yml",
+                    RelativePath = "docker-compose.yml"
+                }
+            ],
+            executedCommands: []);
+
+        var plan = Assert.Single(plans);
+        Assert.Equal("docker compose config", plan.Command);
+        Assert.True(VerificationCommandPolicy.IsAllowed(plan.Command));
+    }
+
+    [Fact]
+    public void VerificationCommandPolicy_BlocksUnsafeDirectoryScopedCommands()
+    {
+        Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd .. && npm run build"));
+        Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd frontend & del * && npm run build"));
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(

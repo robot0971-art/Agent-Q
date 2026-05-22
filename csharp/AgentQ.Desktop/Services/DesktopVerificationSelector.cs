@@ -1,7 +1,13 @@
+using System.IO;
+
 namespace AgentQ.Desktop.Services;
 
 public static class DesktopVerificationSelector
 {
+    private static readonly string[] JavaScriptExtensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"];
+
+    private static readonly string[] PythonExtensions = [".py", ".pyi"];
+
     public static IReadOnlyList<AgentVerificationPlan> SelectPlans(
         IReadOnlyList<FileChangeRecord> changes,
         IReadOnlyList<string> executedCommands,
@@ -67,6 +73,57 @@ public static class DesktopVerificationSelector
             ];
         }
 
+        if (paths.Any(IsDockerComposeFile))
+        {
+            return
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Focused verification",
+                    Command = "docker compose config",
+                    Reason = "Docker Compose files changed; validate the compose graph before running containers."
+                }
+            ];
+        }
+
+        if (paths.Any(IsJavaScriptProjectFile))
+        {
+            var packageRoot = FindNearestProjectRoot(paths, IsJavaScriptProjectFile, "package.json");
+            var command = FindPreferredCommand(
+                projectMemory,
+                ["npm run build", "npm test", "pnpm build", "pnpm test", "yarn build", "yarn test"]) ??
+                BuildDirectoryCommand(packageRoot, "npm run build");
+
+            return
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Focused verification",
+                    Command = command,
+                    Reason = "JavaScript or TypeScript files changed; run the nearest package build/test check."
+                }
+            ];
+        }
+
+        if (paths.Any(IsPythonProjectFile))
+        {
+            var pythonRoot = FindNearestProjectRoot(paths, IsPythonProjectFile, "pyproject.toml", "requirements.txt", "setup.py", "pytest.ini");
+            var command = FindPreferredCommand(
+                projectMemory,
+                ["python -m pytest", "pytest"]) ??
+                BuildDirectoryCommand(pythonRoot, "python -m pytest");
+
+            return
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Focused verification",
+                    Command = command,
+                    Reason = "Python files changed; run the nearest pytest check."
+                }
+            ];
+        }
+
         if (paths.Any(IsDocumentationFile))
         {
             return
@@ -98,7 +155,16 @@ public static class DesktopVerificationSelector
                    normalized.Contains("build.cmd", StringComparison.Ordinal) ||
                    normalized.Contains("build.desktop.cmd", StringComparison.Ordinal) ||
                    normalized.Contains("dotnet test", StringComparison.Ordinal) ||
-                   normalized.Contains("dotnet build", StringComparison.Ordinal);
+                   normalized.Contains("dotnet build", StringComparison.Ordinal) ||
+                   normalized.Contains("npm test", StringComparison.Ordinal) ||
+                   normalized.Contains("npm run build", StringComparison.Ordinal) ||
+                   normalized.Contains("pnpm test", StringComparison.Ordinal) ||
+                   normalized.Contains("pnpm build", StringComparison.Ordinal) ||
+                   normalized.Contains("yarn test", StringComparison.Ordinal) ||
+                   normalized.Contains("yarn build", StringComparison.Ordinal) ||
+                   normalized.Contains("python -m pytest", StringComparison.Ordinal) ||
+                   normalized.Contains("pytest", StringComparison.Ordinal) ||
+                   normalized.Contains("docker compose config", StringComparison.Ordinal);
         });
     }
 
@@ -125,5 +191,82 @@ public static class DesktopVerificationSelector
         return path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(".rst", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDockerComposeFile(string path)
+    {
+        var normalized = path.Replace('\\', '/');
+        var fileName = Path.GetFileName(normalized);
+        return fileName.Equals("docker-compose.yml", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("docker-compose.yaml", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("compose.yml", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("compose.yaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJavaScriptProjectFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return JavaScriptExtensions.Any(value => value.Equals(extension, StringComparison.OrdinalIgnoreCase)) ||
+               Path.GetFileName(path).Equals("package.json", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("package-lock.json", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("pnpm-lock.yaml", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("yarn.lock", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("tsconfig.json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPythonProjectFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return PythonExtensions.Any(value => value.Equals(extension, StringComparison.OrdinalIgnoreCase)) ||
+               Path.GetFileName(path).Equals("pyproject.toml", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("requirements.txt", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("setup.py", StringComparison.OrdinalIgnoreCase) ||
+               Path.GetFileName(path).Equals("pytest.ini", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? FindPreferredCommand(ProjectMemory? projectMemory, IReadOnlyList<string> needles)
+    {
+        if (projectMemory == null)
+        {
+            return null;
+        }
+
+        return projectMemory.VerificationCommands
+            .Concat(projectMemory.ContextBank.KeyCommands.Select(fact => fact.Value))
+            .FirstOrDefault(command => needles.Any(needle => command.Contains(needle, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string BuildDirectoryCommand(string? directory, string command)
+    {
+        return string.IsNullOrWhiteSpace(directory)
+            ? command
+            : $"cmd /c cd {directory} && {command}";
+    }
+
+    private static string? FindNearestProjectRoot(
+        IReadOnlyList<string> paths,
+        Func<string, bool> predicate,
+        params string[] markerFileNames)
+    {
+        var candidate = paths.FirstOrDefault(predicate);
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return null;
+        }
+
+        var segments = candidate.Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return null;
+        }
+
+        var fileName = segments[^1];
+        if (markerFileNames.Any(marker => marker.Equals(fileName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return segments.Length <= 1 ? null : string.Join('/', segments.Take(segments.Length - 1));
+        }
+
+        return segments.Length <= 1 ? null : segments[0];
     }
 }
