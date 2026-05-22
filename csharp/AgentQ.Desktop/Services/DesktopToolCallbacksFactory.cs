@@ -41,6 +41,7 @@ public static class DesktopToolCallbacksFactory
             OnFileChanged = change => dispatcher.Invoke(() =>
             {
                 viewModel.FileChanges.Add(change);
+                viewModel.SelectedFileChange = change;
             }),
             OnVerificationPlan = plan => dispatcher.Invoke(() =>
             {

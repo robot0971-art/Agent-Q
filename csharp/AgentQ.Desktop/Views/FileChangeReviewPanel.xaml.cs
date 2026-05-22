@@ -33,14 +33,29 @@ public partial class FileChangeReviewPanel : System.Windows.Controls.UserControl
         ApproveRequested?.Invoke(this, (sender as FrameworkElement)?.DataContext as FileChangeRecord);
     }
 
+    private void ApproveSelectedFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        ApproveRequested?.Invoke(this, FileChangesList.SelectedItem as FileChangeRecord);
+    }
+
     private void NeedsEditFileChange_OnClick(object sender, RoutedEventArgs e)
     {
         NeedsEditRequested?.Invoke(this, (sender as FrameworkElement)?.DataContext as FileChangeRecord);
     }
 
+    private void NeedsEditSelectedFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        NeedsEditRequested?.Invoke(this, FileChangesList.SelectedItem as FileChangeRecord);
+    }
+
     private void RevertFileChange_OnClick(object sender, RoutedEventArgs e)
     {
         RevertRequested?.Invoke(this, (sender as FrameworkElement)?.DataContext as FileChangeRecord);
+    }
+
+    private void RevertSelectedFileChange_OnClick(object sender, RoutedEventArgs e)
+    {
+        RevertRequested?.Invoke(this, FileChangesList.SelectedItem as FileChangeRecord);
     }
 
     private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

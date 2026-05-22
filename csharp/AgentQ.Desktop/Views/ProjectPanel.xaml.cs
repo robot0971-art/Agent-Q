@@ -17,6 +17,10 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
 
     public event EventHandler? BuildEmbeddingIndexRequested;
 
+    public event EventHandler? CopyAnalysisReportRequested;
+
+    public event EventHandler? SaveAnalysisReportRequested;
+
     public event EventHandler? SaveProjectConfigRequested;
 
     public event EventHandler? LoadProjectConfigRequested;
@@ -39,6 +43,16 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
     private void BuildEmbeddingIndex_OnClick(object sender, RoutedEventArgs e)
     {
         BuildEmbeddingIndexRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CopyAnalysisReport_OnClick(object sender, RoutedEventArgs e)
+    {
+        CopyAnalysisReportRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SaveAnalysisReport_OnClick(object sender, RoutedEventArgs e)
+    {
+        SaveAnalysisReportRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void SaveProjectConfig_OnClick(object sender, RoutedEventArgs e)

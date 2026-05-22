@@ -1,3 +1,4 @@
+using System.IO;
 using AgentQ.Desktop.ViewModels;
 
 namespace AgentQ.Desktop.Services;
@@ -10,10 +11,13 @@ public sealed class DesktopWorkspaceContextWorkflowService(
     DesktopLearningSuggestionService learningSuggestionService)
 {
     private AgentSessionSummary? _lastSessionSummary;
+    private WorkspaceAnalysis? _lastWorkspaceAnalysis;
 
     public ProjectAgentConfig? ProjectConfig { get; private set; }
 
     public bool HasSessionSummary => _lastSessionSummary != null;
+
+    public WorkspaceAnalysis? LastWorkspaceAnalysis => _lastWorkspaceAnalysis;
 
     public async Task LoadWorkspaceContextAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
@@ -67,6 +71,7 @@ public sealed class DesktopWorkspaceContextWorkflowService(
             var analysis = await Task.Run(
                 () => workspaceAnalysisService.AnalyzeAsync(workspaceRoot, ct),
                 ct);
+            _lastWorkspaceAnalysis = analysis;
             viewModel.ApplyWorkspaceAnalysis(analysis);
             AddWorkspaceMemoryCandidates(viewModel, analysis);
             viewModel.StatusText = "Workspace analysis refreshed";
@@ -132,6 +137,34 @@ public sealed class DesktopWorkspaceContextWorkflowService(
 
         viewModel.AddLog("Session resume prompt prepared");
         return DesktopPromptBuilder.BuildResumeFromSessionSummaryPrompt(_lastSessionSummary);
+    }
+
+    public string? BuildWorkspaceAnalysisReport(MainViewModel viewModel)
+    {
+        if (_lastWorkspaceAnalysis == null)
+        {
+            viewModel.StatusText = "No workspace analysis report to copy";
+            return null;
+        }
+
+        return DesktopWorkspaceAnalysisReportBuilder.Build(_lastWorkspaceAnalysis);
+    }
+
+    public async Task<string?> SaveWorkspaceAnalysisReportAsync(MainViewModel viewModel, CancellationToken ct = default)
+    {
+        var report = BuildWorkspaceAnalysisReport(viewModel);
+        if (string.IsNullOrWhiteSpace(report))
+        {
+            return null;
+        }
+
+        var directory = Path.Combine(Path.GetFullPath(viewModel.WorkspaceRoot), ".agentq", "reports");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"workspace-analysis-{DateTime.Now:yyyyMMdd-HHmmss}.md");
+        await File.WriteAllTextAsync(path, report, ct);
+        viewModel.StatusText = "Workspace analysis report saved";
+        viewModel.AddLog($"Workspace analysis report saved: {path}");
+        return path;
     }
 
     private static void ApplyProjectConfig(MainViewModel viewModel, ProjectAgentConfig config)

@@ -178,6 +178,31 @@ public sealed class DesktopWorkspaceCommandService(
         clipboardService.CopyConversation(viewModel);
     }
 
+    public void CopyWorkspaceAnalysisReport(MainViewModel viewModel)
+    {
+        var report = workspaceContextWorkflowService.BuildWorkspaceAnalysisReport(viewModel);
+        if (string.IsNullOrWhiteSpace(report))
+        {
+            return;
+        }
+
+        clipboardService.CopyText(viewModel, report, "Workspace analysis report copied");
+        viewModel.AddLog("Workspace analysis report copied");
+    }
+
+    public async Task SaveWorkspaceAnalysisReportAsync(MainViewModel viewModel, Func<string, string> trimForLog)
+    {
+        try
+        {
+            await workspaceContextWorkflowService.SaveWorkspaceAnalysisReportAsync(viewModel);
+        }
+        catch (Exception ex)
+        {
+            viewModel.StatusText = $"Workspace analysis report save failed: {ex.Message}";
+            viewModel.AddLog($"Workspace analysis report save failed: {trimForLog(ex.Message)}");
+        }
+    }
+
     private static void AddMemoryCandidate(MainViewModel viewModel, ProjectMemoryLesson lesson)
     {
         if (viewModel.PendingMemoryLessons.Any(existing =>

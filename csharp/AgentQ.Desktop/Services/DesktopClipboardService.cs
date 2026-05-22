@@ -52,4 +52,16 @@ public sealed class DesktopClipboardService
         System.Windows.Clipboard.SetText(builder.ToString().TrimEnd());
         viewModel.StatusText = "Conversation copied to clipboard";
     }
+
+    public void CopyText(MainViewModel viewModel, string text, string successStatus)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            viewModel.StatusText = "Nothing to copy";
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(text);
+        viewModel.StatusText = successStatus;
+    }
 }

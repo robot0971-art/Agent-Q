@@ -569,7 +569,7 @@ public sealed class WorkspaceAnalysisService
 
             if (matches.Count > 0)
             {
-                analysis.ProjectMap.Add($"{role}: {string.Join(", ", matches)}");
+                analysis.ProjectMap.Add(FormatProjectMapEntry(role, matches, matches));
             }
         }
 
@@ -632,6 +632,35 @@ public sealed class WorkspaceAnalysisService
         {
             AddUnique(analysis.KeyFiles, Path.GetRelativePath(analysis.WorkspaceRoot, projectFile));
         }
+    }
+
+    private static string FormatProjectMapEntry(
+        string role,
+        IReadOnlyCollection<string> paths,
+        IReadOnlyCollection<string> evidencePaths)
+    {
+        var displayPaths = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeRelativePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+        var evidence = evidencePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeRelativePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+
+        var entry = $"{role}: {string.Join(", ", displayPaths)}";
+        return evidence.Count == 0
+            ? entry
+            : $"{entry} (evidence: {string.Join(", ", evidence)})";
+    }
+
+    private static string NormalizeRelativePath(string path)
+    {
+        return path.Replace('\\', '/').Trim();
     }
 
     private static void DetectSymbols(WorkspaceAnalysis analysis)
@@ -704,7 +733,7 @@ public sealed class WorkspaceAnalysisService
 
         foreach (var entry in result.ProjectMap.Take(8))
         {
-            AddUnique(analysis.ProjectMap, $"{entry.Role}: {entry.Path}");
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry(entry.Role, [entry.Path], [entry.Path]));
         }
 
         foreach (var component in result.ReactComponents.Take(8))
@@ -719,7 +748,7 @@ public sealed class WorkspaceAnalysisService
 
         foreach (var route in result.Routes.Take(8))
         {
-            AddUnique(analysis.ProjectMap, $"Route files: {route.Path}");
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("Route files", [route.Path], [route.Path]));
         }
     }
 
@@ -792,7 +821,7 @@ public sealed class WorkspaceAnalysisService
 
         foreach (var entry in result.ProjectMap.Take(8))
         {
-            AddUnique(analysis.ProjectMap, $"{entry.Role}: {entry.Path}");
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry(entry.Role, [entry.Path], [entry.Path]));
         }
 
         foreach (var route in result.FastApiRoutes.Take(10))

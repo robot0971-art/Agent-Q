@@ -34,6 +34,22 @@
                     Padding="10,0"
                     Margin="0,0,0,8"
                     Click="BuildEmbeddingIndex_OnClick" />
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Content="Copy report"
+                        Height="30"
+                        Padding="10,0"
+                        Click="CopyAnalysisReport_OnClick" />
+                <Button Grid.Column="2"
+                        Content="Save report"
+                        Height="30"
+                        Padding="10,0"
+                        Click="SaveAnalysisReport_OnClick" />
+            </Grid>
             <Border Background="#0E151E"
                     BorderBrush="{DynamicResource BorderBrushSoft}"
                     BorderThickness="1"

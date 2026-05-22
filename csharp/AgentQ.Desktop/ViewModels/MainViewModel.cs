@@ -50,6 +50,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
+    private FileChangeRecord? _selectedFileChange;
     private GitChangedFile? _selectedGitChangedFile;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
@@ -526,6 +527,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _hasProjectConfig;
         set => SetField(ref _hasProjectConfig, value);
+    }
+
+    public FileChangeRecord? SelectedFileChange
+    {
+        get => _selectedFileChange;
+        set => SetField(ref _selectedFileChange, value);
     }
 
     public GitChangedFile? SelectedGitChangedFile

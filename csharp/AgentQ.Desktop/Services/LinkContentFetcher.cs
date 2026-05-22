@@ -34,6 +34,8 @@ public sealed class LinkContentFetcher
 
         var builder = new StringBuilder();
         builder.AppendLine("Linked page context:");
+        builder.AppendLine("Link auto-read is enabled. AgentQ attempted to fetch the URL(s) below.");
+        builder.AppendLine("Use successful fetches as evidence. If a fetch failed, mention the failure reason and ask for pasted text or a local file only as a fallback.");
 
         foreach (var url in urls)
         {
@@ -55,13 +57,18 @@ public sealed class LinkContentFetcher
 
             var httpClient = _httpClientFactory.CreateClient("desktop-links");
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Fetch failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}.";
+            }
 
             var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
             if (!mediaType.Contains("html", StringComparison.OrdinalIgnoreCase) &&
                 !mediaType.Contains("text", StringComparison.OrdinalIgnoreCase))
             {
-                return $"Skipped unsupported content type: {mediaType}";
+                return string.IsNullOrWhiteSpace(mediaType)
+                    ? "Fetch failed: unsupported or missing content type."
+                    : $"Fetch failed: unsupported content type {mediaType}.";
             }
 
             var content = await response.Content.ReadAsStringAsync(ct);
@@ -76,12 +83,15 @@ public sealed class LinkContentFetcher
             }
 
             return string.IsNullOrWhiteSpace(plainText)
-                ? "No readable text found."
-                : plainText;
+                ? "Fetch failed: no readable text found."
+                : $"Fetch succeeded. Readable text excerpt: {plainText}";
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or UriFormatException)
         {
-            return $"Failed to read link: {ex.Message}";
+            var reason = ex is TaskCanceledException
+                ? "timeout or cancellation"
+                : ex.GetType().Name;
+            return $"Fetch failed: {reason}. {ex.Message}";
         }
     }
 

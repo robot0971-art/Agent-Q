@@ -20,6 +20,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("semantic_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("confirmed facts", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -82,6 +84,32 @@ public sealed class DesktopServiceTests
         Assert.Contains("Dynamic task guidance", prompt);
         Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsEvidenceRulesForAnalysis()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("analyze this project architecture");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.Analysis, profile.Kind);
+        Assert.Contains("Evidence-backed response rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Evidence section", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Needs verification", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("inspected files", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not claim", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsEvidenceRulesForDocumentation()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("update README with the current stack");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.Documentation, profile.Kind);
+        Assert.Contains("Evidence-backed response rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("package", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("supporting file", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -179,6 +207,8 @@ public sealed class DesktopServiceTests
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("UI layer", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("API layer", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Tests", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("evidence: src", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("evidence: api", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("README.md", analysis.KeyFiles);
         Assert.Contains("package.json", analysis.KeyFiles);
     }
@@ -276,6 +306,8 @@ public sealed class DesktopServiceTests
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Backend", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Database models", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Database migrations", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("evidence: frontend", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("evidence: backend/app/models", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.Hints, hint => hint.Contains("Frontend/backend workspace", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(Path.Combine("frontend", "package.json"), analysis.KeyFiles);
         Assert.Contains(Path.Combine("backend", "requirements.txt"), analysis.KeyFiles);
@@ -657,6 +689,33 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task LinkContentFetcher_ReportsAutoReadSuccessAsEvidence()
+    {
+        using var factory = new StubHttpClientFactory(
+            "<html><body><h1>Hello link</h1><script>ignore()</script><p>Readable page text.</p></body></html>",
+            contentType: "text/html");
+        var context = await new LinkContentFetcher(factory).BuildContextAsync("please read https://example.test/page", CancellationToken.None);
+
+        Assert.Contains("Link auto-read is enabled", context);
+        Assert.Contains("URL: https://example.test/page", context);
+        Assert.Contains("Fetch succeeded", context);
+        Assert.Contains("Hello link", context);
+        Assert.DoesNotContain("ignore()", context);
+    }
+
+    [Fact]
+    public async Task LinkContentFetcher_ReportsHttpFailureReason()
+    {
+        using var factory = new StubHttpClientFactory("forbidden", HttpStatusCode.Forbidden);
+        var context = await new LinkContentFetcher(factory).BuildContextAsync("please read https://example.test/private", CancellationToken.None);
+
+        Assert.Contains("Link auto-read is enabled", context);
+        Assert.Contains("URL: https://example.test/private", context);
+        Assert.Contains("Fetch failed: HTTP 403", context);
+        Assert.Contains("failure reason", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopConfidenceAssessor_RatesVerifiedToolBackedRunHigh()
     {
         var assessment = DesktopConfidenceAssessor.Assess(
@@ -1013,6 +1072,32 @@ public sealed class DesktopServiceTests
         Assert.Contains(lessons, lesson => lesson.Tags.Contains("project-map"));
         Assert.Contains(lessons, lesson => lesson.Tags.Contains("verification"));
         Assert.Contains(lessons, lesson => lesson.Content.Contains("README.md", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void DesktopWorkspaceAnalysisReportBuilder_IncludesReusableEvidence()
+    {
+        var report = DesktopWorkspaceAnalysisReportBuilder.Build(new WorkspaceAnalysis
+        {
+            WorkspaceRoot = "C:\\repo",
+            ProjectType = "Node, Python",
+            Framework = "React, FastAPI",
+            GitBranch = "main",
+            FileCount = 12,
+            DirectoryCount = 4,
+            VerificationCommands = ["npm run build", "python -m pytest"],
+            ProjectMap = ["Frontend: frontend (evidence: frontend/package.json)"],
+            KeyFiles = ["frontend/package.json", "backend/requirements.txt"],
+            KeySymbols = ["route GET /health -> health"],
+            Hints = ["Frontend/backend workspace detected."]
+        });
+
+        Assert.Contains("# Workspace Analysis Report", report);
+        Assert.Contains("React, FastAPI", report);
+        Assert.Contains("npm run build", report);
+        Assert.Contains("evidence: frontend/package.json", report);
+        Assert.Contains("backend/requirements.txt", report);
+        Assert.Contains("route GET /health", report);
     }
 
     [Fact]
@@ -2327,9 +2412,12 @@ public sealed class DesktopServiceTests
         return path;
     }
 
-    private sealed class StubHttpClientFactory(string content, HttpStatusCode statusCode = HttpStatusCode.OK) : IHttpClientFactory, IDisposable
+    private sealed class StubHttpClientFactory(
+        string content,
+        HttpStatusCode statusCode = HttpStatusCode.OK,
+        string contentType = "text/plain") : IHttpClientFactory, IDisposable
     {
-        private readonly StubHttpMessageHandler _handler = new(content, statusCode);
+        private readonly StubHttpMessageHandler _handler = new(content, statusCode, contentType);
 
         public HttpRequestMessage? LastRequest => _handler.LastRequest;
 
@@ -2346,7 +2434,10 @@ public sealed class DesktopServiceTests
         }
     }
 
-    private sealed class StubHttpMessageHandler(string content, HttpStatusCode statusCode) : HttpMessageHandler
+    private sealed class StubHttpMessageHandler(
+        string content,
+        HttpStatusCode statusCode,
+        string contentType) : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
 
@@ -2358,7 +2449,7 @@ public sealed class DesktopServiceTests
             LastRequestBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty;
             return Task.FromResult(new HttpResponseMessage(statusCode)
             {
-                Content = new StringContent(content)
+                Content = new StringContent(content, System.Text.Encoding.UTF8, contentType)
             });
         }
     }

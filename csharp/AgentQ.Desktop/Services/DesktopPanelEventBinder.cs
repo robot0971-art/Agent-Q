@@ -24,6 +24,8 @@ public sealed class DesktopPanelEventBinder
         projectPanel.OpenWorkspaceRequested += (_, _) => callbacks.OpenWorkspace();
         projectPanel.RefreshWorkspaceAnalysisRequested += async (_, _) => await callbacks.RefreshWorkspaceAnalysisAsync();
         projectPanel.BuildEmbeddingIndexRequested += async (_, _) => await callbacks.BuildEmbeddingIndexAsync();
+        projectPanel.CopyAnalysisReportRequested += (_, _) => callbacks.CopyAnalysisReport();
+        projectPanel.SaveAnalysisReportRequested += async (_, _) => await callbacks.SaveAnalysisReportAsync();
         projectPanel.SaveProjectConfigRequested += async (_, _) => await callbacks.SaveProjectConfigAsync();
         projectPanel.LoadProjectConfigRequested += async (_, _) => await callbacks.LoadProjectConfigAsync();
 
@@ -90,6 +92,8 @@ public sealed class DesktopPanelEventCallbacks
     public required Action OpenWorkspace { get; init; }
     public required Func<Task> RefreshWorkspaceAnalysisAsync { get; init; }
     public required Func<Task> BuildEmbeddingIndexAsync { get; init; }
+    public required Action CopyAnalysisReport { get; init; }
+    public required Func<Task> SaveAnalysisReportAsync { get; init; }
     public required Func<Task> SaveProjectConfigAsync { get; init; }
     public required Func<Task> LoadProjectConfigAsync { get; init; }
     public required Func<AgentVerificationPlan, Task> RunVerificationPlanAsync { get; init; }

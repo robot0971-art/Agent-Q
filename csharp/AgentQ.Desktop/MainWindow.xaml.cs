@@ -86,6 +86,8 @@ public partial class MainWindow : Window
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
             BuildEmbeddingIndexAsync = () => _workspaceCommandService.BuildEmbeddingIndexAsync(_viewModel, TrimForLog),
+            CopyAnalysisReport = () => _workspaceCommandService.CopyWorkspaceAnalysisReport(_viewModel),
+            SaveAnalysisReportAsync = () => _workspaceCommandService.SaveWorkspaceAnalysisReportAsync(_viewModel, TrimForLog),
             SaveProjectConfigAsync = () => _workspaceCommandService.SaveProjectConfigAsync(_viewModel, TrimForLog),
             LoadProjectConfigAsync = () => _workspaceCommandService.LoadProjectConfigAsync(_viewModel),
             RunVerificationPlanAsync = plan => _verificationCommandService.RunVerificationPlanAsync(_viewModel, plan),

@@ -41,14 +41,14 @@ public static class DesktopPromptAssemblyService
             {
                 Kind = kind,
                 Label = "documentation",
-                SystemHint = "Task mode: documentation. Inspect source or release state before writing claims, keep wording clear, and avoid inventing unsupported behavior.",
+                SystemHint = "Task mode: documentation. Inspect source or release state before writing claims, keep wording clear, cite the inspected files as evidence, and avoid inventing unsupported behavior.",
                 ContextHint = "Documentation context: prioritize README, docs, release notes, public commands, and user-facing behavior."
             },
             DesktopTaskKind.Analysis => new DesktopTaskProfile
             {
                 Kind = kind,
                 Label = "analysis",
-                SystemHint = "Task mode: analysis. Prefer read-only tools, use hybrid_search and project map evidence, summarize findings before recommending changes.",
+                SystemHint = "Task mode: analysis. Prefer read-only tools, use hybrid_search and project map evidence, cite inspected files as evidence, separate confirmed facts from assumptions, and summarize findings before recommending changes.",
                 ContextHint = "Analysis context: prioritize project map, key files, symbols, and evidence trail. Avoid edits unless the user clearly asks to proceed."
             },
             DesktopTaskKind.Refactor => new DesktopTaskProfile
@@ -75,6 +75,17 @@ public static class DesktopPromptAssemblyService
         builder.AppendLine();
         builder.AppendLine("Dynamic task guidance:");
         builder.AppendLine(profile.SystemHint);
+        if (profile.Kind is DesktopTaskKind.Analysis or DesktopTaskKind.Documentation or DesktopTaskKind.CodeReview)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Evidence-backed response rules:");
+            builder.AppendLine("- Ground technology stack, package, framework, and architecture claims in inspected files or tool output.");
+            builder.AppendLine("- Include a short Evidence section with the most relevant file paths, commands, or search results used.");
+            builder.AppendLine("- Include a short Needs verification section for anything inferred from naming, folder layout, memory, or incomplete search results.");
+            builder.AppendLine("- Do not claim that a dependency, worker library, incremental index strategy, or release state exists unless a supporting file or command output was inspected.");
+            builder.AppendLine("- For URL questions, if linked page context is attached, report whether the fetch succeeded or failed instead of saying external websites are inaccessible.");
+        }
+
         return builder.ToString().TrimEnd();
     }
 }

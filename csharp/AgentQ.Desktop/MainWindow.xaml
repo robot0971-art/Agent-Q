@@ -263,12 +263,46 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ScrollViewer Grid.Row="0"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          CanContentScroll="False"
+                                          Focusable="False">
+                                <TabPanel x:Name="HeaderPanel"
+                                          IsItemsHost="True"
+                                          KeyboardNavigation.TabIndex="1"
+                                          Panel.ZIndex="1" />
+                            </ScrollViewer>
+                            <Border Grid.Row="1"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Background="{TemplateBinding Background}"
+                                    KeyboardNavigation.TabNavigation="Local">
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  ContentSource="SelectedContent"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="TabItem">
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="Background" Value="{StaticResource InputBg}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="76" />
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="Margin" Value="0,0,4,0" />
             <Setter Property="Template">

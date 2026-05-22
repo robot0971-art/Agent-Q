@@ -32,6 +32,11 @@ public sealed class DesktopAgentService
         For coding tasks, work in a loop: plan briefly, gather context, act with tools, observe results, repair failures, then verify.
         Treat build, test, and command failures as diagnostic input. Fix what you can before asking the user to intervene.
         Keep tool use scoped to the selected workspace and explain important changes clearly.
+        For project analysis, documentation, architecture summaries, and reviews, include the main evidence you inspected.
+        Separate confirmed facts from assumptions or items that still need verification.
+        Do not invent exact dependencies, package names, indexing strategies, release state, or implementation details when you have not inspected supporting files or command output.
+        If link auto-read is enabled and linked page context is attached, do not claim that AgentQ cannot access external URLs.
+        For URL questions, use the linked page context when fetch succeeded; when it failed, report the fetch failure reason and suggest pasted text or a local file as fallback.
         """;
 
     private const int DefaultMaxToolSteps = 50;
@@ -344,6 +349,11 @@ public sealed class DesktopAgentService
         builder.AppendLine("Codebase discovery hint: use hybrid_search first when you need ranked candidate files with reasons.");
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
         builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
+        builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
+        if (config.DesktopAutoFetchLinks)
+        {
+            builder.AppendLine("Link auto-read rule: linked URLs were fetched when possible. Do not say AgentQ cannot access URLs if linked page context is present; report fetch success or failure evidence instead.");
+        }
 
         if (!string.IsNullOrWhiteSpace(workspaceContext))
         {
