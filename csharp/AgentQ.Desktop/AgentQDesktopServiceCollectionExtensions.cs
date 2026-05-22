@@ -35,6 +35,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<WorkspaceAnalysisService>();
         services.AddSingleton<ProjectAgentConfigService>();
         services.AddSingleton<AgentCheckpointService>();
+        services.AddSingleton<FileMutationSnapshotService>();
         services.AddSingleton<DesktopCheckpointWorkflowService>();
         services.AddSingleton<DesktopPlanWorkflowService>();
         services.AddSingleton<DesktopPlanCheckpointWorkflowService>();

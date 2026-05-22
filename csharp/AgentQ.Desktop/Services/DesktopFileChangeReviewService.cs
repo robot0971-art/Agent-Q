@@ -32,9 +32,19 @@ public sealed class DesktopFileChangeReviewService
             return;
         }
 
-        await File.WriteAllTextAsync(change.Path, change.Before, ct);
+        if (change.ExistedBefore)
+        {
+            await File.WriteAllTextAsync(change.Path, change.Before, ct);
+        }
+        else if (File.Exists(change.Path))
+        {
+            File.Delete(change.Path);
+        }
+
         change.ReviewStatus = FileChangeReviewStatus.Reverted;
         viewModel.StatusText = $"Change reverted: {change.RelativePath}";
-        viewModel.AddLog($"File change reverted: {change.RelativePath}");
+        viewModel.AddLog(string.IsNullOrWhiteSpace(change.SnapshotPath)
+            ? $"File change reverted: {change.RelativePath}"
+            : $"File change reverted from snapshot: {change.RelativePath} ({change.SnapshotPath})");
     }
 }

@@ -743,6 +743,52 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task FileMutationSnapshotService_SavesSnapshotUnderWorkspace()
+    {
+        var root = CreateTempDirectory();
+        var service = new FileMutationSnapshotService();
+
+        var path = await service.SaveAsync(
+            new FileMutationSnapshot
+            {
+                WorkspaceRoot = root,
+                Path = Path.Combine(root, "src", "app.cs"),
+                RelativePath = "src/app.cs",
+                ExistedBefore = true,
+                ExistsAfter = true,
+                Before = "old",
+                After = "new"
+            },
+            CancellationToken.None);
+
+        Assert.True(File.Exists(path));
+        Assert.StartsWith(Path.Combine(root, ".agentq", "snapshots"), path, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Before\": \"old\"", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task DesktopFileChangeReviewService_RevertDeletesNewFile()
+    {
+        var root = CreateTempDirectory();
+        var file = Path.Combine(root, "new-file.txt");
+        await File.WriteAllTextAsync(file, "created");
+        var viewModel = new MainViewModel { WorkspaceRoot = root };
+        var change = new FileChangeRecord
+        {
+            Path = file,
+            RelativePath = "new-file.txt",
+            Before = string.Empty,
+            After = "created",
+            ExistedBefore = false
+        };
+
+        await new DesktopFileChangeReviewService().RevertAsync(viewModel, change, CancellationToken.None);
+
+        Assert.False(File.Exists(file));
+        Assert.Equal(FileChangeReviewStatus.Reverted, change.ReviewStatus);
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(

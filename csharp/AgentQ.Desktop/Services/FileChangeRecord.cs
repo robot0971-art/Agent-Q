@@ -17,6 +17,10 @@ public sealed class FileChangeRecord : INotifyPropertyChanged
 
     public string After { get; init; } = string.Empty;
 
+    public bool ExistedBefore { get; init; } = true;
+
+    public string SnapshotPath { get; init; } = string.Empty;
+
     public DateTime ChangedAt { get; init; } = DateTime.Now;
 
     public IReadOnlyList<DiffLine> DiffLines { get; init; } = [];
@@ -28,6 +32,10 @@ public sealed class FileChangeRecord : INotifyPropertyChanged
     public int RemovedLines => DiffLines.Count(line => line.Kind == DiffLineKind.Removed);
 
     public string Summary => $"+{AddedLines} -{RemovedLines}";
+
+    public string SnapshotLabel => string.IsNullOrWhiteSpace(SnapshotPath)
+        ? "No snapshot file"
+        : $"Snapshot: {SnapshotPath}";
 
     public FileChangeReviewStatus ReviewStatus
     {

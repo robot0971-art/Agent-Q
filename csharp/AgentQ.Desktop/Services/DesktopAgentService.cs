@@ -46,6 +46,7 @@ public sealed class DesktopAgentService
     private readonly WorkspaceIndexer _workspaceIndexer;
     private readonly EmbeddingIndexStore _embeddingIndexStore;
     private readonly DesktopEmbeddingClientFactory _embeddingClientFactory;
+    private readonly FileMutationSnapshotService _fileMutationSnapshotService;
     private readonly List<ChatMessage> _messages = [];
 
     public DesktopAgentService(
@@ -54,7 +55,8 @@ public sealed class DesktopAgentService
         ProjectMemoryService projectMemoryService,
         WorkspaceIndexer workspaceIndexer,
         EmbeddingIndexStore embeddingIndexStore,
-        DesktopEmbeddingClientFactory embeddingClientFactory)
+        DesktopEmbeddingClientFactory embeddingClientFactory,
+        FileMutationSnapshotService fileMutationSnapshotService)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -62,6 +64,7 @@ public sealed class DesktopAgentService
         _workspaceIndexer = workspaceIndexer;
         _embeddingIndexStore = embeddingIndexStore;
         _embeddingClientFactory = embeddingClientFactory;
+        _fileMutationSnapshotService = fileMutationSnapshotService;
     }
 
     public async Task<string> SendAsync(
@@ -695,11 +698,12 @@ public sealed class DesktopAgentService
             return null;
         }
 
+        var existedBefore = File.Exists(fullPath) && !Directory.Exists(fullPath);
         var before = await ReadSnapshotTextAsync(fullPath, ct);
-        return new FileSnapshot(fullPath, before);
+        return new FileSnapshot(fullPath, existedBefore, before);
     }
 
-    private static async Task<FileChangeRecord?> BuildFileChangeRecordAsync(
+    private async Task<FileChangeRecord?> BuildFileChangeRecordAsync(
         FileSnapshot? snapshot,
         string workspaceRoot,
         CancellationToken ct)
@@ -715,12 +719,29 @@ public sealed class DesktopAgentService
             return null;
         }
 
+        var relativePath = Path.GetRelativePath(workspaceRoot, snapshot.FullPath).Replace('\\', '/');
+        var existsAfter = File.Exists(snapshot.FullPath) && !Directory.Exists(snapshot.FullPath);
+        var snapshotPath = await _fileMutationSnapshotService.SaveAsync(
+            new FileMutationSnapshot
+            {
+                WorkspaceRoot = workspaceRoot,
+                Path = snapshot.FullPath,
+                RelativePath = relativePath,
+                ExistedBefore = snapshot.ExistedBefore,
+                ExistsAfter = existsAfter,
+                Before = snapshot.Before,
+                After = after
+            },
+            ct);
+
         return new FileChangeRecord
         {
             Path = snapshot.FullPath,
-            RelativePath = Path.GetRelativePath(workspaceRoot, snapshot.FullPath).Replace('\\', '/'),
+            RelativePath = relativePath,
+            ExistedBefore = snapshot.ExistedBefore,
             Before = snapshot.Before,
             After = after,
+            SnapshotPath = snapshotPath,
             DiffLines = LineDiffBuilder.Build(snapshot.Before, after)
         };
     }
@@ -858,4 +879,4 @@ internal sealed class WorkspaceRootEnvironmentScope : IDisposable
     }
 }
 
-internal sealed record FileSnapshot(string FullPath, string Before);
+internal sealed record FileSnapshot(string FullPath, bool ExistedBefore, string Before);
