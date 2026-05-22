@@ -22,6 +22,44 @@ public sealed class DesktopServiceTests
         Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void DesktopModelRoutingAdvisor_RecommendsSmallFastForReadonlyAnalysis()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("README check and analyze");
+        var recommendation = DesktopModelRoutingAdvisor.Recommend(
+            "README check and analyze",
+            profile,
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                Model = "gpt-5.4-mini"
+            },
+            AgentWorkMode.Readonly);
+
+        Assert.Equal(DesktopModelRoutingTier.SmallFast, recommendation.Tier);
+        Assert.Contains("mini", recommendation.SuggestedModel, StringComparison.OrdinalIgnoreCase);
+        Assert.True(recommendation.CurrentModelMatches);
+    }
+
+    [Fact]
+    public void DesktopModelRoutingAdvisor_RecommendsLargeFrontierForComplexRefactor()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("architecture refactor for the whole project");
+        var recommendation = DesktopModelRoutingAdvisor.Recommend(
+            "architecture refactor for the whole project",
+            profile,
+            new ProviderConfiguration
+            {
+                Provider = "anthropic",
+                Model = "claude-haiku-4-5"
+            },
+            AgentWorkMode.Coding);
+
+        Assert.Equal(DesktopModelRoutingTier.LargeFrontier, recommendation.Tier);
+        Assert.Contains("opus", recommendation.SuggestedModel, StringComparison.OrdinalIgnoreCase);
+        Assert.False(recommendation.CurrentModelMatches);
+    }
+
     [Theory]
     [InlineData("로그인 오류 고쳐줘", DesktopTaskKind.BugFix)]
     [InlineData("새 설정 옵션 추가해줘", DesktopTaskKind.Feature)]

@@ -85,6 +85,13 @@ public sealed class DesktopAgentService
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
+        var routingRecommendation = DesktopModelRoutingAdvisor.Recommend(userText, taskProfile, config, workMode);
+        toolCallbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            $"Model route: {routingRecommendation.Label}",
+            routingRecommendation.CurrentModelMatches
+                ? $"Current model matches route. {routingRecommendation.DisplayText}"
+                : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
         var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, taskProfile, ct);
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)

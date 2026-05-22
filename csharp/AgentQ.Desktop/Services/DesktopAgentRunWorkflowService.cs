@@ -404,6 +404,10 @@ public sealed class DesktopAgentRunWorkflowService(
                 {
                     RecordTelemetry("search_retry", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
                 }
+                else if (title.StartsWith("Model route:", StringComparison.OrdinalIgnoreCase))
+                {
+                    RecordTelemetry("model_route_recommended", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
+                }
             },
             OnToolExecution = toolName =>
             {
