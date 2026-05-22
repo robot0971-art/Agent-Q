@@ -23,6 +23,30 @@ public sealed class DesktopServiceTests
     }
 
     [Theory]
+    [InlineData("로그인 오류 고쳐줘", DesktopTaskKind.BugFix)]
+    [InlineData("새 설정 옵션 추가해줘", DesktopTaskKind.Feature)]
+    [InlineData("이 변경사항 코드 리뷰해줘", DesktopTaskKind.CodeReview)]
+    [InlineData("README 문서 고쳐줘", DesktopTaskKind.Documentation)]
+    [InlineData("프로젝트 구조 분석해줘", DesktopTaskKind.Analysis)]
+    [InlineData("이 서비스 구조 리팩터링하자", DesktopTaskKind.Refactor)]
+    public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
+    {
+        Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsTaskSpecificGuidance()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("로그인 오류 고쳐줘");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.BugFix, profile.Kind);
+        Assert.Contains("Dynamic task guidance", prompt);
+        Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData(AgentWorkMode.Readonly, 20)]
     [InlineData(AgentWorkMode.Coding, 50)]
     [InlineData(AgentWorkMode.FullAgent, 50)]

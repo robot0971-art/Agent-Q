@@ -80,7 +80,9 @@ public sealed class DesktopAgentService
         var effectiveWorkspaceRoot = ResolveWorkspaceRoot(workspaceRoot);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
-        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, ct);
+        var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
+        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, taskProfile, ct);
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
@@ -120,6 +122,7 @@ public sealed class DesktopAgentService
                 config,
                 toolRegistry,
                 maxToolSteps,
+                taskProfile,
                 includeTransientContext ? transientContext : null,
                 builder,
                 onDelta,
@@ -195,6 +198,7 @@ public sealed class DesktopAgentService
         ProviderConfiguration config,
         ToolRegistry toolRegistry,
         int maxToolSteps,
+        DesktopTaskProfile taskProfile,
         string? transientContext,
         StringBuilder textBuilder,
         Action<string>? onDelta,
@@ -205,7 +209,7 @@ public sealed class DesktopAgentService
         var context = new ChatContext
         {
             Model = config.Model,
-            SystemPrompt = SystemPrompt,
+            SystemPrompt = DesktopPromptAssemblyService.BuildSystemPrompt(SystemPrompt, taskProfile),
             Messages = requestMessages,
             MaxTokens = config.MaxTokens == 0 ? 4096 : config.MaxTokens,
             Stream = true,
@@ -291,6 +295,7 @@ public sealed class DesktopAgentService
         string userText,
         string workspaceRoot,
         ProjectMemory projectMemory,
+        DesktopTaskProfile taskProfile,
         CancellationToken ct)
     {
         var workspaceContext = config.DesktopAutoAttachWorkspaceContext
@@ -313,6 +318,8 @@ public sealed class DesktopAgentService
         builder.AppendLine("This context is not part of the saved conversation history.");
         builder.AppendLine("Use the workspace snapshot for repository questions, but say when a file may be missing from the snapshot.");
         builder.AppendLine($"Current AgentQ work mode: {config.DesktopWorkMode}.");
+        builder.AppendLine($"Current task profile: {taskProfile.Label}.");
+        builder.AppendLine(taskProfile.ContextHint);
         builder.AppendLine("Codebase discovery hint: use hybrid_search first when you need ranked candidate files with reasons.");
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
         builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
