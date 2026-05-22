@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using AgentQ.Core.Providers;
 using AgentQ.Desktop.ViewModels;
 
 namespace AgentQ.Desktop.Services;
@@ -9,13 +10,17 @@ public sealed class DesktopAgentRunWorkflowService(
     DesktopAgentService agentService,
     DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
     DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
-    DesktopLearningSuggestionService learningSuggestionService)
+    DesktopLearningSuggestionService learningSuggestionService,
+    DesktopTelemetryService telemetryService)
 {
     private const string ThinkingPlaceholder = "생각중...";
     private const string ContinuationPrompt =
         "Continue the previous run from where it stopped. Do not repeat completed work. Inspect current files or command results if needed, then continue until the task is complete or you need user input.";
     private readonly DesktopUsageTracker _usageTracker = new();
     private CancellationTokenSource? _activeOperationCts;
+    private string _activeWorkspaceRoot = string.Empty;
+    private string _activeProvider = string.Empty;
+    private string _activeModel = string.Empty;
 
     public void Stop(MainViewModel viewModel)
     {
@@ -26,6 +31,13 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         _activeOperationCts?.Cancel();
+        RecordTelemetry(
+            "stop_requested",
+            _activeWorkspaceRoot,
+            _activeProvider,
+            _activeModel,
+            succeeded: false,
+            detail: "User requested Stop.");
         RemoveThinkingPlaceholder(viewModel);
         viewModel.AddRunStep(AgentRunState.Cancelled, "Stop requested", "Cancelling the active model, tool, or verification operation.");
         viewModel.StatusText = "Stopping AgentQ";
@@ -98,6 +110,7 @@ public sealed class DesktopAgentRunWorkflowService(
         viewModel.AddLog("Model call started");
 
         CancellationTokenSource? operationCts = null;
+        var startedAt = DateTime.UtcNow;
 
         try
         {
@@ -106,6 +119,16 @@ public sealed class DesktopAgentRunWorkflowService(
             var config = viewModel.ToConfiguration();
             var workspaceRoot = viewModel.WorkspaceRoot;
             var workMode = viewModel.WorkMode;
+            _activeWorkspaceRoot = workspaceRoot;
+            _activeProvider = config.Provider;
+            _activeModel = config.Model;
+            RecordTelemetry(
+                "run_started",
+                workspaceRoot,
+                config.Provider,
+                config.Model,
+                succeeded: true,
+                detail: workMode.ToString());
             var permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode);
             var pendingDelta = new StringBuilder();
             var pendingDeltaLock = new object();
@@ -163,7 +186,9 @@ public sealed class DesktopAgentRunWorkflowService(
                     var snapshot = _usageTracker.RecordActual(usage);
                     viewModel.UsageText = snapshot.DisplayText;
                     viewModel.AddLog($"Usage recorded: {snapshot.DisplayText}");
+                    RecordUsageTelemetry("usage_actual", workspaceRoot, config, snapshot);
                 });
+            var telemetryCallbacks = WrapTelemetryCallbacks(toolCallbacks, workspaceRoot, config);
             var fullText = await Task.Run(async () =>
                 await agentService.SendAsync(
                     config,
@@ -173,7 +198,7 @@ public sealed class DesktopAgentRunWorkflowService(
                     workMode,
                     QueueAssistantDelta,
                     permissionEnforcer,
-                    toolCallbacks,
+                    telemetryCallbacks,
                     operationCts.Token),
                 operationCts.Token);
             FlushAssistantDelta();
@@ -212,12 +237,21 @@ public sealed class DesktopAgentRunWorkflowService(
             {
                 viewModel.UsageText = usage.DisplayText;
                 viewModel.AddLog($"Usage recorded: {usage.DisplayText}");
+                RecordUsageTelemetry("usage_estimate", workspaceRoot, config, usage);
             }
             ClearPendingAttachmentsAfterSuccessfulSend(viewModel, attachments);
             await workspaceContextWorkflowService.SaveSessionSummaryAsync(
                 viewModel,
                 "Session summary auto-saved",
                 trimForLog);
+            RecordTelemetry(
+                "run_completed",
+                workspaceRoot,
+                config.Provider,
+                config.Model,
+                succeeded: true,
+                durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds,
+                detail: $"files={viewModel.FileChanges.Count}; verificationPlans={viewModel.VerificationPlans.Count}");
         }
         catch (OperationCanceledException)
         {
@@ -226,6 +260,13 @@ public sealed class DesktopAgentRunWorkflowService(
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
             viewModel.StatusText = "Request cancelled or timed out.";
             viewModel.AddLog("Request cancelled or timed out");
+            RecordTelemetry(
+                "run_cancelled",
+                viewModel.WorkspaceRoot,
+                _activeProvider,
+                _activeModel,
+                succeeded: false,
+                durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds);
         }
         catch (Exception ex)
         {
@@ -233,6 +274,15 @@ public sealed class DesktopAgentRunWorkflowService(
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
             viewModel.StatusText = $"Error: {ex.Message}";
             viewModel.AddLog($"Error: {ex.Message}");
+            RecordTelemetry(
+                "run_failed",
+                viewModel.WorkspaceRoot,
+                _activeProvider,
+                _activeModel,
+                succeeded: false,
+                isError: true,
+                durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds,
+                detail: ex.Message);
         }
         finally
         {
@@ -243,6 +293,9 @@ public sealed class DesktopAgentRunWorkflowService(
             }
 
             viewModel.IsBusy = false;
+            _activeWorkspaceRoot = string.Empty;
+            _activeProvider = string.Empty;
+            _activeModel = string.Empty;
         }
     }
 
@@ -335,6 +388,104 @@ public sealed class DesktopAgentRunWorkflowService(
             viewModel.SelectedPendingMemoryLesson ??= viewModel.PendingMemoryLessons[0];
             viewModel.AddLog("Learning candidate prepared in Memory panel.");
         }
+    }
+
+    private DesktopToolCallbacks WrapTelemetryCallbacks(
+        DesktopToolCallbacks callbacks,
+        string workspaceRoot,
+        ProviderConfiguration config)
+    {
+        return new DesktopToolCallbacks
+        {
+            OnRunStep = (state, title, detail) =>
+            {
+                callbacks.OnRunStep?.Invoke(state, title, detail);
+                if (title.Contains("search retry", StringComparison.OrdinalIgnoreCase))
+                {
+                    RecordTelemetry("search_retry", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
+                }
+            },
+            OnToolExecution = toolName =>
+            {
+                callbacks.OnToolExecution?.Invoke(toolName);
+                RecordTelemetry("tool_started", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: true);
+            },
+            OnToolOutput = (toolName, output) =>
+            {
+                callbacks.OnToolOutput?.Invoke(toolName, output);
+                RecordTelemetry("tool_completed", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: true, detail: $"{output.Length} chars");
+            },
+            OnToolError = (toolName, error) =>
+            {
+                callbacks.OnToolError?.Invoke(toolName, error);
+                RecordTelemetry("tool_failed", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: false, isError: true, detail: error);
+            },
+            OnPermissionDenied = toolName =>
+            {
+                callbacks.OnPermissionDenied?.Invoke(toolName);
+                RecordTelemetry("permission_denied", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: false);
+            },
+            OnFileChanged = change =>
+            {
+                callbacks.OnFileChanged?.Invoke(change);
+                RecordTelemetry("file_changed", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: $"{change.RelativePath} {change.Summary}");
+            },
+            OnVerificationPlan = plan =>
+            {
+                callbacks.OnVerificationPlan?.Invoke(plan);
+                RecordTelemetry("verification_plan", workspaceRoot, config.Provider, config.Model, succeeded: plan.AlreadySatisfied, detail: plan.Detail);
+            },
+            OnUsage = callbacks.OnUsage
+        };
+    }
+
+    private void RecordUsageTelemetry(
+        string eventType,
+        string workspaceRoot,
+        ProviderConfiguration config,
+        DesktopUsageSnapshot snapshot)
+    {
+        RecordTelemetry(
+            eventType,
+            workspaceRoot,
+            config.Provider,
+            config.Model,
+            succeeded: true,
+            inputTokens: snapshot.LastInputTokens,
+            outputTokens: snapshot.LastOutputTokens,
+            isEstimate: snapshot.IsEstimate,
+            detail: $"total={snapshot.TotalTokens}; requests={snapshot.RequestCount}");
+    }
+
+    private void RecordTelemetry(
+        string eventType,
+        string workspaceRoot,
+        string provider,
+        string model,
+        bool succeeded,
+        string toolName = "",
+        bool isError = false,
+        int inputTokens = 0,
+        int outputTokens = 0,
+        bool isEstimate = false,
+        int durationMs = 0,
+        string detail = "")
+    {
+        _ = telemetryService.RecordAsync(new DesktopTelemetryEvent
+        {
+            EventType = eventType,
+            WorkspaceRoot = workspaceRoot,
+            Provider = provider,
+            Model = model,
+            ToolName = toolName,
+            Succeeded = succeeded,
+            IsError = isError,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            IsEstimate = isEstimate,
+            DurationMs = durationMs,
+            Detail = detail
+        });
     }
 
     private static void AppendAssistantDelta(

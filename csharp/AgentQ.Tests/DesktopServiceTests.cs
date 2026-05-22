@@ -789,6 +789,33 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopTelemetryService_AppendsJsonlEvents()
+    {
+        var root = CreateTempDirectory();
+        var service = new DesktopTelemetryService();
+
+        await service.RecordAsync(
+            new DesktopTelemetryEvent
+            {
+                EventType = "tool_completed",
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                ToolName = "read_file",
+                Succeeded = true,
+                InputTokens = 10,
+                OutputTokens = 5
+            },
+            CancellationToken.None);
+
+        var path = DesktopTelemetryService.GetTelemetryPath(root);
+        Assert.True(File.Exists(path));
+        var line = Assert.Single(await File.ReadAllLinesAsync(path));
+        Assert.Contains("\"eventType\":\"tool_completed\"", line);
+        Assert.Contains("\"toolName\":\"read_file\"", line);
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(
