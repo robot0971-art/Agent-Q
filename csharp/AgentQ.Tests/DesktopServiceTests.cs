@@ -2017,6 +2017,23 @@ public sealed class DesktopServiceTests
         Assert.False(result.IsBlocked);
     }
 
+    [Theory]
+    [InlineData("npm run build")]
+    [InlineData("cmd /c cd frontend && npm test")]
+    [InlineData("python -m pytest")]
+    [InlineData("docker compose config")]
+    public void ToolPermissionClassifier_DetectsFocusedVerificationCommands(string command)
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "bash",
+            new Dictionary<string, object?>
+            {
+                ["command"] = command
+            });
+
+        Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
+    }
+
     [Fact]
     public void ToolPermissionPolicy_BlocksDestructiveCommandsInFullAgentMode()
     {

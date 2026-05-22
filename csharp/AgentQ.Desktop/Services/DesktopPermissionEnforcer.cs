@@ -44,9 +44,9 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             var preview = inputJson.Length > 1400
                 ? inputJson[..1400] + Environment.NewLine + "...(truncated)"
                 : inputJson;
-
+            var focusedPreview = BuildFocusedPreview(toolName, inputJson);
             var approvalHint = IsReusableApproval(assessment.RiskLevel)
-                ? $"{Environment.NewLine}전체 권한 허용: 이번 실행 동안 프로젝트 파일 쓰기와 검증 명령을 다시 묻지 않습니다."
+                ? $"{Environment.NewLine}Allow all for this run will skip repeat prompts for workspace file edits and verification commands only."
                 : string.Empty;
 
             var message =
@@ -59,6 +59,7 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 $"Policy: {policy.PolicyReason}{Environment.NewLine}{Environment.NewLine}" +
                 $"Tool: {toolName}{Environment.NewLine}" +
                 $"Description: {description}{Environment.NewLine}{Environment.NewLine}" +
+                focusedPreview +
                 $"Input:{Environment.NewLine}{preview}";
 
             var choice = PermissionApprovalDialog.Show(
@@ -80,5 +81,77 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)
     {
         return riskLevel is PermissionRiskLevel.ProjectWrite or PermissionRiskLevel.VerificationCommand;
+    }
+
+    private static string BuildFocusedPreview(string toolName, string inputJson)
+    {
+        var input = DesktopToolInputParser.Parse(inputJson);
+        if (input.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (string.Equals(toolName, "write_file", StringComparison.Ordinal))
+        {
+            var path = GetString(input, "path");
+            var content = GetString(input, "content");
+            return
+                $"File mutation preview:{Environment.NewLine}" +
+                $"Path: {Fallback(path, "(missing path)")}{Environment.NewLine}" +
+                $"Write length: {content.Length} characters{Environment.NewLine}" +
+                $"Content preview:{Environment.NewLine}{TrimPreview(content, 1000)}{Environment.NewLine}{Environment.NewLine}";
+        }
+
+        if (string.Equals(toolName, "edit_file", StringComparison.Ordinal))
+        {
+            var path = GetString(input, "path");
+            var oldString = GetString(input, "old_string");
+            var newString = GetString(input, "new_string");
+            var replaceAll = input.TryGetValue("replace_all", out var rawReplaceAll) && rawReplaceAll is true;
+            return
+                $"File mutation preview:{Environment.NewLine}" +
+                $"Path: {Fallback(path, "(missing path)")}{Environment.NewLine}" +
+                $"Replace all: {replaceAll}{Environment.NewLine}" +
+                $"Old text:{Environment.NewLine}{TrimPreview(oldString, 700)}{Environment.NewLine}{Environment.NewLine}" +
+                $"New text:{Environment.NewLine}{TrimPreview(newString, 700)}{Environment.NewLine}{Environment.NewLine}";
+        }
+
+        if (string.Equals(toolName, "bash", StringComparison.Ordinal))
+        {
+            var command = GetString(input, "command");
+            if (string.IsNullOrWhiteSpace(command))
+            {
+                return string.Empty;
+            }
+
+            return
+                $"Command preview:{Environment.NewLine}" +
+                $"{TrimPreview(command, 1000)}{Environment.NewLine}{Environment.NewLine}";
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        return input.TryGetValue(key, out var value) && value is string text ? text : string.Empty;
+    }
+
+    private static string Fallback(string value, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value;
+    }
+
+    private static string TrimPreview(string value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "(empty)";
+        }
+
+        var normalized = value.ReplaceLineEndings(Environment.NewLine);
+        return normalized.Length <= maxChars
+            ? normalized
+            : normalized[..maxChars] + Environment.NewLine + "...(truncated)";
     }
 }

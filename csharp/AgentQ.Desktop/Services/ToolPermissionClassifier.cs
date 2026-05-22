@@ -147,7 +147,16 @@ public static class ToolPermissionClassifier
                command.Contains("build.cmd", StringComparison.Ordinal) ||
                command.Contains("build.desktop.cmd", StringComparison.Ordinal) ||
                command.Contains("dotnet test", StringComparison.Ordinal) ||
-               command.Contains("dotnet build", StringComparison.Ordinal);
+               command.Contains("dotnet build", StringComparison.Ordinal) ||
+               command.Contains("npm test", StringComparison.Ordinal) ||
+               command.Contains("npm run build", StringComparison.Ordinal) ||
+               command.Contains("pnpm test", StringComparison.Ordinal) ||
+               command.Contains("pnpm build", StringComparison.Ordinal) ||
+               command.Contains("yarn test", StringComparison.Ordinal) ||
+               command.Contains("yarn build", StringComparison.Ordinal) ||
+               command.Contains("python -m pytest", StringComparison.Ordinal) ||
+               command.Contains("pytest", StringComparison.Ordinal) ||
+               command.Contains("docker compose config", StringComparison.Ordinal);
     }
 
     private static bool IsNetworkCommand(string command)

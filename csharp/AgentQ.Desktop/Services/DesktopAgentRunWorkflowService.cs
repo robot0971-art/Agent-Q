@@ -54,8 +54,16 @@ public sealed class DesktopAgentRunWorkflowService(
         bool preserveLastVerificationFailure = false)
     {
         var prompt = viewModel.InputText.Trim();
-        if (string.IsNullOrWhiteSpace(prompt) || viewModel.IsBusy)
+        if (string.IsNullOrWhiteSpace(prompt))
         {
+            return;
+        }
+
+        if (viewModel.IsBusy)
+        {
+            Stop(viewModel);
+            viewModel.StatusText = "Stopping current run; send again to redirect";
+            viewModel.AddLog("New input requested while busy; active run is being stopped.");
             return;
         }
 

@@ -16,10 +16,10 @@ public sealed class PermissionApprovalDialog : Window
     private PermissionApprovalDialog(string title, string message, bool canAllowAll)
     {
         Title = title;
-        Width = 520;
-        Height = 640;
-        MinWidth = 420;
-        MinHeight = 360;
+        Width = 560;
+        Height = 680;
+        MinWidth = 440;
+        MinHeight = 380;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
         Background = SWM.Brushes.White;
@@ -39,7 +39,7 @@ public sealed class PermissionApprovalDialog : Window
         };
         SWC.DockPanel.SetDock(buttons, SWC.Dock.Bottom);
 
-        buttons.Children.Add(CreateButton("허용", () =>
+        buttons.Children.Add(CreateButton("Allow", () =>
         {
             Choice = PermissionApprovalChoice.AllowOnce;
             DialogResult = true;
@@ -47,14 +47,14 @@ public sealed class PermissionApprovalDialog : Window
 
         if (canAllowAll)
         {
-            buttons.Children.Add(CreateButton("전체 권한 허용", () =>
+            buttons.Children.Add(CreateButton("Allow all", () =>
             {
                 Choice = PermissionApprovalChoice.AllowAllForRun;
                 DialogResult = true;
             }));
         }
 
-        buttons.Children.Add(CreateButton("거부", () =>
+        buttons.Children.Add(CreateButton("Deny", () =>
         {
             Choice = PermissionApprovalChoice.Deny;
             DialogResult = false;
