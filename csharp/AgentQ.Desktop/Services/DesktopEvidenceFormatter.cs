@@ -23,6 +23,9 @@ public static class DesktopEvidenceFormatter
             "semantic_search" => TryGetString(input, "query", out var query)
                 ? $"Semantic search query: {query}. Reason: meaning-based lookup against the local embedding index."
                 : "Semantic search requested against the local embedding index.",
+            "hybrid_search" => TryGetString(input, "query", out var hybridQuery)
+                ? $"Hybrid search query: {hybridQuery}. Reason: combined symbol, semantic, keyword, and project-map ranking before reading files."
+                : "Hybrid search requested to rank candidate files across multiple search signals.",
             "symbol_search" => TryGetString(input, "query", out var symbolQuery)
                 ? $"Symbol search query: {symbolQuery}. Reason: symbol index lookup to find candidate files and definitions before reading code."
                 : "Symbol search requested against the local workspace symbol index.",

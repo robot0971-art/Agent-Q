@@ -17,6 +17,7 @@ public sealed class DesktopServiceTests
         var prompt = Assert.IsType<string>(field?.GetValue(null));
 
         Assert.Contains("prefer symbol_search first", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("semantic_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
     }
@@ -419,6 +420,18 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopEvidenceFormatter_ExplainsHybridSearch()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "hybrid_search",
+            new Dictionary<string, object?> { ["query"] = "login flow" },
+            "C:\\repo");
+
+        Assert.Contains("Hybrid search query: login flow", evidence);
+        Assert.Contains("combined symbol", evidence);
+    }
+
+    [Fact]
     public void DesktopConfidenceAssessor_RatesVerifiedToolBackedRunHigh()
     {
         var assessment = DesktopConfidenceAssessor.Assess(
@@ -753,6 +766,68 @@ public sealed class DesktopServiceTests
         var results = document.RootElement.GetProperty("results").EnumerateArray().ToList();
         Assert.Contains(results, item => item.GetProperty("Name").GetString() == "login_user");
         Assert.Contains(results, item => item.GetProperty("Name").GetString() == "loginUser");
+    }
+
+    [Fact]
+    public async Task DesktopHybridSearchTool_RanksSymbolKeywordAndSemanticCandidates()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "AuthService.cs"),
+            """
+            public sealed class AuthService
+            {
+                public bool LoginUser(string email) => true;
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "BillingService.cs"),
+            """
+            public sealed class BillingService
+            {
+                public bool Charge() => true;
+            }
+            """);
+
+        var store = new EmbeddingIndexStore();
+        await store.SaveChunksAsync(
+            root,
+            [
+                new EmbeddingIndexChunk
+                {
+                    Id = "auth",
+                    RelativePath = "src/AuthService.cs",
+                    Content = "login authentication flow",
+                    StartLine = 1,
+                    EndLine = 4,
+                    Vector = [0, 1]
+                },
+                new EmbeddingIndexChunk
+                {
+                    Id = "billing",
+                    RelativePath = "src/BillingService.cs",
+                    Content = "billing charge payment",
+                    StartLine = 1,
+                    EndLine = 4,
+                    Vector = [1, 0]
+                }
+            ],
+            CancellationToken.None);
+        var tool = new DesktopHybridSearchTool(root, store, new FakeEmbeddingClient(), "text-embedding-3-small");
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "LoginUser", ["limit"] = 3 },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        using var document = JsonDocument.Parse(result.Content);
+        Assert.True(document.RootElement.GetProperty("numResults").GetInt32() >= 1);
+        var first = document.RootElement.GetProperty("results")[0];
+        Assert.Equal("src/AuthService.cs", first.GetProperty("RelativePath").GetString());
+        var sources = first.GetProperty("Sources").EnumerateArray().Select(item => item.GetString()).ToList();
+        Assert.Contains("symbol", sources);
+        Assert.Contains("keyword", sources);
     }
 
     [Fact]
