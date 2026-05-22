@@ -340,6 +340,79 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task TypeScriptWorkerHost_ExtractsPackageImportsComponentsAndRoutes()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src", "pages"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "package.json"),
+            """
+            {
+              "name": "agentq-web",
+              "dependencies": { "react": "latest" },
+              "devDependencies": { "vite": "latest", "typescript": "latest" },
+              "scripts": { "build": "vite build", "test": "vitest" }
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "tsconfig.json"),
+            """{"compilerOptions":{"jsx":"react-jsx","target":"ES2022","module":"ESNext"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "pages", "Dashboard.tsx"),
+            """
+            import React from 'react';
+
+            export function DashboardView() {
+              return <main />;
+            }
+
+            export const useDashboard = () => [];
+            """);
+
+        var result = await new TypeScriptWorkerHost().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Packages, package => package.Path == "frontend/package.json");
+        Assert.Contains(result.Tsconfigs, config => config.Path == "frontend/tsconfig.json");
+        Assert.Contains(result.NpmScripts, script => script.Name == "build");
+        Assert.Contains(result.Imports, import => import.Source == "react");
+        Assert.Contains(result.ReactComponents, component => component.Name == "DashboardView");
+        Assert.Contains(result.Routes, route => route.Path.Contains("Dashboard.tsx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Exports, export => export.Name == "useDashboard");
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_UsesTypeScriptWorkerResults()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "package.json"),
+            """
+            {
+              "dependencies": { "react": "latest" },
+              "devDependencies": { "vite": "latest", "typescript": "latest" },
+              "scripts": { "build": "vite build" }
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "App.tsx"),
+            """
+            export function AppShell() {
+              return null;
+            }
+            """);
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("React", analysis.Framework);
+        Assert.Contains("Vite", analysis.Framework);
+        Assert.Contains("TypeScript", analysis.Framework);
+        Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker indexed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("component AppShell", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsReadFilePathRole()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(

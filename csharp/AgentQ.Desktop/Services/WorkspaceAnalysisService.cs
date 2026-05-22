@@ -59,6 +59,7 @@ public sealed class WorkspaceAnalysisService
         DetectMonorepoShape(analysis);
         DetectProjectMap(analysis, detectedTypes);
         DetectSymbols(analysis);
+        await DetectTypeScriptWorkerAsync(analysis, frameworks, ct);
         DetectKeyFiles(analysis);
 
         analysis.ProjectType = detectedTypes.Count > 0
@@ -648,6 +649,100 @@ public sealed class WorkspaceAnalysisService
         if (symbolIndex.SymbolCount > 0)
         {
             analysis.Hints.Add($"C# symbol index: {symbolIndex.SymbolCount:0} symbols in {symbolIndex.FilesIndexed:0} files.");
+        }
+    }
+
+    private static async Task DetectTypeScriptWorkerAsync(
+        WorkspaceAnalysis analysis,
+        List<string> frameworks,
+        CancellationToken ct)
+    {
+        var result = await new TypeScriptWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        if (result == null)
+        {
+            return;
+        }
+
+        if (result.Warnings.Count > 0)
+        {
+            analysis.Hints.AddRange(result.Warnings.Select(warning => $"TypeScript worker: {warning}").Take(3));
+        }
+
+        if (result.Packages.Count == 0 &&
+            result.Tsconfigs.Count == 0 &&
+            result.Symbols.Count == 0 &&
+            result.Imports.Count == 0)
+        {
+            return;
+        }
+
+        analysis.Hints.Add($"TypeScript worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.ReactComponents.Count:0} React components.");
+
+        foreach (var manager in result.PackageManagers)
+        {
+            analysis.Hints.Add($"Package manager lockfile detected: {manager}");
+        }
+
+        foreach (var tsconfig in result.Tsconfigs.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, tsconfig.Path);
+            frameworks.Add("TypeScript");
+        }
+
+        foreach (var package in result.Packages.Take(8))
+        {
+            AddUnique(analysis.KeyFiles, package.Path);
+            AddNodeWorkerFrameworks(package, frameworks);
+        }
+
+        foreach (var script in result.NpmScripts.Where(script => script.Name is "build" or "test" or "lint").Take(8))
+        {
+            var packageDirectory = Path.GetDirectoryName(script.PackagePath)?.Replace('\\', '/') ?? string.Empty;
+            AddNodeCommand(analysis, packageDirectory, $"npm run {script.Name}");
+        }
+
+        foreach (var entry in result.ProjectMap.Take(8))
+        {
+            AddUnique(analysis.ProjectMap, $"{entry.Role}: {entry.Path}");
+        }
+
+        foreach (var component in result.ReactComponents.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"component {component.Name} ({component.Path}:{component.Line:0})");
+        }
+
+        foreach (var exported in result.Exports.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"{exported.Kind} {exported.Name} ({exported.Path}:{exported.Line:0})");
+        }
+
+        foreach (var route in result.Routes.Take(8))
+        {
+            AddUnique(analysis.ProjectMap, $"Route files: {route.Path}");
+        }
+    }
+
+    private static void AddNodeWorkerFrameworks(TypeScriptPackageInfo package, List<string> frameworks)
+    {
+        var dependencies = package.Dependencies.Concat(package.DevDependencies).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (dependencies.Contains("next"))
+        {
+            frameworks.Add("Next.js");
+        }
+
+        if (dependencies.Contains("vite"))
+        {
+            frameworks.Add("Vite");
+        }
+
+        if (dependencies.Contains("react"))
+        {
+            frameworks.Add("React");
+        }
+
+        if (dependencies.Contains("typescript"))
+        {
+            frameworks.Add("TypeScript");
         }
     }
 
