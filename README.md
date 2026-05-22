@@ -181,11 +181,11 @@ The desktop app includes an initial `semantic_search` tool for OpenAI embedding 
 
 Embeddings are optional. If you do not want to use embeddings or pay for embedding API calls, set `Embedding Provider` to `none` and only enter the main chat provider API key. AgentQ will still use project map, file search, keyword search, and normal tool-based context gathering.
 
-### 임베딩 사용 여부
+### Embedding Usage
 
-임베딩은 선택 기능입니다. 임베딩 API 비용을 쓰고 싶지 않다면 `Embedding Provider`를 `none`으로 두고 기본 Provider API 키만 입력하면 됩니다. 이 경우 AgentQ는 프로젝트 맵, 파일 검색, 키워드 검색, 심볼 검색, 일반 도구 기반 컨텍스트 수집으로 동작합니다.
+Embeddings are optional. Set `Embedding Provider` to `none` if you only want to use the main chat provider API key. AgentQ will continue to use Project Map, file search, keyword search, symbol search, and tool-based context gathering.
 
-## Desktop Beta v0.1.0-beta.7
+## Desktop Beta v0.1.0-beta.8
 
 This beta bundles the current v1 desktop reliability work:
 
@@ -193,21 +193,11 @@ This beta bundles the current v1 desktop reliability work:
 - Symbol Index, `symbol_search`, `semantic_search`, and `hybrid_search`
 - optional OpenAI embeddings with keyword/project-map fallback when embeddings are disabled
 - project memory, approved learning candidates, structured context bank, and recurring error history
-- evidence trail, confidence signals, focused verification guardrails, and search retry
+- evidence-backed analysis responses, Project Map evidence paths, confidence signals, focused verification guardrails, and search retry
+- link auto-read evidence that reports fetch success or failure instead of claiming URLs are always inaccessible
+- reusable workspace analysis reports with copy/save actions
 - HITL permission dialogs with file mutation and command previews
-- file mutation snapshots, per-change revert, local telemetry JSONL, model routing recommendations, MCP server config foundation, and tool replay logs
-
-### 데스크톱 베타 v0.1.0-beta.7
-
-이번 베타에는 현재 v1 데스크톱 안정화 작업이 포함됩니다.
-
-- C#, TypeScript/JavaScript, Python, Docker, FastAPI, React/Vite, SQLAlchemy, Alembic, C++ 힌트를 포함한 프로젝트 맵과 다중 언어 워크스페이스 분석
-- Symbol Index, `symbol_search`, `semantic_search`, `hybrid_search`
-- 선택형 OpenAI 임베딩과, 임베딩을 끈 상태에서도 동작하는 키워드/프로젝트 맵 기반 검색
-- 프로젝트 메모리, 승인형 학습 후보, 구조화된 컨텍스트 뱅크, 반복 에러 히스토리
-- 근거 흐름, 확신도 신호, 집중 검증 가드레일, 검색 재시도
-- 파일 변경/명령 미리보기가 포함된 사용자 승인 흐름
-- 파일 변경 스냅샷, 변경별 되돌리기, 로컬 텔레메트리 JSONL, 모델 라우팅 추천, MCP 서버 설정 기반, 도구 재생 로그
+- larger file change diff preview, stable status-panel tabs, file mutation snapshots, per-change revert, local telemetry JSONL, model routing recommendations, MCP server config foundation, and tool replay logs
 
 Install it as a .NET global tool:
 
@@ -444,8 +434,8 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`.
 Example:
 
 ```powershell
-git tag v0.1.0-beta.7
-git push origin v0.1.0-beta.7
+git tag v0.1.0-beta.8
+git push origin v0.1.0-beta.8
 ```
 
 The release workflow builds and tests the solution, packs the CLI using the tag version, publishes the Windows desktop app, builds an Inno Setup installer, and creates a draft GitHub Release with:
@@ -496,9 +486,9 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 Current local validation passed in this environment:
 
-- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `208` tests passed
-- Next beta target: `v0.1.0-beta.7`
-- Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.7.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.7.zip`, and `AgentQ.Tool.0.1.0-beta.7.nupkg`
+- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `213` tests passed
+- Next beta target: `v0.1.0-beta.8`
+- Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and `AgentQ.Tool.0.1.0-beta.8.nupkg`
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
 
@@ -506,29 +496,18 @@ The repository can still be validated on a normal local machine or CI runner as 
 
 Near-term priorities:
 
-- publish and QA `v0.1.0-beta.7`
+- publish and QA `v0.1.0-beta.8`
 - turn MCP server config into a real MCP client/tool bridge
 - add a visible telemetry/replay dashboard for local eval review
 - improve model routing from recommendation-only to user-approved switching
 - expand language workers and dependency graph support
 - continue improving release trust, including code signing
 
-### 로드맵
-
-가까운 우선순위:
-
-- `v0.1.0-beta.7` 배포 및 QA
-- MCP 서버 설정을 실제 MCP 클라이언트/도구 브리지로 확장
-- 로컬 평가를 확인할 수 있는 텔레메트리/리플레이 대시보드 추가
-- 모델 라우팅을 추천 단계에서 사용자 승인 기반 전환으로 개선
-- 언어 워커와 의존성 그래프 지원 확장
-- 코드 서명을 포함한 릴리즈 신뢰도 개선
-
 See [docs/language-worker-architecture.md](docs/language-worker-architecture.md) for the planned C# core plus language worker design.
 
 ## Current Priority
 
-1. publish `v0.1.0-beta.7` release artifacts
+1. publish `v0.1.0-beta.8` release artifacts
 2. QA installer, portable ZIP, provider setup, optional embeddings, memory, verification, snapshots, telemetry, and replay
 3. add code signing before broader Windows distribution
 4. expand MCP, routing, replay, and language-worker coverage
