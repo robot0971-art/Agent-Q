@@ -22,6 +22,7 @@ public static class DesktopWorkspaceAnalysisReportBuilder
         AppendSection(builder, "Project Map", analysis.ProjectMap);
         AppendSection(builder, "Key Files", analysis.KeyFiles);
         AppendSection(builder, "Key Symbols", analysis.KeySymbols);
+        AppendSection(builder, "Key Dependencies", analysis.KeyDependencies);
         AppendSection(builder, "Evidence And Hints", analysis.Hints);
         return builder.ToString().TrimEnd();
     }

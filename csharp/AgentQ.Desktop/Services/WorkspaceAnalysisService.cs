@@ -9,6 +9,7 @@ namespace AgentQ.Desktop.Services;
 public sealed class WorkspaceAnalysisService
 {
     private readonly WorkspaceSymbolIndexService _symbolIndexService;
+    private readonly WorkspaceDependencyGraphService _dependencyGraphService;
 
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -25,9 +26,12 @@ public sealed class WorkspaceAnalysisService
         "__pycache__"
     };
 
-    public WorkspaceAnalysisService(WorkspaceSymbolIndexService? symbolIndexService = null)
+    public WorkspaceAnalysisService(
+        WorkspaceSymbolIndexService? symbolIndexService = null,
+        WorkspaceDependencyGraphService? dependencyGraphService = null)
     {
         _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
+        _dependencyGraphService = dependencyGraphService ?? new WorkspaceDependencyGraphService();
     }
 
     public async Task<WorkspaceAnalysis> AnalyzeAsync(string workspaceRoot, CancellationToken ct = default)
@@ -66,6 +70,7 @@ public sealed class WorkspaceAnalysisService
         DetectMonorepoShape(analysis);
         DetectProjectMap(analysis, detectedTypes);
         DetectSymbols(analysis);
+        DetectDependencyGraph(analysis);
         await DetectTypeScriptWorkerAsync(analysis, frameworks, ct);
         await DetectPythonWorkerAsync(analysis, frameworks, ct);
         DetectKeyFiles(analysis);
@@ -686,6 +691,25 @@ public sealed class WorkspaceAnalysisService
         if (symbolIndex.SymbolCount > 0)
         {
             analysis.Hints.Add($"C# symbol index: {symbolIndex.SymbolCount:0} symbols in {symbolIndex.FilesIndexed:0} files.");
+        }
+    }
+
+    private void DetectDependencyGraph(WorkspaceAnalysis analysis)
+    {
+        var graph = _dependencyGraphService.Build(analysis.WorkspaceRoot);
+        analysis.DependencyEdgeCount = graph.EdgeCount;
+
+        foreach (var edge in graph.Edges
+                     .Where(edge => !edge.IsExternal)
+                     .Concat(graph.Edges.Where(edge => edge.IsExternal))
+                     .Take(10))
+        {
+            AddUnique(analysis.KeyDependencies, edge.DisplayText);
+        }
+
+        if (graph.EdgeCount > 0)
+        {
+            analysis.Hints.Add($"Dependency graph: {graph.EdgeCount:0} edge(s) across {graph.FilesIndexed:0} files.");
         }
     }
 

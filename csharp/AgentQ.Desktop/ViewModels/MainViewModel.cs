@@ -81,6 +81,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> WorkspaceKeySymbols { get; } = [];
 
+    public ObservableCollection<string> WorkspaceKeyDependencies { get; } = [];
+
     public ObservableCollection<string> WorkspaceKeyFiles { get; } = [];
 
     public ObservableCollection<string> WorkspaceHints { get; } = [];
@@ -709,6 +711,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var symbol in analysis.KeySymbols)
         {
             WorkspaceKeySymbols.Add(symbol);
+        }
+
+        WorkspaceKeyDependencies.Clear();
+        foreach (var dependency in analysis.KeyDependencies)
+        {
+            WorkspaceKeyDependencies.Add(dependency);
         }
 
         WorkspaceKeyFiles.Clear();

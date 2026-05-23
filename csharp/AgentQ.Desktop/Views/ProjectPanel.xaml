@@ -131,6 +131,19 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <TextBlock Text="Key dependencies" Style="{DynamicResource LabelText}" />
+                    <ItemsControl ItemsSource="{Binding WorkspaceKeyDependencies}" Margin="0,0,0,6">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontFamily="Consolas"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,1,0,1" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <TextBlock Text="Key files" Style="{DynamicResource LabelText}" />
                     <ItemsControl ItemsSource="{Binding WorkspaceKeyFiles}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>

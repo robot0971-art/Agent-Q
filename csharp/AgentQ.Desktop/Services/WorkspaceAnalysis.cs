@@ -24,6 +24,10 @@ public sealed class WorkspaceAnalysis
 
     public List<string> KeySymbols { get; set; } = [];
 
+    public int DependencyEdgeCount { get; set; }
+
+    public List<string> KeyDependencies { get; set; } = [];
+
     public List<string> KeyFiles { get; set; } = [];
 
     public List<string> Hints { get; set; } = [];

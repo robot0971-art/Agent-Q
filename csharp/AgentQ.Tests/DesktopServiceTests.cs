@@ -478,6 +478,71 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void WorkspaceDependencyGraphService_ExtractsJavaScriptPythonAndCSharpEdges()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src"));
+        Directory.CreateDirectory(Path.Combine(root, "backend", "app", "services"));
+        Directory.CreateDirectory(Path.Combine(root, "csharp", "App"));
+        Directory.CreateDirectory(Path.Combine(root, "csharp", "Lib"));
+        File.WriteAllText(
+            Path.Combine(root, "frontend", "src", "Login.tsx"),
+            """
+            import { login } from "./auth";
+            export { login } from "./auth";
+            """);
+        File.WriteAllText(Path.Combine(root, "frontend", "src", "auth.ts"), "export function login() { return true; }");
+        File.WriteAllText(Path.Combine(root, "backend", "app", "main.py"), "from app.services.auth import login");
+        File.WriteAllText(Path.Combine(root, "backend", "app", "services", "auth.py"), "def login(): return True");
+        File.WriteAllText(
+            Path.Combine(root, "csharp", "App", "App.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <ProjectReference Include="..\Lib\Lib.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(root, "csharp", "Lib", "Lib.csproj"), """<Project Sdk="Microsoft.NET.Sdk" />""");
+        File.WriteAllText(Path.Combine(root, "csharp", "App", "Program.cs"), "using Demo.Lib;");
+
+        var graph = new WorkspaceDependencyGraphService().Build(root);
+
+        Assert.Contains(graph.Edges, edge =>
+            edge.FromPath == "frontend/src/Login.tsx" &&
+            edge.ToPath == "frontend/src/auth.ts" &&
+            edge.Kind == "import");
+        Assert.Contains(graph.Edges, edge =>
+            edge.FromPath == "backend/app/main.py" &&
+            edge.ToPath == "backend/app/services/auth.py" &&
+            edge.Kind == "from-import");
+        Assert.Contains(graph.Edges, edge =>
+            edge.FromPath == "csharp/App/App.csproj" &&
+            edge.Target == "csharp/Lib/Lib.csproj" &&
+            edge.Kind == "project-reference");
+        Assert.Contains(graph.Edges, edge =>
+            edge.FromPath == "csharp/App/Program.cs" &&
+            edge.Target == "Demo.Lib" &&
+            edge.Kind == "using");
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_IncludesDependencyGraphSummary()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "App.tsx"), "import { login } from './auth';");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "auth.ts"), "export const login = () => true;");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.True(analysis.DependencyEdgeCount >= 1);
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("src/App.tsx", StringComparison.OrdinalIgnoreCase) &&
+                                                                dependency.Contains("src/auth.ts", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Dependency graph", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task TypeScriptWorkerHost_ExtractsPackageImportsComponentsAndRoutes()
     {
         var root = CreateTempDirectory();
