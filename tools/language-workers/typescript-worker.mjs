@@ -39,6 +39,9 @@ const result = {
   warnings: []
 };
 
+const sourceFiles = new Map();
+const tsconfigAliases = [];
+
 function rel(file) {
   return path.relative(root, file).replaceAll(path.sep, "/");
 }
@@ -127,13 +130,30 @@ function analyzePackageJson(file) {
 
 function analyzeTsconfig(file) {
   const json = safeJson(file);
+  const configDir = path.dirname(file);
+  const compilerOptions = json?.compilerOptions || {};
   result.tsconfigs.push({
     path: rel(file),
     extends: json?.extends || "",
-    jsx: json?.compilerOptions?.jsx || "",
-    module: json?.compilerOptions?.module || "",
-    target: json?.compilerOptions?.target || ""
+    jsx: compilerOptions.jsx || "",
+    module: compilerOptions.module || "",
+    target: compilerOptions.target || "",
+    baseUrl: compilerOptions.baseUrl || "",
+    paths: compilerOptions.paths || {}
   });
+
+  const baseUrl = compilerOptions.baseUrl
+    ? path.resolve(configDir, compilerOptions.baseUrl)
+    : configDir;
+  for (const [alias, targets] of Object.entries(compilerOptions.paths || {})) {
+    for (const target of Array.isArray(targets) ? targets : []) {
+      tsconfigAliases.push({
+        alias,
+        target,
+        baseUrl
+      });
+    }
+  }
 }
 
 function detectPackageManagers() {
@@ -152,15 +172,29 @@ function analyzeSource(file) {
 
   const relativePath = rel(file);
   const lines = text.split(/\r?\n/);
+  const importRegexes = [
+    /\bimport\s+(?:type\s+)?(?:.+?\s+from\s+)?["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+    /\bexport\s+(?:type\s+)?(?:.+?\s+from\s+)?["']([^"']+)["']/g,
+    /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g
+  ];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    let match = line.match(/^import\s+(?:.+?\s+from\s+)?["']([^"']+)["']/);
-    if (match) {
-      result.imports.push({ path: relativePath, line: i + 1, source: match[1] });
+    for (const regex of importRegexes) {
+      regex.lastIndex = 0;
+      let match;
+      while ((match = regex.exec(line)) !== null) {
+        result.imports.push({
+          path: relativePath,
+          line: i + 1,
+          source: match[1],
+          resolvedPath: resolveImport(file, match[1]) || ""
+        });
+      }
     }
 
-    match = line.match(/^export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
+    let match = line.match(/^export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
     if (match) {
       addSymbol(relativePath, i + 1, "function", match[1], "export");
       result.exports.push({ path: relativePath, line: i + 1, name: match[1], kind: "function" });
@@ -182,6 +216,21 @@ function analyzeSource(file) {
     if (match && /\.(jsx|tsx)$/i.test(relativePath)) {
       result.reactComponents.push({ path: relativePath, line: i + 1, name: match[1] });
     }
+
+    match = line.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
+    if (match) {
+      addSymbolIfMissing(relativePath, i + 1, "function", match[1], line.startsWith("export") ? "export" : "declaration");
+    }
+
+    match = line.match(/^(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)/);
+    if (match) {
+      addSymbolIfMissing(relativePath, i + 1, "class", match[1], line.startsWith("export") ? "export" : "declaration");
+    }
+
+    match = line.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/);
+    if (match) {
+      addSymbolIfMissing(relativePath, i + 1, "const", match[1], line.startsWith("export") ? "export" : "declaration");
+    }
   }
 
   if (/(^|\/)(pages|app|routes)\//i.test(relativePath)) {
@@ -193,18 +242,93 @@ function addSymbol(relativePath, line, kind, name, source) {
   result.symbols.push({ path: relativePath, line, kind, name, source, language: /\.tsx?$/i.test(relativePath) ? "TypeScript" : "JavaScript" });
 }
 
+function addSymbolIfMissing(relativePath, line, kind, name, source) {
+  if (!result.symbols.some((item) => item.path === relativePath && item.line === line && item.kind === kind && item.name === name)) {
+    addSymbol(relativePath, line, kind, name, source);
+  }
+}
+
+function buildSourceFileIndex(files) {
+  sourceFiles.clear();
+  for (const file of files) {
+    sourceFiles.set(rel(file), file);
+  }
+}
+
+function resolveImport(fromFile, source) {
+  if (!source || /^[a-z@][^./]/i.test(source)) {
+    return "";
+  }
+
+  if (source.startsWith(".")) {
+    return resolveCandidate(path.resolve(path.dirname(fromFile), source));
+  }
+
+  for (const alias of tsconfigAliases) {
+    const resolved = resolveAlias(alias, source);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return "";
+}
+
+function resolveAlias(alias, source) {
+  const starIndex = alias.alias.indexOf("*");
+  if (starIndex < 0) {
+    if (source !== alias.alias) {
+      return "";
+    }
+
+    return resolveCandidate(path.resolve(alias.baseUrl, alias.target));
+  }
+
+  const prefix = alias.alias.slice(0, starIndex);
+  const suffix = alias.alias.slice(starIndex + 1);
+  if (!source.startsWith(prefix) || (suffix && !source.endsWith(suffix))) {
+    return "";
+  }
+
+  const middle = source.slice(prefix.length, suffix ? -suffix.length : undefined);
+  return resolveCandidate(path.resolve(alias.baseUrl, alias.target.replace("*", middle)));
+}
+
+function resolveCandidate(basePath) {
+  const candidates = [
+    basePath,
+    ...[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"].map((ext) => `${basePath}${ext}`),
+    ...[".ts", ".tsx", ".js", ".jsx"].map((ext) => path.join(basePath, `index${ext}`))
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate.startsWith(root)) {
+      continue;
+    }
+
+    const relative = rel(candidate);
+    if (sourceFiles.has(relative) || fs.existsSync(candidate)) {
+      return relative;
+    }
+  }
+
+  return "";
+}
+
 function main() {
   detectPackageManagers();
-  for (const file of walk(root)) {
+  const files = walk(root);
+  for (const file of findNamed(root, "tsconfig.json")) {
+    analyzeTsconfig(file);
+  }
+
+  buildSourceFileIndex(files);
+  for (const file of files) {
     analyzeSource(file);
   }
 
   for (const file of findNamed(root, "package.json")) {
     analyzePackageJson(file);
-  }
-
-  for (const file of findNamed(root, "tsconfig.json")) {
-    analyzeTsconfig(file);
   }
 
   console.log(JSON.stringify(result));

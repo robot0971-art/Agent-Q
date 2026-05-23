@@ -777,6 +777,15 @@ public sealed class WorkspaceAnalysisService
             AddUnique(analysis.KeySymbols, $"{exported.Kind} {exported.Name} ({exported.Path}:{exported.Line:0})");
         }
 
+        foreach (var import in result.Imports
+                     .Where(import => !string.IsNullOrWhiteSpace(import.ResolvedPath))
+                     .Take(8))
+        {
+            AddUnique(
+                analysis.KeyDependencies,
+                $"{import.Path}:{import.Line:0} -> {import.ResolvedPath} (worker import)");
+        }
+
         foreach (var route in result.Routes.Take(8))
         {
             AddUnique(analysis.ProjectMap, FormatProjectMapEntry("Route files", [route.Path], [route.Path]));

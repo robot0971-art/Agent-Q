@@ -559,29 +559,49 @@ public sealed class DesktopServiceTests
             """);
         await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "tsconfig.json"),
-            """{"compilerOptions":{"jsx":"react-jsx","target":"ES2022","module":"ESNext"}}""");
+            """{"compilerOptions":{"jsx":"react-jsx","target":"ES2022","module":"ESNext","baseUrl":".","paths":{"@/*":["src/*"]}}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "api.ts"),
+            """
+            export function loadDashboard() {
+              return true;
+            }
+            """);
         await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "src", "pages", "Dashboard.tsx"),
             """
             import React from 'react';
+            import { loadDashboard } from '@/api';
+            export { loadDashboard } from '@/api';
+            const legacy = require('@/api');
 
             export function DashboardView() {
               return <main />;
             }
 
             export const useDashboard = () => [];
+
+            async function loadRoute() {
+              return import('@/api');
+            }
             """);
 
         var result = await new TypeScriptWorkerHost().AnalyzeAsync(root, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Contains(result.Packages, package => package.Path == "frontend/package.json");
-        Assert.Contains(result.Tsconfigs, config => config.Path == "frontend/tsconfig.json");
+        Assert.Contains(result.Tsconfigs, config => config.Path == "frontend/tsconfig.json" &&
+                                                    config.BaseUrl == "." &&
+                                                    config.Paths.ContainsKey("@/*"));
         Assert.Contains(result.NpmScripts, script => script.Name == "build");
         Assert.Contains(result.Imports, import => import.Source == "react");
+        Assert.Contains(result.Imports, import => import.Source == "@/api" &&
+                                                  import.ResolvedPath == "frontend/src/api.ts");
         Assert.Contains(result.ReactComponents, component => component.Name == "DashboardView");
         Assert.Contains(result.Routes, route => route.Path.Contains("Dashboard.tsx", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(result.Exports, export => export.Name == "useDashboard");
+        Assert.Contains(result.Exports, export => export.Name == "loadDashboard");
+        Assert.Contains(result.Symbols, symbol => symbol.Name == "loadRoute");
     }
 
     [Fact]
@@ -599,10 +619,18 @@ public sealed class DesktopServiceTests
             }
             """);
         await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "tsconfig.json"),
+            """{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "api.ts"),
+            "export const apiClient = {};");
+        await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "src", "App.tsx"),
             """
+            import { apiClient } from '@/api';
+
             export function AppShell() {
-              return null;
+              return apiClient;
             }
             """);
 
@@ -613,6 +641,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("TypeScript", analysis.Framework);
         Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker indexed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("component AppShell", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("frontend/src/App.tsx", StringComparison.OrdinalIgnoreCase) &&
+                                                                dependency.Contains("frontend/src/api.ts", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

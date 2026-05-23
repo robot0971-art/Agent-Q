@@ -55,6 +55,10 @@ public sealed class TypeScriptConfigInfo
     public string Module { get; set; } = string.Empty;
 
     public string Target { get; set; } = string.Empty;
+
+    public string BaseUrl { get; set; } = string.Empty;
+
+    public Dictionary<string, List<string>> Paths { get; set; } = [];
 }
 
 public sealed class TypeScriptNpmScript
@@ -73,6 +77,8 @@ public sealed class TypeScriptImportInfo
     public int Line { get; set; }
 
     public string Source { get; set; } = string.Empty;
+
+    public string ResolvedPath { get; set; } = string.Empty;
 }
 
 public sealed class TypeScriptExportInfo
