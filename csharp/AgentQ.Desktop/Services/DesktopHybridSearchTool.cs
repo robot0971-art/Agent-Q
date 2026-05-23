@@ -11,13 +11,17 @@ public sealed class DesktopHybridSearchTool(
     IEmbeddingClient? embeddingClient,
     string embeddingModel,
     WorkspaceSymbolIndexService? symbolIndexService = null,
-    WorkspaceAnalysisService? workspaceAnalysisService = null) : ITool
+    WorkspaceAnalysisService? workspaceAnalysisService = null,
+    WorkspaceDependencyGraphService? dependencyGraphService = null,
+    ProjectMemoryService? projectMemoryService = null) : ITool
 {
     private const int MaximumKeywordFiles = 800;
     private const int MaximumKeywordMatches = 80;
     private const int MaximumFileBytes = 512 * 1024;
     private readonly WorkspaceSymbolIndexService _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
     private readonly WorkspaceAnalysisService _workspaceAnalysisService = workspaceAnalysisService ?? new WorkspaceAnalysisService();
+    private readonly WorkspaceDependencyGraphService _dependencyGraphService = dependencyGraphService ?? new WorkspaceDependencyGraphService();
+    private readonly ProjectMemoryService _projectMemoryService = projectMemoryService ?? new ProjectMemoryService();
 
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -68,6 +72,9 @@ public sealed class DesktopHybridSearchTool(
         AddSymbolSignals(candidates, query);
         AddKeywordSignals(candidates, query, warnings);
         await AddProjectMapSignalsAsync(candidates, query, ct);
+        AddGraphSignals(candidates, query);
+        await AddGitRecencySignalsAsync(candidates, warnings, ct);
+        await AddMemorySignalsAsync(candidates, query, ct);
 
         if (includeSemantic)
         {
@@ -113,6 +120,133 @@ public sealed class DesktopHybridSearchTool(
             candidate.Sources.Add("symbol");
             candidate.Lines.Add(symbol.Line);
             candidate.Reasons.Add($"symbol: {symbol.DisplayName}");
+        }
+    }
+
+    private async Task AddMemorySignalsAsync(
+        Dictionary<string, HybridCandidate> candidates,
+        string query,
+        CancellationToken ct)
+    {
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var tokens = BuildSearchTokens(query);
+        if (tokens.Count == 0)
+        {
+            return;
+        }
+
+        var lessons = await _projectMemoryService.LoadLocalLessonsAsync(workspaceRoot, ct);
+        foreach (var lesson in lessons.Where(lesson => lesson.Enabled).Take(20))
+        {
+            var memoryText = $"{lesson.Title}\n{lesson.Content}\n{string.Join(' ', lesson.Tags)}";
+            if (!ContainsAnyToken(memoryText, tokens))
+            {
+                continue;
+            }
+
+            foreach (var candidate in candidates.Values)
+            {
+                var fileName = Path.GetFileName(candidate.RelativePath);
+                if (!memoryText.Contains(candidate.RelativePath, StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(fileName) || !memoryText.Contains(fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                candidate.Score += 10;
+                candidate.Sources.Add("memory");
+                candidate.Reasons.Add($"memory: matched lesson {lesson.Title}");
+            }
+        }
+    }
+
+    private void AddGraphSignals(Dictionary<string, HybridCandidate> candidates, string query)
+    {
+        var tokens = BuildSearchTokens(query);
+        if (tokens.Count == 0)
+        {
+            return;
+        }
+
+        var graph = _dependencyGraphService.Build(workspaceRoot);
+        if (graph.EdgeCount == 0)
+        {
+            return;
+        }
+
+        var seedPaths = candidates.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in graph.Edges)
+        {
+            var target = string.IsNullOrWhiteSpace(edge.ToPath) ? edge.Target : edge.ToPath;
+            var targetMatchesQuery = ContainsAnyToken(target, tokens);
+            var sourceMatchesQuery = ContainsAnyToken(edge.FromPath, tokens);
+            var sourceIsSeed = seedPaths.Contains(edge.FromPath);
+            var targetIsSeed = !string.IsNullOrWhiteSpace(edge.ToPath) && seedPaths.Contains(edge.ToPath);
+
+            if (targetMatchesQuery)
+            {
+                var candidate = GetCandidate(candidates, edge.FromPath);
+                candidate.Score += 46;
+                candidate.Sources.Add("graph");
+                AddLine(candidate, edge.Line);
+                candidate.Reasons.Add($"graph: imports matching target {target}");
+            }
+
+            if (sourceMatchesQuery && !string.IsNullOrWhiteSpace(edge.ToPath))
+            {
+                var candidate = GetCandidate(candidates, edge.ToPath);
+                candidate.Score += 34;
+                candidate.Sources.Add("graph");
+                candidate.Reasons.Add($"graph: imported by matching file {edge.FromPath}");
+            }
+
+            if (sourceIsSeed && !string.IsNullOrWhiteSpace(edge.ToPath))
+            {
+                var candidate = GetCandidate(candidates, edge.ToPath);
+                candidate.Score += 22;
+                candidate.Sources.Add("graph");
+                candidate.Reasons.Add($"graph: dependency of candidate {edge.FromPath}");
+            }
+
+            if (targetIsSeed)
+            {
+                var candidate = GetCandidate(candidates, edge.FromPath);
+                candidate.Score += 30;
+                candidate.Sources.Add("graph");
+                AddLine(candidate, edge.Line);
+                candidate.Reasons.Add($"graph: imports candidate {edge.ToPath}");
+            }
+        }
+    }
+
+    private async Task AddGitRecencySignalsAsync(
+        Dictionary<string, HybridCandidate> candidates,
+        List<string> warnings,
+        CancellationToken ct)
+    {
+        var result = await new DesktopGitService().GetChangedFilesAsync(workspaceRoot, ct);
+        if (result.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var file in result.Take(24))
+        {
+            var candidate = GetCandidate(candidates, file.Path);
+            candidate.Score += file.IsStaged ? 16 : 12;
+            candidate.Sources.Add("git");
+            candidate.Reasons.Add(file.IsStaged
+                ? "git: staged local change"
+                : "git: recent local change");
+        }
+
+        if (result.Count > 24)
+        {
+            warnings.Add("Git recency signal limited to 24 changed files.");
         }
     }
 
@@ -325,6 +459,20 @@ public sealed class DesktopHybridSearchTool(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(8)
             .ToList();
+    }
+
+    private static bool ContainsAnyToken(string value, IReadOnlyCollection<string> tokens)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               tokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AddLine(HybridCandidate candidate, int line)
+    {
+        if (line > 0)
+        {
+            candidate.Lines.Add(line);
+        }
     }
 
     private static IEnumerable<string> EnumerateSearchableFiles(string root)

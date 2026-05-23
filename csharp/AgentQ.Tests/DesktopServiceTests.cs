@@ -1570,6 +1570,91 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopHybridSearchTool_AddsGraphNeighborsToRankedCandidates()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "LoginPage.tsx"),
+            """
+            import * as auth from "./auth";
+
+            export function LoginPage() {
+                return auth;
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "auth.ts"),
+            """
+            export function loginUser(email: string) {
+                return email.length > 0;
+            }
+            """);
+
+        var tool = new DesktopHybridSearchTool(root, new EmbeddingIndexStore(), null, string.Empty);
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "loginUser", ["limit"] = 5, ["includeSemantic"] = false },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        using var document = JsonDocument.Parse(result.Content);
+        var results = document.RootElement.GetProperty("results").EnumerateArray().ToList();
+        var loginPage = Assert.Single(results, item => item.GetProperty("RelativePath").GetString() == "src/LoginPage.tsx");
+        var sources = loginPage.GetProperty("Sources").EnumerateArray().Select(item => item.GetString()).ToList();
+        var reasons = loginPage.GetProperty("Reasons").EnumerateArray().Select(item => item.GetString()).ToList();
+
+        Assert.Contains("graph", sources);
+        Assert.Contains(reasons, reason => reason?.Contains("imports candidate src/auth.ts", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task DesktopHybridSearchTool_AddsMemorySignalsToExistingCandidates()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, ".agentq"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "src", "auth.ts"),
+            """
+            export function loginUser(email: string) {
+                return email.length > 0;
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, ".agentq", "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "auth-login",
+                  "title": "loginUser auth location",
+                  "content": "loginUser changes usually belong in src/auth.ts.",
+                  "tags": ["auth", "loginUser"],
+                  "enabled": true
+                }
+              ]
+            }
+            """);
+
+        var tool = new DesktopHybridSearchTool(root, new EmbeddingIndexStore(), null, string.Empty);
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "loginUser", ["limit"] = 3, ["includeSemantic"] = false },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        using var document = JsonDocument.Parse(result.Content);
+        var auth = Assert.Single(
+            document.RootElement.GetProperty("results").EnumerateArray(),
+            item => item.GetProperty("RelativePath").GetString() == "src/auth.ts");
+        var sources = auth.GetProperty("Sources").EnumerateArray().Select(item => item.GetString()).ToList();
+
+        Assert.Contains("memory", sources);
+    }
+
+    [Fact]
     public async Task ProjectMemoryService_LoadsWorkspaceLocalAndSharedMemory()
     {
         var root = CreateTempDirectory();
