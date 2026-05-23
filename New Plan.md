@@ -17,6 +17,4 @@ The next work should turn AgentQ into a stronger C#-centered multi-language agen
 
 ## Active Work Queue
 
-1. Multi-Agent foundation
-   - Explore Planner, Coder, Reviewer, and Tester roles only after MCP, workers, replay review, and evidence are stronger.
-   - Keep v1 local and deterministic before adding parallel agent behavior.
+No active items. The current modernization queue has been completed.

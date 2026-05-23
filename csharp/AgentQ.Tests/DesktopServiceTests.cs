@@ -93,6 +93,33 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MultiAgentRolePlanner_BuildsFeatureRoleChecklist()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("implement settings sync feature");
+        var rolePlan = MultiAgentRolePlanner.Build(profile);
+
+        Assert.Equal(DesktopTaskKind.Feature, rolePlan.Kind);
+        Assert.Contains(rolePlan.Steps, step => step.Role == MultiAgentRole.Planner);
+        Assert.Contains(rolePlan.Steps, step => step.Role == MultiAgentRole.Coder);
+        Assert.Contains(rolePlan.Steps, step => step.Role == MultiAgentRole.Reviewer && step.IsParallelCandidate);
+        Assert.Contains(rolePlan.Steps, step => step.Role == MultiAgentRole.Tester);
+        Assert.Contains("Multi-agent role plan", rolePlan.FormatForPrompt(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsMultiAgentRoleRules()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("code review this change");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.CodeReview, profile.Kind);
+        Assert.Contains("Multi-agent role plan", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reviewer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tester", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not claim separate agents ran", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopPromptAssemblyService_AddsLinkCapabilityRulesForGeneralTasks()
     {
         var profile = DesktopPromptAssemblyService.BuildTaskProfile("can you read this link?");

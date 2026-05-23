@@ -103,6 +103,11 @@ public sealed class DesktopAgentService
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
+        var rolePlan = MultiAgentRolePlanner.Build(taskProfile);
+        toolCallbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            "Multi-agent roles",
+            string.Join(" -> ", rolePlan.Steps.Select(step => step.Role.ToString())));
         var routingRecommendation = DesktopModelRoutingAdvisor.Recommend(userText, taskProfile, config, workMode);
         toolCallbacks?.OnRunStep?.Invoke(
             AgentRunState.Planning,

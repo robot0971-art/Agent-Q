@@ -8,6 +8,7 @@ public static class DesktopPromptAssemblyService
     [
         new ContextPrioritizationPromptRule(),
         new ExecutionStrategyPromptRule(),
+        new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
         new VerificationFailurePromptRule(),
         new EvidenceBackedPromptRule()
@@ -154,6 +155,19 @@ public sealed class VerificationFailurePromptRule : IDesktopPromptRule
         builder.AppendLine("- Prefer fixing one failure class at a time.");
         builder.AppendLine("- Treat compiler, linter, and test output as primary evidence.");
         builder.AppendLine("- Rerun the narrowest useful verification command before broad checks.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class MultiAgentRolePromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => true;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(MultiAgentRolePlanner.Build(profile).FormatForPrompt());
+        builder.AppendLine("Use this as a local role checklist in v1. Do not claim separate agents ran unless the product explicitly executes them.");
         return builder.ToString().TrimEnd();
     }
 }
