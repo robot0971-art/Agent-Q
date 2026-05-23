@@ -177,6 +177,7 @@ public sealed class DesktopAgentService
                     executedCommands,
                     verificationPlans,
                     touchedLessons.Count,
+                    replayEntries,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished without more tool calls.");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
@@ -219,6 +220,7 @@ public sealed class DesktopAgentService
             executedCommands,
             stoppedVerificationPlans,
             touchedLessons.Count,
+            replayEntries,
             toolCallbacks);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool step limit reached", stoppedMessage);
         await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
@@ -766,6 +768,7 @@ public sealed class DesktopAgentService
         IReadOnlyList<string> executedCommands,
         IReadOnlyList<AgentVerificationPlan> verificationPlans,
         int touchedMemoryCount,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
         DesktopToolCallbacks? callbacks)
     {
         var confidence = DesktopConfidenceAssessor.Assess(
@@ -774,7 +777,8 @@ public sealed class DesktopAgentService
             fileChanges,
             executedCommands,
             verificationPlans,
-            touchedMemoryCount);
+            touchedMemoryCount,
+            replayEntries);
 
         callbacks?.OnRunStep?.Invoke(
             confidence.Score >= 55 ? AgentRunState.Done : AgentRunState.Failed,

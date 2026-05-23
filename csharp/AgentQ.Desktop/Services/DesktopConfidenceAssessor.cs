@@ -8,11 +8,13 @@ public static class DesktopConfidenceAssessor
         IReadOnlyList<FileChangeRecord> fileChanges,
         IReadOnlyList<string> executedCommands,
         IReadOnlyList<AgentVerificationPlan> verificationPlans,
-        int touchedMemoryCount)
+        int touchedMemoryCount,
+        IReadOnlyList<ToolReplayEntry>? toolEvidence = null)
     {
         var score = 55;
         var signals = new List<string>();
         var warnings = new List<string>();
+        toolEvidence ??= [];
 
         if (toolCallCount > 0)
         {
@@ -31,9 +33,56 @@ public static class DesktopConfidenceAssessor
             signals.Add("project memory matched the request");
         }
 
+        var successfulTools = toolEvidence.Where(entry => !entry.IsError).ToList();
+        var searchToolCount = successfulTools.Count(entry => IsSearchTool(entry.ToolName));
+        var readFileCount = successfulTools.Count(entry => string.Equals(entry.ToolName, "read_file", StringComparison.OrdinalIgnoreCase));
+        var hybridSearch = successfulTools.Where(entry => string.Equals(entry.ToolName, "hybrid_search", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (searchToolCount > 0)
+        {
+            score += Math.Min(10, searchToolCount * 2);
+            signals.Add($"{searchToolCount} search/navigation tool(s) gathered context");
+        }
+
+        if (readFileCount > 0)
+        {
+            score += Math.Min(8, readFileCount * 2);
+            signals.Add($"{readFileCount} file read(s) inspected concrete context");
+        }
+
+        if (hybridSearch.Any(HasGraphSignal))
+        {
+            score += 6;
+            signals.Add("dependency graph evidence contributed to retrieval");
+        }
+
+        if (hybridSearch.Any(HasMemorySignal))
+        {
+            score += 4;
+            signals.Add("project memory evidence contributed to retrieval");
+        }
+
+        if (hybridSearch.Any(HasGitSignal))
+        {
+            score += 3;
+            signals.Add("Git recency evidence contributed to retrieval");
+        }
+
         if (fileChanges.Count > 0)
         {
             signals.Add($"{fileChanges.Count} file change(s) recorded");
+
+            if (toolEvidence.Count > 0 && readFileCount == 0)
+            {
+                score -= 12;
+                warnings.Add("Changes were made without reading file context in this run");
+            }
+
+            if (toolEvidence.Count > 0 && searchToolCount == 0)
+            {
+                score -= 10;
+                warnings.Add("Changes were made without search or symbol navigation evidence");
+            }
         }
 
         if (HasVerificationCommand(executedCommands))
@@ -54,6 +103,18 @@ public static class DesktopConfidenceAssessor
         if (verificationPlans.Any(plan => !plan.AlreadySatisfied && !string.IsNullOrWhiteSpace(plan.Command)))
         {
             warnings.Add("Verification is suggested before treating the result as final");
+        }
+
+        if (toolEvidence.Count > 0 && successfulTools.Count == 0)
+        {
+            score -= 10;
+            warnings.Add("All recorded tool evidence failed");
+        }
+
+        if (toolEvidence.Count > 0 && toolEvidence.Count(entry => entry.IsError) >= Math.Max(2, toolEvidence.Count / 2))
+        {
+            score -= 5;
+            warnings.Add("Several tool calls failed before the final answer");
         }
 
         if (string.IsNullOrWhiteSpace(responseText))
@@ -89,5 +150,36 @@ public static class DesktopConfidenceAssessor
                    normalized.Contains("pnpm test", StringComparison.Ordinal) ||
                    normalized.Contains("pnpm build", StringComparison.Ordinal);
         });
+    }
+
+    private static bool IsSearchTool(string toolName)
+    {
+        return toolName.Equals("hybrid_search", StringComparison.OrdinalIgnoreCase) ||
+               toolName.Equals("symbol_search", StringComparison.OrdinalIgnoreCase) ||
+               toolName.Equals("semantic_search", StringComparison.OrdinalIgnoreCase) ||
+               toolName.Equals("grep_search", StringComparison.OrdinalIgnoreCase) ||
+               toolName.Equals("glob_search", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasGraphSignal(ToolReplayEntry entry)
+    {
+        return ContainsEvidenceSource(entry.ResultPreview, "graph");
+    }
+
+    private static bool HasMemorySignal(ToolReplayEntry entry)
+    {
+        return ContainsEvidenceSource(entry.ResultPreview, "memory");
+    }
+
+    private static bool HasGitSignal(ToolReplayEntry entry)
+    {
+        return ContainsEvidenceSource(entry.ResultPreview, "git");
+    }
+
+    private static bool ContainsEvidenceSource(string text, string source)
+    {
+        return text.Contains($"\"{source}\"", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains($": {source}", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains($"{source}:", StringComparison.OrdinalIgnoreCase);
     }
 }

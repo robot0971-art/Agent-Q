@@ -1004,6 +1004,70 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopConfidenceAssessor_RewardsGraphMemoryAndGitSearchEvidence()
+    {
+        var assessment = DesktopConfidenceAssessor.Assess(
+            "Done",
+            toolCallCount: 2,
+            fileChanges: [],
+            executedCommands: [],
+            verificationPlans: [],
+            touchedMemoryCount: 1,
+            toolEvidence:
+            [
+                new ToolReplayEntry
+                {
+                    ToolName = "hybrid_search",
+                    ResultPreview = """
+                    {"results":[{"Sources":["symbol","graph","memory","git"],"Reasons":["graph: imports candidate src/auth.ts"]}]}
+                    """
+                },
+                new ToolReplayEntry
+                {
+                    ToolName = "read_file",
+                    ResultPreview = "src/auth.ts"
+                }
+            ]);
+
+        Assert.Contains(assessment.Signals, signal => signal.Contains("search/navigation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Signals, signal => signal.Contains("file read", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Signals, signal => signal.Contains("dependency graph", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Signals, signal => signal.Contains("project memory evidence", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Signals, signal => signal.Contains("Git recency", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void DesktopConfidenceAssessor_WarnsWhenChangedFilesLackContextEvidence()
+    {
+        var assessment = DesktopConfidenceAssessor.Assess(
+            "Changed the file",
+            toolCallCount: 1,
+            fileChanges:
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\src\\auth.ts",
+                    RelativePath = "src/auth.ts",
+                    DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "changed" }]
+                }
+            ],
+            executedCommands: [],
+            verificationPlans: [],
+            touchedMemoryCount: 0,
+            toolEvidence:
+            [
+                new ToolReplayEntry
+                {
+                    ToolName = "edit_file",
+                    ResultPreview = "changed src/auth.ts"
+                }
+            ]);
+
+        Assert.Contains(assessment.Warnings, warning => warning.Contains("without reading file context", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Warnings, warning => warning.Contains("without search or symbol navigation", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopVerificationSelector_SelectsFrontendBuildForTypeScriptChanges()
     {
         var plans = DesktopVerificationSelector.SelectPlans(
