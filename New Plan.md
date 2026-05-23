@@ -10,37 +10,32 @@ AgentQ has a working v1 desktop agent core. The next work should upgrade codebas
 
 ## Active Work Queue
 
-1. Evidence v2: stronger "why this file" explanations
-   - Show reasons such as symbol match, imported by another file, imports a relevant file, recent Git change, and project-map role.
-   - Keep explanations concise enough for the desktop Evidence tab.
-   - Add tests for evidence reason formatting.
-
-2. Confidence v2: context sufficiency
+1. Confidence v2: context sufficiency
    - Score whether enough related files were inspected.
    - Warn when dependency neighbors, tests, or verification commands were skipped.
    - Include graph/search/memory evidence as positive confidence signals.
 
-3. Error History v2
+2. Error History v2
    - Fingerprint build/test failures.
    - Detect recurring failures.
    - Suggest previous fixes from approved memory or error-history lessons.
 
-4. MCP tool bridge v1
+3. MCP tool bridge v1
    - Turn MCP server config into a working stdio MCP client.
    - Support tool listing and tool calls.
    - Route MCP tool calls through existing permission and evidence systems.
 
-5. Eval / Replay Dashboard v1
+4. Eval / Replay Dashboard v1
    - Add a desktop view for replay logs and local telemetry.
    - Show tool failures, search success, verification status, and confidence history.
 
-6. Language Worker / AST upgrade
+5. Language Worker / AST upgrade
    - Replace lightweight graph extraction gradually with ecosystem-specific workers.
    - Start with TypeScript, then Python, then C#/Roslyn if useful.
 
-7. Visual Agent foundation
+6. Visual Agent foundation
    - Add screenshot/UI analysis workflow hooks.
    - Keep Unity scene understanding as a later specialized path.
 
-8. Multi-Agent foundation
+7. Multi-Agent foundation
     - Explore Planner, Coder, Reviewer, and Tester roles only after graph/search/evidence are stronger.

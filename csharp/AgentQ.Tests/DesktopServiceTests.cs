@@ -775,6 +775,55 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopEvidenceFormatter_ExplainsDependencyGraphNeighbors()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "auth.ts"), "export const login = () => true;");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "LoginPage.tsx"), "import { login } from './auth';");
+
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = "src/auth.ts" },
+            root);
+
+        Assert.Contains("Graph:", evidence);
+        Assert.Contains("imported by src/LoginPage.tsx", evidence);
+    }
+
+    [Fact]
+    public async Task DesktopEvidenceFormatter_ExplainsLocalMemoryMentions()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, ".agentq"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "auth.ts"), "export const login = () => true;");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, ".agentq", "memory.local.json"),
+            """
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "auth-location",
+                  "title": "Auth logic lives in auth.ts",
+                  "content": "Use src/auth.ts for login behavior.",
+                  "enabled": true
+                }
+              ]
+            }
+            """);
+
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "read_file",
+            new Dictionary<string, object?> { ["path"] = "src/auth.ts" },
+            root);
+
+        Assert.Contains("Memory:", evidence);
+        Assert.Contains("Auth logic lives in auth.ts", evidence);
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsBroadSearch()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
@@ -819,6 +868,9 @@ public sealed class DesktopServiceTests
 
         Assert.Contains("Hybrid search query: login flow", evidence);
         Assert.Contains("combined symbol", evidence);
+        Assert.Contains("dependency graph", evidence);
+        Assert.Contains("Git recency", evidence);
+        Assert.Contains("project memory", evidence);
     }
 
     [Fact]

@@ -1,4 +1,6 @@
 using System.IO;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace AgentQ.Desktop.Services;
 
@@ -24,8 +26,8 @@ public static class DesktopEvidenceFormatter
                 ? $"Semantic search query: {query}. Reason: meaning-based lookup against the local embedding index."
                 : "Semantic search requested against the local embedding index.",
             "hybrid_search" => TryGetString(input, "query", out var hybridQuery)
-                ? $"Hybrid search query: {hybridQuery}. Reason: combined symbol, semantic, keyword, and project-map ranking before reading files."
-                : "Hybrid search requested to rank candidate files across multiple search signals.",
+                ? $"Hybrid search query: {hybridQuery}. Reason: combined symbol, dependency graph, Git recency, project memory, semantic, keyword, and project-map ranking before reading files."
+                : "Hybrid search requested to rank candidate files across symbol, graph, Git, memory, semantic, keyword, and project-map signals.",
             "symbol_search" => TryGetString(input, "query", out var symbolQuery)
                 ? $"Symbol search query: {symbolQuery}. Reason: symbol index lookup to find candidate files and definitions before reading code."
                 : "Symbol search requested against the local workspace symbol index.",
@@ -50,15 +52,19 @@ public static class DesktopEvidenceFormatter
     {
         var normalized = NormalizePath(path, workspaceRoot);
         var symbolReason = DescribeSymbolReason(path, workspaceRoot);
+        var graphReason = DescribeGraphReason(normalized, workspaceRoot);
+        var gitReason = DescribeGitReason(normalized, workspaceRoot);
+        var memoryReason = DescribeMemoryReason(normalized, workspaceRoot);
+        var extraReasons = $"{symbolReason}{graphReason}{gitReason}{memoryReason}";
         if (IsKeyProjectFile(normalized))
         {
-            return $" Reason: key project file.{symbolReason}";
+            return $" Reason: key project file.{extraReasons}";
         }
 
         var role = DetectPathRole(normalized);
         return string.IsNullOrWhiteSpace(role)
-            ? $" Reason: model selected this path for workspace evidence.{symbolReason}"
-            : $" Reason: path maps to {role}.{symbolReason}";
+            ? $" Reason: model selected this path for workspace evidence.{extraReasons}"
+            : $" Reason: path maps to {role}.{extraReasons}";
     }
 
     private static string DescribeSymbolReason(string path, string workspaceRoot)
@@ -81,6 +87,151 @@ public static class DesktopEvidenceFormatter
         return symbols.Count == 0
             ? string.Empty
             : $" Contains symbols: {string.Join(", ", symbols)}.";
+    }
+
+    private static string DescribeGraphReason(string normalizedPath, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return string.Empty;
+        }
+
+        var graph = new WorkspaceDependencyGraphService().Build(workspaceRoot);
+        if (graph.EdgeCount == 0)
+        {
+            return string.Empty;
+        }
+
+        var imports = graph.Edges
+            .Where(edge => edge.FromPath.Equals(normalizedPath, StringComparison.OrdinalIgnoreCase) &&
+                           !string.IsNullOrWhiteSpace(edge.ToPath))
+            .Select(edge => edge.ToPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+        var importedBy = graph.Edges
+            .Where(edge => edge.ToPath.Equals(normalizedPath, StringComparison.OrdinalIgnoreCase))
+            .Select(edge => edge.FromPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+
+        var parts = new List<string>();
+        if (importedBy.Count > 0)
+        {
+            parts.Add($"imported by {string.Join(", ", importedBy)}");
+        }
+
+        if (imports.Count > 0)
+        {
+            parts.Add($"imports {string.Join(", ", imports)}");
+        }
+
+        return parts.Count == 0
+            ? string.Empty
+            : $" Graph: {string.Join("; ", parts)}.";
+    }
+
+    private static string DescribeGitReason(string normalizedPath, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot) ||
+            string.IsNullOrWhiteSpace(normalizedPath) ||
+            !Directory.Exists(Path.Combine(workspaceRoot, ".git")))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                WorkingDirectory = workspaceRoot,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("status");
+            startInfo.ArgumentList.Add("--porcelain=v1");
+            startInfo.ArgumentList.Add("--");
+            startInfo.ArgumentList.Add(normalizedPath);
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return string.Empty;
+            }
+
+            if (!process.WaitForExit(1200) || process.ExitCode != 0)
+            {
+                return string.Empty;
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            return string.IsNullOrWhiteSpace(output)
+                ? string.Empty
+                : " Git: file has local changes.";
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string DescribeMemoryReason(string normalizedPath, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return string.Empty;
+        }
+
+        var path = Path.Combine(workspaceRoot, ".agentq", "memory.local.json");
+        if (!File.Exists(path))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (!document.RootElement.TryGetProperty("lessons", out var lessons) ||
+                lessons.ValueKind != JsonValueKind.Array)
+            {
+                return string.Empty;
+            }
+
+            var fileName = Path.GetFileName(normalizedPath);
+            foreach (var lesson in lessons.EnumerateArray())
+            {
+                if (lesson.TryGetProperty("enabled", out var enabled) &&
+                    enabled.ValueKind == JsonValueKind.False)
+                {
+                    continue;
+                }
+
+                var title = lesson.TryGetProperty("title", out var titleElement)
+                    ? titleElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var content = lesson.TryGetProperty("content", out var contentElement)
+                    ? contentElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var text = $"{title}\n{content}";
+                if (text.Contains(normalizedPath, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(fileName) && text.Contains(fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return string.IsNullOrWhiteSpace(title)
+                        ? " Memory: local project memory mentions this file."
+                        : $" Memory: local lesson \"{TrimEvidence(title)}\" mentions this file.";
+                }
+            }
+        }
+        catch
+        {
+            return string.Empty;
+        }
+
+        return string.Empty;
     }
 
     private static bool IsSupportedSymbolPath(string path)
