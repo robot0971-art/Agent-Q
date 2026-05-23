@@ -234,6 +234,9 @@ public sealed class ProjectMemoryService
             lesson.CreatedAt = duplicate.CreatedAt == default ? lesson.CreatedAt : duplicate.CreatedAt;
             lesson.LastUsedAt = duplicate.LastUsedAt ?? lesson.LastUsedAt;
             lesson.Confidence = Math.Max(duplicate.Confidence, lesson.Confidence);
+            lesson.FailureFingerprint = string.IsNullOrWhiteSpace(lesson.FailureFingerprint)
+                ? duplicate.FailureFingerprint
+                : lesson.FailureFingerprint;
             lesson.Tags = duplicate.Tags.Concat(lesson.Tags)
                 .Where(tag => !string.IsNullOrWhiteSpace(tag))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -727,6 +730,13 @@ public sealed class ProjectMemoryService
         if (!string.IsNullOrWhiteSpace(left.Id) &&
             !string.IsNullOrWhiteSpace(right.Id) &&
             string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(left.FailureFingerprint) &&
+            !string.IsNullOrWhiteSpace(right.FailureFingerprint) &&
+            string.Equals(left.FailureFingerprint, right.FailureFingerprint, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }

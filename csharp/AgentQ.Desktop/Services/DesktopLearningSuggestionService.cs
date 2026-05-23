@@ -135,14 +135,16 @@ public sealed class DesktopLearningSuggestionService
             $"Failure pattern: {Trim(title, 72)}",
             $"A previous failure happened with {providerText}/{modelText}. Detail: {detailText}",
             tags,
-            source);
+            source,
+            FailureFingerprintService.Create(title, detailText));
     }
 
     private static ProjectMemoryLesson CreateLesson(
         string title,
         string content,
         IEnumerable<string> tags,
-        string source)
+        string source,
+        string failureFingerprint = "")
     {
         return new ProjectMemoryLesson
         {
@@ -151,6 +153,7 @@ public sealed class DesktopLearningSuggestionService
             Content = content,
             Tags = tags.ToList(),
             Confidence = 0.75,
+            FailureFingerprint = failureFingerprint,
             CreatedAt = DateTime.Now,
             Source = source
         };

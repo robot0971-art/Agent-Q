@@ -2384,6 +2384,75 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void FailureFingerprintService_NormalizesPathsAndLineNumbers()
+    {
+        var first = FailureFingerprintService.Create(
+            "Compilation failed",
+            "C:\\repo\\src\\Auth.cs(12,5): error CS1002: ; expected");
+        var second = FailureFingerprintService.Create(
+            "Compilation failed",
+            "D:\\other\\src\\Auth.cs(44,7): error CS1002: ; expected");
+
+        Assert.Equal(first, second);
+        Assert.StartsWith("failure-", first);
+    }
+
+    [Fact]
+    public void DesktopLearningSuggestionService_AddsFailureFingerprint()
+    {
+        var lesson = new DesktopLearningSuggestionService().CreateFailureLesson(
+            "Tests failed",
+            "Xunit.Sdk.EqualException: Assert.Equal() Failure",
+            "openai",
+            "gpt-5.4",
+            "verification failure");
+
+        Assert.StartsWith("failure-", lesson.FailureFingerprint);
+        Assert.Contains("error-history", lesson.Tags);
+    }
+
+    [Fact]
+    public async Task ProjectMemoryService_MergesRecurringFailureLessonsByFingerprint()
+    {
+        var root = CreateTempDirectory();
+        var service = new ProjectMemoryService();
+        var first = new ProjectMemoryLesson
+        {
+            Id = "first-failure",
+            Title = "Failure pattern: Compilation failed",
+            Content = "First failure in C:\\repo\\src\\Auth.cs(12,5): error CS1002: ; expected",
+            Tags = ["failure", "error-history", "compile"],
+            FailureFingerprint = FailureFingerprintService.Create(
+                "Compilation failed",
+                "C:\\repo\\src\\Auth.cs(12,5): error CS1002: ; expected"),
+            Confidence = 0.6
+        };
+        var second = new ProjectMemoryLesson
+        {
+            Id = "second-failure",
+            Title = "Failure pattern: Compilation failed again",
+            Content = "Second failure in D:\\work\\src\\Auth.cs(44,7): error CS1002: ; expected",
+            Tags = ["failure", "error-history", "verification"],
+            FailureFingerprint = FailureFingerprintService.Create(
+                "Compilation failed",
+                "D:\\work\\src\\Auth.cs(44,7): error CS1002: ; expected"),
+            Confidence = 0.9
+        };
+
+        await service.AddLocalLessonAsync(root, first, CancellationToken.None);
+        await service.AddLocalLessonAsync(root, second, CancellationToken.None);
+
+        var lessons = await service.LoadLocalLessonsAsync(root, CancellationToken.None);
+        var lesson = Assert.Single(lessons);
+
+        Assert.Equal("first-failure", lesson.Id);
+        Assert.Equal(0.9, lesson.Confidence);
+        Assert.Contains("compile", lesson.Tags);
+        Assert.Contains("verification", lesson.Tags);
+        Assert.Equal(first.FailureFingerprint, lesson.FailureFingerprint);
+    }
+
+    [Fact]
     public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
     {
         using var factory = new StubHttpClientFactory(

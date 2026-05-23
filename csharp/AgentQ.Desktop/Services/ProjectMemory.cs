@@ -67,6 +67,8 @@ public sealed class ProjectMemoryLesson
 
     public double Confidence { get; set; } = 1;
 
+    public string FailureFingerprint { get; set; } = string.Empty;
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public DateTime? LastUsedAt { get; set; }
