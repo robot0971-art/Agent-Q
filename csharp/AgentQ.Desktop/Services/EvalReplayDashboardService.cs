@@ -1,0 +1,233 @@
+using System.IO;
+using System.Text.Json;
+
+namespace AgentQ.Desktop.Services;
+
+public sealed class EvalReplayDashboardService(ToolReplayService replayService)
+{
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    public async Task<EvalReplayDashboardReport> BuildAsync(
+        string workspaceRoot,
+        IReadOnlyCollection<VerificationResultCard> verificationResults,
+        CancellationToken ct = default)
+    {
+        var report = new EvalReplayDashboardReport
+        {
+            UpdatedAt = DateTime.Now
+        };
+
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || !Directory.Exists(workspaceRoot))
+        {
+            report.Summary = "Workspace unavailable.";
+            report.Findings.Add("No workspace folder was available for replay or telemetry analysis.");
+            return report;
+        }
+
+        var replay = await replayService.LoadLatestAsync(workspaceRoot, ct);
+        var telemetry = await LoadTelemetryAsync(workspaceRoot, ct);
+
+        AddReplay(report, replay);
+        AddTelemetry(report, telemetry);
+        AddVerification(report, verificationResults);
+        AddFailureFingerprints(report, replay, telemetry, verificationResults);
+
+        report.Summary = BuildSummary(replay, telemetry, verificationResults);
+        if (report.Findings.Count == 0)
+        {
+            report.Findings.Add("No failed tools, failed verification results, or recurring failure fingerprints detected.");
+        }
+
+        return report;
+    }
+
+    private static void AddReplay(EvalReplayDashboardReport report, ToolReplaySession? replay)
+    {
+        if (replay == null)
+        {
+            report.Metrics.Add("Replay: no saved session");
+            report.ReplayEntries.Add("No replay session found.");
+            return;
+        }
+
+        var failed = replay.Entries.Count(entry => entry.IsError);
+        var totalDuration = replay.Entries.Sum(entry => Math.Max(entry.DurationMs, 0));
+        report.Metrics.Add($"Replay: {replay.Entries.Count:0} tools, {failed:0} failed, {totalDuration:0} ms total");
+        report.Metrics.Add($"Latest run: {replay.Provider}/{replay.Model} at {replay.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+
+        foreach (var entry in replay.Entries.OrderByDescending(entry => entry.IsError).ThenByDescending(entry => entry.DurationMs).Take(12))
+        {
+            var status = entry.IsError ? "FAILED" : "OK";
+            report.ReplayEntries.Add($"{status} {entry.ToolName} {entry.DurationMs:0} ms - {Trim(entry.ResultPreview, 120)}");
+        }
+
+        foreach (var group in replay.Entries.Where(entry => entry.IsError).GroupBy(entry => entry.ToolName).OrderByDescending(group => group.Count()).Take(5))
+        {
+            report.Findings.Add($"Tool failure: {group.Key} failed {group.Count():0} time(s) in the latest replay.");
+        }
+    }
+
+    private static void AddTelemetry(EvalReplayDashboardReport report, IReadOnlyList<DesktopTelemetryEvent> telemetry)
+    {
+        if (telemetry.Count == 0)
+        {
+            report.Metrics.Add("Telemetry: no events");
+            return;
+        }
+
+        var failed = telemetry.Count(item => item.IsError || !item.Succeeded);
+        var toolEvents = telemetry.Count(item => item.EventType.StartsWith("tool_", StringComparison.OrdinalIgnoreCase));
+        var searchRetries = telemetry.Count(item => item.EventType.Equals("search_retry", StringComparison.OrdinalIgnoreCase));
+        var inputTokens = telemetry.Sum(item => item.InputTokens);
+        var outputTokens = telemetry.Sum(item => item.OutputTokens);
+
+        report.Metrics.Add($"Telemetry: {telemetry.Count:0} events, {toolEvents:0} tool events, {failed:0} failed");
+        report.Metrics.Add($"Search retries: {searchRetries:0}");
+        report.Metrics.Add($"Tokens: {inputTokens:0} in / {outputTokens:0} out");
+
+        foreach (var group in telemetry.Where(item => item.IsError || !item.Succeeded)
+                     .GroupBy(item => string.IsNullOrWhiteSpace(item.ToolName) ? item.EventType : item.ToolName)
+                     .OrderByDescending(group => group.Count())
+                     .Take(5))
+        {
+            report.Findings.Add($"Telemetry failure: {group.Key} reported {group.Count():0} failed event(s).");
+        }
+    }
+
+    private static void AddVerification(
+        EvalReplayDashboardReport report,
+        IReadOnlyCollection<VerificationResultCard> verificationResults)
+    {
+        if (verificationResults.Count == 0)
+        {
+            report.Metrics.Add("Verification: no results in panel");
+            return;
+        }
+
+        var passed = verificationResults.Count(item => item.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase));
+        var failed = verificationResults.Count(item => item.Status.Equals("FAILED", StringComparison.OrdinalIgnoreCase));
+        var warnings = verificationResults.Count(item => item.Status.Equals("WARNING", StringComparison.OrdinalIgnoreCase));
+        report.Metrics.Add($"Verification: {passed:0} passed, {failed:0} failed, {warnings:0} warning");
+
+        foreach (var result in verificationResults.Where(item => !item.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase)).Take(5))
+        {
+            report.Findings.Add($"Verification {result.Status}: {result.Title} - {Trim(result.Summary, 140)}");
+        }
+    }
+
+    private static void AddFailureFingerprints(
+        EvalReplayDashboardReport report,
+        ToolReplaySession? replay,
+        IReadOnlyList<DesktopTelemetryEvent> telemetry,
+        IReadOnlyCollection<VerificationResultCard> verificationResults)
+    {
+        var fingerprints = new List<string>();
+        if (replay != null)
+        {
+            fingerprints.AddRange(replay.Entries
+                .Where(entry => entry.IsError)
+                .Select(entry => FailureFingerprintService.Create(entry.ToolName, entry.ResultPreview))
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+
+        fingerprints.AddRange(telemetry
+            .Where(item => item.IsError || !item.Succeeded)
+            .Select(item => FailureFingerprintService.Create(string.IsNullOrWhiteSpace(item.ToolName) ? item.EventType : item.ToolName, item.Detail))
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        fingerprints.AddRange(verificationResults
+            .Where(item => !item.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase))
+            .Select(item => FailureFingerprintService.Create(item.Title, $"{item.Detail}\n{item.OutputPreview}"))
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        foreach (var group in fingerprints.GroupBy(value => value).Where(group => group.Count() > 1).OrderByDescending(group => group.Count()).Take(8))
+        {
+            report.FailureFingerprints.Add($"{group.Key} x{group.Count():0}");
+        }
+
+        if (report.FailureFingerprints.Count == 0)
+        {
+            report.FailureFingerprints.Add("No recurring failure fingerprint detected.");
+        }
+    }
+
+    private static async Task<IReadOnlyList<DesktopTelemetryEvent>> LoadTelemetryAsync(string workspaceRoot, CancellationToken ct)
+    {
+        var path = DesktopTelemetryService.GetTelemetryPath(workspaceRoot);
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        var events = new List<DesktopTelemetryEvent>();
+        foreach (var line in File.ReadLines(path).Reverse().Take(500).Reverse())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            try
+            {
+                var item = JsonSerializer.Deserialize<DesktopTelemetryEvent>(line, Options);
+                if (item != null)
+                {
+                    events.Add(item);
+                }
+            }
+            catch (JsonException)
+            {
+                // A partial telemetry line should not break the dashboard.
+            }
+        }
+
+        return events;
+    }
+
+    private static string BuildSummary(
+        ToolReplaySession? replay,
+        IReadOnlyList<DesktopTelemetryEvent> telemetry,
+        IReadOnlyCollection<VerificationResultCard> verificationResults)
+    {
+        var replayText = replay == null
+            ? "no replay"
+            : $"{replay.Entries.Count:0} replay tools";
+        var telemetryText = telemetry.Count == 0
+            ? "no telemetry"
+            : $"{telemetry.Count:0} telemetry events";
+        var verificationText = verificationResults.Count == 0
+            ? "no verification cards"
+            : $"{verificationResults.Count:0} verification cards";
+        return $"{replayText}, {telemetryText}, {verificationText}";
+    }
+
+    private static string Trim(string value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "No detail.";
+        }
+
+        value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return value.Length <= max ? value : value[..max] + "...";
+    }
+}
+
+public sealed class EvalReplayDashboardReport
+{
+    public DateTime UpdatedAt { get; set; }
+
+    public string Summary { get; set; } = string.Empty;
+
+    public List<string> Metrics { get; set; } = [];
+
+    public List<string> Findings { get; set; } = [];
+
+    public List<string> ReplayEntries { get; set; } = [];
+
+    public List<string> FailureFingerprints { get; set; } = [];
+}

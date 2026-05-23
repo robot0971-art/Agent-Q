@@ -499,6 +499,9 @@
                         <TabItem Header="{Binding EvidenceTrailText}">
                             <views:RunTimelinePanel />
                         </TabItem>
+                        <TabItem Header="{Binding EvalDashboardText}">
+                            <views:EvalReplayDashboardPanel x:Name="EvalReplayDashboardPanelView" />
+                        </TabItem>
                         <TabItem Header="{Binding RunLogText}">
                             <ListBox ItemsSource="{Binding Logs}" FontSize="12" Padding="6,0,0,0">
                                 <ListBox.ItemTemplate>

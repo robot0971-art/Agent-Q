@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
     private readonly DesktopWindowCommandService _windowCommandService;
+    private readonly EvalReplayDashboardService _evalReplayDashboardService;
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly DesktopProviderModelDiscoveryService _modelDiscoveryService;
     private readonly ProjectMemoryService _projectMemoryService;
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
         DesktopWindowCommandService windowCommandService,
+        EvalReplayDashboardService evalReplayDashboardService,
         DesktopPanelEventBinder panelEventBinder,
         DesktopProviderModelDiscoveryService modelDiscoveryService,
         ProjectMemoryService projectMemoryService)
@@ -51,6 +53,7 @@ public partial class MainWindow : Window
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
         _windowCommandService = windowCommandService;
+        _evalReplayDashboardService = evalReplayDashboardService;
         _panelEventBinder = panelEventBinder;
         _modelDiscoveryService = modelDiscoveryService;
         _projectMemoryService = projectMemoryService;
@@ -70,6 +73,7 @@ public partial class MainWindow : Window
             PlanPanelView,
             MemoryPanelView,
             ChatPanelView,
+            EvalReplayDashboardPanelView,
             FileChangeReviewPanelView,
             GitPanelView,
             CreatePanelEventCallbacks());
@@ -115,6 +119,7 @@ public partial class MainWindow : Window
             ContinueLastRun = () => ContinueLastRun_OnClick(this, new RoutedEventArgs()),
             StopAgent = () => StopAgent_OnClick(this, new RoutedEventArgs()),
             CopyMessage = message => _workspaceCommandService.CopyMessage(_viewModel, message),
+            RefreshEvalDashboardAsync = RefreshEvalDashboardAsync,
             ApproveFileChange = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.Approved),
             MarkFileChangeNeedsEdit = record => _fileChangeReviewService.Mark(_viewModel, record, FileChangeReviewStatus.NeedsEdit),
             RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
@@ -145,7 +150,18 @@ public partial class MainWindow : Window
         SettingsPanelView.ApiKey = result.ApiKey;
         SettingsPanelView.EmbeddingApiKey = _viewModel.EmbeddingApiKey;
         await RefreshSavedMemoryAsync();
+        await RefreshEvalDashboardAsync();
         ScheduleProviderModelRefresh(preserveCurrentModel: true);
+    }
+
+    private async Task RefreshEvalDashboardAsync()
+    {
+        var report = await _evalReplayDashboardService.BuildAsync(
+            _viewModel.WorkspaceRoot,
+            _viewModel.VerificationResults.ToList(),
+            CancellationToken.None);
+        _viewModel.ApplyEvalDashboard(report);
+        _viewModel.AddLog("Eval dashboard refreshed");
     }
 
     private async void Send_OnClick(object sender, RoutedEventArgs e)

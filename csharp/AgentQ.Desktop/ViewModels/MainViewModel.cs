@@ -47,6 +47,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _workspaceAnalysisUpdatedText = "Not analyzed yet.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
+    private string _evalDashboardSummary = "Eval dashboard not loaded.";
+    private string _evalDashboardUpdatedText = "Not refreshed yet.";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
@@ -70,6 +72,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AgentVerificationPlan> VerificationPlans { get; } = [];
 
     public ObservableCollection<VerificationResultCard> VerificationResults { get; } = [];
+
+    public ObservableCollection<string> EvalDashboardMetrics { get; } = [];
+
+    public ObservableCollection<string> EvalDashboardFindings { get; } = [];
+
+    public ObservableCollection<string> EvalDashboardReplayEntries { get; } = [];
+
+    public ObservableCollection<string> EvalDashboardFailureFingerprints { get; } = [];
 
     public ObservableCollection<GitChangedFile> GitChangedFiles { get; } = [];
 
@@ -360,6 +370,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ChangePreviewText => IsKoreanUi ? "\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30" : "Change preview";
     public string AllText => IsKoreanUi ? "\uC804\uCCB4" : "ALL";
     public string EvidenceTrailText => IsKoreanUi ? "\uADFC\uAC70 \uD750\uB984" : "Evidence";
+    public string EvalDashboardText => IsKoreanUi ? "\uD3C9\uAC00" : "Eval";
+    public string EvalDashboardRefreshText => IsKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh";
+    public string EvalDashboardHelpText => IsKoreanUi
+        ? "\uCD5C\uC2E0 replay, telemetry, \uAC80\uC99D \uACB0\uACFC, \uBC18\uBCF5 \uC2E4\uD328 fingerprint\uB97C \uC694\uC57D\uD569\uB2C8\uB2E4."
+        : "Summarizes latest replay, telemetry, verification results, and recurring failure fingerprints.";
     public string EvidenceTrailHelpText => IsKoreanUi
         ? "\uC228\uC740 \uC0AC\uACE0 \uACFC\uC815\uC774 \uC544\uB2CC, \uC0AC\uC6A9\uD55C \uBA54\uBAA8\uB9AC, \uD30C\uC77C, \uAC80\uC0C9, \uBA85\uB839, \uAC80\uC99D \uD750\uB984\uC744 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4."
         : "Shows used memory, files, searches, commands, changes, and verification flow instead of hidden model reasoning.";
@@ -525,6 +540,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _projectConfigText, value);
     }
 
+    public string EvalDashboardSummary
+    {
+        get => _evalDashboardSummary;
+        set => SetField(ref _evalDashboardSummary, value);
+    }
+
+    public string EvalDashboardUpdatedText
+    {
+        get => _evalDashboardUpdatedText;
+        set => SetField(ref _evalDashboardUpdatedText, value);
+    }
+
     public bool HasProjectConfig
     {
         get => _hasProjectConfig;
@@ -675,6 +702,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         VerificationPlans.Clear();
         VerificationResults.Clear();
         FileChanges.Clear();
+        EvalDashboardMetrics.Clear();
+        EvalDashboardFindings.Clear();
+        EvalDashboardReplayEntries.Clear();
+        EvalDashboardFailureFingerprints.Clear();
+        EvalDashboardSummary = "Eval dashboard not loaded.";
+        EvalDashboardUpdatedText = "Not refreshed yet.";
     }
 
     public void AddVerificationResult(VerificationResultCard result)
@@ -729,6 +762,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var hint in analysis.Hints)
         {
             WorkspaceHints.Add(hint);
+        }
+    }
+
+    public void ApplyEvalDashboard(EvalReplayDashboardReport report)
+    {
+        EvalDashboardSummary = report.Summary;
+        EvalDashboardUpdatedText = $"Updated: {report.UpdatedAt:HH:mm:ss}";
+
+        EvalDashboardMetrics.Clear();
+        foreach (var metric in report.Metrics)
+        {
+            EvalDashboardMetrics.Add(metric);
+        }
+
+        EvalDashboardFindings.Clear();
+        foreach (var finding in report.Findings)
+        {
+            EvalDashboardFindings.Add(finding);
+        }
+
+        EvalDashboardReplayEntries.Clear();
+        foreach (var entry in report.ReplayEntries)
+        {
+            EvalDashboardReplayEntries.Add(entry);
+        }
+
+        EvalDashboardFailureFingerprints.Clear();
+        foreach (var fingerprint in report.FailureFingerprints)
+        {
+            EvalDashboardFailureFingerprints.Add(fingerprint);
         }
     }
 
@@ -847,6 +910,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(ChangePreviewText),
             nameof(AllText),
             nameof(EvidenceTrailText),
+            nameof(EvalDashboardText),
+            nameof(EvalDashboardRefreshText),
+            nameof(EvalDashboardHelpText),
             nameof(EvidenceTrailHelpText),
             nameof(SaveSummaryText),
             nameof(LoadText),

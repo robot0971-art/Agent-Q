@@ -12,6 +12,7 @@ public sealed class DesktopPanelEventBinder
         PlanPanel planPanel,
         MemoryPanel memoryPanel,
         ChatPanel chatPanel,
+        EvalReplayDashboardPanel evalReplayDashboardPanel,
         FileChangeReviewPanel fileChangeReviewPanel,
         GitPanel gitPanel,
         DesktopPanelEventCallbacks callbacks)
@@ -58,6 +59,8 @@ public sealed class DesktopPanelEventBinder
         chatPanel.ContinueLastRunRequested += (_, _) => callbacks.ContinueLastRun();
         chatPanel.StopAgentRequested += (_, _) => callbacks.StopAgent();
         chatPanel.CopyMessageRequested += (_, message) => callbacks.CopyMessage(message as ChatMessageViewModel);
+
+        evalReplayDashboardPanel.RefreshRequested += async (_, _) => await callbacks.RefreshEvalDashboardAsync();
 
         fileChangeReviewPanel.ApproveRequested += (_, record) => callbacks.ApproveFileChange(record);
         fileChangeReviewPanel.NeedsEditRequested += (_, record) => callbacks.MarkFileChangeNeedsEdit(record);
@@ -121,6 +124,7 @@ public sealed class DesktopPanelEventCallbacks
     public required Action ContinueLastRun { get; init; }
     public required Action StopAgent { get; init; }
     public required Action<ChatMessageViewModel?> CopyMessage { get; init; }
+    public required Func<Task> RefreshEvalDashboardAsync { get; init; }
     public required Action<FileChangeRecord?> ApproveFileChange { get; init; }
     public required Action<FileChangeRecord?> MarkFileChangeNeedsEdit { get; init; }
     public required Func<FileChangeRecord?, Task> RevertFileChangeAsync { get; init; }

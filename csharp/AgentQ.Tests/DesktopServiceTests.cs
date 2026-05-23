@@ -1530,6 +1530,77 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task EvalReplayDashboardService_SummarizesReplayTelemetryAndVerification()
+    {
+        var root = CreateTempDirectory();
+        var replayService = new ToolReplayService();
+        await replayService.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                PromptPreview = "run tools",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "shell_execute",
+                        ResultPreview = "error CS1002 failed",
+                        IsError = true,
+                        DurationMs = 25
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "read_file",
+                        ResultPreview = "ok",
+                        IsError = false,
+                        DurationMs = 5
+                    }
+                ]
+            },
+            CancellationToken.None);
+        var telemetry = new DesktopTelemetryService();
+        await telemetry.RecordAsync(
+            new DesktopTelemetryEvent
+            {
+                EventType = "tool_failed",
+                WorkspaceRoot = root,
+                ToolName = "shell_execute",
+                Succeeded = false,
+                IsError = true,
+                Detail = "error CS1002 failed",
+                InputTokens = 10,
+                OutputTokens = 3
+            },
+            CancellationToken.None);
+
+        var report = await new EvalReplayDashboardService(replayService).BuildAsync(
+            root,
+            [
+                new VerificationResultCard
+                {
+                    Status = "FAILED",
+                    Title = "Compile error",
+                    Command = "dotnet build",
+                    Summary = "Build failed",
+                    Detail = "error CS1002 failed",
+                    OutputPreview = "error CS1002 failed"
+                }
+            ],
+            CancellationToken.None);
+
+        Assert.Contains("replay tools", report.Summary);
+        Assert.Contains(report.Metrics, metric => metric.Contains("Replay: 2 tools", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Telemetry: 1 events", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Verification: 0 passed, 1 failed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Findings, finding => finding.Contains("Tool failure", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.ReplayEntries, entry => entry.Contains("FAILED shell_execute", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.FailureFingerprints, fingerprint => fingerprint.StartsWith("failure-", StringComparison.OrdinalIgnoreCase) &&
+                                                                  fingerprint.EndsWith("x2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void DesktopSearchRetryService_BuildsCaseInsensitiveGrepRetryWhenEmpty()
     {
         var retries = DesktopSearchRetryService.BuildRetryInputs(
