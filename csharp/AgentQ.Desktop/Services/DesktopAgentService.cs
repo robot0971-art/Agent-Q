@@ -1007,8 +1007,43 @@ public sealed class DesktopAgentService
                 embeddingModel));
         }
 
+        RegisterMcpTools(registry, workspaceRoot);
         registry.Register(new PluginEchoTool());
         return registry;
+    }
+
+    private static void RegisterMcpTools(ToolRegistry registry, string workspaceRoot)
+    {
+        var projectConfig = ProjectAgentConfigService.LoadLocal(workspaceRoot);
+        var servers = McpServerRegistry.EnabledServers(projectConfig);
+        if (servers.Count == 0)
+        {
+            return;
+        }
+
+        var client = new StdioMcpClient();
+        foreach (var server in servers.Take(4))
+        {
+            IReadOnlyList<McpToolInfo> tools;
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                tools = client.ListToolsAsync(server, cts.Token).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var tool in tools.Take(16))
+            {
+                registry.Register(new McpBridgeTool(
+                    McpToolName.Build(server.Name, tool.Name),
+                    server,
+                    tool,
+                    client));
+            }
+        }
     }
 }
 

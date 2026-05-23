@@ -1264,6 +1264,58 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void McpToolName_BuildsSafeAgentQToolName()
+    {
+        var name = McpToolName.Build("Unity Server", "scene/read-object");
+
+        Assert.Equal("mcp_unity_server_scene_read_object", name);
+    }
+
+    [Fact]
+    public async Task McpBridgeTool_CallsClientWithOriginalToolName()
+    {
+        var server = new McpServerConfig
+        {
+            Name = "unity",
+            Command = "node"
+        };
+        using var schema = JsonDocument.Parse("""{"type":"object","properties":{"path":{"type":"string"}}}""");
+        var tool = new McpToolInfo
+        {
+            Name = "scene/read-object",
+            Description = "Read a scene object.",
+            InputSchema = schema.RootElement.Clone()
+        };
+        var client = new FakeMcpClient(JsonSerializer.SerializeToElement(new
+        {
+            content = new[] { new { type = "text", text = "ok" } }
+        }));
+        var bridge = new McpBridgeTool("mcp_unity_scene_read_object", server, tool, client);
+
+        var result = await bridge.ExecuteAsync(
+            new Dictionary<string, object?> { ["path"] = "Assets/Scene.unity" },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal("scene/read-object", client.LastToolName);
+        Assert.Equal("Assets/Scene.unity", client.LastArguments.GetProperty("path").GetString());
+        Assert.Contains("ok", result.Content);
+        Assert.True(bridge.RequiresPermission);
+    }
+
+    [Fact]
+    public void DesktopEvidenceFormatter_ExplainsMcpToolCalls()
+    {
+        var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
+            "mcp_unity_scene_read_object",
+            new Dictionary<string, object?> { ["path"] = "Assets/Scene.unity" },
+            "C:\\repo");
+
+        Assert.Contains("MCP tool called", evidence);
+        Assert.Contains("permission", evidence, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopProjectConfigBuilder_PreservesExistingMcpServers()
     {
         var existing =
@@ -2910,6 +2962,34 @@ public sealed class DesktopServiceTests
                 .Select((_, index) => new[] { (float)index, (float)(index + 1) })
                 .ToList();
             return Task.FromResult(vectors);
+        }
+    }
+
+    private sealed class FakeMcpClient(JsonElement callResult) : IMcpClient
+    {
+        public string LastToolName { get; private set; } = string.Empty;
+
+        public JsonElement LastArguments { get; private set; }
+
+        public Task<IReadOnlyList<McpToolInfo>> ListToolsAsync(McpServerConfig server, CancellationToken ct = default)
+        {
+            IReadOnlyList<McpToolInfo> tools =
+            [
+                new McpToolInfo
+                {
+                    Name = "scene/read-object",
+                    Description = "Read a scene object.",
+                    InputSchema = JsonSerializer.SerializeToElement(new { type = "object" })
+                }
+            ];
+            return Task.FromResult(tools);
+        }
+
+        public Task<JsonElement> CallToolAsync(McpServerConfig server, string toolName, JsonElement arguments, CancellationToken ct = default)
+        {
+            LastToolName = toolName;
+            LastArguments = arguments.Clone();
+            return Task.FromResult(callResult.Clone());
         }
     }
 }

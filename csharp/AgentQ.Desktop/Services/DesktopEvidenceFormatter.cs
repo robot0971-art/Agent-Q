@@ -31,6 +31,8 @@ public static class DesktopEvidenceFormatter
             "symbol_search" => TryGetString(input, "query", out var symbolQuery)
                 ? $"Symbol search query: {symbolQuery}. Reason: symbol index lookup to find candidate files and definitions before reading code."
                 : "Symbol search requested against the local workspace symbol index.",
+            var mcpTool when mcpTool.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase) =>
+                $"MCP tool called: {mcpTool}. Reason: project-configured MCP bridge executed through AgentQ permission and evidence flow.",
             "bash" => TryGetString(input, "command", out var command)
                 ? $"Ran command: {command}{DescribeCommandReason(command)}"
                 : "Ran shell command.",
