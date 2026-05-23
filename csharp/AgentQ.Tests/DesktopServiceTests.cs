@@ -1452,6 +1452,56 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task VisualEvidenceService_DescribesImageAndVideoAttachments()
+    {
+        var root = CreateTempDirectory();
+        var imagePath = Path.Combine(root, "screen.png");
+        var videoPath = Path.Combine(root, "clip.mp4");
+        await File.WriteAllBytesAsync(
+            imagePath,
+            Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAADZrBkAAAAAD0lEQVR4nGNgYGD4z8DAwAAJAgMAv7lG8QAAAABJRU5ErkJggg=="));
+        await File.WriteAllBytesAsync(videoPath, [0, 0, 0, 24, 102, 116, 121, 112]);
+
+        var entries = VisualEvidenceService.InspectAttachments(
+            [
+                new DesktopAttachment
+                {
+                    Path = imagePath,
+                    FileName = "screen.png",
+                    MediaType = "image/png"
+                },
+                new DesktopAttachment
+                {
+                    Path = videoPath,
+                    FileName = "clip.mp4",
+                    MediaType = "video/mp4"
+                }
+            ]);
+
+        Assert.Contains(entries, entry => entry.FileName == "screen.png" &&
+                                          entry.Kind == "image" &&
+                                          entry.Width == 2 &&
+                                          entry.Height == 3);
+        Assert.Contains(entries, entry => entry.FileName == "clip.mp4" &&
+                                          entry.Kind == "video" &&
+                                          entry.Width == 0 &&
+                                          entry.Height == 0);
+
+        var notes = VisualEvidenceService.BuildPromptNotes(
+            [
+                new DesktopAttachment
+                {
+                    Path = imagePath,
+                    FileName = "screen.png",
+                    MediaType = "image/png"
+                }
+            ]);
+
+        Assert.Contains(notes, note => note.Contains("Visual evidence attached", StringComparison.OrdinalIgnoreCase) &&
+                                       note.Contains("2x3", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ProjectAgentConfigService_RoundTripsMcpServers()
     {
         var root = CreateTempDirectory();

@@ -444,6 +444,12 @@ public sealed class DesktopAgentService
         CancellationToken ct)
     {
         var content = new List<ChatContent> { ChatContent.CreateText(userText) };
+        var visualNotes = VisualEvidenceService.BuildPromptNotes(attachments);
+        if (visualNotes.Count > 0)
+        {
+            content.Add(ChatContent.CreateText(string.Join(Environment.NewLine, visualNotes)));
+        }
+
         var videoNotes = new List<string>();
 
         foreach (var attachment in attachments)

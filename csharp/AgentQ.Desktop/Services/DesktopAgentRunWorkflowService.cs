@@ -108,6 +108,13 @@ public sealed class DesktopAgentRunWorkflowService(
         viewModel.IsBusy = true;
         viewModel.StatusText = "Generating response...";
         viewModel.AddLog("Model call started");
+        foreach (var visualEvidence in VisualEvidenceService.InspectAttachments(attachmentsForRequest))
+        {
+            viewModel.AddRunStep(
+                AgentRunState.GatheringContext,
+                "Evidence: visual attachment",
+                VisualEvidenceService.BuildTimelineDetail(visualEvidence));
+        }
 
         CancellationTokenSource? operationCts = null;
         var startedAt = DateTime.UtcNow;

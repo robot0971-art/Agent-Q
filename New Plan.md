@@ -17,16 +17,11 @@ The next work should turn AgentQ into a stronger C#-centered multi-language agen
 
 ## Active Work Queue
 
-1. Visual Agent foundation
-   - Add screenshot/UI analysis workflow hooks.
-   - Add desktop evidence entries for inspected screenshots.
-   - Keep Figma and Unity scene understanding as later specialized paths.
-
-2. Unity / Game project analysis
+1. Unity / Game project analysis
    - Improve Unity project map for Assets, Packages, ProjectSettings, scenes, prefabs, scripts, and asmdef files.
    - Add game-specific verification hints where safe.
    - Prepare for visual scene/UI analysis later.
 
-3. Multi-Agent foundation
+2. Multi-Agent foundation
    - Explore Planner, Coder, Reviewer, and Tester roles only after MCP, workers, replay review, and evidence are stronger.
    - Keep v1 local and deterministic before adding parallel agent behavior.
