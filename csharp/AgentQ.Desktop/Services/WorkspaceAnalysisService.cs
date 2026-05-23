@@ -832,6 +832,11 @@ public sealed class WorkspaceAnalysisService
             analysis.Hints.AddRange(result.Warnings.Select(warning => $"Python worker: {warning}").Take(3));
         }
 
+        if (result.FailureHints.Count > 0)
+        {
+            analysis.Hints.AddRange(result.FailureHints.Select(hint => $"Python worker hint: {hint}").Take(3));
+        }
+
         if (result.Pyprojects.Count == 0 &&
             result.Requirements.Count == 0 &&
             result.Symbols.Count == 0 &&
@@ -840,7 +845,7 @@ public sealed class WorkspaceAnalysisService
             return;
         }
 
-        analysis.Hints.Add($"Python worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.FastApiRoutes.Count:0} FastAPI routes.");
+        analysis.Hints.Add($"Python worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.CallSites.Count:0} calls, {result.FastApiRoutes.Count:0} FastAPI routes.");
 
         foreach (var pyproject in result.Pyprojects.Take(6))
         {
@@ -864,6 +869,11 @@ public sealed class WorkspaceAnalysisService
             AddUnique(analysis.ProjectMap, FormatProjectMapEntry(entry.Role, [entry.Path], [entry.Path]));
         }
 
+        foreach (var import in result.Imports.Where(import => !string.IsNullOrWhiteSpace(import.ResolvedPath)).Take(12))
+        {
+            AddUnique(analysis.KeyDependencies, $"{import.Path}:{import.Line:0} -> {import.ResolvedPath} (python import {import.Module})");
+        }
+
         foreach (var route in result.FastApiRoutes.Take(10))
         {
             AddUnique(analysis.KeySymbols, $"route {route.Method} {route.Route} -> {route.Name} ({route.Path}:{route.Line:0})");
@@ -879,6 +889,12 @@ public sealed class WorkspaceAnalysisService
         foreach (var symbol in result.Symbols.Take(10))
         {
             AddUnique(analysis.KeySymbols, $"{symbol.Kind} {symbol.Name} ({symbol.Path}:{symbol.Line:0})");
+        }
+
+        foreach (var callSite in result.CallSites.Take(8))
+        {
+            var scope = string.IsNullOrWhiteSpace(callSite.EnclosingSymbol) ? string.Empty : $" in {callSite.EnclosingSymbol}";
+            AddUnique(analysis.KeySymbols, $"call {callSite.Name}{scope} ({callSite.Path}:{callSite.Line:0})");
         }
     }
 

@@ -14,6 +14,8 @@ public sealed class PythonWorkerResult
 
     public List<PythonImportInfo> Imports { get; set; } = [];
 
+    public List<PythonCallSiteInfo> CallSites { get; set; } = [];
+
     public List<PythonWorkerSymbol> Symbols { get; set; } = [];
 
     public List<PythonFastApiRoute> FastApiRoutes { get; set; } = [];
@@ -23,6 +25,8 @@ public sealed class PythonWorkerResult
     public List<PythonPytestTarget> PytestTargets { get; set; } = [];
 
     public List<PythonProjectMapEntry> ProjectMap { get; set; } = [];
+
+    public List<string> FailureHints { get; set; } = [];
 
     public List<string> Warnings { get; set; } = [];
 }
@@ -50,6 +54,23 @@ public sealed class PythonImportInfo
     public int Line { get; set; }
 
     public string Module { get; set; } = string.Empty;
+
+    public string ImportedName { get; set; } = string.Empty;
+
+    public int Level { get; set; }
+
+    public string ResolvedPath { get; set; } = string.Empty;
+}
+
+public sealed class PythonCallSiteInfo
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string EnclosingSymbol { get; set; } = string.Empty;
 }
 
 public sealed class PythonWorkerSymbol
@@ -91,7 +112,11 @@ public sealed class PythonPytestTarget
 {
     public string Path { get; set; } = string.Empty;
 
+    public int Line { get; set; }
+
     public string Kind { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
 }
 
 public sealed class PythonProjectMapEntry

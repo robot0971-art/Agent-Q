@@ -17,37 +17,32 @@ The next work should turn AgentQ into a stronger C#-centered multi-language agen
 
 ## Active Work Queue
 
-1. Python worker upgrade
-   - Expand AST extraction for imports, call sites, classes, functions, FastAPI routes, SQLAlchemy models, and pytest targets.
-   - Resolve local package imports into dependency graph edges more accurately.
-   - Add failure-aware hints for common Python environment/test issues.
-
-2. C# Roslyn analysis upgrade
+1. C# Roslyn analysis upgrade
    - Replace or supplement regex symbol extraction with Roslyn where practical.
    - Extract namespaces, types, methods, references, project references, and diagnostics.
    - Feed Roslyn symbols and references into Project Map, Hybrid Search, Evidence, and Confidence.
 
-3. Eval / Replay Dashboard v1
+2. Eval / Replay Dashboard v1
    - Add a desktop view for replay logs and local telemetry.
    - Show tool failures, search success, verification status, confidence history, and recurring failure fingerprints.
    - Make it easy to inspect why a run succeeded, failed, or lacked enough context.
 
-4. C++ / Go / Rust worker foundations
+3. C++ / Go / Rust worker foundations
    - Add lightweight worker contracts before deep implementation.
    - C++: detect compile_commands.json, CMake targets, clangd/tree-sitter path.
    - Go: use go list/go packages where available.
    - Rust: use cargo metadata for crates, targets, and workspace graph.
 
-5. Visual Agent foundation
+4. Visual Agent foundation
    - Add screenshot/UI analysis workflow hooks.
    - Add desktop evidence entries for inspected screenshots.
    - Keep Figma and Unity scene understanding as later specialized paths.
 
-6. Unity / Game project analysis
+5. Unity / Game project analysis
    - Improve Unity project map for Assets, Packages, ProjectSettings, scenes, prefabs, scripts, and asmdef files.
    - Add game-specific verification hints where safe.
    - Prepare for visual scene/UI analysis later.
 
-7. Multi-Agent foundation
+6. Multi-Agent foundation
    - Explore Planner, Coder, Reviewer, and Tester roles only after MCP, workers, replay review, and evidence are stronger.
    - Keep v1 local and deterministic before adding parallel agent behavior.

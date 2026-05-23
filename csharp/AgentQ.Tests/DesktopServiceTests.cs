@@ -659,26 +659,40 @@ public sealed class DesktopServiceTests
             pytest==8.0.0
             """);
         await File.WriteAllTextAsync(
-            Path.Combine(root, "backend", "app", "main.py"),
+            Path.Combine(root, "backend", "app", "__init__.py"),
+            "");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "models.py"),
             """
-            from fastapi import FastAPI
             from sqlalchemy.orm import DeclarativeBase
-
-            app = FastAPI()
 
             class Base(DeclarativeBase):
                 pass
 
             class User(Base):
                 __tablename__ = "users"
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "main.py"),
+            """
+            from fastapi import FastAPI
+            from .models import User
+
+            app = FastAPI()
 
             @app.get("/users")
             async def list_users():
-                return []
+                return [User()]
             """);
         await File.WriteAllTextAsync(
             Path.Combine(root, "backend", "tests", "test_users.py"),
             """
+            import pytest
+
+            @pytest.fixture
+            def user_id():
+                return 1
+
             def test_users():
                 assert True
             """);
@@ -688,9 +702,16 @@ public sealed class DesktopServiceTests
         Assert.NotNull(result);
         Assert.Contains(result.Requirements, item => item.Path == "backend/requirements.txt");
         Assert.Contains(result.Imports, item => item.Module == "fastapi");
+        Assert.Contains(result.Imports, item => item.Module == "models" &&
+                                                item.ResolvedPath == "backend/app/models.py");
+        Assert.Contains(result.CallSites, item => item.Name == "User" &&
+                                                  item.EnclosingSymbol == "list_users");
         Assert.Contains(result.FastApiRoutes, route => route.Route == "/users" && route.Method == "GET");
         Assert.Contains(result.SqlAlchemyModels, model => model.Name == "User");
-        Assert.Contains(result.PytestTargets, target => target.Path == "backend/tests/test_users.py");
+        Assert.Contains(result.PytestTargets, target => target.Path == "backend/tests/test_users.py" &&
+                                                       target.Kind == "test-file");
+        Assert.Contains(result.PytestTargets, target => target.Name == "test_users" &&
+                                                       target.Kind == "test-function");
         Assert.Contains(result.Symbols, symbol => symbol.Name == "list_users");
     }
 
@@ -708,18 +729,25 @@ public sealed class DesktopServiceTests
             pytest
             """);
         await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "__init__.py"),
+            "");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "models.py"),
+            """
+            class User:
+                __tablename__ = "users"
+            """);
+        await File.WriteAllTextAsync(
             Path.Combine(root, "backend", "app", "main.py"),
             """
             from fastapi import FastAPI
+            from app.models import User
 
             app = FastAPI()
 
-            class User:
-                __tablename__ = "users"
-
             @app.post("/users")
             def create_user():
-                return {}
+                return User()
             """);
         await File.WriteAllTextAsync(Path.Combine(root, "backend", "tests", "test_api.py"), "def test_api(): assert True");
 
@@ -731,6 +759,9 @@ public sealed class DesktopServiceTests
         Assert.Contains(analysis.Hints, hint => hint.Contains("Python worker indexed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("route POST /users", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("model User", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("call User", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("backend/app/main.py", StringComparison.OrdinalIgnoreCase) &&
+                                                                dependency.Contains("backend/app/models.py", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("FastAPI routes", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.VerificationCommands, command => command.Contains("python -m pytest", StringComparison.OrdinalIgnoreCase));
     }
