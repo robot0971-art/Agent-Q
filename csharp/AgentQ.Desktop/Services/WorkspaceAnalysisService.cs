@@ -340,6 +340,83 @@ public sealed class WorkspaceAnalysisService
         frameworks.Add(string.IsNullOrWhiteSpace(version) ? "Unity" : $"Unity {version}");
         analysis.Hints.Add("Unity project structure detected.");
         AddUnique(analysis.VerificationCommands, "Unity Test Runner");
+        DetectUnityDetails(analysis, frameworks);
+    }
+
+    private static void DetectUnityDetails(WorkspaceAnalysis analysis, List<string> frameworks)
+    {
+        var assetsRoot = Path.Combine(analysis.WorkspaceRoot, "Assets");
+        var packagesRoot = Path.Combine(analysis.WorkspaceRoot, "Packages");
+        var projectSettingsRoot = Path.Combine(analysis.WorkspaceRoot, "ProjectSettings");
+
+        AddUnityProjectMapEntry(analysis, "Unity assets", "Assets");
+        AddUnityProjectMapEntry(analysis, "Unity packages", "Packages");
+        AddUnityProjectMapEntry(analysis, "Unity project settings", "ProjectSettings");
+
+        var scenes = SafeEnumerateFiles(assetsRoot, "*.unity")
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(analysis.WorkspaceRoot, path)))
+            .Take(8)
+            .ToList();
+        var prefabs = SafeEnumerateFiles(assetsRoot, "*.prefab")
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(analysis.WorkspaceRoot, path)))
+            .Take(8)
+            .ToList();
+        var scripts = SafeEnumerateFiles(assetsRoot, "*.cs")
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(analysis.WorkspaceRoot, path)))
+            .Take(8)
+            .ToList();
+        var asmdefs = SafeEnumerateFiles(assetsRoot, "*.asmdef")
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(analysis.WorkspaceRoot, path)))
+            .Take(8)
+            .ToList();
+
+        AddUnityRole(analysis, "Unity scenes", scenes);
+        AddUnityRole(analysis, "Unity prefabs", prefabs);
+        AddUnityRole(analysis, "Unity scripts", scripts);
+        AddUnityRole(analysis, "Unity asmdefs", asmdefs);
+
+        AddUniqueRange(analysis.KeyFiles, scenes.Take(4));
+        AddUniqueRange(analysis.KeyFiles, prefabs.Take(4));
+        AddUniqueRange(analysis.KeyFiles, scripts.Take(4));
+        AddUniqueRange(analysis.KeyFiles, asmdefs.Take(4));
+
+        foreach (var asmdef in asmdefs.Take(6))
+        {
+            var name = ReadUnityAsmdefName(Path.Combine(analysis.WorkspaceRoot, asmdef));
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                AddUnique(analysis.KeySymbols, $"unity assembly {name} ({asmdef})");
+            }
+        }
+
+        var manifestPath = Path.Combine(packagesRoot, "manifest.json");
+        if (File.Exists(manifestPath))
+        {
+            AddUnique(analysis.KeyFiles, "Packages/manifest.json");
+            foreach (var packageName in ReadUnityPackageNames(manifestPath).Take(8))
+            {
+                AddUnique(analysis.KeyDependencies, $"Packages/manifest.json -> {packageName} (Unity package)");
+                AddUnityFramework(frameworks, packageName);
+            }
+        }
+
+        var buildSettingsPath = Path.Combine(projectSettingsRoot, "EditorBuildSettings.asset");
+        var buildScenes = ReadUnityBuildSettingsScenes(buildSettingsPath).Take(8).ToList();
+        if (buildScenes.Count > 0)
+        {
+            AddUnique(analysis.KeyFiles, "ProjectSettings/EditorBuildSettings.asset");
+            foreach (var scene in buildScenes)
+            {
+                AddUnique(analysis.KeyDependencies, $"ProjectSettings/EditorBuildSettings.asset -> {scene} (build scene)");
+            }
+        }
+
+        if (scenes.Count > 0 || prefabs.Count > 0 || scripts.Count > 0 || asmdefs.Count > 0)
+        {
+            analysis.Hints.Add($"Unity assets indexed: {scenes.Count:0} scenes, {prefabs.Count:0} prefabs, {scripts.Count:0} scripts, {asmdefs.Count:0} asmdefs.");
+        }
+
+        analysis.Hints.Add("Unity verification hint: run EditMode/PlayMode tests from Unity Test Runner or Unity batchmode when configured.");
     }
 
     private static void DetectUnreal(
@@ -1174,6 +1251,108 @@ public sealed class WorkspaceAnalysisService
         catch
         {
             return string.Empty;
+        }
+    }
+
+    private static void AddUnityProjectMapEntry(WorkspaceAnalysis analysis, string role, string path)
+    {
+        if (Directory.Exists(Path.Combine(analysis.WorkspaceRoot, path)))
+        {
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry(role, [path], [path]));
+        }
+    }
+
+    private static void AddUnityRole(WorkspaceAnalysis analysis, string role, IReadOnlyCollection<string> paths)
+    {
+        if (paths.Count > 0)
+        {
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry(role, paths, paths));
+        }
+    }
+
+    private static string ReadUnityAsmdefName(string path)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.TryGetProperty("name", out var name) &&
+                   name.ValueKind == JsonValueKind.String
+                ? name.GetString() ?? string.Empty
+                : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static IReadOnlyList<string> ReadUnityPackageNames(string path)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (!document.RootElement.TryGetProperty("dependencies", out var dependencies) ||
+                dependencies.ValueKind != JsonValueKind.Object)
+            {
+                return [];
+            }
+
+            return dependencies.EnumerateObject()
+                .Select(item => item.Name)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<string> ReadUnityBuildSettingsScenes(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        try
+        {
+            return File.ReadLines(path)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
+                .Select(line => line.Split(':', 2).LastOrDefault()?.Trim() ?? string.Empty)
+                .Where(line => line.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                               line.EndsWith(".unity", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static void AddUnityFramework(List<string> frameworks, string packageName)
+    {
+        if (packageName.Contains("inputsystem", StringComparison.OrdinalIgnoreCase))
+        {
+            AddUnique(frameworks, "Unity Input System");
+        }
+
+        if (packageName.Contains("render-pipelines.universal", StringComparison.OrdinalIgnoreCase))
+        {
+            AddUnique(frameworks, "Unity URP");
+        }
+
+        if (packageName.Contains("render-pipelines.high-definition", StringComparison.OrdinalIgnoreCase))
+        {
+            AddUnique(frameworks, "Unity HDRP");
+        }
+
+        if (packageName.Contains("test-framework", StringComparison.OrdinalIgnoreCase))
+        {
+            AddUnique(frameworks, "Unity Test Framework");
         }
     }
 

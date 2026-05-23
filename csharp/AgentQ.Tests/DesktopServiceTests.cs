@@ -328,6 +328,70 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_MapsUnityGameProjectDetails()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Scenes"));
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Prefabs"));
+        Directory.CreateDirectory(Path.Combine(root, "Assets", "Scripts"));
+        Directory.CreateDirectory(Path.Combine(root, "Packages"));
+        Directory.CreateDirectory(Path.Combine(root, "ProjectSettings"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "ProjectSettings", "ProjectVersion.txt"),
+            "m_EditorVersion: 2023.2.1f1");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "ProjectSettings", "EditorBuildSettings.asset"),
+            """
+            EditorBuildSettings:
+              m_Scenes:
+              - enabled: 1
+                path: Assets/Scenes/Main.unity
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "Packages", "manifest.json"),
+            """
+            {
+              "dependencies": {
+                "com.unity.inputsystem": "1.7.0",
+                "com.unity.render-pipelines.universal": "14.0.0",
+                "com.unity.test-framework": "1.1.33"
+              }
+            }
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "Assets", "Scenes", "Main.unity"), "%YAML 1.1");
+        await File.WriteAllTextAsync(Path.Combine(root, "Assets", "Prefabs", "Player.prefab"), "%YAML 1.1");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "Assets", "Scripts", "PlayerController.cs"),
+            """
+            using UnityEngine;
+            public sealed class PlayerController : MonoBehaviour { }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "Assets", "Scripts", "Game.Runtime.asmdef"),
+            """{"name":"Game.Runtime","references":[]}""");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains("Unity", analysis.ProjectType);
+        Assert.Contains("Unity 2023.2.1f1", analysis.Framework);
+        Assert.Contains("Unity Input System", analysis.Framework);
+        Assert.Contains("Unity URP", analysis.Framework);
+        Assert.Contains("Unity Test Framework", analysis.Framework);
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Unity scenes", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Unity prefabs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Unity scripts", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Unity asmdefs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyFiles, file => file == "Assets/Scenes/Main.unity");
+        Assert.Contains(analysis.KeyFiles, file => file == "Assets/Prefabs/Player.prefab");
+        Assert.Contains(analysis.KeyFiles, file => file == "Assets/Scripts/PlayerController.cs");
+        Assert.Contains(analysis.KeyFiles, file => file == "Assets/Scripts/Game.Runtime.asmdef");
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("unity assembly Game.Runtime", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("com.unity.inputsystem", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("Assets/Scenes/Main.unity", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Unity verification hint", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task NativeWorkerHost_ExtractsCppGoAndRustFoundations()
     {
         var root = CreateTempDirectory();
