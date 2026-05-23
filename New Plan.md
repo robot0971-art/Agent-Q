@@ -17,22 +17,16 @@ The next work should turn AgentQ into a stronger C#-centered multi-language agen
 
 ## Active Work Queue
 
-1. C++ / Go / Rust worker foundations
-   - Add lightweight worker contracts before deep implementation.
-   - C++: detect compile_commands.json, CMake targets, clangd/tree-sitter path.
-   - Go: use go list/go packages where available.
-   - Rust: use cargo metadata for crates, targets, and workspace graph.
-
-2. Visual Agent foundation
+1. Visual Agent foundation
    - Add screenshot/UI analysis workflow hooks.
    - Add desktop evidence entries for inspected screenshots.
    - Keep Figma and Unity scene understanding as later specialized paths.
 
-3. Unity / Game project analysis
+2. Unity / Game project analysis
    - Improve Unity project map for Assets, Packages, ProjectSettings, scenes, prefabs, scripts, and asmdef files.
    - Add game-specific verification hints where safe.
    - Prepare for visual scene/UI analysis later.
 
-4. Multi-Agent foundation
+3. Multi-Agent foundation
    - Explore Planner, Coder, Reviewer, and Tester roles only after MCP, workers, replay review, and evidence are stronger.
    - Keep v1 local and deterministic before adding parallel agent behavior.

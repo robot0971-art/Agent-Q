@@ -66,6 +66,7 @@ public sealed class WorkspaceAnalysisService
         DetectCpp(analysis, detectedTypes, frameworks);
         DetectGo(analysis, detectedTypes, frameworks);
         DetectRust(analysis, detectedTypes, frameworks);
+        await DetectNativeWorkerAsync(analysis, detectedTypes, frameworks, ct);
         DetectUnity(analysis, detectedTypes, frameworks);
         DetectUnreal(analysis, detectedTypes, frameworks);
         DetectDocker(analysis, detectedTypes, frameworks);
@@ -470,6 +471,130 @@ public sealed class WorkspaceAnalysisService
         AddUnique(analysis.VerificationCommands, "cargo build");
         AddUnique(analysis.VerificationCommands, "cargo test");
         analysis.Hints.Add("Cargo.toml detected.");
+    }
+
+    private static async Task DetectNativeWorkerAsync(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks,
+        CancellationToken ct)
+    {
+        var result = await new NativeWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        if (result == null)
+        {
+            return;
+        }
+
+        if (result.Warnings.Count > 0)
+        {
+            analysis.Hints.AddRange(result.Warnings.Select(warning => $"Native worker: {warning}").Take(4));
+        }
+
+        var cppSignalCount = result.Cpp.CmakeProjects.Count +
+                             result.Cpp.CompileCommands.Count +
+                             result.Cpp.Vcxprojects.Count +
+                             result.Cpp.SourceFiles.Count +
+                             result.Cpp.HeaderFiles.Count;
+        var goSignalCount = result.Go.Modules.Count + result.Go.Packages.Count + result.Go.SourceFiles.Count;
+        var rustSignalCount = result.Rust.Manifests.Count + result.Rust.Packages.Count + result.Rust.Targets.Count + result.Rust.SourceFiles.Count;
+
+        if (cppSignalCount == 0 && goSignalCount == 0 && rustSignalCount == 0)
+        {
+            return;
+        }
+
+        analysis.Hints.Add($"Native worker indexed C++ {cppSignalCount:0}, Go {goSignalCount:0}, Rust {rustSignalCount:0} signals.");
+
+        if (cppSignalCount > 0)
+        {
+            detectedTypes.Add("C++");
+            AddUniqueRange(frameworks, result.Cpp.Tooling);
+        }
+
+        if (goSignalCount > 0)
+        {
+            detectedTypes.Add("Go");
+            AddUniqueRange(frameworks, result.Go.Tooling.Count > 0 ? result.Go.Tooling : ["Go"]);
+            AddUnique(analysis.VerificationCommands, "go test ./...");
+        }
+
+        if (rustSignalCount > 0)
+        {
+            detectedTypes.Add("Rust");
+            AddUniqueRange(frameworks, result.Rust.Tooling.Count > 0 ? result.Rust.Tooling : ["Cargo"]);
+            AddUnique(analysis.VerificationCommands, "cargo build");
+            AddUnique(analysis.VerificationCommands, "cargo test");
+        }
+
+        foreach (var entry in result.ProjectMap.Take(12))
+        {
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry(entry.Role, [entry.Path], [entry.Path]));
+        }
+
+        foreach (var project in result.Cpp.CmakeProjects.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, project.Path);
+            if (!string.IsNullOrWhiteSpace(project.Name))
+            {
+                AddUnique(analysis.KeySymbols, $"cmake project {project.Name} ({project.Path})");
+            }
+        }
+
+        foreach (var compileCommands in result.Cpp.CompileCommands.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, compileCommands.Path);
+            AddUnique(analysis.KeyDependencies, $"{compileCommands.Path} -> {compileCommands.Count:0} compile command(s) (native worker)");
+        }
+
+        foreach (var file in result.Cpp.Vcxprojects.Select(item => item.Path)
+                     .Concat(result.Cpp.SourceFiles)
+                     .Concat(result.Cpp.HeaderFiles)
+                     .Take(8))
+        {
+            AddUnique(analysis.KeyFiles, file);
+        }
+
+        foreach (var module in result.Go.Modules.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, module.Path);
+            AddUnique(analysis.KeySymbols, string.IsNullOrWhiteSpace(module.GoVersion)
+                ? $"go module {module.Module} ({module.Path})"
+                : $"go module {module.Module} go {module.GoVersion} ({module.Path})");
+        }
+
+        foreach (var package in result.Go.Packages.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"go package {package.ImportPath} ({package.Directory})");
+        }
+
+        foreach (var file in result.Go.SourceFiles.Take(6))
+        {
+            AddUnique(analysis.KeyFiles, file);
+        }
+
+        foreach (var manifest in result.Rust.Manifests.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, manifest.Path);
+            var name = string.IsNullOrWhiteSpace(manifest.PackageName)
+                ? manifest.IsWorkspace ? "workspace" : "manifest"
+                : manifest.PackageName;
+            AddUnique(analysis.KeySymbols, $"cargo {name} ({manifest.Path})");
+        }
+
+        foreach (var package in result.Rust.Packages.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"rust package {package.Name} {package.Version} ({package.ManifestPath})");
+        }
+
+        foreach (var target in result.Rust.Targets.Take(8))
+        {
+            AddUnique(analysis.KeyDependencies, $"{target.PackageName} -> {target.Name} ({target.Kind}) {target.SourcePath}");
+        }
+
+        foreach (var file in result.Rust.SourceFiles.Take(6))
+        {
+            AddUnique(analysis.KeyFiles, file);
+        }
     }
 
     private static void DetectDocker(
@@ -1158,6 +1283,14 @@ public sealed class WorkspaceAnalysisService
         if (!values.Contains(value, StringComparer.OrdinalIgnoreCase))
         {
             values.Add(value);
+        }
+    }
+
+    private static void AddUniqueRange(List<string> values, IEnumerable<string> items)
+    {
+        foreach (var item in items.Where(item => !string.IsNullOrWhiteSpace(item)))
+        {
+            AddUnique(values, item);
         }
     }
 

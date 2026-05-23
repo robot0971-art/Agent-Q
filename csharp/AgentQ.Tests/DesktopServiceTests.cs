@@ -328,6 +328,98 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task NativeWorkerHost_ExtractsCppGoAndRustFoundations()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "build"));
+        Directory.CreateDirectory(Path.Combine(root, "include"));
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "cmd", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "rust", "src"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "CMakeLists.txt"),
+            """
+            cmake_minimum_required(VERSION 3.20)
+            project(native_demo)
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "build", "compile_commands.json"),
+            """[{"directory":".","command":"c++ -c src/main.cpp","file":"src/main.cpp"}]""");
+        await File.WriteAllTextAsync(Path.Combine(root, "include", "demo.hpp"), "#pragma once");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.cpp"), "int main() { return 0; }");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "go.mod"),
+            """
+            module example.com/native
+            go 1.23
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "cmd", "app", "main.go"), "package main\nfunc main() {}");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "rust", "Cargo.toml"),
+            """
+            [package]
+            name = "native-rust"
+            version = "0.1.0"
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "rust", "src", "lib.rs"), "pub fn ok() -> bool { true }");
+
+        var result = await new NativeWorkerHost().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Cpp.CmakeProjects, project => project.Name == "native_demo");
+        Assert.Contains(result.Cpp.CompileCommands, item => item.Path == "build/compile_commands.json" && item.Count == 1);
+        Assert.Contains(result.Cpp.SourceFiles, file => file == "src/main.cpp");
+        Assert.Contains(result.Cpp.HeaderFiles, file => file == "include/demo.hpp");
+        Assert.Contains(result.Go.Modules, module => module.Module == "example.com/native" && module.GoVersion == "1.23");
+        Assert.Contains(result.Go.SourceFiles, file => file == "cmd/app/main.go");
+        Assert.Contains(result.Rust.Manifests, manifest => manifest.Path == "rust/Cargo.toml" &&
+                                                           manifest.PackageName == "native-rust");
+        Assert.Contains(result.Rust.SourceFiles, file => file == "rust/src/lib.rs");
+        Assert.Contains(result.ProjectMap, entry => entry.Role == "C++ compile database");
+        Assert.Contains(result.ProjectMap, entry => entry.Role == "Go modules");
+        Assert.Contains(result.ProjectMap, entry => entry.Role == "Cargo manifests");
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_UsesNativeWorkerResults()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "build"));
+        Directory.CreateDirectory(Path.Combine(root, "include"));
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        Directory.CreateDirectory(Path.Combine(root, "cmd", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "rust", "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "CMakeLists.txt"), "project(native_demo)");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "build", "compile_commands.json"),
+            """[{"directory":".","command":"c++ -c src/main.cpp","file":"src/main.cpp"}]""");
+        await File.WriteAllTextAsync(Path.Combine(root, "include", "demo.hpp"), "#pragma once");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.cpp"), "int main() { return 0; }");
+        await File.WriteAllTextAsync(Path.Combine(root, "go.mod"), "module example.com/native\ngo 1.23");
+        await File.WriteAllTextAsync(Path.Combine(root, "cmd", "app", "main.go"), "package main\nfunc main() {}");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "rust", "Cargo.toml"),
+            """
+            [package]
+            name = "native-rust"
+            version = "0.1.0"
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "rust", "src", "lib.rs"), "pub fn ok() -> bool { true }");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Native worker indexed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("C++ compile database", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Go modules", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Cargo manifests", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyFiles, file => file == "build/compile_commands.json");
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("cmake project native_demo", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("go module example.com/native", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("cargo native-rust", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("compile command", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_DetectsNestedFrontendBackendWithoutDependencyNoise()
     {
         var root = CreateTempDirectory();
