@@ -436,6 +436,101 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void CSharpRoslynAnalysisService_ExtractsSymbolsReferencesAndDiagnostics()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "App"));
+        Directory.CreateDirectory(Path.Combine(root, "Lib"));
+        File.WriteAllText(
+            Path.Combine(root, "App", "App.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <ProjectReference Include="..\Lib\Lib.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(root, "Lib", "Lib.csproj"), """<Project Sdk="Microsoft.NET.Sdk" />""");
+        File.WriteAllText(
+            Path.Combine(root, "App", "AuthService.cs"),
+            """
+            using Demo.Lib;
+
+            namespace Demo.App;
+
+            public sealed record LoginRequest(string Email);
+
+            public sealed class AuthService
+            {
+                public AuthService() { }
+
+                public Task<bool> LoginAsync(string email) => Task.FromResult(true);
+            }
+            """);
+        File.WriteAllText(
+            Path.Combine(root, "App", "Broken.cs"),
+            """
+            namespace Demo.App;
+            public sealed class Broken {
+            """);
+
+        var analysis = new CSharpRoslynAnalysisService().Analyze(root);
+
+        Assert.Contains(analysis.Projects, project => project == "App/App.csproj");
+        Assert.Contains(analysis.ProjectReferences, reference => reference.Path == "App/App.csproj" &&
+                                                                 reference.Target == "Lib/Lib.csproj");
+        Assert.Contains(analysis.Namespaces, item => item.Name == "Demo.App");
+        Assert.Contains(analysis.Symbols, symbol => symbol.Kind == "record" &&
+                                                    symbol.Name == "LoginRequest");
+        Assert.Contains(analysis.Symbols, symbol => symbol.Kind == "method" &&
+                                                    symbol.Container == "AuthService" &&
+                                                    symbol.Name == "LoginAsync");
+        Assert.Contains(analysis.Usings, item => item.Namespace == "Demo.Lib");
+        Assert.Contains(analysis.Diagnostics, item => item.Id.StartsWith("CS", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_UsesRoslynCSharpResults()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "App"));
+        Directory.CreateDirectory(Path.Combine(root, "Lib"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "App", "App.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <ProjectReference Include="..\Lib\Lib.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "Lib", "Lib.csproj"), """<Project Sdk="Microsoft.NET.Sdk" />""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "App", "AuthService.cs"),
+            """
+            using Demo.Lib;
+
+            namespace Demo.App;
+
+            public sealed class AuthService
+            {
+                public bool Login() => true;
+            }
+            """);
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Roslyn C# analysis", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("C# projects", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("namespace Demo.App", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("method AuthService.Login", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("roslyn using", StringComparison.OrdinalIgnoreCase) &&
+                                                                dependency.Contains("Demo.Lib", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("roslyn project-reference", StringComparison.OrdinalIgnoreCase) &&
+                                                                dependency.Contains("Lib/Lib.csproj", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_BuildsPythonAndTypeScriptSymbolIndex()
     {
         var root = CreateTempDirectory();

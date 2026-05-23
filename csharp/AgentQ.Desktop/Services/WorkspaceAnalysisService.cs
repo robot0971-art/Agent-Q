@@ -10,6 +10,7 @@ public sealed class WorkspaceAnalysisService
 {
     private readonly WorkspaceSymbolIndexService _symbolIndexService;
     private readonly WorkspaceDependencyGraphService _dependencyGraphService;
+    private readonly CSharpRoslynAnalysisService _csharpRoslynAnalysisService;
 
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -28,10 +29,12 @@ public sealed class WorkspaceAnalysisService
 
     public WorkspaceAnalysisService(
         WorkspaceSymbolIndexService? symbolIndexService = null,
-        WorkspaceDependencyGraphService? dependencyGraphService = null)
+        WorkspaceDependencyGraphService? dependencyGraphService = null,
+        CSharpRoslynAnalysisService? csharpRoslynAnalysisService = null)
     {
         _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
         _dependencyGraphService = dependencyGraphService ?? new WorkspaceDependencyGraphService();
+        _csharpRoslynAnalysisService = csharpRoslynAnalysisService ?? new CSharpRoslynAnalysisService();
     }
 
     public async Task<WorkspaceAnalysis> AnalyzeAsync(string workspaceRoot, CancellationToken ct = default)
@@ -71,6 +74,7 @@ public sealed class WorkspaceAnalysisService
         DetectProjectMap(analysis, detectedTypes);
         DetectSymbols(analysis);
         DetectDependencyGraph(analysis);
+        DetectCSharpRoslyn(analysis);
         await DetectTypeScriptWorkerAsync(analysis, frameworks, ct);
         await DetectPythonWorkerAsync(analysis, frameworks, ct);
         DetectKeyFiles(analysis);
@@ -710,6 +714,55 @@ public sealed class WorkspaceAnalysisService
         if (graph.EdgeCount > 0)
         {
             analysis.Hints.Add($"Dependency graph: {graph.EdgeCount:0} edge(s) across {graph.FilesIndexed:0} files.");
+        }
+    }
+
+    private void DetectCSharpRoslyn(WorkspaceAnalysis analysis)
+    {
+        var result = _csharpRoslynAnalysisService.Analyze(analysis.WorkspaceRoot);
+        if (result.FilesIndexed == 0 &&
+            result.Projects.Count == 0 &&
+            result.Symbols.Count == 0 &&
+            result.Usings.Count == 0)
+        {
+            return;
+        }
+
+        analysis.SymbolCount = Math.Max(analysis.SymbolCount, result.Symbols.Count);
+        analysis.Hints.Add($"Roslyn C# analysis: {result.Symbols.Count:0} symbols, {result.Usings.Count:0} usings, {result.ProjectReferences.Count:0} project references.");
+
+        foreach (var project in result.Projects.Take(8))
+        {
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("C# projects", [project], [project]));
+            AddUnique(analysis.KeyFiles, project);
+        }
+
+        foreach (var item in result.Namespaces.Take(6))
+        {
+            AddUnique(analysis.KeySymbols, $"namespace {item.Name} ({item.Path}:{item.Line:0})");
+        }
+
+        foreach (var symbol in result.Symbols
+                     .Where(symbol => symbol.Kind is "class" or "record" or "interface" or "struct" or "enum")
+                     .Concat(result.Symbols.Where(symbol => symbol.Kind is "method" or "constructor"))
+                     .Take(12))
+        {
+            AddUnique(analysis.KeySymbols, symbol.DisplayName);
+        }
+
+        foreach (var usingDirective in result.Usings.Take(12))
+        {
+            AddUnique(analysis.KeyDependencies, $"{usingDirective.Path}:{usingDirective.Line:0} -> {usingDirective.Namespace} (roslyn using)");
+        }
+
+        foreach (var reference in result.ProjectReferences.Take(8))
+        {
+            AddUnique(analysis.KeyDependencies, $"{reference.Path} -> {reference.Target} (roslyn project-reference)");
+        }
+
+        foreach (var diagnostic in result.Diagnostics.Take(5))
+        {
+            analysis.Hints.Add($"Roslyn diagnostic {diagnostic.Id} at {diagnostic.Path}:{diagnostic.Line:0}: {diagnostic.Message}");
         }
     }
 
