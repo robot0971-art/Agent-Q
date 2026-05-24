@@ -257,14 +257,8 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
 
     public void ClearPanel(MainViewModel viewModel)
     {
-        viewModel.GitChangedFiles.Clear();
-        viewModel.SelectedGitChangedFile = null;
         _reviewStatuses.Clear();
-        viewModel.GitStatusText = "Not refreshed yet.";
-        viewModel.GitDiffText = "Not refreshed yet.";
-        viewModel.GitSelectedFileDiffText = "Select a changed file to view its diff.";
-        viewModel.GitLastUpdatedText = "Git not refreshed yet.";
-        viewModel.GitCommitMessage = string.Empty;
+        viewModel.Git.Reset();
         ClearLastCodeReview(viewModel);
     }
 

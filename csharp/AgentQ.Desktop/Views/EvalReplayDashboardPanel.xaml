@@ -19,25 +19,27 @@
                 BorderThickness="1"
                 CornerRadius="5"
                 Padding="8"
-                Margin="0,0,0,8">
+                Margin="0,0,0,8"
+                DataContext="{Binding EvalDashboard}">
             <StackPanel>
-                <TextBlock Text="{Binding EvalDashboardSummary}"
+                <TextBlock Text="{Binding Summary}"
                            Foreground="{DynamicResource TextMain}"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap" />
-                <TextBlock Text="{Binding EvalDashboardUpdatedText}"
+                <TextBlock Text="{Binding UpdatedText}"
                            Foreground="{DynamicResource TextMuted}"
                            FontSize="10"
                            Margin="0,4,0,0" />
             </StackPanel>
         </Border>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      DataContext="{Binding EvalDashboard}">
             <StackPanel>
                 <TextBlock Text="Metrics"
                            Foreground="{DynamicResource TextMain}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding EvalDashboardMetrics}" Margin="0,0,0,10">
+                <ItemsControl ItemsSource="{Binding Metrics}" Margin="0,0,0,10">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}"
@@ -52,7 +54,7 @@
                            Foreground="{DynamicResource TextMain}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding EvalDashboardFindings}" Margin="0,0,0,10">
+                <ItemsControl ItemsSource="{Binding Findings}" Margin="0,0,0,10">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Background="#141D28"
@@ -73,7 +75,7 @@
                            Foreground="{DynamicResource TextMain}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding EvalDashboardFailureFingerprints}" Margin="0,0,0,10">
+                <ItemsControl ItemsSource="{Binding FailureFingerprints}" Margin="0,0,0,10">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}"
@@ -90,7 +92,7 @@
                            Foreground="{DynamicResource TextMain}"
                            FontWeight="SemiBold"
                            Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding EvalDashboardReplayEntries}">
+                <ItemsControl ItemsSource="{Binding ReplayEntries}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}"

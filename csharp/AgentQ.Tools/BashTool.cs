@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace AgentQ.Tools;
 
 /// <summary>
-/// 셸 명령을 실행하고 결과를 반환하는 도구입니다.
+/// Executes a shell command and returns its output.
 /// </summary>
 public class BashTool : ITool
 {
@@ -32,40 +32,40 @@ public class BashTool : ITool
     ];
 
     /// <summary>
-    /// 도구 이름입니다.
+    /// Tool name.
     /// </summary>
     public string Name => "bash";
 
     /// <summary>
-    /// 도구 설명입니다.
+    /// Tool description.
     /// </summary>
-    public string Description => "Execute a bash command and return its output";
+    public string Description => "Execute a shell command and return its output";
 
     /// <summary>
-    /// 사용자 권한 확인이 필요한지 여부입니다.
+    /// Whether this tool requires user permission.
     /// </summary>
     public bool RequiresPermission => true;
 
     /// <summary>
-    /// 입력 스키마입니다.
+    /// Input schema.
     /// </summary>
     public object InputSchema => new
     {
         type = "object",
         properties = new
         {
-            command = new { type = "string", description = "The bash command to execute" },
+            command = new { type = "string", description = "The shell command to execute" },
             timeout = new { type = "integer", description = "Timeout in milliseconds (1000-120000, default 30000)" }
         },
         required = new[] { "command" }
     };
 
     /// <summary>
-    /// 도구를 실행합니다.
+    /// Executes the tool.
     /// </summary>
-    /// <param name="input">입력 파라미터</param>
-    /// <param name="ct">취소 토큰</param>
-    /// <returns>도구 실행 결과</returns>
+    /// <param name="input">Input parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Tool execution result.</returns>
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         if (!input.TryGetValue("command", out var cmdObj) || cmdObj is not string command)
@@ -91,16 +91,31 @@ public class BashTool : ITool
 
         try
         {
+            var encoding = Encoding.UTF8;
+            #pragma warning disable CA1416
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    encoding = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ANSICodePage);
+                }
+                catch
+                {
+                    encoding = Encoding.UTF8;
+                }
+            }
+            #pragma warning restore CA1416
+
             var psi = new ProcessStartInfo
             {
-                // Windows에서는 PowerShell, 그 외 환경에서는 bash를 사용합니다.
+                // Use PowerShell on Windows and bash elsewhere.
                 FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/bash",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                StandardOutputEncoding = encoding,
+                StandardErrorEncoding = encoding
             };
 
             if (OperatingSystem.IsWindows())
@@ -160,12 +175,12 @@ public class BashTool : ITool
     }
 
     /// <summary>
-    /// 지정한 입력 값을 Int32로 변환할 수 있는지 확인합니다.
+    /// Tries to read an input value as an Int32.
     /// </summary>
-    /// <param name="input">입력 딕셔너리</param>
-    /// <param name="key">조회할 키</param>
-    /// <param name="value">변환된 값</param>
-    /// <returns>변환 성공 여부</returns>
+    /// <param name="input">Input dictionary.</param>
+    /// <param name="key">Key to read.</param>
+    /// <param name="value">Parsed value.</param>
+    /// <returns>Whether parsing succeeded.</returns>
     private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
     {
         value = 0;

@@ -71,12 +71,12 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,8">
-                <TextBlock Text="{Binding GitLastUpdatedText}" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-                <TextBlock Text="{Binding GitStatusText}" Foreground="{DynamicResource TextMuted}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+                <TextBlock Text="{Binding LastUpdatedText}" Foreground="{DynamicResource TextMuted}" FontSize="11" />
+                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextMuted}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
             </StackPanel>
             <ListBox Grid.Row="1"
-                     ItemsSource="{Binding GitChangedFiles}"
-                     SelectedItem="{Binding SelectedGitChangedFile, Mode=TwoWay}"
+                     ItemsSource="{Binding ChangedFiles}"
+                     SelectedItem="{Binding SelectedChangedFile, Mode=TwoWay}"
                      SelectionChanged="ChangedFiles_OnSelectionChanged"
                      FontSize="12"
                      HorizontalContentAlignment="Stretch"
@@ -116,7 +116,7 @@
                 <TextBlock Text="Selected diff" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" VerticalAlignment="Center" />
             </DockPanel>
             <TextBox Grid.Row="3"
-                     Text="{Binding GitSelectedFileDiffText}"
+                     Text="{Binding SelectedFileDiffText}"
                      IsReadOnly="True"
                      FontFamily="Consolas"
                      FontSize="11"
@@ -126,7 +126,7 @@
                      Margin="0,0,0,10" />
             <TextBlock Grid.Row="4" Text="Diff stat" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,4" />
             <TextBox Grid.Row="5"
-                     Text="{Binding GitDiffText}"
+                     Text="{Binding DiffText}"
                      IsReadOnly="True"
                      FontFamily="Consolas"
                      FontSize="11"
@@ -155,7 +155,7 @@
                             FontSize="11"
                             Click="UnstageSelected_OnClick" />
                 </WrapPanel>
-                <TextBox Text="{Binding GitCommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="11"
                          MinHeight="26"
                          Margin="0,0,0,6"

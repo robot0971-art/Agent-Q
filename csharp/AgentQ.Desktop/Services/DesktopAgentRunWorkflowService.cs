@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using AgentQ.Core.Providers;
@@ -447,7 +447,8 @@ public sealed class DesktopAgentRunWorkflowService(
                 callbacks.OnVerificationPlan?.Invoke(plan);
                 RecordTelemetry("verification_plan", workspaceRoot, config.Provider, config.Model, succeeded: plan.AlreadySatisfied, detail: plan.Detail);
             },
-            OnUsage = callbacks.OnUsage
+            OnUsage = callbacks.OnUsage,
+            OnRequestExtendSteps = callbacks.OnRequestExtendSteps
         };
     }
 

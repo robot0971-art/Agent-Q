@@ -92,6 +92,8 @@ public sealed class WorkspaceAnalysisService
             analysis.Hints.Add("No obvious build or test command detected.");
         }
 
+        await CheckSystemDependenciesAsync(analysis, ct);
+
         return analysis;
     }
 
@@ -1511,6 +1513,55 @@ public sealed class WorkspaceAnalysisService
         catch
         {
             return string.Empty;
+        }
+    }
+
+    private static async Task CheckSystemDependenciesAsync(WorkspaceAnalysis analysis, CancellationToken ct)
+    {
+        // 1. Check Git
+        if (!IsExecutableAvailable("git", "--version"))
+        {
+            analysis.Hints.Add("Diagnostic Warning: 'git' is not installed or not in PATH. Version control features and analysis will be limited.");
+        }
+
+        // 2. Check Node
+        if (!IsExecutableAvailable("node", "-v"))
+        {
+            analysis.Hints.Add("Diagnostic Warning: 'node' (Node.js) is not in PATH. TypeScript/JavaScript code structure worker is disabled.");
+        }
+
+        // 3. Check Python
+        if (!IsExecutableAvailable("python", "--version"))
+        {
+            analysis.Hints.Add("Diagnostic Warning: 'python' is not in PATH. Python AST analysis worker is disabled.");
+        }
+
+        // 4. Check FFmpeg (AgentQ has video attachment support)
+        if (!IsExecutableAvailable("ffmpeg", "-version"))
+        {
+            analysis.Hints.Add("Diagnostic Warning: 'ffmpeg' is not in PATH. Video frame extraction for attachments is disabled.");
+        }
+    }
+
+    private static bool IsExecutableAvailable(string fileName, string arguments)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            });
+            if (process == null) return false;
+            return process.WaitForExit(1500);
+        }
+        catch
+        {
+            return false;
         }
     }
 }

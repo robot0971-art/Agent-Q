@@ -150,6 +150,16 @@ public sealed class DesktopAgentService
 
         for (var step = 1; step <= maxToolSteps; step++)
         {
+            if (step == maxToolSteps - 2 && toolCallbacks?.OnRequestExtendSteps != null)
+            {
+                var extend = toolCallbacks.OnRequestExtendSteps(maxToolSteps);
+                if (extend)
+                {
+                    maxToolSteps += 30;
+                    toolCallbacks.OnRunStep?.Invoke(AgentRunState.Planning, "Step limit extended", $"Max tool steps increased to {maxToolSteps}.");
+                }
+            }
+
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Generating, $"Model turn {step}", "Waiting for assistant output or tool calls.");
             var response = await GenerateAssistantTurnAsync(
                 provider,

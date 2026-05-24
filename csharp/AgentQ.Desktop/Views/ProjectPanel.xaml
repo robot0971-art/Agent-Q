@@ -54,9 +54,10 @@
                     BorderBrush="{DynamicResource BorderBrushSoft}"
                     BorderThickness="1"
                     CornerRadius="5"
-                    Padding="8">
+                    Padding="8"
+                    DataContext="{Binding Project}">
                 <StackPanel>
-                    <TextBlock Text="{Binding WorkspaceAnalysisSummary}"
+                    <TextBlock Text="{Binding AnalysisSummary}"
                                Foreground="{DynamicResource TextMain}"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
@@ -67,7 +68,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Type" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-                        <TextBlock Grid.Column="1" Text="{Binding WorkspaceProjectType}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProjectType}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
                     </Grid>
                     <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
@@ -75,7 +76,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Framework" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-                        <TextBlock Grid.Column="1" Text="{Binding WorkspaceFramework}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" Text="{Binding Framework}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
                     </Grid>
                     <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
@@ -83,7 +84,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Git" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-                        <TextBlock Grid.Column="1" Text="{Binding WorkspaceGitBranch}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" Text="{Binding GitBranch}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
                     </Grid>
                     <Grid Margin="0,0,0,7">
                         <Grid.ColumnDefinitions>
@@ -91,10 +92,10 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Size" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-                        <TextBlock Grid.Column="1" Text="{Binding WorkspaceStats}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" Text="{Binding Stats}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
                     </Grid>
                     <TextBlock Text="Commands" Style="{DynamicResource LabelText}" />
-                    <ItemsControl ItemsSource="{Binding WorkspaceVerificationCommands}" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding VerificationCommands}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -107,7 +108,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Project map" Style="{DynamicResource LabelText}" />
-                    <ItemsControl ItemsSource="{Binding WorkspaceProjectMap}" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding ProjectMap}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -119,7 +120,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key symbols" Style="{DynamicResource LabelText}" />
-                    <ItemsControl ItemsSource="{Binding WorkspaceKeySymbols}" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding KeySymbols}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -132,7 +133,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key dependencies" Style="{DynamicResource LabelText}" />
-                    <ItemsControl ItemsSource="{Binding WorkspaceKeyDependencies}" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding KeyDependencies}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -145,7 +146,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key files" Style="{DynamicResource LabelText}" />
-                    <ItemsControl ItemsSource="{Binding WorkspaceKeyFiles}" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding KeyFiles}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -157,7 +158,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <ItemsControl ItemsSource="{Binding WorkspaceHints}">
+                    <ItemsControl ItemsSource="{Binding Hints}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}"
@@ -168,7 +169,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Text="{Binding WorkspaceAnalysisUpdatedText}"
+                    <TextBlock Text="{Binding AnalysisUpdatedText}"
                                Foreground="{DynamicResource TextMuted}"
                                FontSize="10"
                                Margin="0,6,0,0" />

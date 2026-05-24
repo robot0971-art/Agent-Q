@@ -50,6 +50,17 @@ public static class DesktopToolCallbacksFactory
             OnUsage = usage => dispatcher.Invoke(() =>
             {
                 onUsage?.Invoke(usage);
+            }),
+            OnRequestExtendSteps = currentLimit => dispatcher.Invoke(() =>
+            {
+                var result = System.Windows.MessageBox.Show(
+                    $"AgentQ가 최대 실행 단계({currentLimit}단계)에 거의 도달했습니다.\n" +
+                    "작업을 완료하기 위해 단계를 30단계 더 연장하시겠습니까?\n\n" +
+                    "아니오(No)를 누르면 에이전트 루프가 중단됩니다.",
+                    "실행 단계 한도 경고",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                return result == System.Windows.MessageBoxResult.Yes;
             })
         };
     }

@@ -485,7 +485,7 @@
                     </DockPanel>
                     <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
                         <TabItem Header="Verify">
-                            <views:VerificationPanel x:Name="VerificationPanelView" />
+                            <views:VerificationPanel x:Name="VerificationPanelView" DataContext="{Binding Verification}" />
                         </TabItem>
                         <TabItem Header="Plan">
                             <views:PlanPanel x:Name="PlanPanelView" />
@@ -494,7 +494,7 @@
                             <views:MemoryPanel x:Name="MemoryPanelView" />
                         </TabItem>
                         <TabItem Header="Git">
-                            <views:GitPanel x:Name="GitPanelView" />
+                            <views:GitPanel x:Name="GitPanelView" DataContext="{Binding Git}" />
                         </TabItem>
                         <TabItem Header="{Binding EvidenceTrailText}">
                             <views:RunTimelinePanel />

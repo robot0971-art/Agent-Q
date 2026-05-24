@@ -19,4 +19,6 @@ public sealed class DesktopToolCallbacks
     public Action<AgentVerificationPlan>? OnVerificationPlan { get; init; }
 
     public Action<UsageStats>? OnUsage { get; init; }
+
+    public Func<int, bool>? OnRequestExtendSteps { get; init; }
 }

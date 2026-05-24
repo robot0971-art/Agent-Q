@@ -27,39 +27,58 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _uiLanguage = "English";
     private AgentWorkMode _workMode = AgentWorkMode.Coding;
     private bool _isBusy;
-    private bool _canFixLastVerificationFailure;
-    private bool _canFixLastCodeReviewFindings;
     private bool _canResumeCheckpoint;
     private bool _canContinueLastRun;
-    private string _lastVerificationFailureSummary = string.Empty;
     private string _lastContinuationPrompt = string.Empty;
     private string _latestCheckpointText = "No checkpoint loaded.";
-    private string _gitStatusText = "Not refreshed yet.";
-    private string _gitDiffText = "Not refreshed yet.";
-    private string _gitSelectedFileDiffText = "Select a changed file to view its diff.";
-    private string _gitLastUpdatedText = "Git not refreshed yet.";
-    private string _gitCommitMessage = string.Empty;
-    private string _workspaceAnalysisSummary = "Workspace not analyzed yet.";
-    private string _workspaceProjectType = "Unknown";
-    private string _workspaceFramework = "Unknown";
-    private string _workspaceGitBranch = "Unknown";
-    private string _workspaceStats = "No stats yet.";
-    private string _workspaceAnalysisUpdatedText = "Not analyzed yet.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
-    private string _evalDashboardSummary = "Eval dashboard not loaded.";
-    private string _evalDashboardUpdatedText = "Not refreshed yet.";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private FileChangeRecord? _selectedFileChange;
-    private GitChangedFile? _selectedGitChangedFile;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
     private ProjectMemoryLesson? _selectedSavedMemoryLesson;
     private AgentRunState _currentRunState = AgentRunState.Idle;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public MainViewModel()
+    {
+        Git.PropertyChanged += (_, e) =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Git)));
+            if (GetLegacyGitPropertyName(e.PropertyName) is { } propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
+        };
+        Verification.PropertyChanged += (_, e) =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Verification)));
+            if (GetLegacyVerificationPropertyName(e.PropertyName) is { } propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
+        };
+        Project.PropertyChanged += (_, e) =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Project)));
+            if (GetLegacyProjectPropertyName(e.PropertyName) is { } propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
+        };
+        EvalDashboard.PropertyChanged += (_, e) =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EvalDashboard)));
+            if (GetLegacyEvalDashboardPropertyName(e.PropertyName) is { } propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
+        };
+    }
 
     public ObservableCollection<ChatMessageViewModel> Messages { get; } = [];
 
@@ -69,33 +88,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AgentRunStep> RunSteps { get; } = [];
 
-    public ObservableCollection<AgentVerificationPlan> VerificationPlans { get; } = [];
+    public VerificationPanelViewModel Verification { get; } = new();
 
-    public ObservableCollection<VerificationResultCard> VerificationResults { get; } = [];
+    public EvalDashboardViewModel EvalDashboard { get; } = new();
 
-    public ObservableCollection<string> EvalDashboardMetrics { get; } = [];
+    public GitPanelViewModel Git { get; } = new();
 
-    public ObservableCollection<string> EvalDashboardFindings { get; } = [];
+    public ProjectPanelViewModel Project { get; } = new();
 
-    public ObservableCollection<string> EvalDashboardReplayEntries { get; } = [];
+    public ObservableCollection<string> EvalDashboardMetrics => EvalDashboard.Metrics;
 
-    public ObservableCollection<string> EvalDashboardFailureFingerprints { get; } = [];
+    public ObservableCollection<string> EvalDashboardFindings => EvalDashboard.Findings;
 
-    public ObservableCollection<GitChangedFile> GitChangedFiles { get; } = [];
+    public ObservableCollection<string> EvalDashboardReplayEntries => EvalDashboard.ReplayEntries;
+
+    public ObservableCollection<string> EvalDashboardFailureFingerprints => EvalDashboard.FailureFingerprints;
 
     public ObservableCollection<AgentPlanItem> PlanItems { get; } = [];
 
-    public ObservableCollection<string> WorkspaceVerificationCommands { get; } = [];
+    public ObservableCollection<string> WorkspaceVerificationCommands => Project.VerificationCommands;
 
-    public ObservableCollection<string> WorkspaceProjectMap { get; } = [];
+    public ObservableCollection<string> WorkspaceProjectMap => Project.ProjectMap;
 
-    public ObservableCollection<string> WorkspaceKeySymbols { get; } = [];
+    public ObservableCollection<string> WorkspaceKeySymbols => Project.KeySymbols;
 
-    public ObservableCollection<string> WorkspaceKeyDependencies { get; } = [];
+    public ObservableCollection<string> WorkspaceKeyDependencies => Project.KeyDependencies;
 
-    public ObservableCollection<string> WorkspaceKeyFiles { get; } = [];
+    public ObservableCollection<string> WorkspaceKeyFiles => Project.KeyFiles;
 
-    public ObservableCollection<string> WorkspaceHints { get; } = [];
+    public ObservableCollection<string> WorkspaceHints => Project.Hints;
 
     public ObservableCollection<string> Attachments { get; } = [];
 
@@ -416,20 +437,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanFixLastVerificationFailure
     {
-        get => _canFixLastVerificationFailure;
-        set => SetField(ref _canFixLastVerificationFailure, value);
+        get => Verification.CanFixLastFailure;
+        set => Verification.CanFixLastFailure = value;
     }
 
     public string LastVerificationFailureSummary
     {
-        get => _lastVerificationFailureSummary;
-        set => SetField(ref _lastVerificationFailureSummary, value);
+        get => Verification.LastFailureSummary;
+        set => Verification.LastFailureSummary = value;
     }
 
     public bool CanFixLastCodeReviewFindings
     {
-        get => _canFixLastCodeReviewFindings;
-        set => SetField(ref _canFixLastCodeReviewFindings, value);
+        get => Git.CanFixLastCodeReviewFindings;
+        set => Git.CanFixLastCodeReviewFindings = value;
     }
 
     public bool CanContinueLastRun
@@ -458,68 +479,68 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string GitStatusText
     {
-        get => _gitStatusText;
-        set => SetField(ref _gitStatusText, value);
+        get => Git.StatusText;
+        set => Git.StatusText = value;
     }
 
     public string GitDiffText
     {
-        get => _gitDiffText;
-        set => SetField(ref _gitDiffText, value);
+        get => Git.DiffText;
+        set => Git.DiffText = value;
     }
 
     public string GitSelectedFileDiffText
     {
-        get => _gitSelectedFileDiffText;
-        set => SetField(ref _gitSelectedFileDiffText, value);
+        get => Git.SelectedFileDiffText;
+        set => Git.SelectedFileDiffText = value;
     }
 
     public string GitLastUpdatedText
     {
-        get => _gitLastUpdatedText;
-        set => SetField(ref _gitLastUpdatedText, value);
+        get => Git.LastUpdatedText;
+        set => Git.LastUpdatedText = value;
     }
 
     public string GitCommitMessage
     {
-        get => _gitCommitMessage;
-        set => SetField(ref _gitCommitMessage, value);
+        get => Git.CommitMessage;
+        set => Git.CommitMessage = value;
     }
 
     public string WorkspaceAnalysisSummary
     {
-        get => _workspaceAnalysisSummary;
-        set => SetField(ref _workspaceAnalysisSummary, value);
+        get => Project.AnalysisSummary;
+        set => Project.AnalysisSummary = value;
     }
 
     public string WorkspaceProjectType
     {
-        get => _workspaceProjectType;
-        set => SetField(ref _workspaceProjectType, value);
+        get => Project.ProjectType;
+        set => Project.ProjectType = value;
     }
 
     public string WorkspaceFramework
     {
-        get => _workspaceFramework;
-        set => SetField(ref _workspaceFramework, value);
+        get => Project.Framework;
+        set => Project.Framework = value;
     }
 
     public string WorkspaceGitBranch
     {
-        get => _workspaceGitBranch;
-        set => SetField(ref _workspaceGitBranch, value);
+        get => Project.GitBranch;
+        set => Project.GitBranch = value;
     }
 
     public string WorkspaceStats
     {
-        get => _workspaceStats;
-        set => SetField(ref _workspaceStats, value);
+        get => Project.Stats;
+        set => Project.Stats = value;
     }
 
     public string WorkspaceAnalysisUpdatedText
     {
-        get => _workspaceAnalysisUpdatedText;
-        set => SetField(ref _workspaceAnalysisUpdatedText, value);
+        get => Project.AnalysisUpdatedText;
+        set => Project.AnalysisUpdatedText = value;
     }
 
     public string LatestSessionSummaryText
@@ -542,14 +563,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string EvalDashboardSummary
     {
-        get => _evalDashboardSummary;
-        set => SetField(ref _evalDashboardSummary, value);
+        get => EvalDashboard.Summary;
+        set => EvalDashboard.Summary = value;
     }
 
     public string EvalDashboardUpdatedText
     {
-        get => _evalDashboardUpdatedText;
-        set => SetField(ref _evalDashboardUpdatedText, value);
+        get => EvalDashboard.UpdatedText;
+        set => EvalDashboard.UpdatedText = value;
     }
 
     public bool HasProjectConfig
@@ -566,9 +587,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public GitChangedFile? SelectedGitChangedFile
     {
-        get => _selectedGitChangedFile;
-        set => SetField(ref _selectedGitChangedFile, value);
+        get => Git.SelectedChangedFile;
+        set => Git.SelectedChangedFile = value;
     }
+
+    public ObservableCollection<GitChangedFile> GitChangedFiles => Git.ChangedFiles;
+
+    public ObservableCollection<AgentVerificationPlan> VerificationPlans => Verification.Plans;
+
+    public ObservableCollection<VerificationResultCard> VerificationResults => Verification.Results;
 
     public AgentPlanItem? SelectedPlanItem
     {
@@ -685,114 +712,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetLastVerificationFailure(string summary)
     {
-        LastVerificationFailureSummary = summary;
-        CanFixLastVerificationFailure = true;
+        Verification.SetLastFailure(summary);
     }
 
     public void ClearLastVerificationFailure()
     {
-        LastVerificationFailureSummary = string.Empty;
-        CanFixLastVerificationFailure = false;
+        Verification.ClearLastFailure();
     }
 
     public void ClearSidePanelState()
     {
         Logs.Clear();
         RunSteps.Clear();
-        VerificationPlans.Clear();
-        VerificationResults.Clear();
+        Verification.Clear();
         FileChanges.Clear();
-        EvalDashboardMetrics.Clear();
-        EvalDashboardFindings.Clear();
-        EvalDashboardReplayEntries.Clear();
-        EvalDashboardFailureFingerprints.Clear();
-        EvalDashboardSummary = "Eval dashboard not loaded.";
-        EvalDashboardUpdatedText = "Not refreshed yet.";
+        EvalDashboard.Reset();
     }
 
     public void AddVerificationResult(VerificationResultCard result)
     {
-        VerificationResults.Insert(0, result);
-        while (VerificationResults.Count > 8)
-        {
-            VerificationResults.RemoveAt(VerificationResults.Count - 1);
-        }
+        Verification.AddResult(result);
     }
 
     public void ApplyWorkspaceAnalysis(WorkspaceAnalysis analysis)
     {
-        WorkspaceAnalysisSummary = analysis.Summary;
-        WorkspaceProjectType = analysis.ProjectType;
-        WorkspaceFramework = analysis.Framework;
-        WorkspaceGitBranch = analysis.GitBranch;
-        WorkspaceStats = $"{analysis.FileCount:0} files / {analysis.DirectoryCount:0} folders";
-        WorkspaceAnalysisUpdatedText = $"Updated: {analysis.UpdatedAt:HH:mm:ss}";
-
-        WorkspaceVerificationCommands.Clear();
-        foreach (var command in analysis.VerificationCommands)
-        {
-            WorkspaceVerificationCommands.Add(command);
-        }
-
-        WorkspaceProjectMap.Clear();
-        foreach (var entry in analysis.ProjectMap)
-        {
-            WorkspaceProjectMap.Add(entry);
-        }
-
-        WorkspaceKeySymbols.Clear();
-        foreach (var symbol in analysis.KeySymbols)
-        {
-            WorkspaceKeySymbols.Add(symbol);
-        }
-
-        WorkspaceKeyDependencies.Clear();
-        foreach (var dependency in analysis.KeyDependencies)
-        {
-            WorkspaceKeyDependencies.Add(dependency);
-        }
-
-        WorkspaceKeyFiles.Clear();
-        foreach (var file in analysis.KeyFiles)
-        {
-            WorkspaceKeyFiles.Add(file);
-        }
-
-        WorkspaceHints.Clear();
-        foreach (var hint in analysis.Hints)
-        {
-            WorkspaceHints.Add(hint);
-        }
+        Project.ApplyAnalysis(analysis);
     }
 
     public void ApplyEvalDashboard(EvalReplayDashboardReport report)
     {
-        EvalDashboardSummary = report.Summary;
-        EvalDashboardUpdatedText = $"Updated: {report.UpdatedAt:HH:mm:ss}";
-
-        EvalDashboardMetrics.Clear();
-        foreach (var metric in report.Metrics)
-        {
-            EvalDashboardMetrics.Add(metric);
-        }
-
-        EvalDashboardFindings.Clear();
-        foreach (var finding in report.Findings)
-        {
-            EvalDashboardFindings.Add(finding);
-        }
-
-        EvalDashboardReplayEntries.Clear();
-        foreach (var entry in report.ReplayEntries)
-        {
-            EvalDashboardReplayEntries.Add(entry);
-        }
-
-        EvalDashboardFailureFingerprints.Clear();
-        foreach (var fingerprint in report.FailureFingerprints)
-        {
-            EvalDashboardFailureFingerprints.Add(fingerprint);
-        }
+        EvalDashboard.ApplyReport(report);
     }
 
     private void RefreshModelsForProvider(bool preserveCurrentModel)
@@ -932,5 +881,54 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
+    }
+
+    private static string? GetLegacyGitPropertyName(string? propertyName)
+    {
+        return propertyName switch
+        {
+            nameof(GitPanelViewModel.CanFixLastCodeReviewFindings) => nameof(CanFixLastCodeReviewFindings),
+            nameof(GitPanelViewModel.StatusText) => nameof(GitStatusText),
+            nameof(GitPanelViewModel.DiffText) => nameof(GitDiffText),
+            nameof(GitPanelViewModel.SelectedFileDiffText) => nameof(GitSelectedFileDiffText),
+            nameof(GitPanelViewModel.LastUpdatedText) => nameof(GitLastUpdatedText),
+            nameof(GitPanelViewModel.CommitMessage) => nameof(GitCommitMessage),
+            nameof(GitPanelViewModel.SelectedChangedFile) => nameof(SelectedGitChangedFile),
+            _ => null
+        };
+    }
+
+    private static string? GetLegacyVerificationPropertyName(string? propertyName)
+    {
+        return propertyName switch
+        {
+            nameof(VerificationPanelViewModel.CanFixLastFailure) => nameof(CanFixLastVerificationFailure),
+            nameof(VerificationPanelViewModel.LastFailureSummary) => nameof(LastVerificationFailureSummary),
+            _ => null
+        };
+    }
+
+    private static string? GetLegacyProjectPropertyName(string? propertyName)
+    {
+        return propertyName switch
+        {
+            nameof(ProjectPanelViewModel.AnalysisSummary) => nameof(WorkspaceAnalysisSummary),
+            nameof(ProjectPanelViewModel.ProjectType) => nameof(WorkspaceProjectType),
+            nameof(ProjectPanelViewModel.Framework) => nameof(WorkspaceFramework),
+            nameof(ProjectPanelViewModel.GitBranch) => nameof(WorkspaceGitBranch),
+            nameof(ProjectPanelViewModel.Stats) => nameof(WorkspaceStats),
+            nameof(ProjectPanelViewModel.AnalysisUpdatedText) => nameof(WorkspaceAnalysisUpdatedText),
+            _ => null
+        };
+    }
+
+    private static string? GetLegacyEvalDashboardPropertyName(string? propertyName)
+    {
+        return propertyName switch
+        {
+            nameof(EvalDashboardViewModel.Summary) => nameof(EvalDashboardSummary),
+            nameof(EvalDashboardViewModel.UpdatedText) => nameof(EvalDashboardUpdatedText),
+            _ => null
+        };
     }
 }

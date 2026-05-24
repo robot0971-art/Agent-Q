@@ -1,4 +1,4 @@
-# AgentQ
+﻿# AgentQ
 
 AgentQ is a C# coding assistant with a CLI, a Windows desktop app, tool-use support, provider abstraction, and a mock-service-backed test workflow.
 
@@ -29,16 +29,6 @@ Download the latest beta from the GitHub Releases page:
 For most Windows users, choose `AgentQ-Setup-<version>.exe`. The ZIP file is a portable build for quick testing without installation.
 
 AgentQ is currently a beta app and the Windows installer is not code-signed yet. Microsoft Edge or Windows SmartScreen may show warnings such as "not commonly downloaded" or "unknown publisher." Only run installers downloaded from the official GitHub Releases page. If you trust the source, choose **Keep**, then **More info -> Run anyway**.
-
-### 다운로드 및 설치
-
-최신 베타 버전은 GitHub Releases 페이지에서 받을 수 있습니다.
-
-- [AgentQ Releases](https://github.com/robot0971-art/Agent-Q/releases)
-
-일반 Windows 사용자는 `AgentQ-Setup-<version>.exe`를 받으면 됩니다. ZIP 파일은 설치 없이 빠르게 테스트하는 포터블 빌드입니다.
-
-AgentQ는 현재 베타 앱이며 Windows 설치 파일은 아직 코드 서명되어 있지 않습니다. Microsoft Edge 또는 Windows SmartScreen에서 "일반적으로 다운로드되지 않음" 또는 "알 수 없는 게시자" 경고가 나올 수 있습니다. 공식 GitHub Releases 페이지에서 받은 파일만 실행하세요. 출처를 신뢰한다면 **Keep**, 이후 **More info -> Run anyway**를 선택하면 됩니다.
 
 ## Project Layout
 
@@ -453,8 +443,6 @@ Release drafts remain private to repository collaborators until someone opens th
 The installer and desktop executable are not code-signed yet. Windows SmartScreen or Microsoft Edge may warn that the file is not commonly downloaded or has an unknown publisher. For internal beta testing, choose **Keep** or **More info -> Run anyway** only if you trust the release source.
 
 Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, optional embeddings, and desktop workflow stability.
-
-베타 피드백을 환영합니다. 설치 파일이나 포터블 ZIP을 사용해보고 설치 과정, Provider/API 키 설정, 모델 선택, 선택형 임베딩, 데스크톱 작업 흐름에서 발견한 버그나 불편한 점을 GitHub Issues로 알려주세요.
 
 ## OpenCode Go
 
