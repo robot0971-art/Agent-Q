@@ -83,6 +83,37 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
      - Avalonia/Linux prototype
      - Release signing pipeline
 
+8. Safe Refactor Guardrails
+   - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
+   - Avoid whole-file rewrites for large/core files unless explicitly approved.
+   - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
+   - Require patch-sized edits for refactors such as `AutoBattleController` responsibility splits.
+   - Add a Unity refactor checklist:
+     - preserve `SerializeField` names
+     - avoid adding components unless requested
+     - keep prefab/Inspector assignments intact
+     - compile after each phase
+     - verify spawn, movement, attack, death, reward, boss, and stage progression
+
+9. Edit Failure Recovery
+   - If an edit tool fails repeatedly, stop retrying the same strategy.
+   - Read the current file and compare the intended shape before continuing.
+   - Detect likely file corruption or partial rewrites.
+   - Treat direct manual copy-paste instructions as a last-resort fallback only.
+   - Before asking the user to paste code manually, attempt automatic recovery through backup, restore, and minimal patches.
+   - If manual paste is unavoidable, explain why tool-based editing is unsafe or unavailable.
+   - Before suggesting `git checkout -- <file>` or `git restore <file>`, require:
+     - `git diff -- <file>`
+     - a backup copy when useful
+     - a clear warning that local changes to that file will be discarded
+   - Prefer restore + minimal patches over replacing an entire complex file.
+
+10. Unsafe Editing Eval Signals
+   - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
+   - Surface these as Eval Dashboard findings.
+   - Add tests or replay fixtures for failed large-file refactor attempts.
+   - Use those signals to improve future tool-routing and recovery behavior.
+
 ## Later 80% -> 90% Candidates
 
 These are important, but should come after the demo-driven 80% pass unless a demo exposes them as blockers.
@@ -95,6 +126,7 @@ These are important, but should come after the demo-driven 80% pass unless a dem
 2. Stronger Sandbox And Permission Policy
    - Make shell/file/git permission boundaries clearer.
    - Improve destructive command prevention and user-facing explanations.
+   - Include the destructive restore guard from the safe refactor work.
 
 3. Error History And Failure Memory
    - Strengthen recurring failure fingerprints.
