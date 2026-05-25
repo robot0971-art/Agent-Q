@@ -8,11 +8,23 @@ namespace AgentQ.Desktop.ViewModels;
 public sealed class ProjectPanelViewModel : INotifyPropertyChanged
 {
     private string _analysisSummary = "Workspace not analyzed yet.";
-    private string _projectType = "Unknown";
-    private string _framework = "Unknown";
-    private string _gitBranch = "Unknown";
-    private string _stats = "No stats yet.";
+    private string _projectType = "Analyze to detect";
+    private string _framework = "Analyze to detect";
+    private string _gitBranch = "Analyze to detect";
+    private string _stats = "Analyze to count files and folders.";
     private string _analysisUpdatedText = "Not analyzed yet.";
+    private string _dashboardSummary = "Analyze the workspace to build the project dashboard.";
+    private string _healthText = "Waiting for analysis";
+    private string _healthAccentBrush = "#B7C4D1";
+    private string _symbolCountText = "0 symbols";
+    private string _dependencyCountText = "0 dependencies";
+    private string _keyFileCountText = "0 key files";
+    private string _verificationCommandCountText = "0 commands";
+    private string _projectMapEmptyText = "No project map yet.";
+    private string _keySymbolsEmptyText = "No key symbols found yet.";
+    private string _keyDependenciesEmptyText = "No dependency graph signals yet.";
+    private string _keyFilesEmptyText = "No key files detected yet.";
+    private string _verificationCommandsEmptyText = "No verification command detected yet.";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -64,6 +76,78 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         set => SetField(ref _analysisUpdatedText, value);
     }
 
+    public string DashboardSummary
+    {
+        get => _dashboardSummary;
+        set => SetField(ref _dashboardSummary, value);
+    }
+
+    public string HealthText
+    {
+        get => _healthText;
+        set => SetField(ref _healthText, value);
+    }
+
+    public string HealthAccentBrush
+    {
+        get => _healthAccentBrush;
+        set => SetField(ref _healthAccentBrush, value);
+    }
+
+    public string SymbolCountText
+    {
+        get => _symbolCountText;
+        set => SetField(ref _symbolCountText, value);
+    }
+
+    public string DependencyCountText
+    {
+        get => _dependencyCountText;
+        set => SetField(ref _dependencyCountText, value);
+    }
+
+    public string KeyFileCountText
+    {
+        get => _keyFileCountText;
+        set => SetField(ref _keyFileCountText, value);
+    }
+
+    public string VerificationCommandCountText
+    {
+        get => _verificationCommandCountText;
+        set => SetField(ref _verificationCommandCountText, value);
+    }
+
+    public string ProjectMapEmptyText
+    {
+        get => _projectMapEmptyText;
+        set => SetField(ref _projectMapEmptyText, value);
+    }
+
+    public string KeySymbolsEmptyText
+    {
+        get => _keySymbolsEmptyText;
+        set => SetField(ref _keySymbolsEmptyText, value);
+    }
+
+    public string KeyDependenciesEmptyText
+    {
+        get => _keyDependenciesEmptyText;
+        set => SetField(ref _keyDependenciesEmptyText, value);
+    }
+
+    public string KeyFilesEmptyText
+    {
+        get => _keyFilesEmptyText;
+        set => SetField(ref _keyFilesEmptyText, value);
+    }
+
+    public string VerificationCommandsEmptyText
+    {
+        get => _verificationCommandsEmptyText;
+        set => SetField(ref _verificationCommandsEmptyText, value);
+    }
+
     public void ApplyAnalysis(WorkspaceAnalysis analysis)
     {
         AnalysisSummary = analysis.Summary;
@@ -72,6 +156,13 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         GitBranch = analysis.GitBranch;
         Stats = $"{analysis.FileCount:0} files / {analysis.DirectoryCount:0} folders";
         AnalysisUpdatedText = $"Updated: {analysis.UpdatedAt:HH:mm:ss}";
+        DashboardSummary = BuildDashboardSummary(analysis);
+        SymbolCountText = $"{analysis.SymbolCount:0} symbols";
+        DependencyCountText = $"{analysis.DependencyEdgeCount:0} dependencies";
+        KeyFileCountText = $"{analysis.KeyFiles.Count:0} key files";
+        VerificationCommandCountText = $"{analysis.VerificationCommands.Count:0} commands";
+        HealthText = BuildHealthText(analysis);
+        HealthAccentBrush = PickHealthAccent(analysis);
 
         ReplaceItems(VerificationCommands, analysis.VerificationCommands);
         ReplaceItems(ProjectMap, analysis.ProjectMap);
@@ -79,6 +170,48 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         ReplaceItems(KeyDependencies, analysis.KeyDependencies);
         ReplaceItems(KeyFiles, analysis.KeyFiles);
         ReplaceItems(Hints, analysis.Hints);
+    }
+
+    private static string BuildDashboardSummary(WorkspaceAnalysis analysis)
+    {
+        var framework = string.IsNullOrWhiteSpace(analysis.Framework) ? "Unknown framework" : analysis.Framework;
+        var type = string.IsNullOrWhiteSpace(analysis.ProjectType) ? "Unknown project" : analysis.ProjectType;
+        return $"{type} workspace using {framework}. {analysis.ProjectMap.Count:0} map entries, {analysis.KeySymbols.Count:0} key symbols, {analysis.KeyFiles.Count:0} key files.";
+    }
+
+    private static string BuildHealthText(WorkspaceAnalysis analysis)
+    {
+        if (analysis.Hints.Any(hint => hint.Contains("Diagnostic Warning", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Needs environment attention";
+        }
+
+        if (analysis.VerificationCommands.Count == 0)
+        {
+            return "Needs verification command";
+        }
+
+        if (analysis.ProjectMap.Count == 0 || analysis.KeyFiles.Count == 0)
+        {
+            return "Partial map";
+        }
+
+        return "Ready";
+    }
+
+    private static string PickHealthAccent(WorkspaceAnalysis analysis)
+    {
+        if (analysis.Hints.Any(hint => hint.Contains("Diagnostic Warning", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "#FBBF24";
+        }
+
+        if (analysis.VerificationCommands.Count == 0 || analysis.ProjectMap.Count == 0)
+        {
+            return "#FBBF24";
+        }
+
+        return "#37D67A";
     }
 
     private static void ReplaceItems(ObservableCollection<string> target, IEnumerable<string> values)

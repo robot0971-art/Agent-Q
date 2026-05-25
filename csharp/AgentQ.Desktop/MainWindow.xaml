@@ -476,6 +476,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -483,7 +484,84 @@
                         <TextBlock Text="{Binding StatusPanelText}" Style="{StaticResource PanelHeader}" />
                         <Button DockPanel.Dock="Right" Content="{Binding ClearText}" Width="52" Height="24" Padding="0" FontSize="11" Click="ClearSidePanel_OnClick" />
                     </DockPanel>
-                    <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
+                    <Border Grid.Row="1"
+                            Background="#0E151E"
+                            BorderBrush="{Binding RunSummary.AccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="9"
+                            Margin="0,0,0,10"
+                            DataContext="{Binding RunSummary}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,7">
+                                <Border DockPanel.Dock="Right"
+                                        Background="{Binding PhaseBadgeBackground}"
+                                        BorderBrush="{Binding AccentBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="7,2"
+                                        Margin="8,0,0,0">
+                                    <TextBlock Text="{Binding Phase}"
+                                               Foreground="{Binding AccentBrush}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold" />
+                                </Border>
+                                <TextBlock Text="Run summary"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding NextAction}"
+                                       Foreground="{DynamicResource TextMain}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,7" />
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Evidence"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           FontSize="11" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding LastEvidence}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxHeight="34" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Text="Verification"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               FontSize="10" />
+                                    <TextBlock Text="{Binding VerificationStatus}"
+                                               Foreground="{DynamicResource TextMain}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="32" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding ChangedFilesText}"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               FontSize="10" />
+                                    <TextBlock Text="{Binding CommitReadiness}"
+                                               Foreground="{DynamicResource TextMain}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0">
                         <TabItem Header="Verify">
                             <views:VerificationPanel x:Name="VerificationPanelView" DataContext="{Binding Verification}" />
                         </TabItem>
@@ -515,7 +593,7 @@
                             <views:FileChangeReviewPanel x:Name="FileChangeReviewPanelView" />
                         </TabItem>
                     </TabControl>
-                    <WrapPanel Grid.Row="2" Margin="0,10,0,0">
+                    <WrapPanel Grid.Row="3" Margin="0,10,0,0">
                         <Border Background="#0B2A4A" BorderBrush="#1D4ED8" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
                             <TextBlock Text="{Binding AllText}" Foreground="#93C5FD" FontSize="11" />
                         </Border>

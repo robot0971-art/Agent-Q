@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using AgentQ.Core.Providers;
@@ -33,9 +34,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _latestCheckpointText = "No checkpoint loaded.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
+    private string _reviewWorkflowText = "No auto verification is waiting. Review changes manually or start Auto fix from a failed verification.";
+    private string _pendingReviewVerificationText = "No verification queued.";
+    private string _planEvidenceSummary = "No plan evidence yet. Create or load a plan, then run an item to connect evidence and verification.";
+    private string _planEvidenceStatusText = "No plan selected";
+    private string _planEvidenceAccentBrush = "#B7C4D1";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
+    private bool _hasPendingReviewVerification;
     private FileChangeRecord? _selectedFileChange;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
@@ -46,6 +53,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public MainViewModel()
     {
+        RunSteps.CollectionChanged += (_, _) => RefreshRunSummary();
+        FileChanges.CollectionChanged += FileChangesOnCollectionChanged;
+        Verification.Results.CollectionChanged += (_, _) =>
+        {
+            RefreshRunSummary();
+            RefreshPlanEvidenceSummary();
+        };
+        PlanItems.CollectionChanged += (_, _) => RefreshPlanEvidenceSummary();
+
         Git.PropertyChanged += (_, e) =>
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Git)));
@@ -78,6 +94,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
             }
         };
+
+        RefreshRunSummary();
     }
 
     public ObservableCollection<ChatMessageViewModel> Messages { get; } = [];
@@ -95,6 +113,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public GitPanelViewModel Git { get; } = new();
 
     public ProjectPanelViewModel Project { get; } = new();
+
+    public RunSummaryViewModel RunSummary { get; } = new();
 
     public ObservableCollection<string> EvalDashboardMetrics => EvalDashboard.Metrics;
 
@@ -225,6 +245,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusAccentBrush)));
+            RefreshRunSummary();
         }
     }
 
@@ -283,7 +304,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsBusy
     {
         get => _isBusy;
-        set => SetField(ref _isBusy, value);
+        set
+        {
+            if (SetField(ref _isBusy, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+                RefreshRunSummary();
+            }
+        }
     }
 
     public AgentRunState CurrentRunState
@@ -297,6 +325,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentRunStateText)));
+            RefreshRunSummary();
         }
     }
 
@@ -561,6 +590,56 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _projectConfigText, value);
     }
 
+    public string ReviewWorkflowText
+    {
+        get => _reviewWorkflowText;
+        set => SetField(ref _reviewWorkflowText, value);
+    }
+
+    public string PendingReviewVerificationText
+    {
+        get => _pendingReviewVerificationText;
+        set => SetField(ref _pendingReviewVerificationText, value);
+    }
+
+    public bool HasPendingReviewVerification
+    {
+        get => _hasPendingReviewVerification;
+        set
+        {
+            if (!SetField(ref _hasPendingReviewVerification, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+        }
+    }
+
+    public bool CanApproveAllAndVerify =>
+        HasPendingReviewVerification &&
+        !IsBusy &&
+        FileChanges.Count > 0 &&
+        FileChanges.All(change => change.ReviewStatus is FileChangeReviewStatus.Pending or FileChangeReviewStatus.Approved);
+
+    public string PlanEvidenceSummary
+    {
+        get => _planEvidenceSummary;
+        set => SetField(ref _planEvidenceSummary, value);
+    }
+
+    public string PlanEvidenceStatusText
+    {
+        get => _planEvidenceStatusText;
+        set => SetField(ref _planEvidenceStatusText, value);
+    }
+
+    public string PlanEvidenceAccentBrush
+    {
+        get => _planEvidenceAccentBrush;
+        set => SetField(ref _planEvidenceAccentBrush, value);
+    }
+
     public string EvalDashboardSummary
     {
         get => EvalDashboard.Summary;
@@ -600,7 +679,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public AgentPlanItem? SelectedPlanItem
     {
         get => _selectedPlanItem;
-        set => SetField(ref _selectedPlanItem, value);
+        set
+        {
+            if (SetField(ref _selectedPlanItem, value))
+            {
+                RefreshPlanEvidenceSummary();
+            }
+        }
     }
 
     public ProjectMemoryLesson? SelectedPendingMemoryLesson
@@ -708,6 +793,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Title = title,
             Detail = detail ?? string.Empty
         });
+        RefreshPlanEvidenceSummary();
     }
 
     public void SetLastVerificationFailure(string summary)
@@ -727,11 +813,77 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Verification.Clear();
         FileChanges.Clear();
         EvalDashboard.Reset();
+        RunSummary.Reset();
+        ClearPendingReviewVerification();
+        RefreshPlanEvidenceSummary();
+        RefreshRunSummary();
     }
 
     public void AddVerificationResult(VerificationResultCard result)
     {
         Verification.AddResult(result);
+        RefreshPlanEvidenceSummary();
+        RefreshRunSummary();
+    }
+
+    public void SetPendingReviewVerification(AgentVerificationPlan plan, int changedFileCount, int nextAttempt, int maxAttempts)
+    {
+        HasPendingReviewVerification = true;
+        PendingReviewVerificationText = string.IsNullOrWhiteSpace(plan.Command)
+            ? "Queued verification: no command"
+            : $"Queued verification: {plan.Command}";
+        ReviewWorkflowText = $"Review {changedFileCount:0} changed file(s). Approve or mark edits, then run verification. Next attempt: {nextAttempt:0}/{maxAttempts:0}.";
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+    }
+
+    public void ClearPendingReviewVerification()
+    {
+        HasPendingReviewVerification = false;
+        PendingReviewVerificationText = "No verification queued.";
+        ReviewWorkflowText = "No auto verification is waiting. Review changes manually or start Auto fix from a failed verification.";
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+    }
+
+    private void FileChangesOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+        {
+            foreach (var item in e.NewItems.OfType<FileChangeRecord>())
+            {
+                item.PropertyChanged += FileChangeOnPropertyChanged;
+            }
+        }
+
+        if (e.OldItems != null)
+        {
+            foreach (var item in e.OldItems.OfType<FileChangeRecord>())
+            {
+                item.PropertyChanged -= FileChangeOnPropertyChanged;
+            }
+        }
+
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+        RefreshRunSummary();
+    }
+
+    private void FileChangeOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(FileChangeRecord.ReviewStatus) or nameof(FileChangeRecord.ReviewStatusText))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+            RefreshRunSummary();
+        }
+    }
+
+    private void RefreshRunSummary()
+    {
+        RunSummary.Update(
+            CurrentRunState,
+            StatusText,
+            RunSteps,
+            FileChanges,
+            Verification.Results,
+            IsBusy);
     }
 
     public void ApplyWorkspaceAnalysis(WorkspaceAnalysis analysis)
@@ -742,6 +894,70 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void ApplyEvalDashboard(EvalReplayDashboardReport report)
     {
         EvalDashboard.ApplyReport(report);
+        RefreshPlanEvidenceSummary();
+    }
+
+    public void RefreshPlanEvidenceSummary()
+    {
+        var selected = SelectedPlanItem;
+        var item = selected ??
+                   PlanItems.FirstOrDefault(plan => plan.Status == AgentPlanItemStatus.InProgress) ??
+                   PlanItems.FirstOrDefault(plan => plan.Status == AgentPlanItemStatus.Pending) ??
+                   PlanItems.LastOrDefault(plan => plan.Status == AgentPlanItemStatus.Done);
+
+        if (item == null)
+        {
+            PlanEvidenceStatusText = "No plan selected";
+            PlanEvidenceAccentBrush = "#B7C4D1";
+            PlanEvidenceSummary = "No plan evidence yet. Create or load a plan, then run an item to connect evidence and verification.";
+            return;
+        }
+
+        var evidence = BuildCompactEvidence(RunSteps.LastOrDefault());
+        var verification = BuildCompactVerification(Verification.Results.FirstOrDefault());
+        var eval = EvalDashboard.Findings.FirstOrDefault() ?? EvalDashboard.FailureFingerprints.FirstOrDefault() ?? "No eval finding loaded.";
+        PlanEvidenceStatusText = $"{item.StatusText}: {item.DisplayTitle}";
+        PlanEvidenceAccentBrush = item.Status switch
+        {
+            AgentPlanItemStatus.Done => "#37D67A",
+            AgentPlanItemStatus.InProgress => "#5BA7FF",
+            AgentPlanItemStatus.Blocked => "#F87171",
+            _ => "#FBBF24"
+        };
+        PlanEvidenceSummary = $"Evidence: {evidence} | Verification: {verification} | Eval: {TrimPlanEvidence(eval, 120)}";
+    }
+
+    private static string BuildCompactEvidence(AgentRunStep? step)
+    {
+        if (step == null)
+        {
+            return "No timeline evidence yet.";
+        }
+
+        var detail = string.IsNullOrWhiteSpace(step.Detail) ? step.Title : $"{step.Title}: {step.Detail}";
+        return TrimPlanEvidence(detail, 120);
+    }
+
+    private static string BuildCompactVerification(VerificationResultCard? result)
+    {
+        if (result == null)
+        {
+            return "Not verified.";
+        }
+
+        var detail = string.IsNullOrWhiteSpace(result.Summary) ? result.Title : $"{result.Status} {result.Title}: {result.Summary}";
+        return TrimPlanEvidence(detail, 120);
+    }
+
+    private static string TrimPlanEvidence(string value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "No detail.";
+        }
+
+        value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return value.Length <= max ? value : value[..max] + "...";
     }
 
     private void RefreshModelsForProvider(bool preserveCurrentModel)

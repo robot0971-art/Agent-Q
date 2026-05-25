@@ -159,6 +159,10 @@ The desktop Evidence tab records evidence-oriented events instead of exposing hi
 
 The desktop Project panel builds a lightweight project map during workspace analysis. It detects common folder roles such as UI, API, database, domain logic, tests, assets, configuration, and Unity project folders, then lists key files such as `README.md`, `package.json`, solution files, Docker files, and `.agentq` project memory/config files.
 
+## Demo Scenarios
+
+Repeatable desktop demo flows are documented in [docs/demo-scenarios.md](docs/demo-scenarios.md). They cover a C# bug fix with verification, a React/TypeScript feature change with project-aware search, and Unity project analysis with visual/game evidence.
+
 ## Search Retry
 
 When a text or file search returns no results, AgentQ can automatically retry with broader variants before handing the result back to the model. For example, a failed `grep_search` can retry with a case-insensitive pattern, and a failed `glob_search` can retry with a recursive path pattern. Retry attempts are recorded in the Evidence tab.

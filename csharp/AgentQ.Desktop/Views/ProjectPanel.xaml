@@ -62,6 +62,56 @@
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
                                Margin="0,0,0,6" />
+                    <Border Background="#09121D"
+                            BorderBrush="{Binding HealthAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="7"
+                            Margin="0,0,0,8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5">
+                                <Border DockPanel.Dock="Right"
+                                        Background="#13202D"
+                                        BorderBrush="{Binding HealthAccentBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="6,2"
+                                        Margin="6,0,0,0">
+                                    <TextBlock Text="{Binding HealthText}"
+                                               Foreground="{Binding HealthAccentBrush}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold" />
+                                </Border>
+                                <TextBlock Text="Project dashboard"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding DashboardSummary}"
+                                       Foreground="{DynamicResource TextMuted}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <UniformGrid Columns="2">
+                                <TextBlock Text="{Binding SymbolCountText}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           Margin="0,1,6,1" />
+                                <TextBlock Text="{Binding DependencyCountText}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           Margin="0,1,0,1" />
+                                <TextBlock Text="{Binding KeyFileCountText}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           Margin="0,1,6,1" />
+                                <TextBlock Text="{Binding VerificationCommandCountText}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="11"
+                                           Margin="0,1,0,1" />
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
                     <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="72" />
@@ -95,6 +145,23 @@
                         <TextBlock Grid.Column="1" Text="{Binding Stats}" Foreground="{DynamicResource TextMain}" FontSize="11" TextWrapping="Wrap" />
                     </Grid>
                     <TextBlock Text="Commands" Style="{DynamicResource LabelText}" />
+                    <TextBlock Text="{Binding VerificationCommandsEmptyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding VerificationCommands.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <ItemsControl ItemsSource="{Binding VerificationCommands}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -108,6 +175,23 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Project map" Style="{DynamicResource LabelText}" />
+                    <TextBlock Text="{Binding ProjectMapEmptyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProjectMap.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <ItemsControl ItemsSource="{Binding ProjectMap}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -120,6 +204,23 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key symbols" Style="{DynamicResource LabelText}" />
+                    <TextBlock Text="{Binding KeySymbolsEmptyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding KeySymbols.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <ItemsControl ItemsSource="{Binding KeySymbols}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -133,6 +234,23 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key dependencies" Style="{DynamicResource LabelText}" />
+                    <TextBlock Text="{Binding KeyDependenciesEmptyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding KeyDependencies.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <ItemsControl ItemsSource="{Binding KeyDependencies}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -146,6 +264,23 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="Key files" Style="{DynamicResource LabelText}" />
+                    <TextBlock Text="{Binding KeyFilesEmptyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11"
+                               FontStyle="Italic"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding KeyFiles.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <ItemsControl ItemsSource="{Binding KeyFiles}" Margin="0,0,0,6">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

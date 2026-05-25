@@ -15,6 +15,7 @@ $projects = @(
     "csharp\AgentQ.Providers.OpenAi\AgentQ.Providers.OpenAi.csproj",
     "csharp\AgentQ.Cli\AgentQ.Cli.csproj",
     "csharp\AgentQ.MockService\AgentQ.MockService.csproj",
+    "csharp\AgentQ.Desktop\AgentQ.Desktop.csproj",
     "csharp\AgentQ.Tests\AgentQ.Tests.csproj"
 )
 

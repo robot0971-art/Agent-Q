@@ -3369,6 +3369,220 @@ public sealed class DesktopServiceTests
         return path;
     }
 
+    [Fact]
+    public void ProjectPanelViewModel_ApplyAnalysis_BuildsReadyDashboard()
+    {
+        var viewModel = new ProjectPanelViewModel();
+
+        viewModel.ApplyAnalysis(new WorkspaceAnalysis
+        {
+            ProjectType = "C#",
+            Framework = "WPF",
+            GitBranch = "main",
+            FileCount = 42,
+            DirectoryCount = 7,
+            SymbolCount = 120,
+            DependencyEdgeCount = 18,
+            VerificationCommands = ["dotnet test"],
+            ProjectMap = ["UI Layer - csharp/AgentQ.Desktop"],
+            KeySymbols = ["MainViewModel"],
+            KeyDependencies = ["AgentQ.Desktop -> AgentQ.Core"],
+            KeyFiles = ["csharp/AgentQ.Desktop/MainWindow.xaml"]
+        });
+
+        Assert.Equal("Ready", viewModel.HealthText);
+        Assert.Equal("#37D67A", viewModel.HealthAccentBrush);
+        Assert.Equal("120 symbols", viewModel.SymbolCountText);
+        Assert.Equal("18 dependencies", viewModel.DependencyCountText);
+        Assert.Equal("1 key files", viewModel.KeyFileCountText);
+        Assert.Equal("1 commands", viewModel.VerificationCommandCountText);
+        Assert.Contains("C# workspace using WPF", viewModel.DashboardSummary);
+    }
+
+    [Fact]
+    public void ProjectPanelViewModel_ApplyAnalysis_FlagsPartialMapWithoutVerification()
+    {
+        var viewModel = new ProjectPanelViewModel();
+
+        viewModel.ApplyAnalysis(new WorkspaceAnalysis
+        {
+            ProjectType = "Unknown",
+            Framework = "Unknown",
+            FileCount = 5,
+            DirectoryCount = 1
+        });
+
+        Assert.Equal("Needs verification command", viewModel.HealthText);
+        Assert.Equal("#FBBF24", viewModel.HealthAccentBrush);
+        Assert.Equal("0 commands", viewModel.VerificationCommandCountText);
+    }
+
+    [Fact]
+    public void ProjectPanelViewModel_ApplyAnalysis_FlagsEnvironmentWarnings()
+    {
+        var viewModel = new ProjectPanelViewModel();
+
+        viewModel.ApplyAnalysis(new WorkspaceAnalysis
+        {
+            ProjectType = "TypeScript",
+            Framework = "React",
+            VerificationCommands = ["npm test"],
+            ProjectMap = ["UI Layer - src"],
+            KeyFiles = ["src/App.tsx"],
+            Hints = ["Diagnostic Warning: 'node' is not in PATH."]
+        });
+
+        Assert.Equal("Needs environment attention", viewModel.HealthText);
+        Assert.Equal("#FBBF24", viewModel.HealthAccentBrush);
+    }
+
+    [Fact]
+    public void MainViewModel_PendingReviewVerification_EnablesApproveAllAndVerifyForPendingChanges()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.FileChanges.Add(new FileChangeRecord
+        {
+            Path = "src/App.cs",
+            RelativePath = "src/App.cs"
+        });
+
+        viewModel.SetPendingReviewVerification(
+            new AgentVerificationPlan
+            {
+                Title = "Run tests",
+                Command = "dotnet test",
+                Reason = "Verify fix"
+            },
+            changedFileCount: 1,
+            nextAttempt: 2,
+            maxAttempts: 3);
+
+        Assert.True(viewModel.CanApproveAllAndVerify);
+        Assert.True(viewModel.HasPendingReviewVerification);
+        Assert.Contains("dotnet test", viewModel.PendingReviewVerificationText);
+        Assert.Contains("2/3", viewModel.ReviewWorkflowText);
+    }
+
+    [Theory]
+    [InlineData(FileChangeReviewStatus.NeedsEdit)]
+    [InlineData(FileChangeReviewStatus.Reverted)]
+    public void MainViewModel_PendingReviewVerification_DisablesApproveAllAndVerifyForBlockedChanges(FileChangeReviewStatus status)
+    {
+        var viewModel = new MainViewModel();
+        var change = new FileChangeRecord
+        {
+            Path = "src/App.cs",
+            RelativePath = "src/App.cs"
+        };
+        viewModel.FileChanges.Add(change);
+        viewModel.SetPendingReviewVerification(
+            new AgentVerificationPlan
+            {
+                Title = "Run tests",
+                Command = "dotnet test",
+                Reason = "Verify fix"
+            },
+            changedFileCount: 1,
+            nextAttempt: 2,
+            maxAttempts: 3);
+
+        change.ReviewStatus = status;
+
+        Assert.False(viewModel.CanApproveAllAndVerify);
+    }
+
+    [Fact]
+    public void MainViewModel_ClearPendingReviewVerification_ResetsReviewWorkflow()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.FileChanges.Add(new FileChangeRecord
+        {
+            Path = "src/App.cs",
+            RelativePath = "src/App.cs"
+        });
+        viewModel.SetPendingReviewVerification(
+            new AgentVerificationPlan
+            {
+                Title = "Run tests",
+                Command = "dotnet test",
+                Reason = "Verify fix"
+            },
+            changedFileCount: 1,
+            nextAttempt: 2,
+            maxAttempts: 3);
+
+        viewModel.ClearPendingReviewVerification();
+
+        Assert.False(viewModel.HasPendingReviewVerification);
+        Assert.False(viewModel.CanApproveAllAndVerify);
+        Assert.Equal("No verification queued.", viewModel.PendingReviewVerificationText);
+    }
+
+    [Fact]
+    public void MainViewModel_RefreshPlanEvidenceSummary_ConnectsPlanEvidenceVerificationAndEval()
+    {
+        var viewModel = new MainViewModel();
+        var item = new AgentPlanItem
+        {
+            Order = 1,
+            Title = "Fix parser",
+            Detail = "Patch parser bug"
+        };
+        viewModel.PlanItems.Add(item);
+        viewModel.SelectedPlanItem = item;
+        viewModel.AddRunStep(AgentRunState.RunningTool, "Evidence: read_file", "Read parser.cs because it owns Parse().");
+        viewModel.AddVerificationResult(new VerificationResultCard
+        {
+            Status = "PASSED",
+            Title = "Unit tests",
+            Summary = "Parser tests passed"
+        });
+        viewModel.ApplyEvalDashboard(new EvalReplayDashboardReport
+        {
+            Findings = { "No failed tools detected." }
+        });
+
+        Assert.Contains("Pending: 1. Fix parser", viewModel.PlanEvidenceStatusText);
+        Assert.Contains("Evidence: read_file", viewModel.PlanEvidenceSummary);
+        Assert.Contains("PASSED Unit tests", viewModel.PlanEvidenceSummary);
+        Assert.Contains("No failed tools detected", viewModel.PlanEvidenceSummary);
+    }
+
+    [Fact]
+    public void MainViewModel_RefreshPlanEvidenceSummary_UsesPlanStatusAccent()
+    {
+        var viewModel = new MainViewModel();
+        var item = new AgentPlanItem
+        {
+            Order = 1,
+            Title = "Verify change",
+            Detail = "Run focused verification",
+            Status = AgentPlanItemStatus.Done
+        };
+
+        viewModel.PlanItems.Add(item);
+        viewModel.SelectedPlanItem = item;
+
+        Assert.Equal("#37D67A", viewModel.PlanEvidenceAccentBrush);
+        Assert.Contains("Done: 1. Verify change", viewModel.PlanEvidenceStatusText);
+    }
+
+    [Fact]
+    public void DesktopPanelViewModels_DefaultEmptyStates_GiveNextActions()
+    {
+        var git = new GitPanelViewModel();
+        var project = new ProjectPanelViewModel();
+        var eval = new EvalDashboardViewModel();
+        var run = new RunSummaryViewModel();
+
+        Assert.Contains("Click Status", git.StatusText);
+        Assert.Contains("Click Diff", git.DiffText);
+        Assert.Contains("Analyze", project.ProjectType);
+        Assert.Contains("Analyze", project.Stats);
+        Assert.Contains("Click Refresh", eval.Summary);
+        Assert.Contains("Evidence will appear", run.LastEvidence);
+    }
+
     private sealed class StubHttpClientFactory(
         string content,
         HttpStatusCode statusCode = HttpStatusCode.OK,

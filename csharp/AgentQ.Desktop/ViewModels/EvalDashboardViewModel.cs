@@ -7,8 +7,8 @@ namespace AgentQ.Desktop.ViewModels;
 
 public sealed class EvalDashboardViewModel : INotifyPropertyChanged
 {
-    private string _summary = "Eval dashboard not loaded.";
-    private string _updatedText = "Not refreshed yet.";
+    private string _summary = "Click Refresh to load replay, telemetry, verification, and recurring failure signals.";
+    private string _updatedText = "Waiting for first refresh.";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -49,8 +49,8 @@ public sealed class EvalDashboardViewModel : INotifyPropertyChanged
         Findings.Clear();
         ReplayEntries.Clear();
         FailureFingerprints.Clear();
-        Summary = "Eval dashboard not loaded.";
-        UpdatedText = "Not refreshed yet.";
+        Summary = "Click Refresh to load replay, telemetry, verification, and recurring failure signals.";
+        UpdatedText = "Waiting for first refresh.";
     }
 
     private static void ReplaceItems(ObservableCollection<string> target, IEnumerable<string> values)

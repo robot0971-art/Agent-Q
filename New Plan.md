@@ -1,51 +1,114 @@
 # AgentQ Current Plan
 
-Updated: 2026-05-23
+Updated: 2026-05-25
 
 Implementation rule: finish items from top to bottom. When an item is implemented, verified, committed, and pushed, remove it from this file.
 
-## Current Focus
+## Current Completion Estimate
 
-AgentQ has a solid v1.5 engine foundation: workspace analysis, Project Map, hybrid search, dependency graph, language workers, Roslyn analysis, evidence, confidence, memory, replay/eval, Git workflow, visual evidence, Unity analysis, and multi-agent role planning.
+Current estimated product completeness:
 
-The next work should raise the perceived product completeness from roughly 50-60% toward 70% by turning those engine pieces into a smooth daily-use workflow:
+- Engine/core agent capability: 75-80%
+- Desktop product UX: 70-75%
+- Release/distribution readiness: 55-60%
+- Overall practical readiness: about 70%
 
-- make the main path obvious: open project -> analyze -> ask -> edit -> verify -> review -> commit
-- reduce scattered panels and repeated manual steps
-- make state, evidence, verification, and next actions visible without requiring the user to understand internals
-- improve empty/error states so the app feels stable even when tools fail
-- prioritize demoable end-to-end scenarios over adding more isolated engine features
+The main engine pieces are now present: Project Map, hybrid search, symbol search, language workers, Roslyn analysis, evidence trail, confidence signals, memory, replay/eval, Git workflow, visual evidence, Unity analysis, planning, MCP foundation, Auto Fix review flow, run summary, project dashboard, and plan/evidence/eval connection.
 
-## Active Work Queue
+The next goal is to move AgentQ from roughly 70% to 80% by proving the main workflows with repeatable demos, fixing demo-discovered issues, and preparing a clean release pass.
 
-1. End-to-End Run UX
-   - Add a clear run summary that shows current phase, next action, last evidence, verification status, and commit readiness.
-   - Make the happy path visible from one place: request -> context gathered -> files changed -> verification -> review -> commit.
-   - Add empty states and user-facing guidance for idle, running, failed, and completed runs.
+## Completed In This Pass
 
-2. Project Dashboard Integration
-   - Consolidate Project Map, key files, key symbols, dependencies, confidence, evidence, and eval signals into a more useful project overview.
-   - Surface what AgentQ knows about this project without requiring the user to inspect multiple tabs.
-   - Add quick actions for refresh analysis, build index, open important files, and view relevant evidence.
+- Pulled and reviewed upstream changes from `0458bdd` to `329030e`.
+- Verified the pulled changes with build and tests.
+- Added always-visible Run Summary.
+- Added Project Dashboard integration.
+- Improved Auto Fix -> Review -> Verify flow.
+- Connected Plan, Evidence, Verification, and Eval signals.
+- Added repeatable demo scenario documentation.
+- Improved product polish:
+  - restored the Korean desktop plan document
+  - improved empty states and next-action copy
+  - fixed build/test scripts to include Desktop and run the correct `net10.0-windows` test assembly
+- Verified with `.\build.ps1` and `.\test.ps1`.
 
-3. Auto Workflow: Fix -> Verify -> Review
-   - Improve the automatic flow after code edits: select verification, run it, classify failure, suggest or perform a retry, then pause for review.
-   - Make changed-file review and verification results guide the next action.
-   - Keep approval/permission boundaries clear.
+## Active Work Queue Toward 80%
 
-4. Plan / Evidence / Eval Connection
-   - Tie plan items, evidence timeline, replay/eval dashboard, and confidence into one coherent story for a run.
-   - Show why an item is done or blocked using evidence and verification results.
-   - Make replay/eval findings actionable instead of purely informational.
+1. Commit Current Stabilization Pass
+   - Review the full diff.
+   - Stage all intended changes.
+   - Commit with a clear message.
+   - Push `main` to GitHub.
+   - Confirm Git status is clean.
 
-5. Demo Scenarios
-   - Create or document three repeatable demo flows:
-     - C# bug fix with verification
-     - React/TypeScript feature change with project-aware search
-     - Unity project analysis with visual/game evidence
-   - Include expected commands, expected UI states, and success criteria.
+2. Run Demo Scenario 1: C# Bug Fix With Verification
+   - Use `docs/demo-scenarios.md`.
+   - Run the flow against a disposable C# sample project or branch.
+   - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
+   - Log any UX or functional issue found during the run.
 
-6. Product Polish And Stability
-   - Improve confusing copy, mojibake text, empty panels, and error messages.
-   - Tighten UI spacing and scanability in the main workflow panels.
-   - Add focused regression tests for the polished flows.
+3. Run Demo Scenario 2: React/TypeScript Feature Change
+   - Use a small React/Vite/Next TypeScript sample project.
+   - Confirm TypeScript worker/project-aware search signals.
+   - Verify frontend command selection and Evidence trail.
+   - Log any search, verification, or UI issue found.
+
+4. Run Demo Scenario 3: Unity Project Analysis
+   - Use a Unity sample project or representative fixture.
+   - Confirm Unity project map entries: scenes, prefabs, scripts, asmdefs, packages.
+   - Attach a screenshot/video if available and confirm visual evidence appears.
+   - Log any Unity-specific analysis or verification gaps.
+
+5. Demo Issue Fix Pass
+   - Fix only issues discovered from the three demo runs.
+   - Prefer small, focused changes over new feature expansion.
+   - Add regression tests for any behavior that broke or confused the demo flow.
+   - Verify with `.\build.ps1` and `.\test.ps1`.
+
+6. Release Readiness Checklist
+   - Update README with current desktop workflow and known limitations.
+   - Add release notes draft for the current beta.
+   - Add installer/portable ZIP QA checklist.
+   - Keep code signing as a later paid-release decision unless a certificate is already available.
+
+7. 80% Readiness Review
+   - Confirm the main path works:
+     `open project -> analyze -> ask -> edit -> verify -> review -> commit`
+   - Confirm all three demo scenarios are repeatable.
+   - Confirm build/test are green.
+   - Confirm no obvious mojibake, stale empty states, or confusing main-panel copy remains.
+   - Re-estimate completeness and decide the next pass:
+     - Windows 1.0 stabilization
+     - Persistent MCP Session
+     - Avalonia/Linux prototype
+     - Release signing pipeline
+
+## Later 80% -> 90% Candidates
+
+These are important, but should come after the demo-driven 80% pass unless a demo exposes them as blockers.
+
+1. Persistent MCP Session
+   - Replace per-call MCP process startup with reusable sessions.
+   - Add JSON-RPC response routing with `TaskCompletionSource`.
+   - Add timeout, cancellation, process death recovery, and tests.
+
+2. Stronger Sandbox And Permission Policy
+   - Make shell/file/git permission boundaries clearer.
+   - Improve destructive command prevention and user-facing explanations.
+
+3. Error History And Failure Memory
+   - Strengthen recurring failure fingerprints.
+   - Surface previously seen failures more directly in Auto Fix and Verify.
+
+4. Context Compression And Tool Router
+   - Improve large-project context summaries.
+   - Make tool choice more explicit and measurable.
+
+5. Cross-Platform Strategy
+   - Keep Windows WPF for near-term 1.0.
+   - Reduce Windows-specific service coupling.
+   - Start Avalonia prototype only after Windows demo flows are stable.
+
+6. Code Signing Pipeline
+   - Revisit when paid certificate/HSM/cloud signing budget is available.
+   - Automate signing for desktop executable and installer in CI.

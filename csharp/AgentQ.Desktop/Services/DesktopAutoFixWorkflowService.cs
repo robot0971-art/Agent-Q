@@ -41,6 +41,7 @@ public sealed class DesktopAutoFixWorkflowService(
         if (_pendingAutoFixVerificationPlan == null)
         {
             viewModel.StatusText = "No pending Auto Fix verification";
+            viewModel.ClearPendingReviewVerification();
             return;
         }
 
@@ -57,6 +58,7 @@ public sealed class DesktopAutoFixWorkflowService(
         if (_pendingAutoFixChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.Reverted))
         {
             ClearPendingReview();
+            viewModel.ClearPendingReviewVerification();
             viewModel.StatusText = "Auto Fix verification cancelled after revert";
             viewModel.AddRunStep(
                 AgentRunState.Cancelled,
@@ -75,6 +77,7 @@ public sealed class DesktopAutoFixWorkflowService(
         var maxAttempts = _pendingAutoFixMaxAttempts;
         var previousFailureSignature = _pendingAutoFixPreviousFailureSignature;
         ClearPendingReview();
+        viewModel.ClearPendingReviewVerification();
 
         viewModel.AddRunStep(
             AgentRunState.Verifying,
@@ -208,6 +211,7 @@ public sealed class DesktopAutoFixWorkflowService(
         _pendingAutoFixNextAttempt = nextAttempt;
         _pendingAutoFixMaxAttempts = maxAttempts;
         _pendingAutoFixPreviousFailureSignature = previousFailureSignature;
+        viewModel.SetPendingReviewVerification(retryPlan, changes.Count, nextAttempt, maxAttempts);
 
         viewModel.AddRunStep(
             AgentRunState.WaitingForApproval,

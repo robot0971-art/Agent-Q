@@ -8,10 +8,10 @@ namespace AgentQ.Desktop.ViewModels;
 public sealed class GitPanelViewModel : INotifyPropertyChanged
 {
     private bool _canFixLastCodeReviewFindings;
-    private string _statusText = "Not refreshed yet.";
-    private string _diffText = "Not refreshed yet.";
+    private string _statusText = "Click Status to inspect the current branch and changed files.";
+    private string _diffText = "Click Diff to load the current workspace diff.";
     private string _selectedFileDiffText = "Select a changed file to view its diff.";
-    private string _lastUpdatedText = "Git not refreshed yet.";
+    private string _lastUpdatedText = "Git panel is waiting for refresh.";
     private string _commitMessage = string.Empty;
     private GitChangedFile? _selectedChangedFile;
 
@@ -65,10 +65,10 @@ public sealed class GitPanelViewModel : INotifyPropertyChanged
     {
         ChangedFiles.Clear();
         SelectedChangedFile = null;
-        StatusText = "Not refreshed yet.";
-        DiffText = "Not refreshed yet.";
+        StatusText = "Click Status to inspect the current branch and changed files.";
+        DiffText = "Click Diff to load the current workspace diff.";
         SelectedFileDiffText = "Select a changed file to view its diff.";
-        LastUpdatedText = "Git not refreshed yet.";
+        LastUpdatedText = "Git panel is waiting for refresh.";
         CommitMessage = string.Empty;
         CanFixLastCodeReviewFindings = false;
     }

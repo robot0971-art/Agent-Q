@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $nugetConfig = Join-Path $repoRoot "NuGet.Config"
 $testProject = Join-Path $repoRoot "csharp\AgentQ.Tests\AgentQ.Tests.csproj"
-$testAssembly = Join-Path $repoRoot "csharp\AgentQ.Tests\bin\Debug\net10.0\AgentQ.Tests.dll"
+$testAssembly = Join-Path $repoRoot "csharp\AgentQ.Tests\bin\Debug\net10.0-windows\AgentQ.Tests.dll"
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"

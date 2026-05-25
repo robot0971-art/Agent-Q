@@ -5,7 +5,7 @@ set "REPO_ROOT=%~dp0"
 set "NUGET_CONFIG=%REPO_ROOT%NuGet.Config"
 set "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1"
 set "DOTNET_CLI_TELEMETRY_OPTOUT=1"
-set "TEST_DLL=%REPO_ROOT%csharp\AgentQ.Tests\bin\Debug\net10.0\AgentQ.Tests.dll"
+set "TEST_DLL=%REPO_ROOT%csharp\AgentQ.Tests\bin\Debug\net10.0-windows\AgentQ.Tests.dll"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
