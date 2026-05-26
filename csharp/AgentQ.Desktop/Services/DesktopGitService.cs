@@ -9,17 +9,17 @@ public sealed class DesktopGitService
 {
     public Task<GitCommandResult> GetStatusAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["status", "--short", "--branch"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, ["status", "--short", "--branch", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
     }
 
     public Task<GitCommandResult> GetDiffStatAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["diff", "--stat"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, ["diff", "--stat", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
     }
 
     public Task<GitCommandResult> GetFullDiffAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["diff", "HEAD", "--"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, ["diff", "HEAD", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
     }
 
     public async Task<IReadOnlyList<GitChangedFile>> GetChangedFilesAsync(
@@ -28,7 +28,7 @@ public sealed class DesktopGitService
     {
         var result = await RunGitAsync(
             workingDirectory,
-            ["status", "--porcelain=v1", "--untracked-files=normal"],
+            ["status", "--porcelain=v1", "--untracked-files=normal", "--", ".", ":(exclude).agentq"],
             TimeSpan.FromSeconds(30),
             ct);
 
@@ -240,6 +240,11 @@ public sealed class DesktopGitService
 
             var status = rawLine[..2];
             var path = rawLine[3..].Trim();
+            if (IsAgentQInternalPath(path))
+            {
+                continue;
+            }
+
             string? originalPath = null;
 
             const string renameMarker = " -> ";
@@ -259,5 +264,12 @@ public sealed class DesktopGitService
         }
 
         return files;
+    }
+
+    private static bool IsAgentQInternalPath(string path)
+    {
+        var normalized = path.Replace('\\', '/').TrimStart('/');
+        return normalized.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".agentq/", StringComparison.OrdinalIgnoreCase);
     }
 }

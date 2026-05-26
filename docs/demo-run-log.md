@@ -64,3 +64,55 @@ Findings:
 - Remaining Desktop UI pass:
   - Run the actual chat request through AgentQ Desktop with a configured provider.
   - Confirm Evidence, Verify, Change preview, Plan, Run summary, and Git commit-summary behavior from the app-generated run.
+
+## 2026-05-26 - Scenario 1: Provider-Backed Desktop Chat Pass
+
+Setup:
+
+- Reset `C:\Users\admin\Desktop\AgentQ-Demo-CSharp` to the failing parser baseline.
+- Started AgentQ Desktop against the sample workspace.
+- Increased desktop request timeout from 30 seconds to 180 seconds for the interactive approval run.
+
+Request:
+
+```text
+Find and fix the failing parser test. Keep the change minimal and run the focused verification.
+```
+
+Result:
+
+- AgentQ Desktop used the configured `opencode-go` provider.
+- The run requested approval for `dotnet test` in Coding mode.
+- After approval, AgentQ:
+  - ran tests and identified `Parse_RemovesWrappingQuotesFromValues`
+  - read `DemoParser\KeyValueParser.cs`
+  - changed only `DemoParser\KeyValueParser.cs`
+  - reran focused verification
+  - detected that `--no-build` did not rebuild changed source
+  - reran tests with build
+  - reported all 2 tests passing
+
+Final sample diff:
+
+- `DemoParser/KeyValueParser.cs | 7 ++++++-`
+- `1 file changed, 6 insertions(+), 1 deletion(-)`
+
+Product fixes made during this pass:
+
+- Added startup workspace support:
+  - first command-line argument
+  - `AGENTQ_DESKTOP_WORKSPACE` environment variable
+- Updated Git panel commands to exclude AgentQ internal `.agentq/` files from status, diff stat, full diff, and changed-file lists.
+
+Verification:
+
+- `.\build.ps1` passed.
+- `.\test.ps1` passed: 242 non-integration tests.
+- Relaunched AgentQ Desktop with `C:\Users\admin\Desktop\AgentQ-Demo-CSharp` as the first argument.
+- Confirmed Git panel showed only `DemoParser/KeyValueParser.cs` even though `.agentq/replay` existed.
+
+Findings:
+
+- The default 30 second request timeout is too short for provider-backed demo runs that include approval time and test execution.
+- Shell-run verification appears in the agent answer and evidence, but the Verify panel still displays `Not verified`; Verify cards are only created through the explicit Verify workflow.
+- The Run summary correctly showed completion and one changed file after the provider-backed run.

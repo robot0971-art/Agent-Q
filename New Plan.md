@@ -40,6 +40,11 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
   - Ran Scenario 1 partial Desktop UI pass:
     - Project dashboard detected `.NET / net10.0`, `dotnet build`, `dotnet test`, `.slnx`, C# projects, symbols, Roslyn symbols, and project references.
     - Git panel detected branch `master`, one source change, and a focused one-file diff after the disposable sample was cleaned up with `.gitignore`.
+  - Ran Scenario 1 provider-backed Desktop chat pass:
+    - AgentQ Desktop used the configured provider, found the failing parser test, edited one C# file, and reported all 2 sample tests passing.
+    - Added startup workspace support via first command-line argument or `AGENTQ_DESKTOP_WORKSPACE`.
+    - Filtered AgentQ internal `.agentq/` files out of Git panel status/diff/change lists.
+    - Found a remaining UX gap: shell-run tests are visible in the run/evidence narrative, but the Verify panel still says `Not verified` unless verification is run through the explicit Verify workflow.
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -48,7 +53,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use `docs/demo-scenarios.md`.
    - Run the flow against a disposable C# sample project or branch.
    - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
-   - Complete the remaining provider-backed Desktop chat pass; the core CLI bug-fix/focused verification flow and Project dashboard/Git UI checks passed on 2026-05-26.
+   - Decide whether shell-run test results should create Verify result cards automatically; current provider-backed run passed, but Verify panel remained `Not verified`.
    - Log any UX or functional issue found during the run.
 
 2. Run Demo Scenario 2: React/TypeScript Feature Change
