@@ -44,8 +44,8 @@ public static class GitBranchRecoveryAnalyzer
 
         return (ahead, behind) switch
         {
-            (> 0, > 0) => "Recovery: Branch diverged. Create a backup branch before reviewing or switching.",
-            (> 0, _) => "Recovery: Local commits exist. Create a backup branch or push before switching.",
+            ( > 0, > 0) => "Recovery: Branch diverged. Create a backup branch before reviewing or switching.",
+            ( > 0, _) => "Recovery: Local commits exist. Create a backup branch or push before switching.",
             (_, > 0) => "Recovery: Clean and behind upstream. Pull --ff-only is the next safe step.",
             _ => "Recovery: Clean and up to date. Backup branch is optional."
         };

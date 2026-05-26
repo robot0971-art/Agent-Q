@@ -1,4 +1,4 @@
-﻿using AgentQ.Api;
+using AgentQ.Api;
 
 namespace AgentQ.MockService;
 

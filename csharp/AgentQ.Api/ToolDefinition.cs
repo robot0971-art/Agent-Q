@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Api;
+namespace AgentQ.Api;
 
 /// <summary>
 /// 도구 정의

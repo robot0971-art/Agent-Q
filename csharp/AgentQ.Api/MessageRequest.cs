@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Api;
+namespace AgentQ.Api;
 
 /// <summary>
 /// 메시지 요청

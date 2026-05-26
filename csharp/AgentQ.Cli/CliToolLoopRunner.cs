@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;

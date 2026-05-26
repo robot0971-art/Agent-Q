@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AgentQ.Cli;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
@@ -1059,10 +1059,10 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
     }
 
-        /// <summary>
-        /// 임시 디렉토리와 모든 내용을 삭제합니다.
-        /// </summary>
-        public void Dispose()
+    /// <summary>
+    /// 임시 디렉토리와 모든 내용을 삭제합니다.
+    /// </summary>
+    public void Dispose()
     {
         foreach (var pair in _originalEnvironment)
         {
@@ -1125,10 +1125,10 @@ public sealed class ToolAndConfigurationTests : IDisposable
             return path;
         }
 
-    /// <summary>
-    /// 테스트 중 변경된 환경 변수를 원래 값으로 복원합니다.
-    /// </summary>
-    public void Dispose()
+        /// <summary>
+        /// 테스트 중 변경된 환경 변수를 원래 값으로 복원합니다.
+        /// </summary>
+        public void Dispose()
         {
             if (Directory.Exists(RootPath))
             {

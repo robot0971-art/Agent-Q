@@ -77,7 +77,7 @@ public class ResilientLlmProvider : ILlmProvider
 
             var stream = _inner.GenerateStreamAsync(context, tools, ct);
             var enumerator = stream.GetAsyncEnumerator(ct);
-            
+
             try
             {
                 while (true)

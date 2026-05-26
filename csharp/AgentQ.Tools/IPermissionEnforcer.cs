@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Tools;
+namespace AgentQ.Tools;
 
 /// <summary>
 /// 권한 인포서 인터페이스

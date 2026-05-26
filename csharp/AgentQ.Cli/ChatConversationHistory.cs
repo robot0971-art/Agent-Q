@@ -1,4 +1,4 @@
-﻿using AgentQ.Core.Models;
+using AgentQ.Core.Models;
 
 namespace AgentQ.Cli;
 

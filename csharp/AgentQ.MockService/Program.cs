@@ -1,4 +1,4 @@
-﻿using AgentQ.MockService;
+using AgentQ.MockService;
 
 Console.WriteLine("Starting AgentQ Mock Anthropic Service...");
 

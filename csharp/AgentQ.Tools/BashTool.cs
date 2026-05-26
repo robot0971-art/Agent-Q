@@ -92,7 +92,7 @@ public class BashTool : ITool
         try
         {
             var encoding = Encoding.UTF8;
-            #pragma warning disable CA1416
+#pragma warning disable CA1416
             if (OperatingSystem.IsWindows())
             {
                 try
@@ -104,7 +104,7 @@ public class BashTool : ITool
                     encoding = Encoding.UTF8;
                 }
             }
-            #pragma warning restore CA1416
+#pragma warning restore CA1416
 
             var psi = new ProcessStartInfo
             {

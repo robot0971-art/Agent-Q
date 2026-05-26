@@ -1,4 +1,4 @@
-﻿namespace AgentQ.MockService;
+namespace AgentQ.MockService;
 
 public enum Scenario
 {

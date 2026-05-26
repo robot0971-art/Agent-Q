@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Tools;
+namespace AgentQ.Tools;
 
 /// <summary>
 /// 도구 인터페이스

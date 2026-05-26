@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Api;
+namespace AgentQ.Api;
 
 public enum StreamEventType
 {

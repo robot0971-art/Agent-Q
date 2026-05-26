@@ -40,8 +40,8 @@ public static class GitBranchStatusAnalyzer
 
         return (ahead, behind) switch
         {
-            (> 0, > 0) => $"Branch: {localBranch}. Diverged from {upstreamBranch}: ahead {ahead}, behind {behind}. Review before pulling or resetting.",
-            (> 0, _) => $"Branch: {localBranch}. Ahead of {upstreamBranch} by {ahead} commit(s). Push or preserve these commits before rebasing/resetting.",
+            ( > 0, > 0) => $"Branch: {localBranch}. Diverged from {upstreamBranch}: ahead {ahead}, behind {behind}. Review before pulling or resetting.",
+            ( > 0, _) => $"Branch: {localBranch}. Ahead of {upstreamBranch} by {ahead} commit(s). Push or preserve these commits before rebasing/resetting.",
             (_, > 0) => $"Branch: {localBranch}. Behind {upstreamBranch} by {behind} commit(s). Pull is likely needed.",
             _ => $"Branch: {localBranch}. Tracking {upstreamBranch}."
         };

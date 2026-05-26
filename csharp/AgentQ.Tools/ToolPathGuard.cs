@@ -1,4 +1,4 @@
-﻿namespace AgentQ.Tools;
+namespace AgentQ.Tools;
 
 /// <summary>
 /// 도구 경로 보안 검사
@@ -24,10 +24,10 @@ internal static class ToolPathGuard
         }
 
         var workspaceRoot = GetWorkspaceRoot();
-        
+
         // Resolve path relative to the workspace root if it's not absolute
-        fullPath = Path.IsPathRooted(path) 
-            ? Path.GetFullPath(path) 
+        fullPath = Path.IsPathRooted(path)
+            ? Path.GetFullPath(path)
             : Path.GetFullPath(Path.Combine(workspaceRoot, path));
 
         if (!IsWithinRoot(workspaceRoot, fullPath))
@@ -51,9 +51,9 @@ internal static class ToolPathGuard
     /// <returns>작업 공간 루트 경로</returns>
     private static string GetWorkspaceRoot()
     {
-        var configuredRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT") 
+        var configuredRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT")
                              ?? Environment.GetEnvironmentVariable("CLAW_WORKSPACE_ROOT");
-        
+
         var workspaceRoot = string.IsNullOrWhiteSpace(configuredRoot)
             ? Environment.CurrentDirectory
             : configuredRoot;
