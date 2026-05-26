@@ -60,6 +60,12 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
       - Shell verification detector recognizes Vite `built in ...` success output.
     - Verified with `.\build.ps1` and `.\test.ps1` (248 non-integration tests passed).
     - Re-ran a short provider-backed `npm run build` verification and confirmed the Verify panel displayed `PASSED: frontend build`.
+  - Ran Scenario 3 Unity project analysis pass:
+    - Created disposable Unity fixture `C:\Users\admin\Desktop\AgentQ-Demo-Unity`.
+    - Project dashboard detected Unity 6000.2.8f1, Input System, URP, Unity Test Runner hint, scenes, prefabs, scripts, asmdefs, packages, project settings, symbols, and Unity dependency graph signals.
+    - AgentQ inspected `DamageFlashController`, `EnemyHealth`, the damage flash prefab, and scene files.
+    - AgentQ made no edits and proposed a scoped coroutine/color-preserving damage flash fix.
+    - Visual evidence attachment handling still needs a separate screenshot/video pass.
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -82,6 +88,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use a Unity sample project or representative fixture.
    - Confirm Unity project map entries: scenes, prefabs, scripts, asmdefs, packages.
    - Attach a screenshot/video if available and confirm visual evidence appears.
+   - Decide whether to run a visual attachment pass or move to Demo Issue Fix Pass with the current known issues.
    - Log any Unity-specific analysis or verification gaps.
 
 4. Demo Issue Fix Pass

@@ -226,3 +226,73 @@ UI confirmation:
   - summary: `Shell verification passed during the agent run.`
   - detail: `Verification completed successfully.`
 - This confirms the Bash working-directory fix and Vite `built in ...` detector fix work in the Desktop UI.
+
+## 2026-05-26 - Scenario 3: Unity Project Analysis
+
+Sample workspace:
+
+- `C:\Users\admin\Desktop\AgentQ-Demo-Unity`
+
+Setup:
+
+- Created a lightweight Unity fixture with:
+  - `Assets/Scenes/DemoBattle.unity`
+  - `Assets/Prefabs/DamageFlash.prefab`
+  - `Assets/Scripts/DamageFlashController.cs`
+  - `Assets/Scripts/EnemyHealth.cs`
+  - `Assets/Scripts/Game.asmdef`
+  - `Packages/manifest.json`
+  - `ProjectSettings/ProjectVersion.txt`
+- Initialized the fixture as a disposable git repository.
+- No screenshot/video was attached for this pass; visual evidence remains untested.
+
+Project dashboard result:
+
+- Detected `Unity / Unity 6000.2.8f1, Unity Input System, Unity URP`.
+- Showed `Unity Test Runner` as the verification hint.
+- Mapped Unity project structure:
+  - Unity assets: `Assets`
+  - Unity packages: `Packages`
+  - Unity project settings: `ProjectSettings`
+  - Unity scenes: `Assets/Scenes/DemoBattle.unity`
+  - Unity prefabs: `Assets/Prefabs/DamageFlash.prefab`
+  - Unity scripts: `Assets/Scripts/DamageFlashController.cs`, `Assets/Scripts/EnemyHealth.cs`
+  - Unity asmdefs: `Assets/Scripts/Game.asmdef`
+- Key symbols included:
+  - `DamageFlashController`
+  - `EnemyHealth`
+  - `DamageFlashController.PlayFlash`
+  - `DamageFlashController.ResetColor`
+  - `EnemyHealth.TakeDamage`
+- Dependency graph included:
+  - Unity packages from `Packages/manifest.json`
+  - `UnityEngine` usings
+  - asmdef assembly `AgentQ.Demo.Game`
+
+Request:
+
+```text
+Analyze why the damage feedback effect may be hard to notice. Inspect the relevant Unity scripts and propose a small scoped fix, but do not edit files yet.
+```
+
+Result:
+
+- AgentQ read relevant Unity files including the damage flash script, prefab, and scene.
+- AgentQ made no file changes, as requested.
+- AgentQ identified likely issues:
+  - `flashDuration` is only `0.12` seconds.
+  - Flash snaps back instantly instead of fading.
+  - Reset uses hardcoded `Color.white` instead of preserving the original sprite tint.
+  - `Invoke` timing is less robust than a coroutine for frame-smooth feedback.
+- AgentQ proposed a scoped fix in `DamageFlashController.cs`:
+  - store original color
+  - use a coroutine
+  - interpolate from flash color back to original color
+  - slightly increase perceived duration
+
+Findings:
+
+- Unity project map detection worked well on the lightweight fixture.
+- Provider-backed Unity analysis completed and produced a scoped plan without editing files.
+- Visual evidence attachment handling still needs a separate pass with an actual screenshot or video.
+- The stale `ERROR` UI text issue also appeared here after prior runs, even though the current Unity analysis completed.
