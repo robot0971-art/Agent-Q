@@ -48,24 +48,19 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
 
 ## Active Work Queue Toward 80%
 
-1. Commit And Push Current Demo-Issue Fix
-   - Review the current diff.
-   - Commit the `New Plan.md`, desktop XAML, and regression test updates together.
-   - Push `main` after commit.
-
-2. Unity Visual Evidence Attachment Pass
+1. Unity Visual Evidence Attachment Pass
    - Run the Unity analysis scenario with an actual screenshot or video attachment.
    - Confirm the Evidence timeline records the visual attachment.
    - Confirm the Plan view can connect the selected item to visual evidence and file evidence.
    - Log the result in `docs/demo-run-log.md`.
 
-3. Release Readiness Checklist
+2. Release Readiness Checklist
    - Update README with the current desktop workflow and known limitations.
    - Add a release notes draft for the current beta.
    - Add installer/portable ZIP QA checklist.
    - Keep code signing as a later paid-release decision unless a certificate or signing service is already available.
 
-4. Safe Refactor Guardrails
+3. Safe Refactor Guardrails
    - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
    - Avoid whole-file rewrites for large/core files unless explicitly approved.
    - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
@@ -77,7 +72,7 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
      - compile after each phase
      - verify spawn, movement, attack, death, reward, boss, and stage progression
 
-5. Edit Failure Recovery
+4. Edit Failure Recovery
    - If an edit tool fails repeatedly, stop retrying the same strategy.
    - Read the current file and compare the intended shape before continuing.
    - Detect likely file corruption or partial rewrites.
@@ -89,13 +84,13 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
      - a clear warning that local changes to that file will be discarded
    - Prefer restore plus minimal patches over replacing an entire complex file.
 
-6. Unsafe Editing Eval Signals
+5. Unsafe Editing Eval Signals
    - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
    - Surface these as Eval Dashboard findings.
    - Add tests or replay fixtures for failed large-file refactor attempts.
    - Use those signals to improve future tool-routing and recovery behavior.
 
-7. 80% Readiness Review
+6. 80% Readiness Review
    - Confirm the main path works:
      `open project -> analyze -> ask -> edit -> verify -> review -> commit`
    - Confirm all three demo scenarios are repeatable.
