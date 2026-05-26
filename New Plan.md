@@ -45,6 +45,10 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
     - Added startup workspace support via first command-line argument or `AGENTQ_DESKTOP_WORKSPACE`.
     - Filtered AgentQ internal `.agentq/` files out of Git panel status/diff/change lists.
     - Found a remaining UX gap: shell-run tests are visible in the run/evidence narrative, but the Verify panel still says `Not verified` unless verification is run through the explicit Verify workflow.
+  - Fixed the shell-run verification UX gap:
+    - Successful verification-like `bash` tool runs now create Verify result cards.
+    - Added regression tests for passed `dotnet test`, failed `dotnet test`, and non-verification shell commands.
+    - Verified with `.\build.ps1` and `.\test.ps1` (245 non-integration tests passed).
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -53,7 +57,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use `docs/demo-scenarios.md`.
    - Run the flow against a disposable C# sample project or branch.
    - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
-   - Decide whether shell-run test results should create Verify result cards automatically; current provider-backed run passed, but Verify panel remained `Not verified`.
+   - Re-run the provider-backed Desktop chat pass once more to confirm the new shell verification card appears in the Verify panel.
    - Log any UX or functional issue found during the run.
 
 2. Run Demo Scenario 2: React/TypeScript Feature Change

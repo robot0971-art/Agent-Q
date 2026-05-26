@@ -47,6 +47,10 @@ public static class DesktopToolCallbacksFactory
             {
                 viewModel.VerificationPlans.Add(plan);
             }),
+            OnVerificationResult = result => dispatcher.Invoke(() =>
+            {
+                viewModel.AddVerificationResult(result);
+            }),
             OnUsage = usage => dispatcher.Invoke(() =>
             {
                 onUsage?.Invoke(usage);

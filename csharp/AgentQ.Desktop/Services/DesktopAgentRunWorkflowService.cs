@@ -447,6 +447,11 @@ public sealed class DesktopAgentRunWorkflowService(
                 callbacks.OnVerificationPlan?.Invoke(plan);
                 RecordTelemetry("verification_plan", workspaceRoot, config.Provider, config.Model, succeeded: plan.AlreadySatisfied, detail: plan.Detail);
             },
+            OnVerificationResult = result =>
+            {
+                callbacks.OnVerificationResult?.Invoke(result);
+                RecordTelemetry("verification_result", workspaceRoot, config.Provider, config.Model, succeeded: string.Equals(result.Status, "PASSED", StringComparison.OrdinalIgnoreCase), detail: result.Summary);
+            },
             OnUsage = callbacks.OnUsage,
             OnRequestExtendSteps = callbacks.OnRequestExtendSteps
         };

@@ -11,6 +11,76 @@ namespace AgentQ.Tests;
 public sealed class DesktopServiceTests
 {
     [Fact]
+    public void ShellVerificationResultDetector_CreatesCardForPassedDotnetTest()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 0,
+            stdout = "Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "dotnet test --filter ParserTests" },
+            content,
+            out var result);
+
+        Assert.True(created);
+        Assert.Equal("PASSED", result.Status);
+        Assert.Equal("dotnet test", result.Title);
+        Assert.Contains("dotnet test", result.Command);
+        Assert.Contains("Shell verification passed", result.Summary);
+    }
+
+    [Fact]
+    public void ShellVerificationResultDetector_IgnoresFailedVerificationCommand()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 1,
+            stdout = "Failed!  - Failed:     1, Passed:     1",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "dotnet test" },
+            content,
+            out _);
+
+        Assert.False(created);
+    }
+
+    [Fact]
+    public void ShellVerificationResultDetector_IgnoresNonVerificationCommand()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 0,
+            stdout = "Passed!",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "git status --short" },
+            content,
+            out _);
+
+        Assert.False(created);
+    }
+
+    [Fact]
     public void DesktopAgentService_SystemPrompt_PrioritizesSymbolSearchForCodeNavigation()
     {
         var field = typeof(DesktopAgentService).GetField("SystemPrompt", BindingFlags.NonPublic | BindingFlags.Static);

@@ -659,6 +659,14 @@ public sealed class DesktopAgentService
                     else
                     {
                         callbacks?.OnToolOutput?.Invoke(tool.Name, result.Content);
+                        if (ShellVerificationResultDetector.TryCreate(tool.Name, parsedInput, result.Content, out var verificationResult))
+                        {
+                            callbacks?.OnVerificationResult?.Invoke(verificationResult);
+                            callbacks?.OnRunStep?.Invoke(
+                                AgentRunState.Verifying,
+                                $"Verification passed: {verificationResult.Title}",
+                                verificationResult.Summary);
+                        }
                     }
 
                     if (!result.IsError)

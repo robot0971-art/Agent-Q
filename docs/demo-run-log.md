@@ -116,3 +116,13 @@ Findings:
 - The default 30 second request timeout is too short for provider-backed demo runs that include approval time and test execution.
 - Shell-run verification appears in the agent answer and evidence, but the Verify panel still displays `Not verified`; Verify cards are only created through the explicit Verify workflow.
 - The Run summary correctly showed completion and one changed file after the provider-backed run.
+
+Follow-up fix:
+
+- Added a shell verification bridge that promotes successful verification-like `bash` tool runs into Verify result cards.
+- Currently detects successful shell runs for commands such as `dotnet test`, `npm test`, `npm run build`, and lint/build variants when the command exits with code 0 and the output contains a conservative success marker.
+- Added regression tests for:
+  - passed `dotnet test` creates a Verify card
+  - failed `dotnet test` does not create a passed card
+  - non-verification shell commands do not create Verify cards
+- Verified with `.\build.ps1` and `.\test.ps1`; 245 non-integration tests passed.
