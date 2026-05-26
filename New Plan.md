@@ -37,6 +37,9 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
   - Verified with `.\build.ps1` and `.\test.ps1`.
   - Committed and pushed `705f661` (`Fix build scripts to restore packages`).
   - Ran Scenario 1 core CLI flow against disposable sample `C:\Users\admin\Desktop\AgentQ-Demo-CSharp`.
+  - Ran Scenario 1 partial Desktop UI pass:
+    - Project dashboard detected `.NET / net10.0`, `dotnet build`, `dotnet test`, `.slnx`, C# projects, symbols, Roslyn symbols, and project references.
+    - Git panel detected branch `master`, one source change, and a focused one-file diff after the disposable sample was cleaned up with `.gitignore`.
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -45,7 +48,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use `docs/demo-scenarios.md`.
    - Run the flow against a disposable C# sample project or branch.
    - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
-   - Complete the remaining interactive Desktop UI pass; the core CLI bug-fix and focused verification flow passed on 2026-05-26.
+   - Complete the remaining provider-backed Desktop chat pass; the core CLI bug-fix/focused verification flow and Project dashboard/Git UI checks passed on 2026-05-26.
    - Log any UX or functional issue found during the run.
 
 2. Run Demo Scenario 2: React/TypeScript Feature Change

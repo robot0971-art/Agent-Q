@@ -50,4 +50,17 @@ Findings:
 
 - Build/test scripts in AgentQ did not restore new package references before isolated project builds. This blocked the baseline build after the Roslyn analysis dependency was added.
 - Fixed by adding explicit restore steps to `build.ps1`, `build.cmd`, `test.ps1`, and `test.cmd`.
-- Desktop UI verification for Project dashboard, Evidence, Change preview, Verify, Plan, and Git tabs remains to be performed interactively in AgentQ Desktop.
+- Desktop UI partial pass completed:
+  - AgentQ Desktop launched from `csharp\AgentQ.Desktop\bin\Debug\net10.0-windows\AgentQ.Desktop.exe`.
+  - Project panel accepted `C:\Users\admin\Desktop\AgentQ-Demo-CSharp`.
+  - `Analyze` detected `.NET / net10.0`.
+  - Project dashboard showed `dotnet build`, `dotnet test`, `AgentQDemoParser.slnx`, C# projects, key symbols, Roslyn symbols, and project references.
+  - After initializing the disposable sample as a git repo, Project dashboard detected branch `master`.
+  - Git panel `Status` detected `DemoParser/KeyValueParser.cs` as the only source change after adding `.gitignore` to the sample baseline.
+  - Git panel `Diff` showed `DemoParser/KeyValueParser.cs | 2 +-` and `1 file changed, 1 insertion(+), 1 deletion(-)`.
+- Demo setup issue found:
+  - The initial disposable sample git baseline accidentally included `bin/` and `obj/`, making Git panel output noisy after test runs.
+  - Fixed in the disposable sample by adding `.gitignore` for `bin/`, `obj/`, and `TestResults/`, then amending the sample baseline.
+- Remaining Desktop UI pass:
+  - Run the actual chat request through AgentQ Desktop with a configured provider.
+  - Confirm Evidence, Verify, Change preview, Plan, Run summary, and Git commit-summary behavior from the app-generated run.
