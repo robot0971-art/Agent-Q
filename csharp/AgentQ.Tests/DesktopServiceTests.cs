@@ -129,6 +129,14 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainWindow_DoesNotExposeStaticErrorLegendInStatusPanel()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "MainWindow.xaml"));
+
+        Assert.DoesNotContain("Text=\"ERROR\"", xaml);
+    }
+
+    [Fact]
     public void DesktopAgentService_SystemPrompt_PrioritizesSymbolSearchForCodeNavigation()
     {
         var field = typeof(DesktopAgentService).GetField("SystemPrompt", BindingFlags.NonPublic | BindingFlags.Static);
@@ -142,6 +150,26 @@ public sealed class DesktopServiceTests
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("can attempt to read HTTP/HTTPS links", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FindRepoFile(params string[] pathSegments)
+    {
+        var directory = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var parts = new string[pathSegments.Length + 1];
+            parts[0] = directory.FullName;
+            System.Array.Copy(pathSegments, 0, parts, 1, pathSegments.Length);
+            var candidate = System.IO.Path.Combine(parts);
+            if (System.IO.File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new System.IO.FileNotFoundException("Could not find repository file.", string.Join("/", pathSegments));
     }
 
     [Fact]

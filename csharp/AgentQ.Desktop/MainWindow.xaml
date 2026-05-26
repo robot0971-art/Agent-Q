@@ -478,7 +478,6 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <DockPanel Margin="0,0,0,10">
                         <TextBlock Text="{Binding StatusPanelText}" Style="{StaticResource PanelHeader}" />
@@ -593,20 +592,6 @@
                             <views:FileChangeReviewPanel x:Name="FileChangeReviewPanelView" />
                         </TabItem>
                     </TabControl>
-                    <WrapPanel Grid.Row="3" Margin="0,10,0,0">
-                        <Border Background="#0B2A4A" BorderBrush="#1D4ED8" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding AllText}" Foreground="#93C5FD" FontSize="11" />
-                        </Border>
-                        <Border Background="#062B1A" BorderBrush="#15803D" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
-                            <TextBlock Text="SUCCESS" Foreground="{StaticResource Success}" FontSize="11" />
-                        </Border>
-                        <Border Background="#331D03" BorderBrush="#B45309" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="0,0,6,0">
-                            <TextBlock Text="WARNING" Foreground="{StaticResource Warning}" FontSize="11" />
-                        </Border>
-                        <Border Background="#3A1111" BorderBrush="#B91C1C" BorderThickness="1" CornerRadius="4" Padding="7,3">
-                            <TextBlock Text="ERROR" Foreground="{StaticResource Danger}" FontSize="11" />
-                        </Border>
-                    </WrapPanel>
                 </Grid>
             </Border>
         </Grid>

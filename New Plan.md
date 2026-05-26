@@ -1,6 +1,6 @@
 # AgentQ Current Plan
 
-Updated: 2026-05-25
+Updated: 2026-05-26
 
 Implementation rule: finish items from top to bottom. When an item is implemented, verified, committed, and pushed, remove it from this file.
 
@@ -8,114 +8,64 @@ Implementation rule: finish items from top to bottom. When an item is implemente
 
 Current estimated product completeness:
 
-- Engine/core agent capability: 75-80%
-- Desktop product UX: 70-75%
-- Release/distribution readiness: 55-60%
-- Overall practical readiness: about 70%
+- Engine/core agent capability: 80-82%
+- Desktop product UX: 75-78%
+- Release/distribution readiness: 60-65%
+- Overall practical readiness: about 76%
 
 The main engine pieces are now present: Project Map, hybrid search, symbol search, language workers, Roslyn analysis, evidence trail, confidence signals, memory, replay/eval, Git workflow, visual evidence, Unity analysis, planning, MCP foundation, Auto Fix review flow, run summary, project dashboard, and plan/evidence/eval connection.
 
-The next goal is to move AgentQ from roughly 70% to 80% by proving the main workflows with repeatable demos, fixing demo-discovered issues, and preparing a clean release pass.
+The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues discovered during real demo runs, proving visual evidence on Unity-like work, and preparing a clean release checklist.
 
 ## Completed In This Pass
 
-- Pulled and reviewed upstream changes from `0458bdd` to `329030e`.
-- Verified the pulled changes with build and tests.
-- Added always-visible Run Summary.
-- Added Project Dashboard integration.
-- Improved Auto Fix -> Review -> Verify flow.
-- Connected Plan, Evidence, Verification, and Eval signals.
-- Added repeatable demo scenario documentation.
-- Improved product polish:
-  - restored the Korean desktop plan document
-  - improved empty states and next-action copy
-  - fixed build/test scripts to include Desktop and run the correct `net10.0-windows` test assembly
-- Verified with `.\build.ps1` and `.\test.ps1`.
-- 2026-05-26:
-  - Pulled latest `main` from GitHub.
-  - Fixed build/test scripts to restore packages before isolated project builds.
-  - Verified with `.\build.ps1` and `.\test.ps1`.
-  - Committed and pushed `705f661` (`Fix build scripts to restore packages`).
-  - Ran Scenario 1 core CLI flow against disposable sample `C:\Users\admin\Desktop\AgentQ-Demo-CSharp`.
-  - Ran Scenario 1 partial Desktop UI pass:
-    - Project dashboard detected `.NET / net10.0`, `dotnet build`, `dotnet test`, `.slnx`, C# projects, symbols, Roslyn symbols, and project references.
-    - Git panel detected branch `master`, one source change, and a focused one-file diff after the disposable sample was cleaned up with `.gitignore`.
-  - Ran Scenario 1 provider-backed Desktop chat pass:
-    - AgentQ Desktop used the configured provider, found the failing parser test, edited one C# file, and reported all 2 sample tests passing.
-    - Added startup workspace support via first command-line argument or `AGENTQ_DESKTOP_WORKSPACE`.
-    - Filtered AgentQ internal `.agentq/` files out of Git panel status/diff/change lists.
-    - Found a remaining UX gap: shell-run tests are visible in the run/evidence narrative, but the Verify panel still says `Not verified` unless verification is run through the explicit Verify workflow.
-  - Fixed the shell-run verification UX gap:
-    - Successful verification-like `bash` tool runs now create Verify result cards.
-    - Added regression tests for passed `dotnet test`, localized Korean `dotnet test` success output, failed `dotnet test`, and non-verification shell commands.
-    - Verified with `.\build.ps1` and `.\test.ps1` (246 non-integration tests passed).
-    - Re-ran the provider-backed Desktop chat pass and confirmed the Verify panel displayed `PASSED: dotnet test`.
-  - Started Scenario 2 provider-backed React/TypeScript pass:
-    - Created disposable Vite React TypeScript sample `C:\Users\admin\Desktop\AgentQ-Demo-React`.
-    - Project dashboard detected Vite, React, TypeScript, `npm run build`, `npm run lint`, React components, and TypeScript worker import signals.
-    - AgentQ used `symbol_search`, found `DashboardList`, and changed only `src/App.tsx` and `src/App.css`.
-    - External `npm run lint` and `npm run build` passed.
-    - Fixed two discovered frontend-demo issues:
-      - `BashTool` now runs from `AGENTQ_WORKSPACE_ROOT` when available.
-      - Shell verification detector recognizes Vite `built in ...` success output.
-    - Verified with `.\build.ps1` and `.\test.ps1` (248 non-integration tests passed).
-    - Re-ran a short provider-backed `npm run build` verification and confirmed the Verify panel displayed `PASSED: frontend build`.
-  - Ran Scenario 3 Unity project analysis pass:
-    - Created disposable Unity fixture `C:\Users\admin\Desktop\AgentQ-Demo-Unity`.
-    - Project dashboard detected Unity 6000.2.8f1, Input System, URP, Unity Test Runner hint, scenes, prefabs, scripts, asmdefs, packages, project settings, symbols, and Unity dependency graph signals.
-    - AgentQ inspected `DamageFlashController`, `EnemyHealth`, the damage flash prefab, and scene files.
-    - AgentQ made no edits and proposed a scoped coroutine/color-preserving damage flash fix.
-    - Visual evidence attachment handling still needs a separate screenshot/video pass.
-  - Logged the Scenario 1 run in `docs/demo-run-log.md`.
+- Pulled and reviewed upstream changes from `b5d9aaf` to `428f554`.
+- Confirmed the pull was a clean fast-forward with no merge conflicts.
+- Verified the pulled changes with `.\build.ps1`.
+- Verified the pulled changes with `.\test.ps1`:
+  - 250 passed
+  - 0 failed
+  - 0 skipped
+- Confirmed the three demo scenarios are now represented in `docs/demo-run-log.md`:
+  - C# bug fix with verification
+  - React/TypeScript feature change with frontend verification
+  - Unity project analysis
+- Confirmed the latest pull added or improved:
+  - shell-run verification cards for successful `dotnet test`, localized Korean test output, and Vite/frontend build output
+  - `BashTool` workspace-root execution through `AGENTQ_WORKSPACE_ROOT`
+  - provider configuration secret protection
+  - MCP server registry hardening
+  - CI warnings-as-errors, format checks, coverage upload, and release checksums
+  - explicit restore in build/test scripts
+  - `.dotnet/` cache cleanup and ignore rules
+  - repository formatting normalization
+- Fixed the stale static `ERROR` UI text discovered during demo runs:
+  - removed the always-visible status legend from the desktop side panel
+  - kept real failed verification cards and failure states untouched
+  - added a regression test to prevent static `Text="ERROR"` from returning to `MainWindow.xaml`
+  - verified with `.\build.ps1`
+  - verified with `.\test.ps1` (251 passed, 0 failed, 0 skipped)
 
 ## Active Work Queue Toward 80%
 
-1. Run Demo Scenario 1: C# Bug Fix With Verification
-   - Use `docs/demo-scenarios.md`.
-   - Run the flow against a disposable C# sample project or branch.
-   - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
-   - Decide whether to address the minor stale `ERROR` text seen after earlier failed/timeout attempts, or move to Scenario 2.
-   - Log any UX or functional issue found during the run.
+1. Commit And Push Current Demo-Issue Fix
+   - Review the current diff.
+   - Commit the `New Plan.md`, desktop XAML, and regression test updates together.
+   - Push `main` after commit.
 
-2. Run Demo Scenario 2: React/TypeScript Feature Change
-   - Use a small React/Vite/Next TypeScript sample project.
-   - Confirm TypeScript worker/project-aware search signals.
-   - Verify frontend command selection and Evidence trail.
-   - Decide whether the provider-backed run timeout after useful implementation is acceptable for the demo, or tune timeout/status handling before Scenario 3.
-   - Log any search, verification, or UI issue found.
+2. Unity Visual Evidence Attachment Pass
+   - Run the Unity analysis scenario with an actual screenshot or video attachment.
+   - Confirm the Evidence timeline records the visual attachment.
+   - Confirm the Plan view can connect the selected item to visual evidence and file evidence.
+   - Log the result in `docs/demo-run-log.md`.
 
-3. Run Demo Scenario 3: Unity Project Analysis
-   - Use a Unity sample project or representative fixture.
-   - Confirm Unity project map entries: scenes, prefabs, scripts, asmdefs, packages.
-   - Attach a screenshot/video if available and confirm visual evidence appears.
-   - Decide whether to run a visual attachment pass or move to Demo Issue Fix Pass with the current known issues.
-   - Log any Unity-specific analysis or verification gaps.
-
-4. Demo Issue Fix Pass
-   - Fix only issues discovered from the three demo runs.
-   - Prefer small, focused changes over new feature expansion.
-   - Add regression tests for any behavior that broke or confused the demo flow.
-   - Verify with `.\build.ps1` and `.\test.ps1`.
-
-5. Release Readiness Checklist
-   - Update README with current desktop workflow and known limitations.
-   - Add release notes draft for the current beta.
+3. Release Readiness Checklist
+   - Update README with the current desktop workflow and known limitations.
+   - Add a release notes draft for the current beta.
    - Add installer/portable ZIP QA checklist.
-   - Keep code signing as a later paid-release decision unless a certificate is already available.
+   - Keep code signing as a later paid-release decision unless a certificate or signing service is already available.
 
-6. 80% Readiness Review
-   - Confirm the main path works:
-     `open project -> analyze -> ask -> edit -> verify -> review -> commit`
-   - Confirm all three demo scenarios are repeatable.
-   - Confirm build/test are green.
-   - Confirm no obvious mojibake, stale empty states, or confusing main-panel copy remains.
-   - Re-estimate completeness and decide the next pass:
-     - Windows 1.0 stabilization
-     - Persistent MCP Session
-     - Avalonia/Linux prototype
-     - Release signing pipeline
-
-7. Safe Refactor Guardrails
+4. Safe Refactor Guardrails
    - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
    - Avoid whole-file rewrites for large/core files unless explicitly approved.
    - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
@@ -127,24 +77,35 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
      - compile after each phase
      - verify spawn, movement, attack, death, reward, boss, and stage progression
 
-8. Edit Failure Recovery
+5. Edit Failure Recovery
    - If an edit tool fails repeatedly, stop retrying the same strategy.
    - Read the current file and compare the intended shape before continuing.
    - Detect likely file corruption or partial rewrites.
    - Treat direct manual copy-paste instructions as a last-resort fallback only.
    - Before asking the user to paste code manually, attempt automatic recovery through backup, restore, and minimal patches.
-   - If manual paste is unavoidable, explain why tool-based editing is unsafe or unavailable.
    - Before suggesting `git checkout -- <file>` or `git restore <file>`, require:
      - `git diff -- <file>`
      - a backup copy when useful
      - a clear warning that local changes to that file will be discarded
-   - Prefer restore + minimal patches over replacing an entire complex file.
+   - Prefer restore plus minimal patches over replacing an entire complex file.
 
-9. Unsafe Editing Eval Signals
+6. Unsafe Editing Eval Signals
    - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
    - Surface these as Eval Dashboard findings.
    - Add tests or replay fixtures for failed large-file refactor attempts.
    - Use those signals to improve future tool-routing and recovery behavior.
+
+7. 80% Readiness Review
+   - Confirm the main path works:
+     `open project -> analyze -> ask -> edit -> verify -> review -> commit`
+   - Confirm all three demo scenarios are repeatable.
+   - Confirm build/test are green.
+   - Confirm no obvious mojibake, stale empty states, or confusing main-panel copy remains.
+   - Re-estimate completeness and decide the next pass:
+     - Windows 1.0 stabilization
+     - Persistent MCP Session
+     - Avalonia/Linux prototype
+     - Release signing pipeline
 
 ## Later 80% -> 90% Candidates
 
