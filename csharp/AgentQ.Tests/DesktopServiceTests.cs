@@ -37,6 +37,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ShellVerificationResultDetector_CreatesCardForLocalizedPassedDotnetTest()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 0,
+            stdout = "\uD1B5\uACFC!  - \uC2E4\uD328:     0, \uD1B5\uACFC:     2, \uAC74\uB108\uB700:     0, \uC804\uCCB4:     2",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "dotnet test --filter ParserTests" },
+            content,
+            out var result);
+
+        Assert.True(created);
+        Assert.Equal("PASSED", result.Status);
+        Assert.Equal("dotnet test", result.Title);
+    }
+
+    [Fact]
     public void ShellVerificationResultDetector_IgnoresFailedVerificationCommand()
     {
         var content = JsonSerializer.Serialize(new

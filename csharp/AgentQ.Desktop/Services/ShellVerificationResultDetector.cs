@@ -25,8 +25,10 @@ public static class ShellVerificationResultDetector
         "test run successful",
         "build succeeded",
         "compiled successfully",
+        "\uD1B5\uACFC!",
         "0 failed",
         "failed:     0",
+        "\uC2E4\uD328:     0",
         "failures: 0"
     ];
 

@@ -123,6 +123,24 @@ Follow-up fix:
 - Currently detects successful shell runs for commands such as `dotnet test`, `npm test`, `npm run build`, and lint/build variants when the command exits with code 0 and the output contains a conservative success marker.
 - Added regression tests for:
   - passed `dotnet test` creates a Verify card
+  - localized Korean `dotnet test` success output creates a Verify card
   - failed `dotnet test` does not create a passed card
   - non-verification shell commands do not create Verify cards
-- Verified with `.\build.ps1` and `.\test.ps1`; 245 non-integration tests passed.
+- Verified with `.\build.ps1` and `.\test.ps1`; 246 non-integration tests passed.
+
+UI confirmation:
+
+- Re-ran the provider-backed Desktop chat pass against the failing sample baseline.
+- AgentQ fixed `DemoParser/KeyValueParser.cs` again.
+- Verify panel displayed `PASSED: dotnet test`.
+- Verify card showed:
+  - command: `dotnet test`
+  - status: `PASSED`
+  - summary: `Shell verification passed during the agent run.`
+  - detail: `Verification completed successfully.`
+- Run summary showed `Completed`, `Review changed files, then run verification.`, and `1 changed`.
+- Focused sample verification passed afterward: 2 passed, 0 failed.
+
+Remaining minor UI note:
+
+- A stale `ERROR` label can remain visible in broad UI Automation text collection after earlier failed/timeout attempts, even when the current run is completed and Verify shows `PASSED`.
