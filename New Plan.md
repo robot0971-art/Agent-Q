@@ -31,47 +31,48 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
   - improved empty states and next-action copy
   - fixed build/test scripts to include Desktop and run the correct `net10.0-windows` test assembly
 - Verified with `.\build.ps1` and `.\test.ps1`.
+- 2026-05-26:
+  - Pulled latest `main` from GitHub.
+  - Fixed build/test scripts to restore packages before isolated project builds.
+  - Verified with `.\build.ps1` and `.\test.ps1`.
+  - Committed and pushed `705f661` (`Fix build scripts to restore packages`).
+  - Ran Scenario 1 core CLI flow against disposable sample `C:\Users\admin\Desktop\AgentQ-Demo-CSharp`.
+  - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
 
-1. Commit Current Stabilization Pass
-   - Review the full diff.
-   - Stage all intended changes.
-   - Commit with a clear message.
-   - Push `main` to GitHub.
-   - Confirm Git status is clean.
-
-2. Run Demo Scenario 1: C# Bug Fix With Verification
+1. Run Demo Scenario 1: C# Bug Fix With Verification
    - Use `docs/demo-scenarios.md`.
    - Run the flow against a disposable C# sample project or branch.
    - Confirm Project dashboard, Evidence, Verify, Change preview, Git, and Run summary all behave as expected.
+   - Complete the remaining interactive Desktop UI pass; the core CLI bug-fix and focused verification flow passed on 2026-05-26.
    - Log any UX or functional issue found during the run.
 
-3. Run Demo Scenario 2: React/TypeScript Feature Change
+2. Run Demo Scenario 2: React/TypeScript Feature Change
    - Use a small React/Vite/Next TypeScript sample project.
    - Confirm TypeScript worker/project-aware search signals.
    - Verify frontend command selection and Evidence trail.
    - Log any search, verification, or UI issue found.
 
-4. Run Demo Scenario 3: Unity Project Analysis
+3. Run Demo Scenario 3: Unity Project Analysis
    - Use a Unity sample project or representative fixture.
    - Confirm Unity project map entries: scenes, prefabs, scripts, asmdefs, packages.
    - Attach a screenshot/video if available and confirm visual evidence appears.
    - Log any Unity-specific analysis or verification gaps.
 
-5. Demo Issue Fix Pass
+4. Demo Issue Fix Pass
    - Fix only issues discovered from the three demo runs.
    - Prefer small, focused changes over new feature expansion.
    - Add regression tests for any behavior that broke or confused the demo flow.
    - Verify with `.\build.ps1` and `.\test.ps1`.
 
-6. Release Readiness Checklist
+5. Release Readiness Checklist
    - Update README with current desktop workflow and known limitations.
    - Add release notes draft for the current beta.
    - Add installer/portable ZIP QA checklist.
    - Keep code signing as a later paid-release decision unless a certificate is already available.
 
-7. 80% Readiness Review
+6. 80% Readiness Review
    - Confirm the main path works:
      `open project -> analyze -> ask -> edit -> verify -> review -> commit`
    - Confirm all three demo scenarios are repeatable.
@@ -83,7 +84,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
      - Avalonia/Linux prototype
      - Release signing pipeline
 
-8. Safe Refactor Guardrails
+7. Safe Refactor Guardrails
    - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
    - Avoid whole-file rewrites for large/core files unless explicitly approved.
    - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
@@ -95,7 +96,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
      - compile after each phase
      - verify spawn, movement, attack, death, reward, boss, and stage progression
 
-9. Edit Failure Recovery
+8. Edit Failure Recovery
    - If an edit tool fails repeatedly, stop retrying the same strategy.
    - Read the current file and compare the intended shape before continuing.
    - Detect likely file corruption or partial rewrites.
@@ -108,7 +109,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
      - a clear warning that local changes to that file will be discarded
    - Prefer restore + minimal patches over replacing an entire complex file.
 
-10. Unsafe Editing Eval Signals
+9. Unsafe Editing Eval Signals
    - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
    - Surface these as Eval Dashboard findings.
    - Add tests or replay fixtures for failed large-file refactor attempts.
