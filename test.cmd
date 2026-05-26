@@ -26,6 +26,11 @@ if defined DOTNET_CLI_HOME (
 ) else (
   echo DOTNET_CLI_HOME is not set; using default dotnet environment
 )
+
+echo Restoring test project
+dotnet restore "%REPO_ROOT%csharp\AgentQ.Tests\AgentQ.Tests.csproj" /p:RestoreConfigFile="%NUGET_CONFIG%"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 echo Building test assembly
 dotnet msbuild "%REPO_ROOT%csharp\AgentQ.Tests\AgentQ.Tests.csproj" /t:Build /p:BuildProjectReferences=false /p:RestoreConfigFile="%NUGET_CONFIG%" /m:1 /v:minimal
 if errorlevel 1 exit /b %ERRORLEVEL%

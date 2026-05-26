@@ -49,6 +49,12 @@ else {
     Write-Host "DOTNET_CLI_HOME is not set; using default dotnet environment"
 }
 
+Write-Host "Restoring AgentQ solution"
+& dotnet restore (Join-Path $repoRoot "csharp\AgentQ.sln") /p:RestoreConfigFile=$nugetConfig
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
 foreach ($project in $projects) {
     $projectPath = Join-Path $repoRoot $project
     Write-Host ""

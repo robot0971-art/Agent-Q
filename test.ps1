@@ -38,6 +38,13 @@ if ($env:DOTNET_CLI_HOME) {
 else {
     Write-Host "DOTNET_CLI_HOME is not set; using default dotnet environment"
 }
+
+Write-Host "Restoring test project"
+& dotnet restore $testProject /p:RestoreConfigFile=$nugetConfig
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
 Write-Host "Building test assembly"
 
 & dotnet msbuild $testProject /t:Build /p:BuildProjectReferences=false /p:RestoreConfigFile=$nugetConfig /m:1 /v:minimal

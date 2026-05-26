@@ -25,6 +25,11 @@ if defined DOTNET_CLI_HOME (
 ) else (
   echo DOTNET_CLI_HOME is not set; using default dotnet environment
 )
+
+echo Restoring AgentQ solution
+dotnet restore "%REPO_ROOT%csharp\AgentQ.sln" /p:RestoreConfigFile="%NUGET_CONFIG%"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 echo Building AgentQ projects
 
 call :build "%REPO_ROOT%csharp\AgentQ.Api\AgentQ.Api.csproj" %* || exit /b 1
