@@ -472,6 +472,26 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("Timeout must be between", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task BashTool_UsesWorkspaceRootAsWorkingDirectory()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var command = OperatingSystem.IsWindows() ? "Get-Location" : "pwd";
+
+        var tool = new BashTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["command"] = command
+        });
+
+        Assert.False(result.IsError);
+
+        using var json = JsonDocument.Parse(result.Content);
+        var stdout = json.RootElement.GetProperty("stdout").GetString() ?? string.Empty;
+        Assert.Contains(workspace.RootPath, stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// BashTool이 긴 출력을 잘라내고 절단 여부를 보고하는지 검증합니다.
     /// </summary>

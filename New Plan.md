@@ -50,6 +50,15 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
     - Added regression tests for passed `dotnet test`, localized Korean `dotnet test` success output, failed `dotnet test`, and non-verification shell commands.
     - Verified with `.\build.ps1` and `.\test.ps1` (246 non-integration tests passed).
     - Re-ran the provider-backed Desktop chat pass and confirmed the Verify panel displayed `PASSED: dotnet test`.
+  - Started Scenario 2 provider-backed React/TypeScript pass:
+    - Created disposable Vite React TypeScript sample `C:\Users\admin\Desktop\AgentQ-Demo-React`.
+    - Project dashboard detected Vite, React, TypeScript, `npm run build`, `npm run lint`, React components, and TypeScript worker import signals.
+    - AgentQ used `symbol_search`, found `DashboardList`, and changed only `src/App.tsx` and `src/App.css`.
+    - External `npm run lint` and `npm run build` passed.
+    - Fixed two discovered frontend-demo issues:
+      - `BashTool` now runs from `AGENTQ_WORKSPACE_ROOT` when available.
+      - Shell verification detector recognizes Vite `built in ...` success output.
+    - Verified with `.\build.ps1` and `.\test.ps1` (248 non-integration tests passed).
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -65,6 +74,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use a small React/Vite/Next TypeScript sample project.
    - Confirm TypeScript worker/project-aware search signals.
    - Verify frontend command selection and Evidence trail.
+   - Re-run the short `npm run build` provider-backed verification after the Bash cwd fix to confirm the Verify panel shows a frontend build card.
    - Log any search, verification, or UI issue found.
 
 3. Run Demo Scenario 3: Unity Project Analysis

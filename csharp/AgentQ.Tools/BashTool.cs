@@ -115,7 +115,8 @@ public class BashTool : ITool
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 StandardOutputEncoding = encoding,
-                StandardErrorEncoding = encoding
+                StandardErrorEncoding = encoding,
+                WorkingDirectory = ResolveWorkingDirectory()
             };
 
             if (OperatingSystem.IsWindows())
@@ -229,6 +230,14 @@ public class BashTool : ITool
 
         reason = string.Empty;
         return false;
+    }
+
+    private static string ResolveWorkingDirectory()
+    {
+        var workspaceRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        return !string.IsNullOrWhiteSpace(workspaceRoot) && Directory.Exists(workspaceRoot)
+            ? workspaceRoot
+            : Environment.CurrentDirectory;
     }
 
     private static string Truncate(string value, out bool wasTruncated)

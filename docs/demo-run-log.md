@@ -144,3 +144,68 @@ UI confirmation:
 Remaining minor UI note:
 
 - A stale `ERROR` label can remain visible in broad UI Automation text collection after earlier failed/timeout attempts, even when the current run is completed and Verify shows `PASSED`.
+
+## 2026-05-26 - Scenario 2: React/TypeScript Feature Change
+
+Sample workspace:
+
+- `C:\Users\admin\Desktop\AgentQ-Demo-React`
+
+Setup:
+
+- Created a Vite React TypeScript sample app.
+- Replaced the starter screen with an operational dashboard queue.
+- Baseline intentionally had an empty `dashboardItems` array but no empty state UI.
+- Initialized the disposable sample as a git repository.
+- Baseline verification passed:
+  - `npm run lint`
+  - `npm run build`
+
+Request:
+
+```text
+Add a compact empty state to the dashboard list using the existing component style. Find the relevant component first.
+```
+
+Result:
+
+- Project dashboard detected `Node / Vite, React, TypeScript`.
+- Project dashboard showed:
+  - `npm run build`
+  - `npm run lint`
+  - `component DashboardList (src/App.tsx)`
+  - `component App (src/App.tsx)`
+  - TypeScript worker signals for React components and imports.
+- AgentQ used `symbol_search` first and identified `DashboardList`.
+- AgentQ read `src/App.tsx` and `src/App.css`.
+- AgentQ changed only:
+  - `src/App.tsx`
+  - `src/App.css`
+- Added a compact empty state:
+  - `No active items`
+  - `Queue is empty`
+  - dashed border, 6px radius, muted text, and existing dashboard spacing.
+
+External verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+
+Findings:
+
+- Scenario 2 provider-backed run timed out after producing a useful implementation and summary.
+- Verify card did not appear for the first frontend run because Vite reports success as `built in ...`, which was not in the shell verification detector.
+- A follow-up verification prompt using `npm run build` exposed that shell commands need to default to the selected workspace as their working directory; otherwise provider-generated commands without `cd` can run from the desktop binary folder.
+
+Product fixes made during this pass:
+
+- `BashTool` now uses `AGENTQ_WORKSPACE_ROOT` as the process working directory when available.
+- Shell verification detector now recognizes Vite build success output containing `built in`.
+- Added regression tests for:
+  - `BashTool` uses `AGENTQ_WORKSPACE_ROOT` as cwd
+  - Vite `npm run build` output creates a Verify card
+
+Verification:
+
+- `.\build.ps1` passed.
+- `.\test.ps1` passed: 248 non-integration tests.

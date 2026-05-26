@@ -83,6 +83,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ShellVerificationResultDetector_CreatesCardForPassedViteBuild()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 0,
+            stdout = "vite v8.0.14 building client environment for production...\n\u2713 built in 234ms",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "npm run build" },
+            content,
+            out var result);
+
+        Assert.True(created);
+        Assert.Equal("PASSED", result.Status);
+        Assert.Equal("frontend build", result.Title);
+    }
+
+    [Fact]
     public void ShellVerificationResultDetector_IgnoresNonVerificationCommand()
     {
         var content = JsonSerializer.Serialize(new
