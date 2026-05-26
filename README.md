@@ -163,6 +163,26 @@ The desktop Project panel builds a lightweight project map during workspace anal
 
 Repeatable desktop demo flows are documented in [docs/demo-scenarios.md](docs/demo-scenarios.md). They cover a C# bug fix with verification, a React/TypeScript feature change with project-aware search, and Unity project analysis with visual/game evidence.
 
+## Desktop Beta Workflow And Limits
+
+The supported desktop beta workflow is:
+
+```text
+open project -> analyze -> ask -> edit -> verify -> review changes -> inspect Git -> commit
+```
+
+Use the Project panel to confirm project type, key files, commands, symbols, dependencies, and memory. Use Evidence and Plan to see why context was selected, including file/search/tool evidence and visual attachments. Use Verify cards and Change preview before committing generated edits.
+
+Current beta limitations:
+
+- Windows desktop is WPF-based and targets `net10.0-windows`.
+- The installer and desktop executable are not code-signed yet.
+- Visual evidence is covered by automated tests, but release QA should still include a manual image/video attachment smoke test.
+- Unity verification may require manual Unity Editor or batchmode checks unless the target project provides command-line tests.
+- Persistent MCP sessions, broader cross-platform desktop support, and release signing are later roadmap items.
+
+Release QA details are tracked in [docs/release-readiness.md](docs/release-readiness.md).
+
 ## Search Retry
 
 When a text or file search returns no results, AgentQ can automatically retry with broader variants before handing the result back to the model. For example, a failed `grep_search` can retry with a case-insensitive pattern, and a failed `glob_search` can retry with a recursive path pattern. Retry attempts are recorded in the Evidence tab.
@@ -448,6 +468,8 @@ The installer and desktop executable are not code-signed yet. Windows SmartScree
 
 Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, optional embeddings, and desktop workflow stability.
 
+Before publishing a beta release, use [docs/release-readiness.md](docs/release-readiness.md) for the installer, portable ZIP, CLI package, checksum, smoke-test, and release-notes checklist.
+
 ## OpenCode Go
 
 OpenCode Go can be used through AgentQ when you have an API key for one of the OpenAI-compatible Go models.
@@ -478,7 +500,8 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 
 Current local validation passed in this environment:
 
-- Latest local validation: `dotnet test .\csharp\AgentQ.sln -c Release`: `213` tests passed
+- Latest local validation: `.\build.ps1` passed
+- Latest local validation: `.\test.ps1`: `252` tests passed
 - Next beta target: `v0.1.0-beta.8`
 - Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and `AgentQ.Tool.0.1.0-beta.8.nupkg`
 
@@ -499,7 +522,8 @@ See [docs/language-worker-architecture.md](docs/language-worker-architecture.md)
 
 ## Current Priority
 
-1. publish `v0.1.0-beta.8` release artifacts
-2. QA installer, portable ZIP, provider setup, optional embeddings, memory, verification, snapshots, telemetry, and replay
-3. add code signing before broader Windows distribution
-4. expand MCP, routing, replay, and language-worker coverage
+1. run the release readiness checklist in [docs/release-readiness.md](docs/release-readiness.md)
+2. publish `v0.1.0-beta.8` release artifacts
+3. QA installer, portable ZIP, provider setup, optional embeddings, memory, verification, snapshots, telemetry, and replay
+4. add code signing before broader Windows distribution
+5. expand MCP, routing, replay, and language-worker coverage
