@@ -296,3 +296,28 @@ Findings:
 - Provider-backed Unity analysis completed and produced a scoped plan without editing files.
 - Visual evidence attachment handling still needs a separate pass with an actual screenshot or video.
 - The stale `ERROR` UI text issue also appeared here after prior runs, even though the current Unity analysis completed.
+
+## 2026-05-26 - Unity Visual Evidence Attachment Pass
+
+Scope:
+
+- Code-level regression pass for the Unity visual evidence path.
+- Used an actual PNG fixture in tests to represent an attached game screenshot.
+
+Result:
+
+- `VisualEvidenceService` already describes image attachments with file name, media type, size, and dimensions.
+- `DesktopAgentRunWorkflowService` already adds each inspected attachment to the Evidence timeline as `Evidence: visual attachment`.
+- Improved `MainViewModel.RefreshPlanEvidenceSummary()` so Plan evidence keeps the visual attachment summary even after later file/tool evidence is added.
+- Added a regression test proving Plan evidence can show both:
+  - visual evidence such as `damage-flash.png`
+  - latest file evidence such as `DamageFlashController.cs`
+
+Verification:
+
+- `.\build.ps1` passed.
+- `.\test.ps1` passed: 252 non-integration tests.
+
+Remaining manual check:
+
+- A future desktop UI smoke pass can still attach a real screenshot through the file picker, but the core Evidence -> Plan connection is now covered by automated tests.

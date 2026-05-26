@@ -45,22 +45,23 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
   - added a regression test to prevent static `Text="ERROR"` from returning to `MainWindow.xaml`
   - verified with `.\build.ps1`
   - verified with `.\test.ps1` (251 passed, 0 failed, 0 skipped)
+- Completed the Unity visual evidence attachment code-level pass:
+  - confirmed visual attachments are added to the Evidence timeline
+  - improved Plan evidence so visual attachment context stays visible alongside later file/tool evidence
+  - added a regression test using a Unity-style `damage-flash.png` visual evidence case
+  - logged the result in `docs/demo-run-log.md`
+  - verified with `.\build.ps1`
+  - verified with `.\test.ps1` (252 passed, 0 failed, 0 skipped)
 
 ## Active Work Queue Toward 80%
 
-1. Unity Visual Evidence Attachment Pass
-   - Run the Unity analysis scenario with an actual screenshot or video attachment.
-   - Confirm the Evidence timeline records the visual attachment.
-   - Confirm the Plan view can connect the selected item to visual evidence and file evidence.
-   - Log the result in `docs/demo-run-log.md`.
-
-2. Release Readiness Checklist
+1. Release Readiness Checklist
    - Update README with the current desktop workflow and known limitations.
    - Add a release notes draft for the current beta.
    - Add installer/portable ZIP QA checklist.
    - Keep code signing as a later paid-release decision unless a certificate or signing service is already available.
 
-3. Safe Refactor Guardrails
+2. Safe Refactor Guardrails
    - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
    - Avoid whole-file rewrites for large/core files unless explicitly approved.
    - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
@@ -72,7 +73,7 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
      - compile after each phase
      - verify spawn, movement, attack, death, reward, boss, and stage progression
 
-4. Edit Failure Recovery
+3. Edit Failure Recovery
    - If an edit tool fails repeatedly, stop retrying the same strategy.
    - Read the current file and compare the intended shape before continuing.
    - Detect likely file corruption or partial rewrites.
@@ -84,13 +85,13 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
      - a clear warning that local changes to that file will be discarded
    - Prefer restore plus minimal patches over replacing an entire complex file.
 
-5. Unsafe Editing Eval Signals
+4. Unsafe Editing Eval Signals
    - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
    - Surface these as Eval Dashboard findings.
    - Add tests or replay fixtures for failed large-file refactor attempts.
    - Use those signals to improve future tool-routing and recovery behavior.
 
-6. 80% Readiness Review
+5. 80% Readiness Review
    - Confirm the main path works:
      `open project -> analyze -> ask -> edit -> verify -> review -> commit`
    - Confirm all three demo scenarios are repeatable.

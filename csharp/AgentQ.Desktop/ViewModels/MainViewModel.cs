@@ -913,7 +913,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        var evidence = BuildCompactEvidence(RunSteps.LastOrDefault());
+        var evidence = BuildCompactEvidence(RunSteps);
         var verification = BuildCompactVerification(Verification.Results.FirstOrDefault());
         var eval = EvalDashboard.Findings.FirstOrDefault() ?? EvalDashboard.FailureFingerprints.FirstOrDefault() ?? "No eval finding loaded.";
         PlanEvidenceStatusText = $"{item.StatusText}: {item.DisplayTitle}";
@@ -927,15 +927,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PlanEvidenceSummary = $"Evidence: {evidence} | Verification: {verification} | Eval: {TrimPlanEvidence(eval, 120)}";
     }
 
-    private static string BuildCompactEvidence(AgentRunStep? step)
+    private static string BuildCompactEvidence(IReadOnlyList<AgentRunStep> steps)
+    {
+        if (steps.Count == 0)
+        {
+            return "No timeline evidence yet.";
+        }
+
+        var visualStep = steps.LastOrDefault(step =>
+            step.Title.Contains("visual attachment", StringComparison.OrdinalIgnoreCase));
+        var latestStep = steps.LastOrDefault();
+        if (visualStep == null || ReferenceEquals(visualStep, latestStep))
+        {
+            return TrimPlanEvidence(BuildStepDetail(latestStep), 120);
+        }
+
+        return TrimPlanEvidence($"{BuildStepDetail(visualStep)} | {BuildStepDetail(latestStep)}", 180);
+    }
+
+    private static string BuildStepDetail(AgentRunStep? step)
     {
         if (step == null)
         {
             return "No timeline evidence yet.";
         }
 
-        var detail = string.IsNullOrWhiteSpace(step.Detail) ? step.Title : $"{step.Title}: {step.Detail}";
-        return TrimPlanEvidence(detail, 120);
+        return string.IsNullOrWhiteSpace(step.Detail) ? step.Title : $"{step.Title}: {step.Detail}";
     }
 
     private static string BuildCompactVerification(VerificationResultCard? result)

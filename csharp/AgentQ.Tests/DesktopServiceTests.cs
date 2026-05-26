@@ -3738,6 +3738,33 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainViewModel_RefreshPlanEvidenceSummary_KeepsVisualEvidenceWithLatestFileEvidence()
+    {
+        var viewModel = new MainViewModel();
+        var item = new AgentPlanItem
+        {
+            Order = 1,
+            Title = "Analyze Unity damage flash",
+            Detail = "Use screenshot and inspect scripts."
+        };
+        viewModel.PlanItems.Add(item);
+        viewModel.SelectedPlanItem = item;
+        viewModel.AddRunStep(
+            AgentRunState.GatheringContext,
+            "Evidence: visual attachment",
+            "image: damage-flash.png, image/png, 4 KB, dimensions 640x360.");
+        viewModel.AddRunStep(
+            AgentRunState.RunningTool,
+            "Evidence: read_file",
+            "Read DamageFlashController.cs because it controls hit feedback.");
+
+        Assert.Contains("visual attachment", viewModel.PlanEvidenceSummary);
+        Assert.Contains("damage-flash.png", viewModel.PlanEvidenceSummary);
+        Assert.Contains("read_file", viewModel.PlanEvidenceSummary);
+        Assert.Contains("DamageFlashController.cs", viewModel.PlanEvidenceSummary);
+    }
+
+    [Fact]
     public void MainViewModel_RefreshPlanEvidenceSummary_UsesPlanStatusAccent()
     {
         var viewModel = new MainViewModel();
