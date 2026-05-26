@@ -1044,7 +1044,7 @@ public sealed class DesktopAgentService
     private static void RegisterMcpTools(ToolRegistry registry, string workspaceRoot)
     {
         var projectConfig = ProjectAgentConfigService.LoadLocal(workspaceRoot);
-        var servers = McpServerRegistry.EnabledServers(projectConfig);
+        var servers = McpServerRegistry.EnabledServers(projectConfig, workspaceRoot);
         if (servers.Count == 0)
         {
             return;

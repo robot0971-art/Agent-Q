@@ -61,6 +61,8 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.dotnet/
+**/.dotnet/
 
 # AgentQ local memory
 .agentq/memory.local.json

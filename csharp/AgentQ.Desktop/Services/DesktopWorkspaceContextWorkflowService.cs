@@ -56,7 +56,7 @@ public sealed class DesktopWorkspaceContextWorkflowService(
         viewModel.HasProjectConfig = true;
         viewModel.StatusText = "Project config saved";
         viewModel.AddLog("Project config saved");
-        foreach (var warning in McpServerRegistry.Validate(config))
+        foreach (var warning in McpServerRegistry.Validate(config, viewModel.WorkspaceRoot))
         {
             viewModel.AddLog(warning);
         }

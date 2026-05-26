@@ -96,6 +96,13 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(4096u, loaded.MaxTokens);
         Assert.True(ConfigStore.Exists);
         Assert.EndsWith(Path.Combine(".agentq", "config.json"), ConfigStore.PathValue, StringComparison.OrdinalIgnoreCase);
+
+        var savedJson = await File.ReadAllTextAsync(ConfigStore.PathValue);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.DoesNotContain("\"ApiKey\": \"secret\"", savedJson, StringComparison.Ordinal);
+            Assert.Contains(ProviderConfigurationSecrets.ProtectedPrefix, savedJson, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

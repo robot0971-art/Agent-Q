@@ -42,7 +42,8 @@ public sealed class FileConfigStore : IConfigStore
             Directory.CreateDirectory(configDirectory);
         }
 
-        var json = JsonSerializer.Serialize(config, Options);
+        var storageConfig = ProviderConfigurationSecrets.ProtectForStorage(config);
+        var json = JsonSerializer.Serialize(storageConfig, Options);
         var tempPath = Path.Combine(configDirectory, $"config.{Guid.NewGuid():N}.tmp");
 
         try
@@ -79,7 +80,8 @@ public sealed class FileConfigStore : IConfigStore
         try
         {
             var json = await File.ReadAllTextAsync(configPath);
-            return JsonSerializer.Deserialize<ProviderConfiguration>(json, Options);
+            var config = JsonSerializer.Deserialize<ProviderConfiguration>(json, Options);
+            return config == null ? null : ProviderConfigurationSecrets.UnprotectFromStorage(config);
         }
         catch
         {

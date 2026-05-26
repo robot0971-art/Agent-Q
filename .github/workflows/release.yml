@@ -84,6 +84,17 @@ jobs:
             -Force
           Copy-Item .\artifacts\packages\*.nupkg .\artifacts\release\
 
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem .\artifacts\release -File |
+            Where-Object { $_.Name -notlike "*.sha256" } |
+            ForEach-Object {
+              $hash = Get-FileHash $_.FullName -Algorithm SHA256
+              "$($hash.Hash.ToLowerInvariant())  $($_.Name)" |
+                Set-Content -NoNewline -Encoding ascii "$($_.FullName).sha256"
+            }
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -94,3 +105,4 @@ jobs:
             artifacts/release/*.zip
             artifacts/release/*.exe
             artifacts/release/*.nupkg
+            artifacts/release/*.sha256

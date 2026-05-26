@@ -32,7 +32,13 @@ jobs:
         run: dotnet build .\csharp\AgentQ.sln -c Release --no-restore
 
       - name: Test
-        run: dotnet test .\csharp\AgentQ.sln -c Release --no-build --logger trx --results-directory .\artifacts\test-results
+        run: >
+          dotnet test .\csharp\AgentQ.sln
+          -c Release
+          --no-build
+          --logger trx
+          --results-directory .\artifacts\test-results
+          --collect:"XPlat Code Coverage"
 
       - name: Pack CLI tool
         run: dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release --no-build
@@ -74,6 +80,13 @@ jobs:
         with:
           name: test-results
           path: artifacts/test-results/*.trx
+
+      - name: Upload coverage results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-results
+          path: artifacts/test-results/**/coverage.cobertura.xml
 
   docker-mockservice:
     name: Docker mock service smoke

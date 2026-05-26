@@ -28,7 +28,8 @@ public sealed class DesktopConfigService
         try
         {
             var json = await File.ReadAllTextAsync(ConfigPath);
-            return JsonSerializer.Deserialize<ProviderConfiguration>(json, Options);
+            var config = JsonSerializer.Deserialize<ProviderConfiguration>(json, Options);
+            return config == null ? null : ProviderConfigurationSecrets.UnprotectFromStorage(config);
         }
         catch
         {
@@ -40,7 +41,8 @@ public sealed class DesktopConfigService
     {
         Directory.CreateDirectory(_configDirectory);
         var tempPath = Path.Combine(_configDirectory, $"config.desktop.{Guid.NewGuid():N}.tmp");
-        var json = JsonSerializer.Serialize(config, Options);
+        var storageConfig = ProviderConfigurationSecrets.ProtectForStorage(config);
+        var json = JsonSerializer.Serialize(storageConfig, Options);
 
         try
         {

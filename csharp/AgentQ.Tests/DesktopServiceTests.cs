@@ -1751,7 +1751,8 @@ public sealed class DesktopServiceTests
                 {
                     Name = "unity",
                     Command = "node",
-                    Args = ["unity-mcp.js"]
+                    Args = ["unity-mcp.js"],
+                    Tags = ["trusted"]
                 },
                 new McpServerConfig
                 {
@@ -1768,6 +1769,48 @@ public sealed class DesktopServiceTests
         Assert.Contains("unity", context);
         Assert.DoesNotContain("disabled", context);
         Assert.Empty(McpServerRegistry.Validate(config));
+    }
+
+    [Fact]
+    public void McpServerRegistry_DisablesUntrustedServers()
+    {
+        var config = new ProjectAgentConfig
+        {
+            McpServers =
+            [
+                new McpServerConfig
+                {
+                    Name = "untrusted",
+                    Command = "node",
+                    Args = ["server.js"]
+                }
+            ]
+        };
+
+        Assert.Empty(McpServerRegistry.EnabledServers(config));
+        Assert.Contains(McpServerRegistry.Validate(config), warning => warning.Contains("trusted tag", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void McpServerRegistry_BlocksWorkspaceLocalExecutables()
+    {
+        var root = CreateTempDirectory();
+        var command = Path.Combine(root, "tools", "server.exe");
+        var config = new ProjectAgentConfig
+        {
+            McpServers =
+            [
+                new McpServerConfig
+                {
+                    Name = "local",
+                    Command = command,
+                    Tags = ["trusted"]
+                }
+            ]
+        };
+
+        Assert.Empty(McpServerRegistry.EnabledServers(config, root));
+        Assert.Contains(McpServerRegistry.Validate(config, root), warning => warning.Contains("workspace-local executable", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
