@@ -59,6 +59,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
       - `BashTool` now runs from `AGENTQ_WORKSPACE_ROOT` when available.
       - Shell verification detector recognizes Vite `built in ...` success output.
     - Verified with `.\build.ps1` and `.\test.ps1` (248 non-integration tests passed).
+    - Re-ran a short provider-backed `npm run build` verification and confirmed the Verify panel displayed `PASSED: frontend build`.
   - Logged the Scenario 1 run in `docs/demo-run-log.md`.
 
 ## Active Work Queue Toward 80%
@@ -74,7 +75,7 @@ The next goal is to move AgentQ from roughly 70% to 80% by proving the main work
    - Use a small React/Vite/Next TypeScript sample project.
    - Confirm TypeScript worker/project-aware search signals.
    - Verify frontend command selection and Evidence trail.
-   - Re-run the short `npm run build` provider-backed verification after the Bash cwd fix to confirm the Verify panel shows a frontend build card.
+   - Decide whether the provider-backed run timeout after useful implementation is acceptable for the demo, or tune timeout/status handling before Scenario 3.
    - Log any search, verification, or UI issue found.
 
 3. Run Demo Scenario 3: Unity Project Analysis

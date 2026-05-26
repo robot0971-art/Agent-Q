@@ -209,3 +209,20 @@ Verification:
 
 - `.\build.ps1` passed.
 - `.\test.ps1` passed: 248 non-integration tests.
+
+UI confirmation:
+
+- Re-ran a short provider-backed verification prompt:
+
+  ```text
+  Run npm run build to verify the current React change. Do not edit files.
+  ```
+
+- AgentQ requested approval for the build command.
+- Verify panel displayed `PASSED: frontend build`.
+- Verify card showed:
+  - command: `cd "C:\Users\admin\Desktop\AgentQ-Demo-React" ; npm run build`
+  - status: `PASSED`
+  - summary: `Shell verification passed during the agent run.`
+  - detail: `Verification completed successfully.`
+- This confirms the Bash working-directory fix and Vite `built in ...` detector fix work in the Desktop UI.
