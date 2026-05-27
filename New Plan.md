@@ -101,6 +101,9 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
 - Started the context compression and tool router pass:
   - added explicit Desktop tool routing rules for project map, memory, symbol search, grep search, hybrid search, semantic search, MCP bridge tools, and focused file reads
   - added prompt assembly regression coverage so task-specific prompts keep the routing guidance
+- Started the latency breakdown and slow-run diagnostics pass:
+  - added Eval Dashboard latency metrics for total tool runtime, telemetry-measured runtime, retry count, verification cards, token usage, slowest tool, and repeated tools
+  - added regression coverage for slow-run metrics
 
 ## Active Work Queue After 80%
 
@@ -125,6 +128,10 @@ These are important, but should come after the Windows 1.0 stabilization pass un
 3. Context Compression And Tool Router
    - Improve large-project context summaries.
    - Make tool-choice outcomes measurable in telemetry/eval.
+
+4. Latency Breakdown And Slow-Run Diagnostics
+   - Add live Run Summary timing for active runs.
+   - Record more precise LLM request duration when provider callbacks expose it.
 
 4. Cross-Platform Strategy
    - Keep Windows WPF for near-term 1.0.

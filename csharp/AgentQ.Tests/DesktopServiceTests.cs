@@ -2130,6 +2130,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains("replay tools", report.Summary);
         Assert.Contains(report.Metrics, metric => metric.Contains("Replay: 2 tools", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Telemetry: 1 events", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Latency: tools 30 ms", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Slowest tool: shell_execute 25 ms", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("LLM usage: 10 input tokens / 3 output tokens", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Verification: 0 passed, 1 failed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Findings, finding => finding.Contains("Tool failure", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Findings, finding => finding.Contains("Recurring failure", StringComparison.OrdinalIgnoreCase) &&

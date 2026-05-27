@@ -32,6 +32,7 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
 
         AddReplay(report, replay);
         AddTelemetry(report, telemetry);
+        AddLatencyDiagnostics(report, replay, telemetry, verificationResults);
         AddUnsafeEditingSignals(report, replay, telemetry);
         AddVerification(report, verificationResults);
         AddFailureFingerprints(report, replay, telemetry, verificationResults);
@@ -116,6 +117,55 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         foreach (var result in verificationResults.Where(item => !item.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase)).Take(5))
         {
             report.Findings.Add($"Verification {result.Status}: {result.Title} - {Trim(result.Summary, 140)}");
+        }
+    }
+
+    private static void AddLatencyDiagnostics(
+        EvalReplayDashboardReport report,
+        ToolReplaySession? replay,
+        IReadOnlyList<DesktopTelemetryEvent> telemetry,
+        IReadOnlyCollection<VerificationResultCard> verificationResults)
+    {
+        if (replay == null && telemetry.Count == 0 && verificationResults.Count == 0)
+        {
+            return;
+        }
+
+        var toolEntries = replay?.Entries ?? [];
+        var toolDurationMs = toolEntries.Sum(entry => Math.Max(0, entry.DurationMs));
+        var telemetryDurationMs = telemetry.Sum(item => Math.Max(0, item.DurationMs));
+        var tokenEvents = telemetry.Where(item => item.InputTokens > 0 || item.OutputTokens > 0).ToList();
+        var inputTokens = tokenEvents.Sum(item => item.InputTokens);
+        var outputTokens = tokenEvents.Sum(item => item.OutputTokens);
+        var retryCount = telemetry.Count(item => item.EventType.Equals("search_retry", StringComparison.OrdinalIgnoreCase));
+        var verificationCount = verificationResults.Count;
+
+        report.Metrics.Add(
+            $"Latency: tools {toolDurationMs:0} ms, telemetry-measured {telemetryDurationMs:0} ms, retries {retryCount:0}, verification cards {verificationCount:0}");
+
+        if (inputTokens > 0 || outputTokens > 0)
+        {
+            report.Metrics.Add($"LLM usage: {inputTokens:0} input tokens / {outputTokens:0} output tokens across {tokenEvents.Count:0} event(s)");
+        }
+
+        var slowestTool = toolEntries
+            .OrderByDescending(entry => Math.Max(0, entry.DurationMs))
+            .FirstOrDefault();
+        if (slowestTool != null)
+        {
+            report.Metrics.Add($"Slowest tool: {slowestTool.ToolName} {Math.Max(0, slowestTool.DurationMs):0} ms");
+        }
+
+        var repeatedTools = toolEntries
+            .GroupBy(entry => entry.ToolName)
+            .Where(group => group.Count() > 1)
+            .OrderByDescending(group => group.Count())
+            .Take(3)
+            .Select(group => $"{group.Key} x{group.Count():0}");
+        var repeatedText = string.Join(", ", repeatedTools);
+        if (!string.IsNullOrWhiteSpace(repeatedText))
+        {
+            report.Metrics.Add($"Repeated tools: {repeatedText}");
         }
     }
 
