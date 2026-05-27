@@ -89,6 +89,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - confirmed the release workflow generates SHA256 checksum sidecars for installer, portable ZIP, and CLI package artifacts
   - confirmed README and release readiness docs explicitly explain unsigned Windows builds and expected SmartScreen/browser warnings
   - kept code signing deferred until certificate/HSM/cloud signing budget is available
+- Started the stronger sandbox and permission policy pass:
+  - aligned Desktop permission classification with BashTool hard blocks for destructive Git recovery commands and recursive/system-level shell commands
+  - blocked `git clean -xfd`, destructive `git restore`, destructive `git checkout`, encoded PowerShell commands, and forced recursive deletes through desktop policy assessment
+  - added regression coverage for destructive recovery command blocking
+  - verified with `.\release-readiness.ps1 -SkipGitStatus` (264 passed, 0 failed, 0 skipped)
 
 ## Active Work Queue After 80%
 
@@ -104,9 +109,8 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
 These are important, but should come after the Windows 1.0 stabilization pass unless a demo exposes them as blockers.
 
 1. Stronger Sandbox And Permission Policy
-   - Make shell/file/git permission boundaries clearer.
-   - Improve destructive command prevention and user-facing explanations.
-   - Include the destructive restore guard from the safe refactor work.
+   - Make shell/file/git permission boundaries clearer in the desktop UI.
+   - Consider a structured capability/policy engine if regex-based policy becomes hard to reason about.
 
 2. Error History And Failure Memory
    - Strengthen recurring failure fingerprints.

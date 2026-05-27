@@ -3662,6 +3662,30 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal(ToolPermissionDecision.Block, result.Decision);
     }
 
+    [Theory]
+    [InlineData("git clean -xfd")]
+    [InlineData("git restore .")]
+    [InlineData("git restore --source HEAD -- .")]
+    [InlineData("git checkout -- .")]
+    [InlineData("git checkout -f")]
+    [InlineData("Remove-Item . -Recurse -Force")]
+    [InlineData("powershell -EncodedCommand AAAA")]
+    public void ToolPermissionPolicy_BlocksDestructiveRecoveryCommands(string command)
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "bash",
+            new Dictionary<string, object?>
+            {
+                ["command"] = command
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.FullAgent);
+
+        Assert.Equal(PermissionRiskLevel.Destructive, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Block, result.Decision);
+        Assert.Contains("blocked", result.PolicyReason, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void VerificationFailureClassifier_DetectsCompilerErrors()
     {

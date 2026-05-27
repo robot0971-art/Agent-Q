@@ -28,7 +28,11 @@ public class BashTool : ITool
         (new Regex(@"(^|\s)cipher(\.exe)?\s+/w\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk wipe"),
         (new Regex(@"(^|\s)net(\.exe)?\s+user\b.*\s+/delete\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "user account deletion"),
         (new Regex(@"(^|\s)takeown(\.exe)?\b.*\b(icacls|del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "ownership takeover followed by destructive command"),
-        (new Regex(@"(^|\s)icacls(\.exe)?\b.*\s/grant\b.*\b(del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "permission change followed by destructive command")
+        (new Regex(@"(^|\s)icacls(\.exe)?\b.*\s/grant\b.*\b(del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "permission change followed by destructive command"),
+        (new Regex(@"\bgit\s+reset\s+--hard\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive git reset"),
+        (new Regex(@"\bgit\s+clean\s+-[a-z]*[fdx][a-z]*\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive git clean"),
+        (new Regex(@"\bgit\s+restore\b(?=.*(?:\s\.|\s:\/|\s--source\b|\s--staged\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive git restore"),
+        (new Regex(@"\bgit\s+checkout\s+(?:-f\b|--force\b|--\s+(?:\.|:\/))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive git checkout")
     ];
 
     /// <summary>

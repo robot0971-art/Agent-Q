@@ -5,9 +5,18 @@ namespace AgentQ.Desktop.Services;
 
 public static class ToolPermissionClassifier
 {
-    private static readonly Regex DestructiveCommandPattern = new(
-        @"\b(remove-item|rm|del|erase|rmdir|rd)\b(?=.*(?:-r\b|-recurse\b|/s\b))(?=.*(?:-fo\b|-force\b|/q\b|/f\b))|\bgit\s+reset\s+--hard\b|\bgit\s+clean\s+-fd\b|\bshutdown\b|\breboot\b|\bformat\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex[] DestructiveCommandPatterns =
+    [
+        new(@"\b(remove-item|ri|rm|del|erase)\b(?=.*(?:-r\b|-recurse\b|/s\b))(?=.*(?:-fo\b|-force\b|/q\b|/f\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\b(rmdir|rd)\b(?=.*(?:-r\b|-recurse\b|/s\b))(?=.*(?:-fo\b|-force\b|/q\b|/f\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bgit\s+reset\s+--hard\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bgit\s+clean\s+-[a-z]*[fdx][a-z]*\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bgit\s+restore\b(?=.*(?:\s\.|\s:\/|\s--source\b|\s--staged\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bgit\s+checkout\s+(?:-f\b|--force\b|--\s+(?:\.|:\/))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\b(shutdown|reboot|diskpart|format)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\b(encodedcommand|enc)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\b(takeown|icacls)\b.*\b(del|erase|rmdir|rd|remove-item|ri|rm)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)
+    ];
 
     public static ToolPermissionAssessment Assess(string toolName, string inputJson)
     {
@@ -54,14 +63,14 @@ public static class ToolPermissionClassifier
         command = command?.Trim() ?? string.Empty;
         var lowered = command.ToLowerInvariant();
 
-        if (DestructiveCommandPattern.IsMatch(command))
+        if (DestructiveCommandPatterns.Any(pattern => pattern.IsMatch(command)))
         {
             return new ToolPermissionAssessment
             {
                 RiskLevel = PermissionRiskLevel.Destructive,
                 Operation = "Destructive shell command",
                 Target = command,
-                Reason = "This command matches a destructive command pattern and is blocked by default."
+                Reason = "This command matches a destructive shell, Git restore, or system modification pattern and is blocked by default."
             };
         }
 
