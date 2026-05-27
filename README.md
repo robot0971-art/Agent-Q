@@ -507,7 +507,7 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 Current local validation passed in this environment:
 
 - Latest local validation: `.\build.ps1` passed
-- Latest local validation: `.\test.ps1`: `264` tests passed
+- Latest local validation: `.\test.ps1`: `265` tests passed
 - Next beta target: `v0.1.0-beta.8`
 - Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and `AgentQ.Tool.0.1.0-beta.8.nupkg`
 

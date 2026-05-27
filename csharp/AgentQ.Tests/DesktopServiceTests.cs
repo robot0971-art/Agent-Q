@@ -2253,6 +2253,22 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopWorkspaceAnalysisReportBuilder_CapsLargeSections()
+    {
+        var report = DesktopWorkspaceAnalysisReportBuilder.Build(new WorkspaceAnalysis
+        {
+            WorkspaceRoot = "C:\\repo",
+            ProjectType = "Large",
+            Framework = "Mixed",
+            ProjectMap = Enumerable.Range(1, 45).Select(index => $"Layer {index}").ToList()
+        });
+
+        Assert.Contains("Layer 40", report);
+        Assert.DoesNotContain("Layer 41", report);
+        Assert.Contains("5 more omitted", report);
+    }
+
+    [Fact]
     public async Task EmbeddingIndexStore_SavesManifestUnderAgentQEmbeddings()
     {
         var root = CreateTempDirectory();

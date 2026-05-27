@@ -4,6 +4,8 @@ namespace AgentQ.Desktop.Services;
 
 public static class DesktopWorkspaceAnalysisReportBuilder
 {
+    private const int DefaultSectionLimit = 40;
+
     public static string Build(WorkspaceAnalysis analysis)
     {
         var builder = new StringBuilder();
@@ -27,7 +29,11 @@ public static class DesktopWorkspaceAnalysisReportBuilder
         return builder.ToString().TrimEnd();
     }
 
-    private static void AppendSection(StringBuilder builder, string title, IReadOnlyCollection<string> items)
+    private static void AppendSection(
+        StringBuilder builder,
+        string title,
+        IReadOnlyCollection<string> items,
+        int limit = DefaultSectionLimit)
     {
         if (items.Count == 0)
         {
@@ -37,9 +43,15 @@ public static class DesktopWorkspaceAnalysisReportBuilder
         builder.AppendLine();
         builder.AppendLine($"## {title}");
         builder.AppendLine();
-        foreach (var item in items)
+        foreach (var item in items.Take(limit))
         {
             builder.AppendLine($"- {item}");
+        }
+
+        var omitted = items.Count - limit;
+        if (omitted > 0)
+        {
+            builder.AppendLine($"- [...{omitted:0} more omitted from this context snapshot]");
         }
     }
 }
