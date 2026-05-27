@@ -2130,9 +2130,12 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains(report.Metrics, metric => metric.Contains("Telemetry: 1 events", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Verification: 0 passed, 1 failed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Findings, finding => finding.Contains("Tool failure", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Findings, finding => finding.Contains("Recurring failure", StringComparison.OrdinalIgnoreCase) &&
+                                                    finding.Contains("shell_execute", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.ReplayEntries, entry => entry.Contains("FAILED shell_execute", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.FailureFingerprints, fingerprint => fingerprint.StartsWith("failure-", StringComparison.OrdinalIgnoreCase) &&
-                                                                  fingerprint.EndsWith("x2", StringComparison.OrdinalIgnoreCase));
+                                                                  fingerprint.Contains("x2", StringComparison.OrdinalIgnoreCase) &&
+                                                                  fingerprint.Contains("telemetry:shell_execute", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

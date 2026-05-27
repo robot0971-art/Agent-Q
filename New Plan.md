@@ -94,6 +94,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - blocked `git clean -xfd`, destructive `git restore`, destructive `git checkout`, encoded PowerShell commands, and forced recursive deletes through desktop policy assessment
   - added regression coverage for destructive recovery command blocking
   - verified with `.\release-readiness.ps1 -SkipGitStatus` (264 passed, 0 failed, 0 skipped)
+- Started the error history and failure memory pass:
+  - surfaced recurring failure fingerprints directly in Eval Dashboard findings, not only in the fingerprint list
+  - included representative replay/telemetry/verification sources with recurring fingerprint summaries
+  - added regression coverage for recurring failure findings
 
 ## Active Work Queue After 80%
 
@@ -113,7 +117,6 @@ These are important, but should come after the Windows 1.0 stabilization pass un
    - Consider a structured capability/policy engine if regex-based policy becomes hard to reason about.
 
 2. Error History And Failure Memory
-   - Strengthen recurring failure fingerprints.
    - Surface previously seen failures more directly in Auto Fix and Verify.
 
 3. Context Compression And Tool Router

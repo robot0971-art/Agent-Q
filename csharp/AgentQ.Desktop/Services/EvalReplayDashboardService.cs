@@ -169,34 +169,48 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         IReadOnlyList<DesktopTelemetryEvent> telemetry,
         IReadOnlyCollection<VerificationResultCard> verificationResults)
     {
-        var fingerprints = new List<string>();
+        var fingerprints = new List<FailureFingerprintSignal>();
         if (replay != null)
         {
             fingerprints.AddRange(replay.Entries
                 .Where(entry => entry.IsError)
-                .Select(entry => FailureFingerprintService.Create(entry.ToolName, entry.ResultPreview))
-                .Where(value => !string.IsNullOrWhiteSpace(value)));
+                .Select(entry => CreateFailureSignal(entry.ToolName, entry.ResultPreview, $"replay:{entry.ToolName}"))
+                .Where(signal => !string.IsNullOrWhiteSpace(signal.Fingerprint)));
         }
 
         fingerprints.AddRange(telemetry
             .Where(item => item.IsError || !item.Succeeded)
-            .Select(item => FailureFingerprintService.Create(string.IsNullOrWhiteSpace(item.ToolName) ? item.EventType : item.ToolName, item.Detail))
-            .Where(value => !string.IsNullOrWhiteSpace(value)));
+            .Select(item =>
+            {
+                var label = string.IsNullOrWhiteSpace(item.ToolName) ? item.EventType : item.ToolName;
+                return CreateFailureSignal(label, item.Detail, $"telemetry:{label}");
+            })
+            .Where(signal => !string.IsNullOrWhiteSpace(signal.Fingerprint)));
 
         fingerprints.AddRange(verificationResults
             .Where(item => !item.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase))
-            .Select(item => FailureFingerprintService.Create(item.Title, $"{item.Detail}\n{item.OutputPreview}"))
-            .Where(value => !string.IsNullOrWhiteSpace(value)));
+            .Select(item => CreateFailureSignal(item.Title, $"{item.Detail}\n{item.OutputPreview}", $"verification:{item.Title}"))
+            .Where(signal => !string.IsNullOrWhiteSpace(signal.Fingerprint)));
 
-        foreach (var group in fingerprints.GroupBy(value => value).Where(group => group.Count() > 1).OrderByDescending(group => group.Count()).Take(8))
+        foreach (var group in fingerprints.GroupBy(value => value.Fingerprint).Where(group => group.Count() > 1).OrderByDescending(group => group.Count()).Take(8))
         {
-            report.FailureFingerprints.Add($"{group.Key} x{group.Count():0}");
+            var sources = string.Join(", ", group.Select(item => item.Source).Distinct().Take(3));
+            var summary = $"{group.Key} x{group.Count():0} ({sources})";
+            report.FailureFingerprints.Add(summary);
+            report.Findings.Add($"Recurring failure: {summary}");
         }
 
         if (report.FailureFingerprints.Count == 0)
         {
             report.FailureFingerprints.Add("No recurring failure fingerprint detected.");
         }
+    }
+
+    private static FailureFingerprintSignal CreateFailureSignal(string title, string detail, string source)
+    {
+        return new FailureFingerprintSignal(
+            FailureFingerprintService.Create(title, detail),
+            source);
     }
 
     private static async Task<IReadOnlyList<DesktopTelemetryEvent>> LoadTelemetryAsync(string workspaceRoot, CancellationToken ct)
@@ -276,3 +290,5 @@ public sealed class EvalReplayDashboardReport
 
     public List<string> FailureFingerprints { get; set; } = [];
 }
+
+internal sealed record FailureFingerprintSignal(string Fingerprint, string Source);
