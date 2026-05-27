@@ -7,6 +7,7 @@ public static class DesktopPromptAssemblyService
     private static readonly IReadOnlyList<IDesktopPromptRule> PromptRules =
     [
         new ContextPrioritizationPromptRule(),
+        new ToolRoutingPromptRule(),
         new ExecutionStrategyPromptRule(),
         new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
@@ -127,6 +128,25 @@ public sealed class LinkHandlingPromptRule : IDesktopPromptRule
         builder.AppendLine("- AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled.");
         builder.AppendLine("- Never answer that AgentQ categorically cannot access external websites; explain the link auto-read setting, fetch result, or fallback instead.");
         builder.AppendLine("- If no URL is present, ask the user to send the URL. If a fetch fails, report the failure reason and suggest pasted text or a local file as fallback.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class ToolRoutingPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => true;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Tool routing rules:");
+        builder.AppendLine("- Use project map, memory, and existing evidence first when they already identify the relevant files.");
+        builder.AppendLine("- Use symbol_search for known class, method, function, component, or type names.");
+        builder.AppendLine("- Use grep_search for exact strings, errors, UI labels, config keys, commands, and log fragments.");
+        builder.AppendLine("- Use hybrid_search when the request is conceptual, cross-file, or the exact identifier is unknown.");
+        builder.AppendLine("- Use semantic_search only when an embedding index is available and keyword/symbol search is likely too narrow.");
+        builder.AppendLine("- Use MCP bridge tools only for project-configured external systems that native AgentQ tools cannot inspect directly.");
+        builder.AppendLine("- Prefer read_file after search identifies a small candidate set; avoid broad file reads when a narrower search can locate the owner.");
         return builder.ToString().TrimEnd();
     }
 }

@@ -98,6 +98,9 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - surfaced recurring failure fingerprints directly in Eval Dashboard findings, not only in the fingerprint list
   - included representative replay/telemetry/verification sources with recurring fingerprint summaries
   - added regression coverage for recurring failure findings
+- Started the context compression and tool router pass:
+  - added explicit Desktop tool routing rules for project map, memory, symbol search, grep search, hybrid search, semantic search, MCP bridge tools, and focused file reads
+  - added prompt assembly regression coverage so task-specific prompts keep the routing guidance
 
 ## Active Work Queue After 80%
 
@@ -121,7 +124,7 @@ These are important, but should come after the Windows 1.0 stabilization pass un
 
 3. Context Compression And Tool Router
    - Improve large-project context summaries.
-   - Make tool choice more explicit and measurable.
+   - Make tool-choice outcomes measurable in telemetry/eval.
 
 4. Cross-Platform Strategy
    - Keep Windows WPF for near-term 1.0.

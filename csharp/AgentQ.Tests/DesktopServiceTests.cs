@@ -235,6 +235,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("Dynamic task guidance", prompt);
         Assert.Contains("Context prioritization", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(profile.ContextHint, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tool routing rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Execution strategy", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Patch the minimal root cause", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
