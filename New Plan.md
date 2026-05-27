@@ -1,6 +1,6 @@
 # AgentQ Current Plan
 
-Updated: 2026-05-26
+Updated: 2026-05-27
 
 Implementation rule: finish items from top to bottom. When an item is implemented, verified, committed, and pushed, remove it from this file.
 
@@ -8,14 +8,14 @@ Implementation rule: finish items from top to bottom. When an item is implemente
 
 Current estimated product completeness:
 
-- Engine/core agent capability: 80-82%
-- Desktop product UX: 75-78%
-- Release/distribution readiness: 60-65%
-- Overall practical readiness: about 76%
+- Engine/core agent capability: 82-84%
+- Desktop product UX: 78-80%
+- Release/distribution readiness: 65-68%
+- Overall practical readiness: about 80%
 
 The main engine pieces are now present: Project Map, hybrid search, symbol search, language workers, Roslyn analysis, evidence trail, confidence signals, memory, replay/eval, Git workflow, visual evidence, Unity analysis, planning, MCP foundation, Auto Fix review flow, run summary, project dashboard, and plan/evidence/eval connection.
 
-The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues discovered during real demo runs, proving visual evidence on Unity-like work, and preparing a clean release checklist.
+AgentQ has reached the current 80% target for the internal Windows beta path: the demo-driven issues found so far are fixed or documented, visual evidence is covered by regression tests, release readiness is documented, and the core build/test/format gates are green.
 
 ## Completed In This Pass
 
@@ -68,48 +68,55 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
 - Completed the unsafe editing eval signals pass:
   - surfaced repeated edit failures, high-risk rewrite blocks, manual copy-paste, and destructive restore signals in the Eval Dashboard findings
   - added replay-backed tests for unsafe editing findings
+- Completed the 80% readiness review:
+  - confirmed the main desktop workflow is documented as `open project -> analyze -> ask -> edit -> verify -> review -> commit`
+  - confirmed the three demo scenarios are repeatable in `docs/demo-scenarios.md`
+  - confirmed the demo run log covers C#, React/TypeScript, Unity analysis, and Unity visual evidence regression results
+  - verified formatting with `dotnet format .\csharp\AgentQ.sln --verify-no-changes --no-restore`
+  - verified Release build with `dotnet build .\csharp\AgentQ.sln -c Release --no-restore /t:Rebuild` (0 warnings, 0 errors)
+  - verified local build and tests with `.\build.ps1` and `.\test.ps1` (256 passed, 0 failed, 0 skipped)
+  - kept the manual desktop file-picker visual evidence smoke test as a pre-release checklist item rather than claiming it is automated
 
-## Active Work Queue Toward 80%
+## Active Work Queue After 80%
 
-1. 80% Readiness Review
-   - Confirm the main path works:
-     `open project -> analyze -> ask -> edit -> verify -> review -> commit`
-   - Confirm all three demo scenarios are repeatable.
-   - Confirm build/test are green.
-   - Confirm no obvious mojibake, stale empty states, or confusing main-panel copy remains.
-   - Re-estimate completeness and decide the next pass:
-     - Windows 1.0 stabilization
-     - Persistent MCP Session
-     - Avalonia/Linux prototype
-     - Release signing pipeline
+1. Windows 1.0 Stabilization
+   - Run the release readiness checklist on a clean Windows machine or VM.
+   - Perform the manual desktop file-picker visual evidence smoke test.
+   - Exercise file change review, approve/reject/revert, snapshot rollback, memory operations, and telemetry dashboard refresh.
+   - Fix any beta-blocking UX confusion or mojibake found during that pass.
 
-## Later 80% -> 90% Candidates
-
-These are important, but should come after the demo-driven 80% pass unless a demo exposes them as blockers.
-
-1. Persistent MCP Session
+2. Persistent MCP Session
    - Replace per-call MCP process startup with reusable sessions.
    - Add JSON-RPC response routing with `TaskCompletionSource`.
    - Add timeout, cancellation, process death recovery, and tests.
 
-2. Stronger Sandbox And Permission Policy
+3. Release Trust
+   - Keep checksum artifacts in release builds.
+   - Defer code signing until certificate/HSM/cloud signing budget is available.
+   - Keep unsigned-build limitations explicit in README and release notes.
+
+## Later 80% -> 90% Candidates
+
+These are important, but should come after the Windows 1.0 stabilization pass unless a demo exposes them as blockers.
+
+1. Stronger Sandbox And Permission Policy
    - Make shell/file/git permission boundaries clearer.
    - Improve destructive command prevention and user-facing explanations.
    - Include the destructive restore guard from the safe refactor work.
 
-3. Error History And Failure Memory
+2. Error History And Failure Memory
    - Strengthen recurring failure fingerprints.
    - Surface previously seen failures more directly in Auto Fix and Verify.
 
-4. Context Compression And Tool Router
+3. Context Compression And Tool Router
    - Improve large-project context summaries.
    - Make tool choice more explicit and measurable.
 
-5. Cross-Platform Strategy
+4. Cross-Platform Strategy
    - Keep Windows WPF for near-term 1.0.
    - Reduce Windows-specific service coupling.
    - Start Avalonia prototype only after Windows demo flows are stable.
 
-6. Code Signing Pipeline
+5. Code Signing Pipeline
    - Revisit when paid certificate/HSM/cloud signing budget is available.
    - Automate signing for desktop executable and installer in CI.
