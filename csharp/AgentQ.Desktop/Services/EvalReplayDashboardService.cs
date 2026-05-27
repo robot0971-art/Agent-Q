@@ -27,13 +27,15 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
             return report;
         }
 
-        var replay = await replayService.LoadLatestAsync(workspaceRoot, ct);
+        var recentReplays = await replayService.LoadRecentAsync(workspaceRoot, ct: ct);
+        var replay = recentReplays.FirstOrDefault();
         var telemetry = await LoadTelemetryAsync(workspaceRoot, ct);
 
         AddReplay(report, replay);
         AddTelemetry(report, telemetry);
         AddLatencyDiagnostics(report, replay, telemetry, verificationResults);
         AddToolRoutingDiagnostics(report, replay);
+        AddToolRoutingTrend(report, recentReplays);
         AddUnsafeEditingSignals(report, replay, telemetry);
         AddVerification(report, verificationResults);
         AddFailureFingerprints(report, replay, telemetry, verificationResults);
@@ -193,6 +195,39 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         {
             var failed = group.Count(entry => entry.IsError);
             report.Metrics.Add($"Tool routing: {group.Key} {group.Count():0} call(s), {failed:0} failed");
+        }
+    }
+
+    private static void AddToolRoutingTrend(EvalReplayDashboardReport report, IReadOnlyList<ToolReplaySession> recentReplays)
+    {
+        if (recentReplays.Count < 2)
+        {
+            return;
+        }
+
+        var routedEntries = recentReplays
+            .SelectMany(session => session.Entries.Select(entry => new
+            {
+                SessionId = session.Id,
+                Route = ClassifyToolRoute(entry.ToolName),
+                entry.IsError
+            }))
+            .Where(item => item.Route != "other")
+            .ToList();
+        if (routedEntries.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var group in routedEntries
+                     .GroupBy(item => item.Route)
+                     .OrderByDescending(group => group.Count())
+                     .ThenBy(group => group.Key)
+                     .Take(5))
+        {
+            var failed = group.Count(item => item.IsError);
+            var sessions = group.Select(item => item.SessionId).Distinct().Count();
+            report.Metrics.Add($"Tool routing trend: {group.Key} {group.Count():0} call(s), {failed:0} failed across {sessions:0} run(s)");
         }
     }
 

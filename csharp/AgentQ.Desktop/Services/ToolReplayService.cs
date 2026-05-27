@@ -45,21 +45,43 @@ public sealed class ToolReplayService
 
     public async Task<ToolReplaySession?> LoadLatestAsync(string workspaceRoot, CancellationToken ct = default)
     {
+        return (await LoadRecentAsync(workspaceRoot, maxSessions: 1, ct)).FirstOrDefault();
+    }
+
+    public async Task<IReadOnlyList<ToolReplaySession>> LoadRecentAsync(
+        string workspaceRoot,
+        int maxSessions = 10,
+        CancellationToken ct = default)
+    {
         var directory = Path.Combine(Path.GetFullPath(workspaceRoot), ".agentq", "replay");
         if (!Directory.Exists(directory))
         {
-            return null;
+            return [];
         }
 
-        var path = Directory.EnumerateFiles(directory, "*.json", SearchOption.TopDirectoryOnly)
+        var paths = Directory.EnumerateFiles(directory, "*.json", SearchOption.TopDirectoryOnly)
             .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(path))
+            .Take(Math.Max(1, maxSessions))
+            .ToList();
+
+        var sessions = new List<ToolReplaySession>();
+        foreach (var path in paths)
         {
-            return null;
+            try
+            {
+                var json = await File.ReadAllTextAsync(path, ct);
+                var session = JsonSerializer.Deserialize<ToolReplaySession>(json, Options);
+                if (session != null)
+                {
+                    sessions.Add(session);
+                }
+            }
+            catch (JsonException)
+            {
+                // A partial replay file should not break the dashboard.
+            }
         }
 
-        var json = await File.ReadAllTextAsync(path, ct);
-        return JsonSerializer.Deserialize<ToolReplaySession>(json, Options);
+        return sessions;
     }
 }

@@ -119,6 +119,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - prioritized workspace snapshot files whose paths match the user's request terms before falling back to existing file-type priority
   - passed Desktop user text into workspace context assembly so attached context follows the current task
   - added regression coverage for query-matched workspace file ordering
+- Continued the tool routing trend history pass:
+  - loaded recent replay sessions for Eval Dashboard analysis instead of only the latest saved run
+  - summarized routed tool outcomes across recent runs by route, call count, failure count, and run count
+  - added regression coverage for cross-run tool routing trend metrics
 
 ## Active Work Queue After 80%
 
@@ -141,7 +145,7 @@ These are important, but should come after the Windows 1.0 stabilization pass un
    - Surface previously seen failures more directly in Auto Fix and Verify.
 
 3. Context Compression And Tool Router
-   - Add trend history for tool-choice outcomes across runs.
+   - Use trend metrics to tune default tool routing prompts once enough beta run data exists.
 
 4. Latency Breakdown And Slow-Run Diagnostics
    - Record more precise LLM request duration when provider callbacks expose it.

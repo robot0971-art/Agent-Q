@@ -2202,6 +2202,69 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public async Task EvalReplayDashboardService_SummarizesToolRoutingTrendAcrossRecentReplays()
+    {
+        var root = CreateTempDirectory();
+        var replayService = new ToolReplayService();
+        await replayService.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "grep_search",
+                        ResultPreview = "no matches",
+                        IsError = true,
+                        DurationMs = 7
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "read_file",
+                        ResultPreview = "ok",
+                        IsError = false,
+                        DurationMs = 4
+                    }
+                ]
+            },
+            CancellationToken.None);
+        await replayService.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "grep_search",
+                        ResultPreview = "found",
+                        IsError = false,
+                        DurationMs = 5
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "symbol_search",
+                        ResultPreview = "found Parser",
+                        IsError = false,
+                        DurationMs = 3
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        var report = await new EvalReplayDashboardService(replayService).BuildAsync(root, [], CancellationToken.None);
+
+        Assert.Contains(report.Metrics, metric => metric.Contains("Tool routing trend: keyword-search 2 call(s), 1 failed across 2 run(s)", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Tool routing trend: file-read 1 call(s), 0 failed across 1 run(s)", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Tool routing trend: symbol-search 1 call(s), 0 failed across 1 run(s)", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task EvalReplayDashboardService_SurfacesUnsafeEditingSignals()
     {
         var root = CreateTempDirectory();
