@@ -32,6 +32,7 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
 
         AddReplay(report, replay);
         AddTelemetry(report, telemetry);
+        AddUnsafeEditingSignals(report, replay, telemetry);
         AddVerification(report, verificationResults);
         AddFailureFingerprints(report, replay, telemetry, verificationResults);
 
@@ -116,6 +117,50 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         {
             report.Findings.Add($"Verification {result.Status}: {result.Title} - {Trim(result.Summary, 140)}");
         }
+    }
+
+    private static void AddUnsafeEditingSignals(
+        EvalReplayDashboardReport report,
+        ToolReplaySession? replay,
+        IReadOnlyList<DesktopTelemetryEvent> telemetry)
+    {
+        var replaySignals = replay?.Entries
+            .Where(entry => entry.IsError && IsUnsafeEditingSignal(entry.ResultPreview))
+            .ToList() ?? [];
+        var telemetrySignals = telemetry
+            .Where(item => (item.IsError || !item.Succeeded) && IsUnsafeEditingSignal(item.Detail))
+            .ToList();
+
+        var total = replaySignals.Count + telemetrySignals.Count;
+        if (total == 0)
+        {
+            return;
+        }
+
+        report.Findings.Add($"Unsafe editing signal: {total:0} edit recovery or high-risk edit warning(s) detected.");
+
+        foreach (var entry in replaySignals.Take(3))
+        {
+            report.Findings.Add($"Unsafe edit replay: {entry.ToolName} - {Trim(entry.ResultPreview, 140)}");
+        }
+
+        foreach (var item in telemetrySignals.Take(3))
+        {
+            var label = string.IsNullOrWhiteSpace(item.ToolName) ? item.EventType : item.ToolName;
+            report.Findings.Add($"Unsafe edit telemetry: {label} - {Trim(item.Detail, 140)}");
+        }
+    }
+
+    private static bool IsUnsafeEditingSignal(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               (value.Contains("Repeated edit failure", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("high-risk", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("whole-file rewrite", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("manual copy-paste", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("git restore", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("git checkout", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("destructive restore", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void AddFailureFingerprints(

@@ -30,6 +30,10 @@ public sealed class DesktopAgentService
         Use semantic_search when embeddings are available and the request is meaning-based; use grep_search/glob_search for broad text or file pattern fallback.
         After symbol_search or search results identify candidate files, read the most relevant files before editing.
         For coding tasks, work in a loop: plan briefly, gather context, act with tools, observe results, repair failures, then verify.
+        For large refactors and high-risk files, use patch-sized edits instead of whole-file rewrites unless the user explicitly approves the risk.
+        Treat Unity MonoBehaviour scripts, SerializeField fields, prefabs, scenes, and asset files as high risk: preserve serialized field names, prefab/Inspector assignments, and existing component relationships.
+        For Unity refactors, compile after each phase and verify spawn, movement, attack, death, reward, boss, and stage progression when those systems are in scope.
+        If an edit fails repeatedly, stop retrying the same strategy, reread the current file, compare the intended shape, and recover with minimal patches before suggesting manual copy-paste or destructive restore commands.
         Treat build, test, and command failures as diagnostic input. Fix what you can before asking the user to intervene.
         Keep tool use scoped to the selected workspace and explain important changes clearly.
         For project analysis, documentation, architecture summaries, and reviews, include the main evidence you inspected.
@@ -143,6 +147,7 @@ public sealed class DesktopAgentService
         var fileChanges = new List<FileChangeRecord>();
         var executedCommands = new List<string>();
         var replayEntries = new List<ToolReplayEntry>();
+        var editFailureTracker = new Dictionary<string, int>(StringComparer.Ordinal);
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
 
@@ -211,6 +216,7 @@ public sealed class DesktopAgentService
                 fileChanges,
                 executedCommands,
                 replayEntries,
+                editFailureTracker,
                 ct);
             if (toolResults.Count > 0)
             {
@@ -599,6 +605,7 @@ public sealed class DesktopAgentService
         List<FileChangeRecord> fileChanges,
         List<string> executedCommands,
         List<ToolReplayEntry> replayEntries,
+        Dictionary<string, int> editFailureTracker,
         CancellationToken ct)
     {
         var results = new List<ChatContent>();
@@ -619,6 +626,15 @@ public sealed class DesktopAgentService
                 }
 
                 var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
+                if (ShouldStopRepeatedEditStrategy(tool.Name, parsedInput, editFailureTracker, out var recoveryMessage))
+                {
+                    callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Edit recovery guard", recoveryMessage);
+                    callbacks?.OnToolError?.Invoke(tool.Name, recoveryMessage);
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, JsonSerializer.Serialize(parsedInput), recoveryMessage, isError: true, DateTime.UtcNow));
+                    results.Add(ChatContent.CreateToolResult(toolId, recoveryMessage, true));
+                    continue;
+                }
+
                 TrackExecutedCommand(tool.Name, parsedInput, executedCommands);
                 var inputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
                 var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(tool.Name, parsedInput, workspaceRoot);
@@ -655,6 +671,7 @@ public sealed class DesktopAgentService
                     if (result.IsError)
                     {
                         callbacks?.OnToolError?.Invoke(tool.Name, result.Content);
+                        RecordEditFailure(tool.Name, parsedInput, editFailureTracker, callbacks);
                     }
                     else
                     {
@@ -707,6 +724,98 @@ public sealed class DesktopAgentService
         }
 
         return results;
+    }
+
+    private static bool ShouldStopRepeatedEditStrategy(
+        string toolName,
+        Dictionary<string, object?> input,
+        IReadOnlyDictionary<string, int> editFailureTracker,
+        out string recoveryMessage)
+    {
+        recoveryMessage = string.Empty;
+        if (!IsFileMutationTool(toolName))
+        {
+            return false;
+        }
+
+        var key = BuildEditFailureKey(toolName, input);
+        if (key == null || !editFailureTracker.TryGetValue(key, out var failures) || failures < 2)
+        {
+            return false;
+        }
+
+        recoveryMessage = "Repeated edit failure detected for the same file and strategy. " +
+                          "Stop retrying this exact edit, reread the current file, compare the intended shape, " +
+                          "then recover with a smaller patch. Before suggesting git restore or checkout, inspect git diff for the file, " +
+                          "consider a backup copy, and warn that local changes would be discarded.";
+        return true;
+    }
+
+    private static void RecordEditFailure(
+        string toolName,
+        Dictionary<string, object?> input,
+        Dictionary<string, int> editFailureTracker,
+        DesktopToolCallbacks? callbacks)
+    {
+        if (!IsFileMutationTool(toolName))
+        {
+            return;
+        }
+
+        var key = BuildEditFailureKey(toolName, input);
+        if (key == null)
+        {
+            return;
+        }
+
+        editFailureTracker[key] = editFailureTracker.TryGetValue(key, out var count) ? count + 1 : 1;
+        if (editFailureTracker[key] == 2)
+        {
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Failed,
+                "Edit recovery needed",
+                "The same edit strategy failed twice. Reread the file and continue with a smaller patch or recovery plan.");
+        }
+    }
+
+    private static string? BuildEditFailureKey(string toolName, Dictionary<string, object?> input)
+    {
+        if (!TryGetString(input, "path", out var path))
+        {
+            return null;
+        }
+
+        if (string.Equals(toolName, "edit_file", StringComparison.OrdinalIgnoreCase))
+        {
+            var oldString = TryGetString(input, "old_string", out var oldValue) ? oldValue : string.Empty;
+            var replaceAll = input.TryGetValue("replace_all", out var rawReplaceAll) && rawReplaceAll is true;
+            return $"{toolName}|{path}|{replaceAll}|{oldString}";
+        }
+
+        return $"{toolName}|{path}|whole-file";
+    }
+
+    private static bool TryGetString(IReadOnlyDictionary<string, object?> input, string key, out string value)
+    {
+        value = string.Empty;
+        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
+        {
+            return false;
+        }
+
+        if (rawValue is string stringValue)
+        {
+            value = stringValue;
+            return true;
+        }
+
+        if (rawValue is JsonElement json && json.ValueKind == JsonValueKind.String)
+        {
+            value = json.GetString() ?? string.Empty;
+            return true;
+        }
+
+        return false;
     }
 
     private static IReadOnlyList<AgentVerificationPlan> ReportVerificationPlans(

@@ -378,6 +378,75 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains("must not be empty", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task EditFileTool_RejectsBroadReplaceAllOnUnityBehaviourWithoutApproval()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile(
+            "DamageFlashController.cs",
+            """
+            using UnityEngine;
+
+            public sealed class DamageFlashController : MonoBehaviour
+            {
+                [SerializeField] private Renderer targetRenderer;
+
+                public void Flash()
+                {
+                    targetRenderer.enabled = true;
+                }
+            }
+            """);
+
+        var tool = new EditFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["old_string"] = "targetRenderer",
+            ["new_string"] = "renderer",
+            ["replace_all"] = true
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("high-risk", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SerializeField", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("targetRenderer", File.ReadAllText(filePath), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EditFileTool_AllowsSmallPatchOnUnityBehaviour()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile(
+            "DamageFlashController.cs",
+            """
+            using UnityEngine;
+
+            public sealed class DamageFlashController : MonoBehaviour
+            {
+                [SerializeField] private Renderer targetRenderer;
+
+                public void Flash()
+                {
+                    targetRenderer.enabled = true;
+                }
+            }
+            """);
+
+        var tool = new EditFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["old_string"] = "targetRenderer.enabled = true;",
+            ["new_string"] = "targetRenderer.enabled = !targetRenderer.enabled;"
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("!targetRenderer.enabled", File.ReadAllText(filePath), StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// WriteFileTool이 overwrite=false일 때 기존 파일 덮어쓰기를 거부하는지 검증합니다.
     /// </summary>
@@ -399,6 +468,34 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.True(result.IsError);
         Assert.Contains("overwrite=true", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("original", File.ReadAllText(filePath));
+    }
+
+    [Fact]
+    public async Task WriteFileTool_RejectsWholeFileRewriteOfUnityBehaviourWithoutApproval()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile(
+            "EnemyHealth.cs",
+            """
+            using UnityEngine;
+
+            public sealed class EnemyHealth : MonoBehaviour
+            {
+                [SerializeField] private int maxHealth = 10;
+            }
+            """);
+
+        var tool = new WriteFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["content"] = "public sealed class EnemyHealth { }"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("whole-file rewrite", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("maxHealth", File.ReadAllText(filePath), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1137,4 +1234,3 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
     }
 }
-

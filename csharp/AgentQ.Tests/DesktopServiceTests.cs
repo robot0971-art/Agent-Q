@@ -150,6 +150,9 @@ public sealed class DesktopServiceTests
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("can attempt to read HTTP/HTTPS links", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("patch-sized edits", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SerializeField", prompt, StringComparison.Ordinal);
+        Assert.Contains("destructive restore", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepoFile(params string[] pathSegments)
@@ -2020,6 +2023,45 @@ public sealed class DesktopServiceTests
         Assert.Contains(report.ReplayEntries, entry => entry.Contains("FAILED shell_execute", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.FailureFingerprints, fingerprint => fingerprint.StartsWith("failure-", StringComparison.OrdinalIgnoreCase) &&
                                                                   fingerprint.EndsWith("x2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task EvalReplayDashboardService_SurfacesUnsafeEditingSignals()
+    {
+        var root = CreateTempDirectory();
+        var replayService = new ToolReplayService();
+        await replayService.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                PromptPreview = "refactor Unity controller",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "edit_file",
+                        ResultPreview = "Repeated edit failure detected for the same file and strategy. Stop retrying this exact edit.",
+                        IsError = true,
+                        DurationMs = 8
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "write_file",
+                        ResultPreview = "Refusing high-risk whole-file rewrite for Unity MonoBehaviour.",
+                        IsError = true,
+                        DurationMs = 4
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        var report = await new EvalReplayDashboardService(replayService).BuildAsync(root, [], CancellationToken.None);
+
+        Assert.Contains(report.Findings, finding => finding.Contains("Unsafe editing signal", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Findings, finding => finding.Contains("Repeated edit failure", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Findings, finding => finding.Contains("whole-file rewrite", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

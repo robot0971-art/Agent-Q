@@ -33,7 +33,8 @@ public class EditFileTool : ITool
             path = new { type = "string", description = "Path to the file to edit" },
             old_string = new { type = "string", description = "The text to find and replace" },
             new_string = new { type = "string", description = "The text to replace it with" },
-            replace_all = new { type = "boolean", description = "Replace all occurrences (default: false)" }
+            replace_all = new { type = "boolean", description = "Replace all occurrences (default: false)" },
+            allow_high_risk_edit = new { type = "boolean", description = "Set only after explicit user approval for broad edits to high-risk files" }
         },
         required = new[] { "path", "old_string", "new_string" }
     };
@@ -81,6 +82,12 @@ public class EditFileTool : ITool
                 return Task.FromResult(ToolResult.Error($"File not found: {path}"));
 
             var content = File.ReadAllText(fullPath);
+            var riskError = EditRiskGuard.ValidateReplacement(path, content, oldString, replaceAll, input);
+            if (riskError != null)
+            {
+                return Task.FromResult(ToolResult.Error(riskError));
+            }
+
             var count = CountOccurrences(content, oldString);
             if (count == 0)
                 return Task.FromResult(ToolResult.Error($"String not found in file: {path}"));
@@ -176,4 +183,3 @@ public class EditFileTool : ITool
         return false;
     }
 }
-

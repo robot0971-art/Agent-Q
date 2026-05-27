@@ -56,40 +56,22 @@ The next goal is to move AgentQ from roughly 76% to 80% by fixing the issues dis
   - updated README with the current desktop beta workflow and known limitations
   - added `docs/release-readiness.md`
   - included installer, portable ZIP, CLI package, checksum, smoke-test, code-signing, and release-notes checklists
+- Completed the safe refactor guardrails pass:
+  - blocked high-risk whole-file rewrites for existing large, Unity, serialized asset, and core files unless explicitly acknowledged
+  - blocked broad `replace_all` or large replacements on high-risk files unless explicitly acknowledged
+  - kept small patch-sized edits available for Unity `MonoBehaviour` files
+  - added Desktop prompt guidance for Unity refactors, `[SerializeField]` preservation, phased compilation, and destructive restore caution
+- Completed the edit failure recovery pass:
+  - tracked repeated `write_file` and `edit_file` failures by file and strategy during a run
+  - stopped retrying the same failed edit strategy after repeated failures
+  - returned recovery guidance to reread the file, compare intended shape, and continue with smaller patches before restore/copy-paste fallbacks
+- Completed the unsafe editing eval signals pass:
+  - surfaced repeated edit failures, high-risk rewrite blocks, manual copy-paste, and destructive restore signals in the Eval Dashboard findings
+  - added replay-backed tests for unsafe editing findings
 
 ## Active Work Queue Toward 80%
 
-1. Safe Refactor Guardrails
-   - Detect large or high-risk files before editing, especially Unity `MonoBehaviour` files with `[SerializeField]` Inspector bindings.
-   - Avoid whole-file rewrites for large/core files unless explicitly approved.
-   - Do not ask the user to manually copy-paste full replacement files as a normal strategy.
-   - Require patch-sized edits for refactors such as `AutoBattleController` responsibility splits.
-   - Add a Unity refactor checklist:
-     - preserve `SerializeField` names
-     - avoid adding components unless requested
-     - keep prefab/Inspector assignments intact
-     - compile after each phase
-     - verify spawn, movement, attack, death, reward, boss, and stage progression
-
-2. Edit Failure Recovery
-   - If an edit tool fails repeatedly, stop retrying the same strategy.
-   - Read the current file and compare the intended shape before continuing.
-   - Detect likely file corruption or partial rewrites.
-   - Treat direct manual copy-paste instructions as a last-resort fallback only.
-   - Before asking the user to paste code manually, attempt automatic recovery through backup, restore, and minimal patches.
-   - Before suggesting `git checkout -- <file>` or `git restore <file>`, require:
-     - `git diff -- <file>`
-     - a backup copy when useful
-     - a clear warning that local changes to that file will be discarded
-   - Prefer restore plus minimal patches over replacing an entire complex file.
-
-3. Unsafe Editing Eval Signals
-   - Record repeated edit failures, partial rewrite attempts, manual copy-paste fallbacks, and destructive restore suggestions.
-   - Surface these as Eval Dashboard findings.
-   - Add tests or replay fixtures for failed large-file refactor attempts.
-   - Use those signals to improve future tool-routing and recovery behavior.
-
-4. 80% Readiness Review
+1. 80% Readiness Review
    - Confirm the main path works:
      `open project -> analyze -> ask -> edit -> verify -> review -> commit`
    - Confirm all three demo scenarios are repeatable.

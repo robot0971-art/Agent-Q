@@ -33,7 +33,8 @@ public class WriteFileTool : ITool
         {
             path = new { type = "string", description = "Path to the file to write" },
             content = new { type = "string", description = "Content to write to the file" },
-            overwrite = new { type = "boolean", description = "Whether to overwrite an existing file (default: true)" }
+            overwrite = new { type = "boolean", description = "Whether to overwrite an existing file (default: true)" },
+            allow_high_risk_edit = new { type = "boolean", description = "Set only after explicit user approval for high-risk whole-file rewrites" }
         },
         required = new[] { "path", "content" }
     };
@@ -79,6 +80,16 @@ public class WriteFileTool : ITool
             if (existedBeforeWrite && !overwrite)
             {
                 return Task.FromResult(ToolResult.Error($"Refusing to overwrite existing file without overwrite=true: {path}"));
+            }
+
+            if (existedBeforeWrite)
+            {
+                var existingContent = File.ReadAllText(fullPath);
+                var risk = EditRiskGuard.AssessExistingFile(fullPath, existingContent);
+                if (risk.IsHighRisk && !EditRiskGuard.IsRiskAcknowledged(input))
+                {
+                    return Task.FromResult(ToolResult.Error(EditRiskGuard.BuildWriteBlockMessage(path, risk)));
+                }
             }
 
             var directory = Path.GetDirectoryName(fullPath);
@@ -135,4 +146,3 @@ public class WriteFileTool : ITool
         return false;
     }
 }
-
