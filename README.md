@@ -179,7 +179,7 @@ Current beta limitations:
 - The installer and desktop executable are not code-signed yet.
 - Visual evidence is covered by automated tests, but release QA should still include a manual image/video attachment smoke test.
 - Unity verification may require manual Unity Editor or batchmode checks unless the target project provides command-line tests.
-- Persistent MCP sessions, broader cross-platform desktop support, and release signing are later roadmap items.
+- Broader MCP hardening, cross-platform desktop support, and release signing are later roadmap items.
 
 Release QA details are tracked in [docs/release-readiness.md](docs/release-readiness.md).
 
@@ -518,7 +518,7 @@ The repository can still be validated on a normal local machine or CI runner as 
 Near-term priorities:
 
 - publish and QA `v0.1.0-beta.8`
-- turn MCP server config into a real MCP client/tool bridge
+- harden MCP bridge policy, observability, and server lifecycle handling
 - add a visible telemetry/replay dashboard for local eval review
 - improve model routing from recommendation-only to user-approved switching
 - expand language workers and dependency graph support

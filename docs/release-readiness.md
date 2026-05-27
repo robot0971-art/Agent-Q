@@ -23,7 +23,7 @@ The release candidate should support this main path before publishing:
 - The Windows desktop executable and installer are not code-signed yet. SmartScreen or browser warnings are expected for beta builds.
 - The desktop app is still Windows-focused through WPF and `net10.0-windows`.
 - Linux/macOS desktop support requires a future Avalonia or equivalent UI migration.
-- MCP configuration exists, but long-running persistent MCP sessions are still a later enhancement.
+- MCP stdio servers are reused within a Desktop tool-registry lifetime, but broader MCP lifecycle observability and policy hardening remain later enhancements.
 - Visual evidence is covered by automated image/Plan evidence tests, but a manual file-picker smoke test should still be run before a public beta.
 - Unity verification may require manual Unity Editor or batchmode checks unless the target project exposes command-line tests.
 - Embeddings are optional and require a configured embedding provider plus a built local index.
@@ -124,7 +124,7 @@ Known limitations:
 
 - Windows desktop builds are currently unsigned and may trigger SmartScreen or browser warnings.
 - Desktop UI is Windows-only for now.
-- Persistent MCP sessions and broader cross-platform UI support are planned later.
+- Broader MCP hardening and cross-platform UI support are planned later.
 ```
 
 ## Code Signing Decision

@@ -85,6 +85,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - added JSON-RPC response routing with per-request completions, request IDs, cancellation, timeout handling, and process-exit failure propagation
   - kept bridge tools sharing a single MCP client instance during Desktop tool registry setup
   - added a stateful stdio MCP regression test proving `tools/list` and repeated `tools/call` operations stay on the same initialized session
+- Completed the release trust status pass:
+  - confirmed the release workflow generates SHA256 checksum sidecars for installer, portable ZIP, and CLI package artifacts
+  - confirmed README and release readiness docs explicitly explain unsigned Windows builds and expected SmartScreen/browser warnings
+  - kept code signing deferred until certificate/HSM/cloud signing budget is available
 
 ## Active Work Queue After 80%
 
@@ -94,11 +98,6 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
    - Perform the manual desktop file-picker visual evidence smoke test.
    - Exercise file change review, approve/reject/revert, snapshot rollback, memory operations, and telemetry dashboard refresh.
    - Fix any beta-blocking UX confusion or mojibake found during that pass.
-
-2. Release Trust
-   - Keep checksum artifacts in release builds.
-   - Defer code signing until certificate/HSM/cloud signing budget is available.
-   - Keep unsigned-build limitations explicit in README and release notes.
 
 ## Later 80% -> 90% Candidates
 
