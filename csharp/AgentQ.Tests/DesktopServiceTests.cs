@@ -2093,6 +2093,20 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
                         ResultPreview = "ok",
                         IsError = false,
                         DurationMs = 5
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "grep_search",
+                        ResultPreview = "no matches",
+                        IsError = true,
+                        DurationMs = 7
+                    },
+                    new ToolReplayEntry
+                    {
+                        ToolName = "symbol_search",
+                        ResultPreview = "found Parser",
+                        IsError = false,
+                        DurationMs = 3
                     }
                 ]
             },
@@ -2128,11 +2142,13 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             CancellationToken.None);
 
         Assert.Contains("replay tools", report.Summary);
-        Assert.Contains(report.Metrics, metric => metric.Contains("Replay: 2 tools", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Replay: 4 tools", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Telemetry: 1 events", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(report.Metrics, metric => metric.Contains("Latency: tools 30 ms", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Latency: tools 40 ms", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Slowest tool: shell_execute 25 ms", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("LLM usage: 10 input tokens / 3 output tokens", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Tool routing: keyword-search 1 call(s), 1 failed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(report.Metrics, metric => metric.Contains("Tool routing: symbol-search 1 call(s), 0 failed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Metrics, metric => metric.Contains("Verification: 0 passed, 1 failed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Findings, finding => finding.Contains("Tool failure", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(report.Findings, finding => finding.Contains("Recurring failure", StringComparison.OrdinalIgnoreCase) &&

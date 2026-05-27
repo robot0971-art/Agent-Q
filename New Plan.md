@@ -107,6 +107,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
 - Continued the context budget and compression pass:
   - capped workspace analysis report sections and added explicit omitted-count markers for large Project Map, key file, symbol, dependency, command, and hint sections
   - added regression coverage for large-section capping
+- Started the tool routing telemetry pass:
+  - added Eval Dashboard metrics for file reads, keyword search, symbol search, hybrid search, semantic search, and MCP bridge tool routing
+  - included per-route call counts and failure counts
+  - added regression coverage for keyword and symbol routing metrics
 
 ## Active Work Queue After 80%
 
@@ -130,7 +134,7 @@ These are important, but should come after the Windows 1.0 stabilization pass un
 
 3. Context Compression And Tool Router
    - Add query-aware prioritization to large-project context summaries.
-   - Make tool-choice outcomes measurable in telemetry/eval.
+   - Add trend history for tool-choice outcomes across runs.
 
 4. Latency Breakdown And Slow-Run Diagnostics
    - Add live Run Summary timing for active runs.

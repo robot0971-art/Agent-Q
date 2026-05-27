@@ -33,6 +33,7 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         AddReplay(report, replay);
         AddTelemetry(report, telemetry);
         AddLatencyDiagnostics(report, replay, telemetry, verificationResults);
+        AddToolRoutingDiagnostics(report, replay);
         AddUnsafeEditingSignals(report, replay, telemetry);
         AddVerification(report, verificationResults);
         AddFailureFingerprints(report, replay, telemetry, verificationResults);
@@ -167,6 +168,46 @@ public sealed class EvalReplayDashboardService(ToolReplayService replayService)
         {
             report.Metrics.Add($"Repeated tools: {repeatedText}");
         }
+    }
+
+    private static void AddToolRoutingDiagnostics(EvalReplayDashboardReport report, ToolReplaySession? replay)
+    {
+        if (replay?.Entries.Count is not > 0)
+        {
+            return;
+        }
+
+        var routedEntries = replay.Entries
+            .Where(entry => ClassifyToolRoute(entry.ToolName) != "other")
+            .ToList();
+        if (routedEntries.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var group in routedEntries
+                     .GroupBy(entry => ClassifyToolRoute(entry.ToolName))
+                     .OrderByDescending(group => group.Count())
+                     .ThenBy(group => group.Key)
+                     .Take(6))
+        {
+            var failed = group.Count(entry => entry.IsError);
+            report.Metrics.Add($"Tool routing: {group.Key} {group.Count():0} call(s), {failed:0} failed");
+        }
+    }
+
+    private static string ClassifyToolRoute(string toolName)
+    {
+        return toolName switch
+        {
+            "read_file" => "file-read",
+            "grep_search" or "glob_search" => "keyword-search",
+            "symbol_search" => "symbol-search",
+            "hybrid_search" => "hybrid-search",
+            "semantic_search" => "semantic-search",
+            _ when toolName.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase) => "mcp-bridge",
+            _ => "other"
+        };
     }
 
     private static void AddUnsafeEditingSignals(
