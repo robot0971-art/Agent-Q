@@ -386,6 +386,12 @@ PowerShell variants also exist:
 `test.cmd` and `test.ps1` exclude integration tests by default.
 `test.integration.cmd` and `test.integration.ps1` run only the integration test layer.
 
+Before tagging or publishing a beta, run the release readiness preflight:
+
+```powershell
+.\release-readiness.ps1
+```
+
 The scripts no longer force `DOTNET_CLI_HOME`. They use the current local dotnet environment unless you explicitly set that variable yourself.
 
 For the full solution, including desktop service tests:
@@ -501,7 +507,7 @@ Model IDs currently documented by OpenCode Go for the Chat Completions endpoint 
 Current local validation passed in this environment:
 
 - Latest local validation: `.\build.ps1` passed
-- Latest local validation: `.\test.ps1`: `252` tests passed
+- Latest local validation: `.\test.ps1`: `256` tests passed
 - Next beta target: `v0.1.0-beta.8`
 - Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and `AgentQ.Tool.0.1.0-beta.8.nupkg`
 

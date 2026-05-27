@@ -1,6 +1,6 @@
 # AgentQ Release Readiness Checklist
 
-Updated: 2026-05-26
+Updated: 2026-05-27
 
 This checklist is for the current Windows desktop beta. Keep it focused on the release path that is already supported: Windows WPF desktop, CLI package, GitHub Releases, portable ZIP, and Inno Setup installer.
 
@@ -35,9 +35,13 @@ The release candidate should support this main path before publishing:
 Run these locally before creating or publishing a release tag:
 
 ```powershell
-.\build.ps1
-.\test.ps1
-dotnet format .\csharp\AgentQ.sln --verify-no-changes --no-restore
+.\release-readiness.ps1
+```
+
+If you are intentionally running the preflight while local documentation or plan updates are still uncommitted, use:
+
+```powershell
+.\release-readiness.ps1 -SkipGitStatus
 ```
 
 Confirm:

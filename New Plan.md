@@ -76,10 +76,15 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - verified Release build with `dotnet build .\csharp\AgentQ.sln -c Release --no-restore /t:Rebuild` (0 warnings, 0 errors)
   - verified local build and tests with `.\build.ps1` and `.\test.ps1` (256 passed, 0 failed, 0 skipped)
   - kept the manual desktop file-picker visual evidence smoke test as a pre-release checklist item rather than claiming it is automated
+- Started the Windows 1.0 stabilization pass:
+  - added `release-readiness.ps1` as a single local preflight for format, Release rebuild, wrapper build, non-integration tests, and optional clean working-tree verification
+  - updated the release checklist and README to use the preflight before beta tagging or publishing
+  - verified the preflight with `.\release-readiness.ps1 -SkipGitStatus` (256 passed, 0 failed, 0 skipped)
 
 ## Active Work Queue After 80%
 
 1. Windows 1.0 Stabilization
+   - Run `.\release-readiness.ps1` on a clean working tree.
    - Run the release readiness checklist on a clean Windows machine or VM.
    - Perform the manual desktop file-picker visual evidence smoke test.
    - Exercise file change review, approve/reject/revert, snapshot rollback, memory operations, and telemetry dashboard refresh.
