@@ -355,7 +355,7 @@ public sealed class DesktopAgentService
         CancellationToken ct)
     {
         var workspaceContext = config.DesktopAutoAttachWorkspaceContext
-            ? await _workspaceIndexer.BuildContextAsync(workspaceRoot, ct)
+            ? await _workspaceIndexer.BuildContextAsync(workspaceRoot, userText, ct)
             : string.Empty;
         var linkedContext = config.DesktopAutoFetchLinks
             ? await _linkContentFetcher.BuildContextAsync(userText, ct)

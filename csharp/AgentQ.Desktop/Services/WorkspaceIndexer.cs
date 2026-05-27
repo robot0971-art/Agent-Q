@@ -1,9 +1,10 @@
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class WorkspaceIndexer
+public sealed partial class WorkspaceIndexer
 {
     private const int MaximumFilesInTree = 300;
     private const int MaximumIncludedFiles = 24;
@@ -25,7 +26,10 @@ public sealed class WorkspaceIndexer
         ".editorconfig", ".gitignore", ".gitattributes"
     ];
 
-    public async Task<string> BuildContextAsync(string workspaceRoot, CancellationToken ct)
+    public Task<string> BuildContextAsync(string workspaceRoot, CancellationToken ct) =>
+        BuildContextAsync(workspaceRoot, query: string.Empty, ct);
+
+    public async Task<string> BuildContextAsync(string workspaceRoot, string query, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(workspaceRoot) || !Directory.Exists(workspaceRoot))
         {
@@ -33,10 +37,12 @@ public sealed class WorkspaceIndexer
         }
 
         var root = Path.GetFullPath(workspaceRoot);
+        var queryTerms = ExtractQueryTerms(query);
         var files = SafeEnumerateFiles(root)
             .Where(file => !IsExcludedPath(root, file))
             .Select(file => new WorkspaceFile(file, Path.GetRelativePath(root, file).Replace('\\', '/')))
-            .OrderBy(file => GetPriority(file.RelativePath))
+            .OrderByDescending(file => ScoreQueryMatch(file.RelativePath, queryTerms))
+            .ThenBy(file => GetPriority(file.RelativePath))
             .ThenBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
             .Take(MaximumFilesInTree)
             .ToList();
@@ -49,6 +55,11 @@ public sealed class WorkspaceIndexer
         var builder = new StringBuilder();
         builder.AppendLine("Workspace context snapshot:");
         builder.AppendLine($"Root: {root}");
+        if (queryTerms.Count > 0)
+        {
+            builder.AppendLine($"Query-aware priority terms: {string.Join(", ", queryTerms.Take(8))}");
+        }
+
         builder.AppendLine();
         builder.AppendLine("File tree:");
         foreach (var file in files)
@@ -132,6 +143,38 @@ public sealed class WorkspaceIndexer
         return TextExtensions.Contains(extension) ? 3 : 9;
     }
 
+    private static IReadOnlyList<string> ExtractQueryTerms(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return [];
+        }
+
+        return QueryTermRegex()
+            .Matches(query.ToLowerInvariant())
+            .Select(match => match.Value)
+            .Where(term => term.Length >= 3 && !IsStopWord(term))
+            .Distinct()
+            .Take(16)
+            .ToList();
+    }
+
+    private static int ScoreQueryMatch(string relativePath, IReadOnlyList<string> queryTerms)
+    {
+        if (queryTerms.Count == 0)
+        {
+            return 0;
+        }
+
+        var normalized = relativePath.ToLowerInvariant();
+        return queryTerms.Count(term => normalized.Contains(term, StringComparison.Ordinal));
+    }
+
+    private static bool IsStopWord(string value)
+    {
+        return value is "the" or "and" or "for" or "with" or "this" or "that" or "from" or "into" or "file" or "code";
+    }
+
     private static IEnumerable<string> SafeEnumerateFiles(string root)
     {
         var pending = new Stack<string>();
@@ -204,4 +247,7 @@ public sealed class WorkspaceIndexer
     }
 
     private sealed record WorkspaceFile(string FullPath, string RelativePath);
+
+    [GeneratedRegex("[a-z0-9_]+", RegexOptions.CultureInvariant)]
+    private static partial Regex QueryTermRegex();
 }

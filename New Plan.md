@@ -115,6 +115,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - selected focused `dotnet test --filter FullyQualifiedName~...` when a C# test class changes
   - narrowly allowed safe filtered AgentQ.Tests verification commands in the verification command policy
   - added regression coverage for focused test selection and unsafe filter rejection
+- Continued the query-aware context prioritization pass:
+  - prioritized workspace snapshot files whose paths match the user's request terms before falling back to existing file-type priority
+  - passed Desktop user text into workspace context assembly so attached context follows the current task
+  - added regression coverage for query-matched workspace file ordering
 
 ## Active Work Queue After 80%
 
@@ -137,7 +141,6 @@ These are important, but should come after the Windows 1.0 stabilization pass un
    - Surface previously seen failures more directly in Auto Fix and Verify.
 
 3. Context Compression And Tool Router
-   - Add query-aware prioritization to large-project context summaries.
    - Add trend history for tool-choice outcomes across runs.
 
 4. Latency Breakdown And Slow-Run Diagnostics

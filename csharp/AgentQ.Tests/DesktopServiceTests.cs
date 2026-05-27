@@ -1243,6 +1243,26 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceIndexer_PrioritizesFilesMatchingQueryTerms()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "# Project");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "BillingReport.cs"), "public sealed class BillingReport {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "AuthLoginService.cs"), "public sealed class AuthLoginService {}");
+
+        var context = await new WorkspaceIndexer().BuildContextAsync(root, "fix auth login failure", CancellationToken.None);
+
+        Assert.Contains("Query-aware priority terms: fix, auth, login, failure", context);
+        Assert.True(
+            context.IndexOf("--- src/AuthLoginService.cs ---", StringComparison.Ordinal) <
+            context.IndexOf("--- README.md ---", StringComparison.Ordinal));
+        Assert.True(
+            context.IndexOf("--- src/AuthLoginService.cs ---", StringComparison.Ordinal) <
+            context.IndexOf("--- src/BillingReport.cs ---", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task DesktopEvidenceFormatter_ExplainsPythonSymbolsInReadFile()
     {
         var root = CreateTempDirectory();
