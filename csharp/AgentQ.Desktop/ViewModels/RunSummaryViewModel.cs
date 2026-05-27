@@ -12,6 +12,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
     private string _verificationStatus = "Not verified";
     private string _commitReadiness = "No changes";
     private string _changedFilesText = "0 changed";
+    private string _timingText = "No timing yet";
     private string _accentBrush = "#B7C4D1";
     private string _phaseBadgeBackground = "#13202D";
 
@@ -53,6 +54,12 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         set => SetField(ref _changedFilesText, value);
     }
 
+    public string TimingText
+    {
+        get => _timingText;
+        set => SetField(ref _timingText, value);
+    }
+
     public string AccentBrush
     {
         get => _accentBrush;
@@ -77,6 +84,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         LastEvidence = BuildEvidence(runSteps, statusText);
         VerificationStatus = BuildVerificationStatus(verificationResults);
         ChangedFilesText = $"{fileChanges.Count} changed";
+        TimingText = BuildTimingText(runSteps, isBusy);
         CommitReadiness = BuildCommitReadiness(fileChanges, verificationResults);
         NextAction = BuildNextAction(state, statusText, fileChanges, verificationResults, isBusy);
         AccentBrush = PickAccent(state, statusText, verificationResults);
@@ -91,6 +99,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         VerificationStatus = "Not verified";
         CommitReadiness = "No changes";
         ChangedFilesText = "0 changed";
+        TimingText = "No timing yet";
         AccentBrush = "#B7C4D1";
         PhaseBadgeBackground = "#13202D";
     }
@@ -179,6 +188,31 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         }
 
         return "Verify before commit";
+    }
+
+    private static string BuildTimingText(IReadOnlyList<AgentRunStep> runSteps, bool isBusy)
+    {
+        if (runSteps.Count == 0)
+        {
+            return "No timing yet";
+        }
+
+        var startedAt = runSteps.Min(step => step.CreatedAt);
+        var lastAt = isBusy ? DateTime.Now : runSteps.Max(step => step.CreatedAt);
+        var elapsed = lastAt - startedAt;
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        return $"{FormatDuration(elapsed)} elapsed / {runSteps.Count:0} step(s)";
+    }
+
+    private static string FormatDuration(TimeSpan elapsed)
+    {
+        return elapsed.TotalMinutes >= 1
+            ? $"{(int)elapsed.TotalMinutes:0}m {elapsed.Seconds:00}s"
+            : $"{Math.Max(0, (int)elapsed.TotalSeconds):0}s";
     }
 
     private static string BuildNextAction(

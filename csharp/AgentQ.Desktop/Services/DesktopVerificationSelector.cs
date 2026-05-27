@@ -36,6 +36,20 @@ public static class DesktopVerificationSelector
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .ToArray();
 
+        var csharpTestFile = paths.FirstOrDefault(IsCSharpTestFile);
+        if (!string.IsNullOrWhiteSpace(csharpTestFile))
+        {
+            return
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Focused verification",
+                    Command = BuildCSharpTestFilterCommand(csharpTestFile),
+                    Reason = "A C# test file changed; run the matching test class before broader checks."
+                }
+            ];
+        }
+
         if (paths.Any(IsDesktopProjectFile))
         {
             return
@@ -184,6 +198,20 @@ public static class DesktopVerificationSelector
                path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCSharpTestFile(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
+               (fileName.EndsWith("Tests.cs", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith("Test.cs", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildCSharpTestFilterCommand(string path)
+    {
+        var className = Path.GetFileNameWithoutExtension(path);
+        return $"dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter FullyQualifiedName~{className}";
     }
 
     private static bool IsDocumentationFile(string path)

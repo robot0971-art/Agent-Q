@@ -111,6 +111,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - added Eval Dashboard metrics for file reads, keyword search, symbol search, hybrid search, semantic search, and MCP bridge tool routing
   - included per-route call counts and failure counts
   - added regression coverage for keyword and symbol routing metrics
+- Continued the focused verification optimization pass:
+  - selected focused `dotnet test --filter FullyQualifiedName~...` when a C# test class changes
+  - narrowly allowed safe filtered AgentQ.Tests verification commands in the verification command policy
+  - added regression coverage for focused test selection and unsafe filter rejection
 
 ## Active Work Queue After 80%
 
@@ -137,8 +141,10 @@ These are important, but should come after the Windows 1.0 stabilization pass un
    - Add trend history for tool-choice outcomes across runs.
 
 4. Latency Breakdown And Slow-Run Diagnostics
-   - Add live Run Summary timing for active runs.
    - Record more precise LLM request duration when provider callbacks expose it.
+
+5. Focused Verification Selection
+   - Add focused test/build selection for more languages and project layouts.
 
 4. Cross-Platform Strategy
    - Keep Windows WPF for near-term 1.0.

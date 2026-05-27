@@ -1614,10 +1614,32 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopVerificationSelector_SelectsFocusedDotnetTestForCSharpTestChanges()
+    {
+        var plans = DesktopVerificationSelector.SelectPlans(
+            [
+                new FileChangeRecord
+                {
+                    Path = "C:\\repo\\csharp\\AgentQ.Tests\\DesktopServiceTests.cs",
+                    RelativePath = "csharp/AgentQ.Tests/DesktopServiceTests.cs"
+                }
+            ],
+            executedCommands: []);
+
+        var plan = Assert.Single(plans);
+        Assert.Equal("Focused verification", plan.Title);
+        Assert.Equal(
+            "dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter FullyQualifiedName~DesktopServiceTests",
+            plan.Command);
+        Assert.True(VerificationCommandPolicy.IsAllowed(plan.Command));
+    }
+
+    [Fact]
     public void VerificationCommandPolicy_BlocksUnsafeDirectoryScopedCommands()
     {
         Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd .. && npm run build"));
         Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd frontend & del * && npm run build"));
+        Assert.False(VerificationCommandPolicy.IsAllowed("dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter FullyQualifiedName~DesktopServiceTests;Remove-Item"));
     }
 
     [Fact]
@@ -4013,6 +4035,40 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains("Analyze", project.Stats);
         Assert.Contains("Click Refresh", eval.Summary);
         Assert.Contains("Evidence will appear", run.LastEvidence);
+        Assert.Contains("No timing", run.TimingText);
+    }
+
+    [Fact]
+    public void RunSummaryViewModel_ShowsElapsedTimingAndStepCount()
+    {
+        var run = new RunSummaryViewModel();
+        var started = DateTime.Now.AddSeconds(-12);
+        var steps = new List<AgentRunStep>
+        {
+            new()
+            {
+                State = AgentRunState.GatheringContext,
+                Title = "Context",
+                CreatedAt = started
+            },
+            new()
+            {
+                State = AgentRunState.RunningTool,
+                Title = "Tool",
+                CreatedAt = started.AddSeconds(7)
+            }
+        };
+
+        run.Update(
+            AgentRunState.RunningTool,
+            "Running",
+            steps,
+            [],
+            [],
+            isBusy: false);
+
+        Assert.Contains("7s elapsed", run.TimingText);
+        Assert.Contains("2 step", run.TimingText);
     }
 
     private sealed class StubHttpClientFactory(

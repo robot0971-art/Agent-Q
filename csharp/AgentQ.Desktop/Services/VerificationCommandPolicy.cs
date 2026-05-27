@@ -22,8 +22,22 @@ public static class VerificationCommandPolicy
     {
         return !string.IsNullOrWhiteSpace(command) &&
                (AllowedCommands.Any(allowed => string.Equals(allowed, command, StringComparison.Ordinal)) ||
+                IsAllowedFocusedDotnetTest(command) ||
                 IsAllowedDirectoryScopedCommand(command) ||
                 projectAllowedCommands?.Any(allowed => string.Equals(allowed, command, StringComparison.Ordinal)) == true);
+    }
+
+    private static bool IsAllowedFocusedDotnetTest(string command)
+    {
+        const string prefix = "dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter FullyQualifiedName~";
+        if (!command.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var filter = command[prefix.Length..];
+        return filter.Length is > 0 and <= 120 &&
+               filter.All(character => char.IsLetterOrDigit(character) || character is '_' or '.');
     }
 
     private static bool IsAllowedDirectoryScopedCommand(string command)
