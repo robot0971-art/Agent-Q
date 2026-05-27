@@ -1885,6 +1885,116 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task StdioMcpClient_ReusesInitializedSessionForToolCalls()
+    {
+        var powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        if (!File.Exists(powershell))
+        {
+            return;
+        }
+
+        var root = CreateTempDirectory();
+        var scriptPath = Path.Combine(root, "mcp-server.ps1");
+        await File.WriteAllTextAsync(scriptPath, """
+$pidValue = $PID
+$callCount = 0
+while (($line = [Console]::In.ReadLine()) -ne $null) {
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        continue
+    }
+
+    $request = $line | ConvertFrom-Json
+    if ($null -eq $request.id) {
+        continue
+    }
+
+    if ($request.method -eq "initialize") {
+        $response = @{
+            jsonrpc = "2.0"
+            id = $request.id
+            result = @{
+                protocolVersion = "2024-11-05"
+                capabilities = @{}
+                serverInfo = @{
+                    name = "test-mcp"
+                    version = "1.0"
+                }
+            }
+        }
+    }
+    elseif ($request.method -eq "tools/list") {
+        $response = @{
+            jsonrpc = "2.0"
+            id = $request.id
+            result = @{
+                tools = @(
+                    @{
+                        name = "echo"
+                        description = "Echo with session state."
+                        inputSchema = @{
+                            type = "object"
+                            additionalProperties = $true
+                        }
+                    }
+                )
+            }
+        }
+    }
+    elseif ($request.method -eq "tools/call") {
+        $callCount += 1
+        $response = @{
+            jsonrpc = "2.0"
+            id = $request.id
+            result = @{
+                content = @(
+                    @{
+                        type = "text"
+                        text = "pid=$pidValue;count=$callCount;tool=$($request.params.name)"
+                    }
+                )
+            }
+        }
+    }
+    else {
+        $response = @{
+            jsonrpc = "2.0"
+            id = $request.id
+            error = @{
+                code = -32601
+                message = "unknown method"
+            }
+        }
+    }
+
+    [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 20 -Compress))
+    [Console]::Out.Flush()
+}
+""");
+
+        var server = new McpServerConfig
+        {
+            Name = "stateful",
+            Command = powershell,
+            Args = ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+            WorkingDirectory = root
+        };
+
+        using var client = new StdioMcpClient();
+
+        var tools = await client.ListToolsAsync(server, CancellationToken.None);
+        var first = await client.CallToolAsync(server, "echo", JsonSerializer.SerializeToElement(new { value = 1 }), CancellationToken.None);
+        var second = await client.CallToolAsync(server, "echo", JsonSerializer.SerializeToElement(new { value = 2 }), CancellationToken.None);
+
+        Assert.Equal("echo", Assert.Single(tools).Name);
+        Assert.Contains("count=1", ExtractMcpText(first), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("count=2", ExtractMcpText(second), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopEvidenceFormatter_ExplainsMcpToolCalls()
     {
         var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(
@@ -3895,6 +4005,11 @@ public sealed class DesktopServiceTests
                 .ToList();
             return Task.FromResult(vectors);
         }
+    }
+
+    private static string ExtractMcpText(JsonElement result)
+    {
+        return result.GetProperty("content")[0].GetProperty("text").GetString() ?? string.Empty;
     }
 
     private sealed class FakeMcpClient(JsonElement callResult) : IMcpClient

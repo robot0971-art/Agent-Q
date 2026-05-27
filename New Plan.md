@@ -79,7 +79,12 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
 - Started the Windows 1.0 stabilization pass:
   - added `release-readiness.ps1` as a single local preflight for format, Release rebuild, wrapper build, non-integration tests, and optional clean working-tree verification
   - updated the release checklist and README to use the preflight before beta tagging or publishing
-  - verified the preflight with `.\release-readiness.ps1 -SkipGitStatus` (256 passed, 0 failed, 0 skipped)
+  - verified the preflight with `.\release-readiness.ps1 -SkipGitStatus` (257 passed, 0 failed, 0 skipped)
+- Completed the persistent MCP session pass:
+  - changed `StdioMcpClient` to reuse initialized stdio MCP server processes within the client lifetime instead of restarting for `tools/list` and each `tools/call`
+  - added JSON-RPC response routing with per-request completions, request IDs, cancellation, timeout handling, and process-exit failure propagation
+  - kept bridge tools sharing a single MCP client instance during Desktop tool registry setup
+  - added a stateful stdio MCP regression test proving `tools/list` and repeated `tools/call` operations stay on the same initialized session
 
 ## Active Work Queue After 80%
 
@@ -90,12 +95,7 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
    - Exercise file change review, approve/reject/revert, snapshot rollback, memory operations, and telemetry dashboard refresh.
    - Fix any beta-blocking UX confusion or mojibake found during that pass.
 
-2. Persistent MCP Session
-   - Replace per-call MCP process startup with reusable sessions.
-   - Add JSON-RPC response routing with `TaskCompletionSource`.
-   - Add timeout, cancellation, process death recovery, and tests.
-
-3. Release Trust
+2. Release Trust
    - Keep checksum artifacts in release builds.
    - Defer code signing until certificate/HSM/cloud signing budget is available.
    - Keep unsigned-build limitations explicit in README and release notes.
