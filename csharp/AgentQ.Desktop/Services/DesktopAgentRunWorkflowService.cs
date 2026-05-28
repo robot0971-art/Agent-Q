@@ -18,6 +18,7 @@ public sealed class DesktopAgentRunWorkflowService(
         "Continue the previous run from where it stopped. Do not repeat completed work. Inspect current files or command results if needed, then continue until the task is complete or you need user input.";
     private readonly DesktopUsageTracker _usageTracker = new();
     private CancellationTokenSource? _activeOperationCts;
+    private DesktopPermissionEnforcer? _activePermissionEnforcer;
     private string _activeWorkspaceRoot = string.Empty;
     private string _activeProvider = string.Empty;
     private string _activeModel = string.Empty;
@@ -55,6 +56,20 @@ public sealed class DesktopAgentRunWorkflowService(
         {
             _activeOperationCts = null;
         }
+    }
+
+    public void ClearRunPermissions(MainViewModel viewModel)
+    {
+        if (_activePermissionEnforcer == null)
+        {
+            viewModel.ClearRunPermissionStatus();
+            viewModel.StatusText = "No run permissions to reset";
+            return;
+        }
+
+        _activePermissionEnforcer.ClearRunApprovals();
+        viewModel.StatusText = "Run permissions reset";
+        viewModel.AddLog("Run permissions reset");
     }
 
     public async Task SendCurrentMessageAsync(
@@ -117,6 +132,7 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         CancellationTokenSource? operationCts = null;
+        DesktopPermissionEnforcer? permissionEnforcer = null;
         var startedAt = DateTime.UtcNow;
 
         try
@@ -137,7 +153,11 @@ public sealed class DesktopAgentRunWorkflowService(
                 config.Model,
                 succeeded: true,
                 detail: workMode.ToString());
-            var permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode);
+            permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode);
+            _activePermissionEnforcer = permissionEnforcer;
+            viewModel.ClearRunPermissionStatus();
+            permissionEnforcer.ApprovedForRunChanged += approved =>
+                dispatcher.Invoke(() => viewModel.SetRunPermissionApprovals(approved));
             var pendingDelta = new StringBuilder();
             var pendingDeltaLock = new object();
             var deltaFlushQueued = false;
@@ -298,6 +318,11 @@ public sealed class DesktopAgentRunWorkflowService(
             {
                 ClearActiveOperation(operationCts);
                 operationCts.Dispose();
+            }
+
+            if (ReferenceEquals(_activePermissionEnforcer, permissionEnforcer))
+            {
+                _activePermissionEnforcer = null;
             }
 
             viewModel.IsBusy = false;

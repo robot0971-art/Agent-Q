@@ -155,6 +155,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - split Desktop approval choices into one-time approval, same operation type for this run, and workspace edits plus build/test commands for this run
   - clarified approval dialog text so users can reduce repeated prompts without granting broader shell or Git access
   - added regression coverage for reusable permission scope decisions
+- Continued the permission UX refinement pass:
+  - surfaced current per-run Desktop permissions in the footer
+  - added a reset action to clear remembered run approvals while a run is active
+  - wired permission approval state changes from the enforcer into the main view model
+  - added regression coverage for the footer binding, reset action, and permission status formatting
 
 ## Active Work Queue After 80%
 

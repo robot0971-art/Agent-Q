@@ -163,6 +163,18 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void MainWindow_ExposesRunPermissionStatusAndResetAction()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "MainWindow.xaml"));
+        var codeBehind = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "MainWindow.xaml.cs"));
+
+        Assert.Contains("RunPermissionStatusText", xaml, StringComparison.Ordinal);
+        Assert.Contains("CanClearRunPermissions", xaml, StringComparison.Ordinal);
+        Assert.Contains("ResetRunPermissions_OnClick", xaml, StringComparison.Ordinal);
+        Assert.Contains("ClearRunPermissions", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_SystemPrompt_PrioritizesSymbolSearchForCodeNavigation()
     {
         var field = typeof(DesktopAgentService).GetField("SystemPrompt", BindingFlags.NonPublic | BindingFlags.Static);
@@ -3896,6 +3908,31 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal(
             [PermissionRiskLevel.ProjectWrite, PermissionRiskLevel.VerificationCommand],
             approvals);
+    }
+
+    [Fact]
+    public void DesktopPermissionEnforcer_FormatsReusableApprovalStatus()
+    {
+        var status = DesktopPermissionEnforcer.FormatApprovedForRun(
+            [PermissionRiskLevel.ProjectWrite, PermissionRiskLevel.VerificationCommand]);
+
+        Assert.Equal("Run permissions: workspace edits, build/test", status);
+    }
+
+    [Fact]
+    public void MainViewModel_SetRunPermissionApprovals_UpdatesStatusAndResetState()
+    {
+        var viewModel = new MainViewModel();
+
+        viewModel.SetRunPermissionApprovals([PermissionRiskLevel.VerificationCommand]);
+
+        Assert.Equal("Run permissions: build/test", viewModel.RunPermissionStatusText);
+        Assert.True(viewModel.CanClearRunPermissions);
+
+        viewModel.ClearRunPermissionStatus();
+
+        Assert.Equal("Run permissions: none", viewModel.RunPermissionStatusText);
+        Assert.False(viewModel.CanClearRunPermissions);
     }
 
     [Theory]

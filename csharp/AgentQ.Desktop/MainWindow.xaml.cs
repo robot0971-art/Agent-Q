@@ -297,6 +297,11 @@ public partial class MainWindow : Window
         _windowCommandService.ClearSidePanel(_viewModel);
     }
 
+    private void ResetRunPermissions_OnClick(object sender, RoutedEventArgs e)
+    {
+        _agentRunWorkflowService.ClearRunPermissions(_viewModel);
+    }
+
     private void Exit_OnClick(object sender, RoutedEventArgs e)
     {
         _windowCommandService.Close(this);

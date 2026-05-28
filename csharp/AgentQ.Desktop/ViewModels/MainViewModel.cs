@@ -40,6 +40,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _planEvidenceStatusText = "No plan selected";
     private string _planEvidenceAccentBrush = "#B7C4D1";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
+    private string _runPermissionStatusText = "Run permissions: none";
+    private bool _canClearRunPermissions;
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private bool _hasPendingReviewVerification;
@@ -335,6 +337,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _usageText;
         set => SetField(ref _usageText, value);
+    }
+
+    public string RunPermissionStatusText
+    {
+        get => _runPermissionStatusText;
+        set => SetField(ref _runPermissionStatusText, value);
+    }
+
+    public bool CanClearRunPermissions
+    {
+        get => _canClearRunPermissions;
+        set => SetField(ref _canClearRunPermissions, value);
     }
 
     public double DesktopFontSize
@@ -782,6 +796,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void AddLog(string message)
     {
         Logs.Add($"{DateTime.Now:HH:mm:ss}  INFO  {message}");
+    }
+
+    public void SetRunPermissionApprovals(IReadOnlyCollection<PermissionRiskLevel> approvedRiskLevels)
+    {
+        RunPermissionStatusText = DesktopPermissionEnforcer.FormatApprovedForRun(approvedRiskLevels);
+        CanClearRunPermissions = approvedRiskLevels.Count > 0;
+    }
+
+    public void ClearRunPermissionStatus()
+    {
+        SetRunPermissionApprovals([]);
     }
 
     public void AddRunStep(AgentRunState state, string title, string? detail = null)

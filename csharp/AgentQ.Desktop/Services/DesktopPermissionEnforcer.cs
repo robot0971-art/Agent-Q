@@ -7,6 +7,10 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
 {
     private readonly HashSet<PermissionRiskLevel> _approvedForRun = [];
 
+    public event Action<IReadOnlyCollection<PermissionRiskLevel>>? ApprovedForRunChanged;
+
+    public IReadOnlyCollection<PermissionRiskLevel> ApprovedForRun => _approvedForRun.ToArray();
+
     public async Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
     {
         return await owner.Dispatcher.InvokeAsync(() =>
@@ -74,10 +78,18 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 _approvedForRun.Add(approvedRisk);
             }
 
+            ApprovedForRunChanged?.Invoke(ApprovedForRun);
+
             return choice is PermissionApprovalChoice.AllowOnce
                 or PermissionApprovalChoice.AllowSimilarForRun
                 or PermissionApprovalChoice.AllowAllForRun;
         });
+    }
+
+    public void ClearRunApprovals()
+    {
+        _approvedForRun.Clear();
+        ApprovedForRunChanged?.Invoke(ApprovedForRun);
     }
 
     public static IReadOnlyList<PermissionRiskLevel> GetReusableApprovals(
@@ -96,6 +108,24 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
         }
 
         return [];
+    }
+
+    public static string FormatApprovedForRun(IReadOnlyCollection<PermissionRiskLevel> riskLevels)
+    {
+        if (riskLevels.Count == 0)
+        {
+            return "Run permissions: none";
+        }
+
+        var labels = riskLevels
+            .OrderBy(risk => risk)
+            .Select(risk => risk switch
+            {
+                PermissionRiskLevel.ProjectWrite => "workspace edits",
+                PermissionRiskLevel.VerificationCommand => "build/test",
+                _ => risk.ToString()
+            });
+        return $"Run permissions: {string.Join(", ", labels)}";
     }
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)
