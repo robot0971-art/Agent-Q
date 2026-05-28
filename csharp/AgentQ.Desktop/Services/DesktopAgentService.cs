@@ -172,6 +172,7 @@ public sealed class DesktopAgentService
                 toolRegistry,
                 maxToolSteps,
                 taskProfile,
+                workMode,
                 includeTransientContext ? transientContext : null,
                 builder,
                 onDelta,
@@ -254,6 +255,7 @@ public sealed class DesktopAgentService
         ToolRegistry toolRegistry,
         int maxToolSteps,
         DesktopTaskProfile taskProfile,
+        AgentWorkMode workMode,
         string? transientContext,
         StringBuilder textBuilder,
         Action<string>? onDelta,
@@ -264,7 +266,10 @@ public sealed class DesktopAgentService
         var context = new ChatContext
         {
             Model = config.Model,
-            SystemPrompt = DesktopPromptAssemblyService.BuildSystemPrompt(SystemPrompt, taskProfile),
+            SystemPrompt = DesktopPromptAssemblyService.BuildSystemPrompt(
+                SystemPrompt,
+                taskProfile,
+                DesktopToolCapabilitySnapshot.Create(toolRegistry, workMode).ToPromptBlock()),
             Messages = requestMessages,
             MaxTokens = config.MaxTokens == 0 ? 4096 : config.MaxTokens,
             Stream = true,

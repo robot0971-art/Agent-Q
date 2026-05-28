@@ -79,13 +79,18 @@ public static class DesktopPromptAssemblyService
         };
     }
 
-    public static string BuildSystemPrompt(string basePrompt, DesktopTaskProfile profile)
+    public static string BuildSystemPrompt(string basePrompt, DesktopTaskProfile profile, string? toolPermissionState = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine(basePrompt.TrimEnd());
         builder.AppendLine();
         builder.AppendLine("Dynamic task guidance:");
         builder.AppendLine(profile.SystemHint);
+        if (!string.IsNullOrWhiteSpace(toolPermissionState))
+        {
+            builder.AppendLine();
+            builder.AppendLine(toolPermissionState.Trim());
+        }
 
         foreach (var rule in PromptRules.Where(rule => rule.Applies(profile)))
         {

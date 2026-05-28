@@ -136,6 +136,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - clarified that the CLI bash tool runs PowerShell on Windows from the workspace root
   - discouraged Bash-only chaining such as `&&`/`||` in Windows shell commands
   - added regression coverage for the shell tool description and default prompt guidance
+- Continued the Desktop permission self-awareness pass:
+  - added a Desktop tool capability snapshot for allowed, approval-required, and mode-blocked tool states
+  - injected the snapshot into Desktop system prompt assembly for each run
+  - included Desktop-specific approval UI and PowerShell workspace-root guidance in the model-visible permission state
+  - added regression coverage for Desktop prompt injection and permission-state formatting
 
 ## Active Work Queue After 80%
 

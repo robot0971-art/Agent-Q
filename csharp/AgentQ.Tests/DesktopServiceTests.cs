@@ -1,6 +1,7 @@
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Providers;
+using AgentQ.Tools;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
@@ -241,6 +242,41 @@ public sealed class DesktopServiceTests
         Assert.Contains("Patch the minimal root cause", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_IncludesToolPermissionState()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("fix compile error");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt(
+            "Base prompt",
+            profile,
+            "Tool Permission State:\n- allowed: read_file\n- requires approval: edit_file");
+
+        Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allowed: read_file", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requires approval: edit_file", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopToolCapabilitySnapshot_DescribesCurrentWorkModePermissions()
+    {
+        var registry = new ToolRegistry();
+        registry.Register(new ReadFileTool());
+        registry.Register(new EditFileTool());
+        registry.Register(new BashTool());
+        registry.Register(new DesktopSymbolSearchTool(Path.GetTempPath()));
+
+        var prompt = DesktopToolCapabilitySnapshot.Create(registry, AgentWorkMode.Coding).ToPromptBlock();
+
+        Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allowed:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requires approval:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("edit_file", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bash", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PowerShell", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("&&", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
