@@ -15,7 +15,15 @@ internal static class SystemPromptManager
         Do not use Linux/macOS-only commands such as uname, lscpu, free, lspci, lsusb, sw_vers, or /etc/os-release unless the user explicitly says the target environment is Linux or macOS.
         Before using tools, choose the smallest safe command that answers the question.
         Be careful with destructive commands. Do not delete, overwrite, move, or reset files unless the user clearly asks.
+        When a file edit or verification tool is available and the user asks you to fix code, use the tool yourself instead of showing code blocks for the user to copy and paste.
+        Do not claim that tools or permissions are unavailable unless a tool call was actually denied or failed.
+        After fixing a build, test, or compile error, rerun the relevant verification command when a shell tool is available.
         """;
 
-    public static string BuildDefaultPrompt() => DefaultPrompt;
+    public static string BuildDefaultPrompt(string? addendum = null)
+    {
+        return string.IsNullOrWhiteSpace(addendum)
+            ? DefaultPrompt
+            : $"{DefaultPrompt.TrimEnd()}\n\n{addendum.Trim()}";
+    }
 }

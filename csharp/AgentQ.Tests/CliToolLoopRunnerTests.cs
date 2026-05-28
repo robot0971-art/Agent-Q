@@ -107,6 +107,38 @@ public sealed class CliToolLoopRunnerTests
         Assert.Contains("Korean", capturedContext.SystemPrompt);
         Assert.Contains("PowerShell", capturedContext.SystemPrompt);
         Assert.Contains("uname", capturedContext.SystemPrompt);
+        Assert.Contains("copy and paste", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("actually denied or failed", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rerun the relevant verification command", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteConversationTurnAsync_IncludesAutomationToolPolicyAddendum()
+    {
+        ChatContext? capturedContext = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            capturedContext = context;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "ok" },
+                new StreamChunk { IsComplete = true });
+        });
+
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("fix compile error");
+
+        var runner = new CliToolLoopRunner();
+
+        await runner.ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            new ToolRegistry(),
+            new AlwaysAllowPermissionEnforcer(),
+            systemPromptAddendum: "Allowed tools for this run: read_file, edit_file, bash.");
+
+        Assert.NotNull(capturedContext);
+        Assert.Contains("Allowed tools for this run: read_file, edit_file, bash.", capturedContext!.SystemPrompt);
     }
 
     [Fact]
@@ -873,4 +905,3 @@ public sealed class CliToolLoopRunnerTests
         }
     }
 }
-

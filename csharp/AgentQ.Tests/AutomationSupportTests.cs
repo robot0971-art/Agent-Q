@@ -1,6 +1,8 @@
 using System.Text.Json;
 using AgentQ.Cli;
+using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
+using AgentQ.Tools;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -143,5 +145,111 @@ public sealed class AutomationSupportTests
 
         Assert.Equal(ProcessExitCode.Success, result.ExitCode);
         Assert.Equal("completed", result.TerminationReason);
+    }
+
+    [Fact]
+    public async Task CliNonInteractiveRunner_RetriesManualFallbackWithAllowedEditTool()
+    {
+        var providerCallCount = 0;
+        var provider = new ScriptedProvider(context =>
+        {
+            providerCallCount++;
+            if (context.Messages.SelectMany(message => message.Content).Any(content => content.Type == ContentType.ToolResult))
+            {
+                return StreamSequence(
+                    new StreamChunk { TextDelta = "fixed" },
+                    new StreamChunk { IsComplete = true });
+            }
+
+            return providerCallCount == 1
+                ? StreamSequence(
+                    new StreamChunk { TextDelta = "권한이 없어 직접 수정할 수 없습니다. 아래 코드를 복사해서 붙여넣으세요." },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_edit",
+                            ToolName = "edit_file",
+                            PartialInput = "{\"path\":\"Assets/Scripts/UI/ClickHandler.cs\"}",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "fix code"
+        };
+        config.AllowedToolNames.Add("edit_file");
+
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool("edit_file", ToolResult.Success("{\"status\":\"success\"}")));
+
+        var result = await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames),
+            new CliToolLoopRunner(),
+            "fix code");
+
+        Assert.Equal(3, providerCallCount);
+        Assert.Contains("edit_file", result.ExecutedTools);
+        Assert.Contains(result.ToolOutputs, record => record.ToolName == "edit_file" && !record.IsError);
+    }
+
+    private static async IAsyncEnumerable<StreamChunk> StreamSequence(params StreamChunk[] chunks)
+    {
+        foreach (var chunk in chunks)
+        {
+            yield return chunk;
+            await Task.Yield();
+        }
+    }
+
+    private sealed class ScriptedProvider(Func<ChatContext, IAsyncEnumerable<StreamChunk>> streamFactory) : ILlmProvider
+    {
+        public string Name => "scripted";
+
+        public string DefaultModel => "scripted-model";
+
+        public Task<ChatResponse> GenerateResponseAsync(ChatContext context, IEnumerable<ToolDefinition> tools, CancellationToken ct = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public IAsyncEnumerable<StreamChunk> GenerateStreamAsync(ChatContext context, IEnumerable<ToolDefinition> tools, CancellationToken ct = default)
+        {
+            return streamFactory(context);
+        }
+    }
+
+    private sealed class CapturingAutomationOutput : ICliAutomationOutput
+    {
+        public void WriteResult(ProviderConfiguration config, NonInteractiveRunResult result)
+        {
+        }
+
+        public void WriteError(ProviderConfiguration config, string message, ProcessExitCode exitCode)
+        {
+        }
+    }
+
+    private sealed class FakeTool(string name, ToolResult result) : ITool
+    {
+        public string Name => name;
+
+        public string Description => $"{name} description";
+
+        public object InputSchema => new { type = "object", properties = new { } };
+
+        public bool RequiresPermission => true;
+
+        public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default) =>
+            Task.FromResult(result);
     }
 }

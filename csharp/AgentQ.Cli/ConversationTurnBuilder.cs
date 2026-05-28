@@ -10,14 +10,15 @@ internal sealed class ConversationTurnBuilder
         ChatConversationHistory history,
         ToolRegistry registry,
         int stepLimit,
-        uint maxTokens)
+        uint maxTokens,
+        string? systemPromptAddendum = null)
     {
         return new ConversationTurnRequest
         {
             Context = new ChatContext
             {
                 Model = model,
-                SystemPrompt = SystemPromptManager.BuildDefaultPrompt(),
+                SystemPrompt = SystemPromptManager.BuildDefaultPrompt(systemPromptAddendum),
                 Messages = history.Messages.ToList(),
                 MaxTokens = maxTokens,
                 Stream = true,

@@ -123,6 +123,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - loaded recent replay sessions for Eval Dashboard analysis instead of only the latest saved run
   - summarized routed tool outcomes across recent runs by route, call count, failure count, and run count
   - added regression coverage for cross-run tool routing trend metrics
+- Continued the autonomous fix/verify loop pass:
+  - strengthened CLI prompts so allowed edit and verification tools are preferred over manual copy/paste instructions
+  - injected non-interactive allowed/denied tool policy into the system prompt so models do not guess permission state
+  - added one automatic retry when a non-interactive run falls back to manual instructions despite having an allowed edit tool
+  - verified against the Gun Clicker Unity compile-error scenario with read, edit, and build tools
 
 ## Active Work Queue After 80%
 

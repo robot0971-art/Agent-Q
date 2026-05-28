@@ -37,6 +37,7 @@ public sealed class CliToolLoopRunner
         Action<string, string>? onToolOutput = null,
         Action<string, string>? onToolError = null,
         Action<string>? onPermissionDenied = null,
+        string? systemPromptAddendum = null,
         CancellationToken ct = default)
     {
         var stepLimit = maxSteps.GetValueOrDefault(45);
@@ -54,7 +55,7 @@ public sealed class CliToolLoopRunner
             }
 
             var turnBuilder = new ConversationTurnBuilder();
-            var turnRequest = turnBuilder.Build(model, history, registry, stepLimit, maxTokens);
+            var turnRequest = turnBuilder.Build(model, history, registry, stepLimit, maxTokens, systemPromptAddendum);
 
             var streamingProcessor = new StreamingProcessor();
             var response = await streamingProcessor.ProcessAsync(
@@ -101,4 +102,3 @@ public sealed class CliToolLoopRunner
         return JsonArgumentParser.ParseJsonArguments(jsonArgs);
     }
 }
-
