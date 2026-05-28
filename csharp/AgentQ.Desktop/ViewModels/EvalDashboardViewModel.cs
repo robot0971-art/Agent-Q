@@ -7,8 +7,9 @@ namespace AgentQ.Desktop.ViewModels;
 
 public sealed class EvalDashboardViewModel : INotifyPropertyChanged
 {
-    private string _summary = "Click Refresh to load replay, telemetry, verification, and recurring failure signals.";
-    private string _updatedText = "Waiting for first refresh.";
+    private bool _useKoreanUi;
+    private string _summary = DesktopLocalizer.UiText(DesktopText.EvalDashboardEmpty, useKoreanUi: false);
+    private string _updatedText = DesktopLocalizer.UiText(DesktopText.EvalWaitingForRefresh, useKoreanUi: false);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -19,6 +20,21 @@ public sealed class EvalDashboardViewModel : INotifyPropertyChanged
     public ObservableCollection<string> ReplayEntries { get; } = [];
 
     public ObservableCollection<string> FailureFingerprints { get; } = [];
+
+    public bool UseKoreanUi
+    {
+        get => _useKoreanUi;
+        set
+        {
+            var previous = _useKoreanUi;
+            if (!SetField(ref _useKoreanUi, value))
+            {
+                return;
+            }
+
+            RefreshDefaultText(previous);
+        }
+    }
 
     public string Summary
     {
@@ -49,8 +65,25 @@ public sealed class EvalDashboardViewModel : INotifyPropertyChanged
         Findings.Clear();
         ReplayEntries.Clear();
         FailureFingerprints.Clear();
-        Summary = "Click Refresh to load replay, telemetry, verification, and recurring failure signals.";
-        UpdatedText = "Waiting for first refresh.";
+        Summary = DesktopLocalizer.UiText(DesktopText.EvalDashboardEmpty, UseKoreanUi);
+        UpdatedText = DesktopLocalizer.UiText(DesktopText.EvalWaitingForRefresh, UseKoreanUi);
+    }
+
+    private void RefreshDefaultText(bool previousUseKoreanUi)
+    {
+        ReplaceDefaultText(ref _summary, DesktopText.EvalDashboardEmpty, previousUseKoreanUi, nameof(Summary));
+        ReplaceDefaultText(ref _updatedText, DesktopText.EvalWaitingForRefresh, previousUseKoreanUi, nameof(UpdatedText));
+    }
+
+    private void ReplaceDefaultText(ref string field, string key, bool previousUseKoreanUi, string propertyName)
+    {
+        if (!string.Equals(field, DesktopLocalizer.UiText(key, previousUseKoreanUi), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        field = DesktopLocalizer.UiText(key, UseKoreanUi);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     private static void ReplaceItems(ObservableCollection<string> target, IEnumerable<string> values)

@@ -7,24 +7,25 @@ namespace AgentQ.Desktop.ViewModels;
 
 public sealed class ProjectPanelViewModel : INotifyPropertyChanged
 {
-    private string _analysisSummary = "Workspace not analyzed yet.";
-    private string _projectType = "Analyze to detect";
-    private string _framework = "Analyze to detect";
-    private string _gitBranch = "Analyze to detect";
-    private string _stats = "Analyze to count files and folders.";
-    private string _analysisUpdatedText = "Not analyzed yet.";
-    private string _dashboardSummary = "Analyze the workspace to build the project dashboard.";
-    private string _healthText = "Waiting for analysis";
+    private bool _useKoreanUi;
+    private string _analysisSummary = DesktopLocalizer.UiText(DesktopText.ProjectNotAnalyzed, useKoreanUi: false);
+    private string _projectType = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, useKoreanUi: false);
+    private string _framework = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, useKoreanUi: false);
+    private string _gitBranch = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, useKoreanUi: false);
+    private string _stats = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeStats, useKoreanUi: false);
+    private string _analysisUpdatedText = DesktopLocalizer.UiText(DesktopText.ProjectAnalysisUpdatedEmpty, useKoreanUi: false);
+    private string _dashboardSummary = DesktopLocalizer.UiText(DesktopText.ProjectDashboardEmpty, useKoreanUi: false);
+    private string _healthText = DesktopLocalizer.UiText(DesktopText.ProjectWaitingForAnalysis, useKoreanUi: false);
     private string _healthAccentBrush = "#B7C4D1";
     private string _symbolCountText = "0 symbols";
     private string _dependencyCountText = "0 dependencies";
     private string _keyFileCountText = "0 key files";
     private string _verificationCommandCountText = "0 commands";
-    private string _projectMapEmptyText = "No project map yet.";
-    private string _keySymbolsEmptyText = "No key symbols found yet.";
-    private string _keyDependenciesEmptyText = "No dependency graph signals yet.";
-    private string _keyFilesEmptyText = "No key files detected yet.";
-    private string _verificationCommandsEmptyText = "No verification command detected yet.";
+    private string _projectMapEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectMapEmpty, useKoreanUi: false);
+    private string _keySymbolsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectSymbolsEmpty, useKoreanUi: false);
+    private string _keyDependenciesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectDependenciesEmpty, useKoreanUi: false);
+    private string _keyFilesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectFilesEmpty, useKoreanUi: false);
+    private string _verificationCommandsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectVerificationEmpty, useKoreanUi: false);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -39,6 +40,21 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
     public ObservableCollection<string> KeyFiles { get; } = [];
 
     public ObservableCollection<string> Hints { get; } = [];
+
+    public bool UseKoreanUi
+    {
+        get => _useKoreanUi;
+        set
+        {
+            var previous = _useKoreanUi;
+            if (!SetField(ref _useKoreanUi, value))
+            {
+                return;
+            }
+
+            RefreshDefaultText(previous);
+        }
+    }
 
     public string AnalysisSummary
     {
@@ -170,6 +186,51 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         ReplaceItems(KeyDependencies, analysis.KeyDependencies);
         ReplaceItems(KeyFiles, analysis.KeyFiles);
         ReplaceItems(Hints, analysis.Hints);
+    }
+
+    public void ResetEmptyState()
+    {
+        AnalysisSummary = DesktopLocalizer.UiText(DesktopText.ProjectNotAnalyzed, UseKoreanUi);
+        ProjectType = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, UseKoreanUi);
+        Framework = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, UseKoreanUi);
+        GitBranch = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeToDetect, UseKoreanUi);
+        Stats = DesktopLocalizer.UiText(DesktopText.ProjectAnalyzeStats, UseKoreanUi);
+        AnalysisUpdatedText = DesktopLocalizer.UiText(DesktopText.ProjectAnalysisUpdatedEmpty, UseKoreanUi);
+        DashboardSummary = DesktopLocalizer.UiText(DesktopText.ProjectDashboardEmpty, UseKoreanUi);
+        HealthText = DesktopLocalizer.UiText(DesktopText.ProjectWaitingForAnalysis, UseKoreanUi);
+        ProjectMapEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectMapEmpty, UseKoreanUi);
+        KeySymbolsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectSymbolsEmpty, UseKoreanUi);
+        KeyDependenciesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectDependenciesEmpty, UseKoreanUi);
+        KeyFilesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectFilesEmpty, UseKoreanUi);
+        VerificationCommandsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectVerificationEmpty, UseKoreanUi);
+    }
+
+    private void RefreshDefaultText(bool previousUseKoreanUi)
+    {
+        ReplaceDefaultText(ref _analysisSummary, DesktopText.ProjectNotAnalyzed, previousUseKoreanUi, nameof(AnalysisSummary));
+        ReplaceDefaultText(ref _projectType, DesktopText.ProjectAnalyzeToDetect, previousUseKoreanUi, nameof(ProjectType));
+        ReplaceDefaultText(ref _framework, DesktopText.ProjectAnalyzeToDetect, previousUseKoreanUi, nameof(Framework));
+        ReplaceDefaultText(ref _gitBranch, DesktopText.ProjectAnalyzeToDetect, previousUseKoreanUi, nameof(GitBranch));
+        ReplaceDefaultText(ref _stats, DesktopText.ProjectAnalyzeStats, previousUseKoreanUi, nameof(Stats));
+        ReplaceDefaultText(ref _analysisUpdatedText, DesktopText.ProjectAnalysisUpdatedEmpty, previousUseKoreanUi, nameof(AnalysisUpdatedText));
+        ReplaceDefaultText(ref _dashboardSummary, DesktopText.ProjectDashboardEmpty, previousUseKoreanUi, nameof(DashboardSummary));
+        ReplaceDefaultText(ref _healthText, DesktopText.ProjectWaitingForAnalysis, previousUseKoreanUi, nameof(HealthText));
+        ReplaceDefaultText(ref _projectMapEmptyText, DesktopText.ProjectMapEmpty, previousUseKoreanUi, nameof(ProjectMapEmptyText));
+        ReplaceDefaultText(ref _keySymbolsEmptyText, DesktopText.ProjectSymbolsEmpty, previousUseKoreanUi, nameof(KeySymbolsEmptyText));
+        ReplaceDefaultText(ref _keyDependenciesEmptyText, DesktopText.ProjectDependenciesEmpty, previousUseKoreanUi, nameof(KeyDependenciesEmptyText));
+        ReplaceDefaultText(ref _keyFilesEmptyText, DesktopText.ProjectFilesEmpty, previousUseKoreanUi, nameof(KeyFilesEmptyText));
+        ReplaceDefaultText(ref _verificationCommandsEmptyText, DesktopText.ProjectVerificationEmpty, previousUseKoreanUi, nameof(VerificationCommandsEmptyText));
+    }
+
+    private void ReplaceDefaultText(ref string field, string key, bool previousUseKoreanUi, string propertyName)
+    {
+        if (!string.Equals(field, DesktopLocalizer.UiText(key, previousUseKoreanUi), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        field = DesktopLocalizer.UiText(key, UseKoreanUi);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     private static string BuildDashboardSummary(WorkspaceAnalysis analysis)

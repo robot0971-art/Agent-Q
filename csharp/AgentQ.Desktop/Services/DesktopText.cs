@@ -66,4 +66,21 @@ public static class DesktopText
     public const string Disable = nameof(Disable);
     public const string Delete = nameof(Delete);
     public const string SessionSummary = nameof(SessionSummary);
+    public const string GitStatusEmpty = nameof(GitStatusEmpty);
+    public const string GitDiffEmpty = nameof(GitDiffEmpty);
+    public const string GitSelectedFileEmpty = nameof(GitSelectedFileEmpty);
+    public const string GitWaitingForRefresh = nameof(GitWaitingForRefresh);
+    public const string ProjectNotAnalyzed = nameof(ProjectNotAnalyzed);
+    public const string ProjectAnalyzeToDetect = nameof(ProjectAnalyzeToDetect);
+    public const string ProjectAnalyzeStats = nameof(ProjectAnalyzeStats);
+    public const string ProjectAnalysisUpdatedEmpty = nameof(ProjectAnalysisUpdatedEmpty);
+    public const string ProjectDashboardEmpty = nameof(ProjectDashboardEmpty);
+    public const string ProjectWaitingForAnalysis = nameof(ProjectWaitingForAnalysis);
+    public const string ProjectMapEmpty = nameof(ProjectMapEmpty);
+    public const string ProjectSymbolsEmpty = nameof(ProjectSymbolsEmpty);
+    public const string ProjectDependenciesEmpty = nameof(ProjectDependenciesEmpty);
+    public const string ProjectFilesEmpty = nameof(ProjectFilesEmpty);
+    public const string ProjectVerificationEmpty = nameof(ProjectVerificationEmpty);
+    public const string EvalDashboardEmpty = nameof(EvalDashboardEmpty);
+    public const string EvalWaitingForRefresh = nameof(EvalWaitingForRefresh);
 }

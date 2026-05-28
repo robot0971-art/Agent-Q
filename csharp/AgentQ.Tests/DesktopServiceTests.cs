@@ -4449,6 +4449,37 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopPanelViewModels_LocalizeDefaultEmptyStatesForKoreanUi()
+    {
+        var git = new GitPanelViewModel { UseKoreanUi = true };
+        var project = new ProjectPanelViewModel { UseKoreanUi = true };
+        var eval = new EvalDashboardViewModel { UseKoreanUi = true };
+
+        Assert.Contains("\uC0C1\uD0DC", git.StatusText);
+        Assert.Contains("diff", git.DiffText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\uBD84\uC11D", project.ProjectType);
+        Assert.Contains("\uD504\uB85C\uC81D\uD2B8", project.DashboardSummary);
+        Assert.Contains("\uC0C8\uB85C\uACE0\uCE68", eval.Summary);
+        Assert.Contains("\uCCAB", eval.UpdatedText);
+    }
+
+    [Fact]
+    public void MainViewModel_UiLanguage_PropagatesToDesktopPanels()
+    {
+        var viewModel = new MainViewModel
+        {
+            UiLanguage = "\uD55C\uAD6D\uC5B4"
+        };
+
+        Assert.True(viewModel.Git.UseKoreanUi);
+        Assert.True(viewModel.Project.UseKoreanUi);
+        Assert.True(viewModel.EvalDashboard.UseKoreanUi);
+        Assert.Contains("\uC0C1\uD0DC", viewModel.Git.StatusText);
+        Assert.Contains("\uBD84\uC11D", viewModel.Project.ProjectType);
+        Assert.Contains("\uC0C8\uB85C\uACE0\uCE68", viewModel.EvalDashboard.Summary);
+    }
+
+    [Fact]
     public void RunSummaryViewModel_ShowsElapsedTimingAndStepCount()
     {
         var run = new RunSummaryViewModel();

@@ -380,6 +380,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
 
             NotifyLocalizedTextChanged();
+            Git.UseKoreanUi = IsKoreanUi;
+            Project.UseKoreanUi = IsKoreanUi;
+            EvalDashboard.UseKoreanUi = IsKoreanUi;
         }
     }
 

@@ -76,6 +76,23 @@ public static class DesktopLocalizer
             nameof(DesktopText.Disable) => useKoreanUi ? "\uBE44\uD65C\uC131" : "Disable",
             nameof(DesktopText.Delete) => useKoreanUi ? "\uC0AD\uC81C" : "Delete",
             nameof(DesktopText.SessionSummary) => useKoreanUi ? "\uC138\uC158 \uC694\uC57D" : "Session summary",
+            nameof(DesktopText.GitStatusEmpty) => useKoreanUi ? "\uC0C1\uD0DC\uB97C \uB20C\uB7EC \uD604\uC7AC \uBE0C\uB79C\uCE58\uC640 \uBCC0\uACBD \uD30C\uC77C\uC744 \uD655\uC778\uD558\uC138\uC694." : "Click Status to inspect the current branch and changed files.",
+            nameof(DesktopText.GitDiffEmpty) => useKoreanUi ? "\uD604\uC7AC \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4 diff\uB97C \uBD88\uB7EC\uC624\uB824\uBA74 Diff\uB97C \uB204\uB974\uC138\uC694." : "Click Diff to load the current workspace diff.",
+            nameof(DesktopText.GitSelectedFileEmpty) => useKoreanUi ? "\uBCC0\uACBD \uD30C\uC77C\uC744 \uC120\uD0DD\uD558\uBA74 diff\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4." : "Select a changed file to view its diff.",
+            nameof(DesktopText.GitWaitingForRefresh) => useKoreanUi ? "Git \uD328\uB110\uC774 \uC0C8\uB85C\uACE0\uCE68\uC744 \uAE30\uB2E4\uB9AC\uB294 \uC911\uC785\uB2C8\uB2E4." : "Git panel is waiting for refresh.",
+            nameof(DesktopText.ProjectNotAnalyzed) => useKoreanUi ? "\uC544\uC9C1 \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uB97C \uBD84\uC11D\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4." : "Workspace not analyzed yet.",
+            nameof(DesktopText.ProjectAnalyzeToDetect) => useKoreanUi ? "\uBD84\uC11D\uD558\uBA74 \uAC10\uC9C0\uB429\uB2C8\uB2E4" : "Analyze to detect",
+            nameof(DesktopText.ProjectAnalyzeStats) => useKoreanUi ? "\uBD84\uC11D\uD558\uBA74 \uD30C\uC77C\uACFC \uD3F4\uB354 \uC218\uB97C \uACC4\uC0B0\uD569\uB2C8\uB2E4." : "Analyze to count files and folders.",
+            nameof(DesktopText.ProjectAnalysisUpdatedEmpty) => useKoreanUi ? "\uC544\uC9C1 \uBD84\uC11D\uB418\uC9C0 \uC54A\uC74C." : "Not analyzed yet.",
+            nameof(DesktopText.ProjectDashboardEmpty) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uB300\uC2DC\uBCF4\uB4DC\uB97C \uAD6C\uC131\uD558\uB824\uBA74 \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uB97C \uBD84\uC11D\uD558\uC138\uC694." : "Analyze the workspace to build the project dashboard.",
+            nameof(DesktopText.ProjectWaitingForAnalysis) => useKoreanUi ? "\uBD84\uC11D \uB300\uAE30 \uC911" : "Waiting for analysis",
+            nameof(DesktopText.ProjectMapEmpty) => useKoreanUi ? "\uC544\uC9C1 \uD504\uB85C\uC81D\uD2B8 \uB9F5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." : "No project map yet.",
+            nameof(DesktopText.ProjectSymbolsEmpty) => useKoreanUi ? "\uC544\uC9C1 \uD575\uC2EC \uC2EC\uBCFC\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4." : "No key symbols found yet.",
+            nameof(DesktopText.ProjectDependenciesEmpty) => useKoreanUi ? "\uC544\uC9C1 \uC758\uC874\uC131 \uADF8\uB798\uD504 \uC2E0\uD638\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." : "No dependency graph signals yet.",
+            nameof(DesktopText.ProjectFilesEmpty) => useKoreanUi ? "\uC544\uC9C1 \uD575\uC2EC \uD30C\uC77C\uC744 \uAC10\uC9C0\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4." : "No key files detected yet.",
+            nameof(DesktopText.ProjectVerificationEmpty) => useKoreanUi ? "\uC544\uC9C1 \uAC80\uC99D \uBA85\uB839\uC744 \uAC10\uC9C0\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4." : "No verification command detected yet.",
+            nameof(DesktopText.EvalDashboardEmpty) => useKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68\uC744 \uB20C\uB7EC replay, telemetry, \uAC80\uC99D, \uBC18\uBCF5 \uC2E4\uD328 \uC2E0\uD638\uB97C \uBD88\uB7EC\uC624\uC138\uC694." : "Click Refresh to load replay, telemetry, verification, and recurring failure signals.",
+            nameof(DesktopText.EvalWaitingForRefresh) => useKoreanUi ? "\uCCAB \uC0C8\uB85C\uACE0\uCE68\uC744 \uAE30\uB2E4\uB9AC\uB294 \uC911\uC785\uB2C8\uB2E4." : "Waiting for first refresh.",
             _ => key
         };
     }

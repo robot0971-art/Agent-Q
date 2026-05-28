@@ -8,16 +8,32 @@ namespace AgentQ.Desktop.ViewModels;
 public sealed class GitPanelViewModel : INotifyPropertyChanged
 {
     private bool _canFixLastCodeReviewFindings;
-    private string _statusText = "Click Status to inspect the current branch and changed files.";
-    private string _diffText = "Click Diff to load the current workspace diff.";
-    private string _selectedFileDiffText = "Select a changed file to view its diff.";
-    private string _lastUpdatedText = "Git panel is waiting for refresh.";
+    private bool _useKoreanUi;
+    private string _statusText = DesktopLocalizer.UiText(DesktopText.GitStatusEmpty, useKoreanUi: false);
+    private string _diffText = DesktopLocalizer.UiText(DesktopText.GitDiffEmpty, useKoreanUi: false);
+    private string _selectedFileDiffText = DesktopLocalizer.UiText(DesktopText.GitSelectedFileEmpty, useKoreanUi: false);
+    private string _lastUpdatedText = DesktopLocalizer.UiText(DesktopText.GitWaitingForRefresh, useKoreanUi: false);
     private string _commitMessage = string.Empty;
     private GitChangedFile? _selectedChangedFile;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<GitChangedFile> ChangedFiles { get; } = [];
+
+    public bool UseKoreanUi
+    {
+        get => _useKoreanUi;
+        set
+        {
+            var previous = _useKoreanUi;
+            if (!SetField(ref _useKoreanUi, value))
+            {
+                return;
+            }
+
+            RefreshDefaultText(previous);
+        }
+    }
 
     public bool CanFixLastCodeReviewFindings
     {
@@ -65,12 +81,31 @@ public sealed class GitPanelViewModel : INotifyPropertyChanged
     {
         ChangedFiles.Clear();
         SelectedChangedFile = null;
-        StatusText = "Click Status to inspect the current branch and changed files.";
-        DiffText = "Click Diff to load the current workspace diff.";
-        SelectedFileDiffText = "Select a changed file to view its diff.";
-        LastUpdatedText = "Git panel is waiting for refresh.";
+        StatusText = DesktopLocalizer.UiText(DesktopText.GitStatusEmpty, UseKoreanUi);
+        DiffText = DesktopLocalizer.UiText(DesktopText.GitDiffEmpty, UseKoreanUi);
+        SelectedFileDiffText = DesktopLocalizer.UiText(DesktopText.GitSelectedFileEmpty, UseKoreanUi);
+        LastUpdatedText = DesktopLocalizer.UiText(DesktopText.GitWaitingForRefresh, UseKoreanUi);
         CommitMessage = string.Empty;
         CanFixLastCodeReviewFindings = false;
+    }
+
+    private void RefreshDefaultText(bool previousUseKoreanUi)
+    {
+        ReplaceDefaultText(ref _statusText, DesktopText.GitStatusEmpty, previousUseKoreanUi, nameof(StatusText));
+        ReplaceDefaultText(ref _diffText, DesktopText.GitDiffEmpty, previousUseKoreanUi, nameof(DiffText));
+        ReplaceDefaultText(ref _selectedFileDiffText, DesktopText.GitSelectedFileEmpty, previousUseKoreanUi, nameof(SelectedFileDiffText));
+        ReplaceDefaultText(ref _lastUpdatedText, DesktopText.GitWaitingForRefresh, previousUseKoreanUi, nameof(LastUpdatedText));
+    }
+
+    private void ReplaceDefaultText(ref string field, string key, bool previousUseKoreanUi, string propertyName)
+    {
+        if (!string.Equals(field, DesktopLocalizer.UiText(key, previousUseKoreanUi), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        field = DesktopLocalizer.UiText(key, UseKoreanUi);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
