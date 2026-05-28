@@ -383,79 +383,75 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsKoreanUi => UiLanguage.Equals("\uD55C\uAD6D\uC5B4", StringComparison.OrdinalIgnoreCase) ||
-                              UiLanguage.Equals("Korean", StringComparison.OrdinalIgnoreCase);
+    public bool IsKoreanUi => DesktopLocalizer.IsKoreanUi(UiLanguage);
 
-    public string MenuFileText => IsKoreanUi ? "\uD30C\uC77C" : "File";
-    public string MenuSelectProjectFolderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354 \uC120\uD0DD" : "Select project folder";
-    public string MenuAddAttachmentText => IsKoreanUi ? "\uCCA8\uBD80 \uCD94\uAC00" : "Add attachment";
-    public string MenuClearAttachmentsText => IsKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear attachments";
-    public string MenuExitText => IsKoreanUi ? "\uC885\uB8CC" : "Exit";
-    public string MenuEditText => IsKoreanUi ? "\uD3B8\uC9D1" : "Edit";
-    public string MenuCopyLastAnswerText => IsKoreanUi ? "\uB9C8\uC9C0\uB9C9 \uB2F5\uBCC0 \uBCF5\uC0AC" : "Copy last answer";
-    public string MenuCopyConversationText => IsKoreanUi ? "\uC804\uCCB4 \uB300\uD654 \uBCF5\uC0AC" : "Copy conversation";
-    public string MenuClearConversationText => IsKoreanUi ? "\uB300\uD654 \uCD08\uAE30\uD654" : "Clear conversation";
-    public string MenuSettingsText => IsKoreanUi ? "\uC124\uC815" : "Settings";
-    public string MenuSaveSettingsText => IsKoreanUi ? "\uC124\uC815 \uC800\uC7A5" : "Save settings";
-    public string MenuViewText => IsKoreanUi ? "\uBCF4\uAE30" : "View";
-    public string MenuIncreaseFontText => IsKoreanUi ? "\uAE00\uC790 \uD06C\uAC8C" : "Increase font";
-    public string MenuDecreaseFontText => IsKoreanUi ? "\uAE00\uC790 \uC791\uAC8C" : "Decrease font";
-    public string MenuResetFontText => IsKoreanUi ? "\uAE30\uBCF8 \uAE00\uC790 \uD06C\uAE30" : "Reset font size";
-    public string MenuHelpText => IsKoreanUi ? "\uB3C4\uC6C0\uB9D0" : "Help";
-    public string MenuShowStatusText => IsKoreanUi ? "\uC0C1\uD0DC \uBCF4\uAE30" : "Show status";
-    public string SettingsHeaderText => IsKoreanUi ? "\uC124\uC815" : "Settings";
-    public string SaveText => IsKoreanUi ? "\uC800\uC7A5" : "Save";
-    public string UiLanguageText => IsKoreanUi ? "UI \uC5B8\uC5B4" : "UI Language";
-    public string ProjectContextAutoAttachText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uCEE8\uD14D\uC2A4\uD2B8 \uC790\uB3D9 \uCCA8\uBD80" : "Auto attach project context";
-    public string AutoFetchLinksText => IsKoreanUi ? "\uB9C1\uD06C \uC790\uB3D9 \uC77D\uAE30" : "Auto fetch links";
-    public string ProjectHeaderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8" : "Project";
-    public string ProjectFolderText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354" : "Project folder";
-    public string BrowseFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC120\uD0DD" : "Browse";
-    public string OpenFolderText => IsKoreanUi ? "\uD3F4\uB354 \uC5F4\uAE30" : "Open";
-    public string BuildEmbeddingIndexText => IsKoreanUi ? "\uC784\uBCA0\uB529 \uC778\uB371\uC2A4 \uC0DD\uC131" : "Build embedding index";
-    public string ChatHeaderText => IsKoreanUi ? "\uC0C8 \uB300\uD654" : "New chat";
-    public string AttachFilesText => IsKoreanUi ? "\uCCA8\uBD80" : "Attach";
-    public string CodeBlockText => IsKoreanUi ? "\uCF54\uB4DC \uBE14\uB85D" : "Code block";
-    public string AddProjectFileText => IsKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C \uCD94\uAC00" : "Add project file";
-    public string ClearAttachmentsText => IsKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear";
-    public string SendText => IsKoreanUi ? "\uC804\uC1A1\nCtrl+Enter" : "Send\nCtrl+Enter";
-    public string CopyText => IsKoreanUi ? "\uBCF5\uC0AC" : "Copy";
-    public string CopyWholeMessageText => IsKoreanUi ? "\uBA54\uC2DC\uC9C0 \uC804\uCCB4 \uBCF5\uC0AC" : "Copy whole message";
-    public string ToolsHeaderText => IsKoreanUi ? "\uB3C4\uAD6C" : "Tools";
-    public string ManageText => IsKoreanUi ? "\uAD00\uB9AC" : "Manage";
-    public string ReadFileToolText => IsKoreanUi ? "read_file - \uD30C\uC77C \uB0B4\uC6A9\uC744 \uC77D\uC2B5\uB2C8\uB2E4" : "read_file - Read file contents";
-    public string WriteFileToolText => IsKoreanUi ? "write_file - \uD30C\uC77C\uC744 \uC218\uC815\uD569\uB2C8\uB2E4" : "write_file - Edit files";
-    public string ShellExecuteToolText => IsKoreanUi ? "shell_execute - \uBA85\uB839\uC744 \uC2E4\uD589\uD569\uB2C8\uB2E4" : "shell_execute - Run commands";
-    public string SearchFilesToolText => IsKoreanUi ? "search_files - \uD30C\uC77C\uC744 \uAC80\uC0C9\uD569\uB2C8\uB2E4" : "search_files - Search files";
-    public string ListDirectoryToolText => IsKoreanUi ? "list_directory - \uBAA9\uB85D\uC744 \uBD05\uB2C8\uB2E4" : "list_directory - List directories";
-    public string StatusPanelText => IsKoreanUi ? "\uC0C1\uD0DC \uD328\uB110" : "Status panel";
-    public string ClearText => IsKoreanUi ? "\uBE44\uC6B0\uAE30" : "Clear";
-    public string RunLogText => IsKoreanUi ? "\uC791\uC5C5 \uB85C\uADF8" : "Run log";
-    public string ChangePreviewText => IsKoreanUi ? "\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30" : "Change preview";
-    public string AllText => IsKoreanUi ? "\uC804\uCCB4" : "ALL";
-    public string EvidenceTrailText => IsKoreanUi ? "\uADFC\uAC70 \uD750\uB984" : "Evidence";
-    public string EvalDashboardText => IsKoreanUi ? "\uD3C9\uAC00" : "Eval";
-    public string EvalDashboardRefreshText => IsKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh";
-    public string EvalDashboardHelpText => IsKoreanUi
-        ? "\uCD5C\uC2E0 replay, telemetry, \uAC80\uC99D \uACB0\uACFC, \uBC18\uBCF5 \uC2E4\uD328 fingerprint\uB97C \uC694\uC57D\uD569\uB2C8\uB2E4."
-        : "Summarizes latest replay, telemetry, verification results, and recurring failure fingerprints.";
-    public string EvidenceTrailHelpText => IsKoreanUi
-        ? "\uC228\uC740 \uC0AC\uACE0 \uACFC\uC815\uC774 \uC544\uB2CC, \uC0AC\uC6A9\uD55C \uBA54\uBAA8\uB9AC, \uD30C\uC77C, \uAC80\uC0C9, \uBA85\uB839, \uAC80\uC99D \uD750\uB984\uC744 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4."
-        : "Shows used memory, files, searches, commands, changes, and verification flow instead of hidden model reasoning.";
-    public string SaveSummaryText => IsKoreanUi ? "\uC694\uC57D \uC800\uC7A5" : "Save summary";
-    public string LoadText => IsKoreanUi ? "\uBD88\uB7EC\uC624\uAE30" : "Load";
-    public string ResumeText => IsKoreanUi ? "\uC774\uC5B4\uC11C" : "Resume";
-    public string LearningCandidatesText => IsKoreanUi ? "\uD559\uC2B5 \uD6C4\uBCF4" : "Learning candidates";
-    public string LearningCandidatesHelpText => IsKoreanUi
-        ? "\uC791\uC5C5 \uD6C4 AgentQ\uAC00 \uB2E4\uC74C\uC5D0 \uAE30\uC5B5\uD558\uBA74 \uC88B\uC744 \uADDC\uCE59\uC744 \uC81C\uC548\uD569\uB2C8\uB2E4. \uC2B9\uC778\uD55C \uD56D\uBAA9\uB9CC \uC774 \uD504\uB85C\uC81D\uD2B8\uC758 \uB85C\uCEEC \uBA54\uBAA8\uB9AC\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4."
-        : "After a run, AgentQ may suggest rules worth remembering. Only approved items are saved to this project's local memory.";
-    public string SaveLessonText => IsKoreanUi ? "\uD559\uC2B5 \uC800\uC7A5" : "Save lesson";
-    public string DismissText => IsKoreanUi ? "\uBB34\uC2DC" : "Dismiss";
-    public string SavedMemoryText => IsKoreanUi ? "\uC800\uC7A5\uB41C \uBA54\uBAA8\uB9AC" : "Saved memory";
-    public string RefreshText => IsKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh";
-    public string DisableText => IsKoreanUi ? "\uBE44\uD65C\uC131" : "Disable";
-    public string DeleteText => IsKoreanUi ? "\uC0AD\uC81C" : "Delete";
-    public string SessionSummaryText => IsKoreanUi ? "\uC138\uC158 \uC694\uC57D" : "Session summary";
+    public string MenuFileText => Ui(DesktopText.MenuFile);
+    public string MenuSelectProjectFolderText => Ui(DesktopText.MenuSelectProjectFolder);
+    public string MenuAddAttachmentText => Ui(DesktopText.MenuAddAttachment);
+    public string MenuClearAttachmentsText => Ui(DesktopText.MenuClearAttachments);
+    public string MenuExitText => Ui(DesktopText.MenuExit);
+    public string MenuEditText => Ui(DesktopText.MenuEdit);
+    public string MenuCopyLastAnswerText => Ui(DesktopText.MenuCopyLastAnswer);
+    public string MenuCopyConversationText => Ui(DesktopText.MenuCopyConversation);
+    public string MenuClearConversationText => Ui(DesktopText.MenuClearConversation);
+    public string MenuSettingsText => Ui(DesktopText.MenuSettings);
+    public string MenuSaveSettingsText => Ui(DesktopText.MenuSaveSettings);
+    public string MenuViewText => Ui(DesktopText.MenuView);
+    public string MenuIncreaseFontText => Ui(DesktopText.MenuIncreaseFont);
+    public string MenuDecreaseFontText => Ui(DesktopText.MenuDecreaseFont);
+    public string MenuResetFontText => Ui(DesktopText.MenuResetFont);
+    public string MenuHelpText => Ui(DesktopText.MenuHelp);
+    public string MenuShowStatusText => Ui(DesktopText.MenuShowStatus);
+    public string SettingsHeaderText => Ui(DesktopText.SettingsHeader);
+    public string SaveText => Ui(DesktopText.Save);
+    public string UiLanguageText => Ui(DesktopText.UiLanguage);
+    public string ProjectContextAutoAttachText => Ui(DesktopText.ProjectContextAutoAttach);
+    public string AutoFetchLinksText => Ui(DesktopText.AutoFetchLinks);
+    public string ProjectHeaderText => Ui(DesktopText.ProjectHeader);
+    public string ProjectFolderText => Ui(DesktopText.ProjectFolder);
+    public string BrowseFolderText => Ui(DesktopText.BrowseFolder);
+    public string OpenFolderText => Ui(DesktopText.OpenFolder);
+    public string BuildEmbeddingIndexText => Ui(DesktopText.BuildEmbeddingIndex);
+    public string ChatHeaderText => Ui(DesktopText.ChatHeader);
+    public string AttachFilesText => Ui(DesktopText.AttachFiles);
+    public string CodeBlockText => Ui(DesktopText.CodeBlock);
+    public string AddProjectFileText => Ui(DesktopText.AddProjectFile);
+    public string ClearAttachmentsText => Ui(DesktopText.ClearAttachments);
+    public string SendText => Ui(DesktopText.Send);
+    public string CopyText => Ui(DesktopText.Copy);
+    public string CopyWholeMessageText => Ui(DesktopText.CopyWholeMessage);
+    public string ToolsHeaderText => Ui(DesktopText.ToolsHeader);
+    public string ManageText => Ui(DesktopText.Manage);
+    public string ReadFileToolText => Ui(DesktopText.ReadFileTool);
+    public string WriteFileToolText => Ui(DesktopText.WriteFileTool);
+    public string ShellExecuteToolText => Ui(DesktopText.ShellExecuteTool);
+    public string SearchFilesToolText => Ui(DesktopText.SearchFilesTool);
+    public string ListDirectoryToolText => Ui(DesktopText.ListDirectoryTool);
+    public string StatusPanelText => Ui(DesktopText.StatusPanel);
+    public string ClearText => Ui(DesktopText.Clear);
+    public string RunLogText => Ui(DesktopText.RunLog);
+    public string ChangePreviewText => Ui(DesktopText.ChangePreview);
+    public string AllText => Ui(DesktopText.All);
+    public string EvidenceTrailText => Ui(DesktopText.EvidenceTrail);
+    public string EvalDashboardText => Ui(DesktopText.EvalDashboard);
+    public string EvalDashboardRefreshText => Ui(DesktopText.EvalDashboardRefresh);
+    public string EvalDashboardHelpText => Ui(DesktopText.EvalDashboardHelp);
+    public string EvidenceTrailHelpText => Ui(DesktopText.EvidenceTrailHelp);
+    public string SaveSummaryText => Ui(DesktopText.SaveSummary);
+    public string LoadText => Ui(DesktopText.Load);
+    public string ResumeText => Ui(DesktopText.Resume);
+    public string LearningCandidatesText => Ui(DesktopText.LearningCandidates);
+    public string LearningCandidatesHelpText => Ui(DesktopText.LearningCandidatesHelp);
+    public string SaveLessonText => Ui(DesktopText.SaveLesson);
+    public string DismissText => Ui(DesktopText.Dismiss);
+    public string SavedMemoryText => Ui(DesktopText.SavedMemory);
+    public string RefreshText => Ui(DesktopText.Refresh);
+    public string DisableText => Ui(DesktopText.Disable);
+    public string DeleteText => Ui(DesktopText.Delete);
+    public string SessionSummaryText => Ui(DesktopText.SessionSummary);
+
+    private string Ui(string key) => DesktopLocalizer.UiText(key, IsKoreanUi);
+
     public AgentWorkMode WorkMode
     {
         get => _workMode;

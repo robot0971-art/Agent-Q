@@ -3676,6 +3676,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal("\uD55C\uAD6D\uC5B4", viewModel.UiLanguage);
         Assert.Equal("\uC124\uC815", viewModel.SettingsHeaderText);
         Assert.Equal("\uD559\uC2B5 \uD6C4\uBCF4", viewModel.LearningCandidatesText);
+        Assert.Equal(DesktopLocalizer.UiText(DesktopText.SettingsHeader, useKoreanUi: true), viewModel.SettingsHeaderText);
+        Assert.Equal(DesktopLocalizer.UiText(DesktopText.LearningCandidates, useKoreanUi: true), viewModel.LearningCandidatesText);
         Assert.Equal("Learning candidates", new MainViewModel().LearningCandidatesText);
         Assert.Equal("File", new MainViewModel().MenuFileText);
     }

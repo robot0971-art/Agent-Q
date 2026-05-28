@@ -4,6 +4,82 @@ namespace AgentQ.Desktop.Services;
 
 public static class DesktopLocalizer
 {
+    public static bool IsKoreanUi(string uiLanguage) =>
+        uiLanguage.Equals("\uD55C\uAD6D\uC5B4", StringComparison.OrdinalIgnoreCase) ||
+        uiLanguage.Equals("Korean", StringComparison.OrdinalIgnoreCase);
+
+    public static string UiText(string key, bool useKoreanUi)
+    {
+        return key switch
+        {
+            nameof(DesktopText.MenuFile) => useKoreanUi ? "\uD30C\uC77C" : "File",
+            nameof(DesktopText.MenuSelectProjectFolder) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354 \uC120\uD0DD" : "Select project folder",
+            nameof(DesktopText.MenuAddAttachment) => useKoreanUi ? "\uCCA8\uBD80 \uCD94\uAC00" : "Add attachment",
+            nameof(DesktopText.MenuClearAttachments) => useKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear attachments",
+            nameof(DesktopText.MenuExit) => useKoreanUi ? "\uC885\uB8CC" : "Exit",
+            nameof(DesktopText.MenuEdit) => useKoreanUi ? "\uD3B8\uC9D1" : "Edit",
+            nameof(DesktopText.MenuCopyLastAnswer) => useKoreanUi ? "\uB9C8\uC9C0\uB9C9 \uB2F5\uBCC0 \uBCF5\uC0AC" : "Copy last answer",
+            nameof(DesktopText.MenuCopyConversation) => useKoreanUi ? "\uC804\uCCB4 \uB300\uD654 \uBCF5\uC0AC" : "Copy conversation",
+            nameof(DesktopText.MenuClearConversation) => useKoreanUi ? "\uB300\uD654 \uCD08\uAE30\uD654" : "Clear conversation",
+            nameof(DesktopText.MenuSettings) => useKoreanUi ? "\uC124\uC815" : "Settings",
+            nameof(DesktopText.MenuSaveSettings) => useKoreanUi ? "\uC124\uC815 \uC800\uC7A5" : "Save settings",
+            nameof(DesktopText.MenuView) => useKoreanUi ? "\uBCF4\uAE30" : "View",
+            nameof(DesktopText.MenuIncreaseFont) => useKoreanUi ? "\uAE00\uC790 \uD06C\uAC8C" : "Increase font",
+            nameof(DesktopText.MenuDecreaseFont) => useKoreanUi ? "\uAE00\uC790 \uC791\uAC8C" : "Decrease font",
+            nameof(DesktopText.MenuResetFont) => useKoreanUi ? "\uAE30\uBCF8 \uAE00\uC790 \uD06C\uAE30" : "Reset font size",
+            nameof(DesktopText.MenuHelp) => useKoreanUi ? "\uB3C4\uC6C0\uB9D0" : "Help",
+            nameof(DesktopText.MenuShowStatus) => useKoreanUi ? "\uC0C1\uD0DC \uBCF4\uAE30" : "Show status",
+            nameof(DesktopText.SettingsHeader) => useKoreanUi ? "\uC124\uC815" : "Settings",
+            nameof(DesktopText.Save) => useKoreanUi ? "\uC800\uC7A5" : "Save",
+            nameof(DesktopText.UiLanguage) => useKoreanUi ? "UI \uC5B8\uC5B4" : "UI Language",
+            nameof(DesktopText.ProjectContextAutoAttach) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uCEE8\uD14D\uC2A4\uD2B8 \uC790\uB3D9 \uCCA8\uBD80" : "Auto attach project context",
+            nameof(DesktopText.AutoFetchLinks) => useKoreanUi ? "\uB9C1\uD06C \uC790\uB3D9 \uC77D\uAE30" : "Auto fetch links",
+            nameof(DesktopText.ProjectHeader) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8" : "Project",
+            nameof(DesktopText.ProjectFolder) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354" : "Project folder",
+            nameof(DesktopText.BrowseFolder) => useKoreanUi ? "\uD3F4\uB354 \uC120\uD0DD" : "Browse",
+            nameof(DesktopText.OpenFolder) => useKoreanUi ? "\uD3F4\uB354 \uC5F4\uAE30" : "Open",
+            nameof(DesktopText.BuildEmbeddingIndex) => useKoreanUi ? "\uC784\uBCA0\uB529 \uC778\uB371\uC2A4 \uC0DD\uC131" : "Build embedding index",
+            nameof(DesktopText.ChatHeader) => useKoreanUi ? "\uC0C8 \uB300\uD654" : "New chat",
+            nameof(DesktopText.AttachFiles) => useKoreanUi ? "\uCCA8\uBD80" : "Attach",
+            nameof(DesktopText.CodeBlock) => useKoreanUi ? "\uCF54\uB4DC \uBE14\uB85D" : "Code block",
+            nameof(DesktopText.AddProjectFile) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C \uCD94\uAC00" : "Add project file",
+            nameof(DesktopText.ClearAttachments) => useKoreanUi ? "\uCCA8\uBD80 \uC9C0\uC6B0\uAE30" : "Clear",
+            nameof(DesktopText.Send) => useKoreanUi ? "\uC804\uC1A1\nCtrl+Enter" : "Send\nCtrl+Enter",
+            nameof(DesktopText.Copy) => useKoreanUi ? "\uBCF5\uC0AC" : "Copy",
+            nameof(DesktopText.CopyWholeMessage) => useKoreanUi ? "\uBA54\uC2DC\uC9C0 \uC804\uCCB4 \uBCF5\uC0AC" : "Copy whole message",
+            nameof(DesktopText.ToolsHeader) => useKoreanUi ? "\uB3C4\uAD6C" : "Tools",
+            nameof(DesktopText.Manage) => useKoreanUi ? "\uAD00\uB9AC" : "Manage",
+            nameof(DesktopText.ReadFileTool) => useKoreanUi ? "read_file - \uD30C\uC77C \uB0B4\uC6A9\uC744 \uC77D\uC2B5\uB2C8\uB2E4" : "read_file - Read file contents",
+            nameof(DesktopText.WriteFileTool) => useKoreanUi ? "write_file - \uD30C\uC77C\uC744 \uC218\uC815\uD569\uB2C8\uB2E4" : "write_file - Edit files",
+            nameof(DesktopText.ShellExecuteTool) => useKoreanUi ? "shell_execute - \uBA85\uB839\uC744 \uC2E4\uD589\uD569\uB2C8\uB2E4" : "shell_execute - Run commands",
+            nameof(DesktopText.SearchFilesTool) => useKoreanUi ? "search_files - \uD30C\uC77C\uC744 \uAC80\uC0C9\uD569\uB2C8\uB2E4" : "search_files - Search files",
+            nameof(DesktopText.ListDirectoryTool) => useKoreanUi ? "list_directory - \uBAA9\uB85D\uC744 \uBD05\uB2C8\uB2E4" : "list_directory - List directories",
+            nameof(DesktopText.StatusPanel) => useKoreanUi ? "\uC0C1\uD0DC \uD328\uB110" : "Status panel",
+            nameof(DesktopText.Clear) => useKoreanUi ? "\uBE44\uC6B0\uAE30" : "Clear",
+            nameof(DesktopText.RunLog) => useKoreanUi ? "\uC791\uC5C5 \uB85C\uADF8" : "Run log",
+            nameof(DesktopText.ChangePreview) => useKoreanUi ? "\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30" : "Change preview",
+            nameof(DesktopText.All) => useKoreanUi ? "\uC804\uCCB4" : "ALL",
+            nameof(DesktopText.EvidenceTrail) => useKoreanUi ? "\uADFC\uAC70 \uD750\uB984" : "Evidence",
+            nameof(DesktopText.EvalDashboard) => useKoreanUi ? "\uD3C9\uAC00" : "Eval",
+            nameof(DesktopText.EvalDashboardRefresh) => useKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh",
+            nameof(DesktopText.EvalDashboardHelp) => useKoreanUi ? "\uCD5C\uC2E0 replay, telemetry, \uAC80\uC99D \uACB0\uACFC, \uBC18\uBCF5 \uC2E4\uD328 fingerprint\uB97C \uC694\uC57D\uD569\uB2C8\uB2E4." : "Summarizes latest replay, telemetry, verification results, and recurring failure fingerprints.",
+            nameof(DesktopText.EvidenceTrailHelp) => useKoreanUi ? "\uC228\uC740 \uC0AC\uACE0 \uACFC\uC815\uC774 \uC544\uB2CC, \uC0AC\uC6A9\uD55C \uBA54\uBAA8\uB9AC, \uD30C\uC77C, \uAC80\uC0C9, \uBA85\uB839, \uAC80\uC99D \uD750\uB984\uC744 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4." : "Shows used memory, files, searches, commands, changes, and verification flow instead of hidden model reasoning.",
+            nameof(DesktopText.SaveSummary) => useKoreanUi ? "\uC694\uC57D \uC800\uC7A5" : "Save summary",
+            nameof(DesktopText.Load) => useKoreanUi ? "\uBD88\uB7EC\uC624\uAE30" : "Load",
+            nameof(DesktopText.Resume) => useKoreanUi ? "\uC774\uC5B4\uC11C" : "Resume",
+            nameof(DesktopText.LearningCandidates) => useKoreanUi ? "\uD559\uC2B5 \uD6C4\uBCF4" : "Learning candidates",
+            nameof(DesktopText.LearningCandidatesHelp) => useKoreanUi ? "\uC791\uC5C5 \uD6C4 AgentQ\uAC00 \uB2E4\uC74C\uC5D0 \uAE30\uC5B5\uD558\uBA74 \uC88B\uC744 \uADDC\uCE59\uC744 \uC81C\uC548\uD569\uB2C8\uB2E4. \uC2B9\uC778\uD55C \uD56D\uBAA9\uB9CC \uC774 \uD504\uB85C\uC81D\uD2B8\uC758 \uB85C\uCEEC \uBA54\uBAA8\uB9AC\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4." : "After a run, AgentQ may suggest rules worth remembering. Only approved items are saved to this project's local memory.",
+            nameof(DesktopText.SaveLesson) => useKoreanUi ? "\uD559\uC2B5 \uC800\uC7A5" : "Save lesson",
+            nameof(DesktopText.Dismiss) => useKoreanUi ? "\uBB34\uC2DC" : "Dismiss",
+            nameof(DesktopText.SavedMemory) => useKoreanUi ? "\uC800\uC7A5\uB41C \uBA54\uBAA8\uB9AC" : "Saved memory",
+            nameof(DesktopText.Refresh) => useKoreanUi ? "\uC0C8\uB85C\uACE0\uCE68" : "Refresh",
+            nameof(DesktopText.Disable) => useKoreanUi ? "\uBE44\uD65C\uC131" : "Disable",
+            nameof(DesktopText.Delete) => useKoreanUi ? "\uC0AD\uC81C" : "Delete",
+            nameof(DesktopText.SessionSummary) => useKoreanUi ? "\uC138\uC158 \uC694\uC57D" : "Session summary",
+            _ => key
+        };
+    }
+
     public static string TimelineLabel(AgentRunState state, bool useKoreanUi)
     {
         if (useKoreanUi)
