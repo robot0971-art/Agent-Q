@@ -164,6 +164,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - recorded Desktop permission outcomes into the run log and timeline
   - captured policy blocks, explicit denials, one-time approvals, reusable approvals, and approvals reused for the current run
   - added regression coverage for permission event formatting
+- Continued the permission UX refinement pass:
+  - rebuilt the Desktop permission dialog around a readable summary, risk/target/reason rows, focused preview, and raw input details
+  - changed approval buttons to clearer Korean labels for one-time, same-kind, edit-plus-build, and deny decisions
+  - added regression coverage for permission summaries and dialog content separation
 
 ## Active Work Queue After 80%
 

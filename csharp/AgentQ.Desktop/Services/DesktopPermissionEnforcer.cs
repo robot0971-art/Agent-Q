@@ -57,24 +57,21 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             var approvalHint = IsReusableApproval(assessment.RiskLevel)
                 ? $"{Environment.NewLine}Allow similar will skip repeat prompts for this operation type during the current run. Allow edits + builds will skip repeat prompts for workspace file edits and verification commands only."
                 : string.Empty;
-
-            var message =
-                $"Allow AgentQ to run this operation?{Environment.NewLine}{Environment.NewLine}" +
-                $"Risk: {assessment.RiskLevel}{Environment.NewLine}" +
-                $"Operation: {assessment.Operation}{Environment.NewLine}" +
-                $"Target: {assessment.Target}{Environment.NewLine}" +
-                $"Mode: {workMode}{Environment.NewLine}" +
-                $"Reason: {assessment.Reason}{approvalHint}{Environment.NewLine}{Environment.NewLine}" +
-                $"Policy: {policy.PolicyReason}{Environment.NewLine}{Environment.NewLine}" +
-                $"Tool: {toolName}{Environment.NewLine}" +
-                $"Description: {description}{Environment.NewLine}{Environment.NewLine}" +
-                focusedPreview +
-                $"Input:{Environment.NewLine}{preview}";
+            var dialogContent = new PermissionDialogContent(
+                BuildPermissionSummary(assessment),
+                $"{assessment.RiskLevel} / {assessment.Operation}",
+                assessment.Target,
+                assessment.Reason + approvalHint,
+                policy.PolicyReason,
+                toolName,
+                description,
+                focusedPreview.Trim(),
+                preview);
 
             var choice = PermissionApprovalDialog.Show(
                 owner,
                 $"AgentQ permission: {assessment.RiskLevel}",
-                message,
+                dialogContent,
                 IsReusableApproval(assessment.RiskLevel),
                 IsReusableApproval(assessment.RiskLevel));
 
@@ -163,6 +160,19 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             : permissionEvent.Target;
 
         return $"{permissionEvent.Outcome}{choiceText}: {permissionEvent.RiskLevel} {permissionEvent.ToolName} -> {target}";
+    }
+
+    public static string BuildPermissionSummary(ToolPermissionAssessment assessment)
+    {
+        return assessment.RiskLevel switch
+        {
+            PermissionRiskLevel.ProjectWrite => "AgentQ가 프로젝트 파일을 수정하려고 합니다.",
+            PermissionRiskLevel.VerificationCommand => "AgentQ가 빌드 또는 테스트 명령을 실행하려고 합니다.",
+            PermissionRiskLevel.GitWrite => "AgentQ가 Git 상태를 변경하려고 합니다.",
+            PermissionRiskLevel.Network => "AgentQ가 네트워크를 사용할 수 있는 명령을 실행하려고 합니다.",
+            PermissionRiskLevel.Destructive => "AgentQ가 위험한 작업으로 분류된 명령을 실행하려고 했습니다.",
+            _ => "AgentQ가 승인 필요한 작업을 실행하려고 합니다."
+        };
     }
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)

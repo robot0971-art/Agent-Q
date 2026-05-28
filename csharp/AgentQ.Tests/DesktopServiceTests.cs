@@ -3940,6 +3940,41 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopPermissionEnforcer_BuildsReadablePermissionSummary()
+    {
+        var summary = DesktopPermissionEnforcer.BuildPermissionSummary(new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.VerificationCommand,
+            Operation = "Verification command",
+            Target = "dotnet build",
+            Reason = "This appears to build or test the selected project."
+        });
+
+        Assert.Contains("빌드", summary, StringComparison.Ordinal);
+        Assert.Contains("테스트", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PermissionDialogContent_SeparatesSummaryFromRawInput()
+    {
+        var content = new PermissionDialogContent(
+            "AgentQ가 프로젝트 파일을 수정하려고 합니다.",
+            "ProjectWrite / Edit file",
+            "Assets/Scripts/UI/ClickHandler.cs",
+            "This will modify a file inside the selected workspace.",
+            "Coding mode allows workspace file edits with explicit user approval.",
+            "edit_file",
+            "Edit a file by replacing a specific string with a new string",
+            "Path: Assets/Scripts/UI/ClickHandler.cs",
+            "{\"path\":\"Assets/Scripts/UI/ClickHandler.cs\"}");
+
+        Assert.Equal("AgentQ가 프로젝트 파일을 수정하려고 합니다.", content.Summary);
+        Assert.Contains("ProjectWrite", content.RiskLabel, StringComparison.Ordinal);
+        Assert.Contains("ClickHandler.cs", content.Target, StringComparison.Ordinal);
+        Assert.StartsWith("{", content.RawInput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MainViewModel_SetRunPermissionApprovals_UpdatesStatusAndResetState()
     {
         var viewModel = new MainViewModel();
