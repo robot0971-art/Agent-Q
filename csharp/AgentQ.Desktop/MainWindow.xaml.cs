@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private readonly DesktopGitCommandService _gitCommandService;
     private readonly DesktopPlanCommandService _planCommandService;
     private readonly DesktopWorkspaceCommandService _workspaceCommandService;
+    private readonly DesktopSourceBrowserService _sourceBrowserService;
+    private readonly DesktopCodePreviewWindowService _codePreviewWindowService;
     private readonly DesktopVerificationCommandService _verificationCommandService;
     private readonly DesktopAgentRunWorkflowService _agentRunWorkflowService;
     private readonly DesktopFileChangeReviewService _fileChangeReviewService;
@@ -33,6 +35,8 @@ public partial class MainWindow : Window
         DesktopGitCommandService gitCommandService,
         DesktopPlanCommandService planCommandService,
         DesktopWorkspaceCommandService workspaceCommandService,
+        DesktopSourceBrowserService sourceBrowserService,
+        DesktopCodePreviewWindowService codePreviewWindowService,
         DesktopVerificationCommandService verificationCommandService,
         DesktopAgentRunWorkflowService agentRunWorkflowService,
         DesktopFileChangeReviewService fileChangeReviewService,
@@ -49,6 +53,8 @@ public partial class MainWindow : Window
         _gitCommandService = gitCommandService;
         _planCommandService = planCommandService;
         _workspaceCommandService = workspaceCommandService;
+        _sourceBrowserService = sourceBrowserService;
+        _codePreviewWindowService = codePreviewWindowService;
         _verificationCommandService = verificationCommandService;
         _agentRunWorkflowService = agentRunWorkflowService;
         _fileChangeReviewService = fileChangeReviewService;
@@ -88,6 +94,7 @@ public partial class MainWindow : Window
             UpdateEmbeddingApiKey = apiKey => _viewModel.EmbeddingApiKey = apiKey,
             BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
+            OpenWorkspaceInVSCode = () => _workspaceCommandService.OpenWorkspaceInVSCode(_viewModel),
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
             BuildEmbeddingIndexAsync = () => _workspaceCommandService.BuildEmbeddingIndexAsync(_viewModel, TrimForLog),
             CopyAnalysisReport = () => _workspaceCommandService.CopyWorkspaceAnalysisReport(_viewModel),
@@ -125,6 +132,9 @@ public partial class MainWindow : Window
             RevertFileChangeAsync = record => _fileChangeReviewService.RevertAsync(_viewModel, record),
             ApproveAllFileChangesAndVerifyAsync = () =>
                 _verificationCommandService.ApprovePendingChangesAndVerifyAsync(_viewModel, SendCurrentMessageAsync),
+            ShowSelectedFileChangePreview = ShowSelectedFileChangePreview,
+            RefreshSourceFiles = () => _sourceBrowserService.Refresh(_viewModel),
+            OpenSelectedSourceFileAsync = OpenSelectedSourceFileAsync,
             RefreshGitStatusAsync = () => _gitCommandService.RefreshStatusAsync(_viewModel, TrimForLog),
             RefreshGitDiffAsync = () => _gitCommandService.RefreshDiffAsync(_viewModel, TrimForLog),
             ReviewGitChangesAsync = () => _gitCommandService.ReviewChangesAsync(_viewModel, SendCurrentMessageAsync, TrimForLog),
@@ -162,6 +172,29 @@ public partial class MainWindow : Window
             CancellationToken.None);
         _viewModel.ApplyEvalDashboard(report);
         _viewModel.AddLog("Eval dashboard refreshed");
+    }
+
+    private void ShowSelectedFileChangePreview()
+    {
+        var change = _viewModel.SelectedFileChange;
+        if (change == null)
+        {
+            return;
+        }
+
+        _codePreviewWindowService.Show(this, change.RelativePath, change.SourcePreviewText);
+    }
+
+    private async Task OpenSelectedSourceFileAsync()
+    {
+        await _sourceBrowserService.OpenSelectedAsync(_viewModel);
+        var file = _viewModel.SelectedSourceFile;
+        if (file is not { IsDirectory: false })
+        {
+            return;
+        }
+
+        _codePreviewWindowService.Show(this, file.RelativePath, _viewModel.SourceFilePreviewText);
     }
 
     private async void Send_OnClick(object sender, RoutedEventArgs e)

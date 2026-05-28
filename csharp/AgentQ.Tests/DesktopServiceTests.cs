@@ -175,6 +175,15 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void RunTimelinePanel_WrapsLongEvidenceTextWithoutHorizontalScroll()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "RunTimelinePanel.xaml"));
+
+        Assert.Contains("ScrollViewer.HorizontalScrollBarVisibility=\"Disabled\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"WrapWithOverflow\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_SystemPrompt_PrioritizesSymbolSearchForCodeNavigation()
     {
         var field = typeof(DesktopAgentService).GetField("SystemPrompt", BindingFlags.NonPublic | BindingFlags.Static);
@@ -334,6 +343,16 @@ public sealed class DesktopServiceTests
             AgentWorkMode.Coding);
 
         Assert.False(shouldRetry);
+    }
+
+    [Theory]
+    [InlineData("", 0, true)]
+    [InlineData("   ", 0, true)]
+    [InlineData("done", 0, false)]
+    [InlineData("", 1, false)]
+    public void DesktopAgentService_RetriesEmptyModelResponses(string text, int toolUseCount, bool expected)
+    {
+        Assert.Equal(expected, DesktopAgentService.ShouldRetryEmptyResponse(text, toolUseCount));
     }
 
     [Fact]
@@ -4547,6 +4566,173 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains("\uD604\uC7AC", viewModel.Git.DiffText);
         Assert.Contains("\uBD84\uC11D", viewModel.Project.Stats);
         Assert.Contains("\uCCAB", viewModel.EvalDashboard.UpdatedText);
+    }
+
+    [Fact]
+    public void DesktopGitPanelWorkflowService_LocalizesDynamicGitStatusForKoreanUi()
+    {
+        var service = new DesktopGitPanelWorkflowService(new DesktopGitService());
+        var viewModel = new MainViewModel
+        {
+            UiLanguage = "\uD55C\uAD6D\uC5B4"
+        };
+
+        service.SetSelectedReviewStatus(viewModel, GitChangeReviewStatus.Approved);
+
+        Assert.Contains("\uC120\uD0DD\uB41C \uBCC0\uACBD \uD30C\uC77C", viewModel.StatusText);
+
+        service.ApplySnapshot(
+            viewModel,
+            new DesktopGitSnapshot
+            {
+                Status = new GitCommandResult
+                {
+                    ExitCode = 0,
+                    StandardOutput = "## main"
+                },
+                DiffStat = new GitCommandResult
+                {
+                    ExitCode = 0
+                },
+                FullDiff = new GitCommandResult
+                {
+                    ExitCode = 0
+                },
+                ChangedFiles = []
+            });
+
+        Assert.Equal("\uBCC0\uACBD \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.", viewModel.GitSelectedFileDiffText);
+        Assert.StartsWith("\uB9C8\uC9C0\uB9C9 \uC5C5\uB370\uC774\uD2B8:", viewModel.GitLastUpdatedText);
+    }
+
+    [Fact]
+    public void DesktopLocalizer_FormatsGitWorkflowMessages()
+    {
+        Assert.Equal("Pull blocked: local changes", DesktopLocalizer.FormatUiText(DesktopText.GitPullBlocked, useKoreanUi: false, "local changes"));
+        Assert.Equal("Pull \uCC28\uB2E8\uB428: \uB85C\uCEEC \uBCC0\uACBD", DesktopLocalizer.FormatUiText(DesktopText.GitPullBlocked, useKoreanUi: true, "\uB85C\uCEEC \uBCC0\uACBD"));
+        Assert.Equal("\uBC31\uC5C5 \uBE0C\uB79C\uCE58 \uC0DD\uC131\uB428: backup/main", DesktopLocalizer.FormatUiText(DesktopText.GitBackupBranchCreated, useKoreanUi: true, "backup/main"));
+    }
+
+    [Fact]
+    public void ProjectPanel_ExposesVSCodeOpenAction()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "ProjectPanel.xaml"));
+        var codeBehind = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "ProjectPanel.xaml.cs"));
+        var callbacks = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Services", "DesktopPanelEventBinder.cs"));
+
+        Assert.Contains("OpenVSCodeText", xaml, StringComparison.Ordinal);
+        Assert.Contains("OpenWorkspaceInVSCode_OnClick", xaml, StringComparison.Ordinal);
+        Assert.Contains("OpenWorkspaceInVSCodeRequested", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("OpenWorkspaceInVSCode", callbacks, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopWorkspaceCommandService_CreatesVSCodeStartInfoForWorkspace()
+    {
+        var startInfo = DesktopWorkspaceCommandService.CreateVSCodeStartInfo(@"C:\Users\admin\Gun Clicker");
+
+        Assert.Equal("code.cmd", startInfo.FileName);
+        Assert.False(startInfo.UseShellExecute);
+        Assert.True(startInfo.CreateNoWindow);
+        Assert.Equal(@"C:\Users\admin\Gun Clicker", Assert.Single(startInfo.ArgumentList));
+    }
+
+    [Fact]
+    public void FileChangeRecord_ExposesAfterTextForSidePreview()
+    {
+        var change = new FileChangeRecord
+        {
+            Path = @"C:\repo\src\App.cs",
+            RelativePath = "src/App.cs",
+            Before = "old",
+            After = "new code"
+        };
+
+        Assert.Equal("new code", change.SourcePreviewText);
+    }
+
+    [Fact]
+    public void FileChangeReviewPanel_ExposesDiffAndFilePreviewTabs()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "FileChangeReviewPanel.xaml"));
+
+        Assert.Contains("Header=\"Diff\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Header=\"File\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedFileChange.SourcePreviewText", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FileChangeReviewPanel_ExposesSourceBrowser()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "FileChangeReviewPanel.xaml"));
+        var codeBehind = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "FileChangeReviewPanel.xaml.cs"));
+
+        Assert.Contains("FileChangesList_OnSelectionChanged", xaml, StringComparison.Ordinal);
+        Assert.Contains("Header=\"Browse\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<TreeView", xaml, StringComparison.Ordinal);
+        Assert.Contains("HierarchicalDataTemplate", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceFilesTree_OnSelectedItemChanged", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceFileFilter", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceFiles", xaml, StringComparison.Ordinal);
+        Assert.Contains("TreeDisplayName", xaml, StringComparison.Ordinal);
+        Assert.Contains("DetailText", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceFilePreviewText", xaml, StringComparison.Ordinal);
+        Assert.Contains("RefreshSourceFilesRequested", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SelectedSourceFileChanged", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SelectedFileChangeChanged", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CodePreviewWindow_UsesRichTextBoxForHighlightedPreview()
+    {
+        var xaml = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "Views", "CodePreviewWindow.xaml"));
+        var mainWindow = System.IO.File.ReadAllText(FindRepoFile("csharp", "AgentQ.Desktop", "MainWindow.xaml.cs"));
+
+        Assert.Contains("<RichTextBox", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShowSelectedFileChangePreview", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("OpenSelectedSourceFileAsync", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopCodeHighlighter_ColorsCSharpTokens()
+    {
+        var document = DesktopCodeHighlighter.CreateDocument("public class Slime { // note");
+        var paragraph = Assert.IsType<System.Windows.Documents.Paragraph>(Assert.Single(document.Blocks));
+        var text = new System.Windows.Documents.TextRange(document.ContentStart, document.ContentEnd).Text;
+
+        Assert.Equal(5000, document.PageWidth);
+        Assert.Equal(5000, document.ColumnWidth);
+        Assert.Contains("public class Slime", text, StringComparison.Ordinal);
+        Assert.Contains(paragraph.Inlines.OfType<System.Windows.Documents.Run>(), run =>
+            run.Text == "public" && run.Foreground.ToString().Contains("569CD6", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(paragraph.Inlines.OfType<System.Windows.Documents.Run>(), run =>
+            run.Text == "Slime" && run.Foreground.ToString().Contains("4EC9B0", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DesktopSourceBrowserService_LoadsAndOpensWorkspaceFiles()
+    {
+        var root = CreateTempDirectory();
+        var sourceDirectory = Path.Combine(root, "src");
+        Directory.CreateDirectory(sourceDirectory);
+        await File.WriteAllTextAsync(Path.Combine(sourceDirectory, "App.cs"), "class App {}");
+        Directory.CreateDirectory(Path.Combine(root, "bin"));
+        await File.WriteAllTextAsync(Path.Combine(root, "bin", "Ignored.cs"), "ignored");
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = root,
+            SourceFileFilter = "App"
+        };
+        var service = new DesktopSourceBrowserService();
+
+        service.Refresh(viewModel);
+        var sourceDirectoryEntry = Assert.Single(viewModel.SourceFiles, file => file.IsDirectory && file.RelativePath == "src/");
+        viewModel.SelectedSourceFile = Assert.Single(sourceDirectoryEntry.Children);
+        await service.OpenSelectedAsync(viewModel);
+
+        Assert.Equal("src/App.cs", viewModel.SelectedSourceFile.RelativePath);
+        Assert.Equal("  \u2022 App.cs", viewModel.SelectedSourceFile.TreeDisplayName);
+        Assert.Equal("class App {}", viewModel.SourceFilePreviewText);
     }
 
     [Fact]

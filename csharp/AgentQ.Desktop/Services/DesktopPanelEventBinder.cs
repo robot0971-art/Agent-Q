@@ -23,6 +23,7 @@ public sealed class DesktopPanelEventBinder
 
         projectPanel.BrowseWorkspaceRequested += async (_, _) => await callbacks.BrowseWorkspaceAsync();
         projectPanel.OpenWorkspaceRequested += (_, _) => callbacks.OpenWorkspace();
+        projectPanel.OpenWorkspaceInVSCodeRequested += (_, _) => callbacks.OpenWorkspaceInVSCode();
         projectPanel.RefreshWorkspaceAnalysisRequested += async (_, _) => await callbacks.RefreshWorkspaceAnalysisAsync();
         projectPanel.BuildEmbeddingIndexRequested += async (_, _) => await callbacks.BuildEmbeddingIndexAsync();
         projectPanel.CopyAnalysisReportRequested += (_, _) => callbacks.CopyAnalysisReport();
@@ -66,6 +67,9 @@ public sealed class DesktopPanelEventBinder
         fileChangeReviewPanel.NeedsEditRequested += (_, record) => callbacks.MarkFileChangeNeedsEdit(record);
         fileChangeReviewPanel.RevertRequested += async (_, record) => await callbacks.RevertFileChangeAsync(record);
         fileChangeReviewPanel.ApproveAllAndVerifyRequested += async (_, _) => await callbacks.ApproveAllFileChangesAndVerifyAsync();
+        fileChangeReviewPanel.SelectedFileChangeChanged += (_, _) => callbacks.ShowSelectedFileChangePreview();
+        fileChangeReviewPanel.RefreshSourceFilesRequested += (_, _) => callbacks.RefreshSourceFiles();
+        fileChangeReviewPanel.SelectedSourceFileChanged += async (_, _) => await callbacks.OpenSelectedSourceFileAsync();
 
         gitPanel.StatusRequested += async (_, _) => await callbacks.RefreshGitStatusAsync();
         gitPanel.DiffRequested += async (_, _) => await callbacks.RefreshGitDiffAsync();
@@ -93,6 +97,7 @@ public sealed class DesktopPanelEventCallbacks
     public required Action<string> UpdateEmbeddingApiKey { get; init; }
     public required Func<Task> BrowseWorkspaceAsync { get; init; }
     public required Action OpenWorkspace { get; init; }
+    public required Action OpenWorkspaceInVSCode { get; init; }
     public required Func<Task> RefreshWorkspaceAnalysisAsync { get; init; }
     public required Func<Task> BuildEmbeddingIndexAsync { get; init; }
     public required Action CopyAnalysisReport { get; init; }
@@ -129,6 +134,9 @@ public sealed class DesktopPanelEventCallbacks
     public required Action<FileChangeRecord?> MarkFileChangeNeedsEdit { get; init; }
     public required Func<FileChangeRecord?, Task> RevertFileChangeAsync { get; init; }
     public required Func<Task> ApproveAllFileChangesAndVerifyAsync { get; init; }
+    public required Action ShowSelectedFileChangePreview { get; init; }
+    public required Action RefreshSourceFiles { get; init; }
+    public required Func<Task> OpenSelectedSourceFileAsync { get; init; }
     public required Func<Task> RefreshGitStatusAsync { get; init; }
     public required Func<Task> RefreshGitDiffAsync { get; init; }
     public required Func<Task> ReviewGitChangesAsync { get; init; }

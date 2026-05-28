@@ -142,7 +142,7 @@ public sealed class DesktopWorkspaceCommandService(
     {
         if (!Directory.Exists(viewModel.WorkspaceRoot))
         {
-            viewModel.StatusText = "No valid project folder to open.";
+            viewModel.StatusText = Ui(viewModel, DesktopText.NoValidProjectFolderToOpen);
             return;
         }
 
@@ -151,6 +151,52 @@ public sealed class DesktopWorkspaceCommandService(
             FileName = viewModel.WorkspaceRoot,
             UseShellExecute = true
         });
+    }
+
+    public void OpenWorkspaceInVSCode(MainViewModel viewModel)
+    {
+        if (!Directory.Exists(viewModel.WorkspaceRoot))
+        {
+            viewModel.StatusText = Ui(viewModel, DesktopText.NoValidProjectFolderToOpen);
+            return;
+        }
+
+        foreach (var executable in new[] { "code.cmd", "code" })
+        {
+            try
+            {
+                using var process = Process.Start(CreateVSCodeStartInfo(viewModel.WorkspaceRoot, executable));
+                if (process == null)
+                {
+                    continue;
+                }
+
+                viewModel.StatusText = Ui(viewModel, DesktopText.VSCodeOpened);
+                viewModel.AddLog($"{Ui(viewModel, DesktopText.VSCodeOpened)} {viewModel.WorkspaceRoot}");
+                return;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+            }
+            catch (FileNotFoundException)
+            {
+            }
+        }
+
+        viewModel.StatusText = Ui(viewModel, DesktopText.VSCodeOpenFailed);
+        viewModel.AddLog(Ui(viewModel, DesktopText.VSCodeOpenFailed));
+    }
+
+    public static ProcessStartInfo CreateVSCodeStartInfo(string workspaceRoot, string executable = "code.cmd")
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add(workspaceRoot);
+        return startInfo;
     }
 
     public void SelectAttachments(Window owner, MainViewModel viewModel, ICollection<DesktopAttachment> attachments)
@@ -215,6 +261,11 @@ public sealed class DesktopWorkspaceCommandService(
 
         viewModel.PendingMemoryLessons.Add(lesson);
         viewModel.SelectedPendingMemoryLesson ??= lesson;
+    }
+
+    private static string Ui(MainViewModel viewModel, string key)
+    {
+        return DesktopLocalizer.UiText(key, viewModel.IsKoreanUi);
     }
 }
 

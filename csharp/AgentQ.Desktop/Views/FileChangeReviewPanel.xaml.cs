@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using AgentQ.Desktop.Services;
+using AgentQ.Desktop.ViewModels;
 
 namespace AgentQ.Desktop.Views;
 
@@ -20,6 +21,12 @@ public partial class FileChangeReviewPanel : System.Windows.Controls.UserControl
     public event EventHandler<FileChangeRecord?>? RevertRequested;
 
     public event EventHandler? ApproveAllAndVerifyRequested;
+
+    public event EventHandler? RefreshSourceFilesRequested;
+
+    public event EventHandler? SelectedSourceFileChanged;
+
+    public event EventHandler? SelectedFileChangeChanged;
 
     private void ApproveAutoFixAndVerify_OnClick(object sender, RoutedEventArgs e)
     {
@@ -54,6 +61,26 @@ public partial class FileChangeReviewPanel : System.Windows.Controls.UserControl
     private void RevertSelectedFileChange_OnClick(object sender, RoutedEventArgs e)
     {
         RevertRequested?.Invoke(this, FileChangesList.SelectedItem as FileChangeRecord);
+    }
+
+    private void FileChangesList_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SelectedFileChangeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RefreshSourceFiles_OnClick(object sender, RoutedEventArgs e)
+    {
+        RefreshSourceFilesRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SourceFilesTree_OnSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.SelectedSourceFile = e.NewValue as SourceFileEntry;
+        }
+
+        SelectedSourceFileChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void SmoothScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

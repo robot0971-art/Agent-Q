@@ -1,4 +1,5 @@
 using AgentQ.Desktop.ViewModels;
+using System.Globalization;
 
 namespace AgentQ.Desktop.Services;
 
@@ -27,40 +28,40 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
 
     public async Task RefreshStatusAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
-        viewModel.StatusText = "Refreshing git status";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitRefreshingStatus);
         var snapshot = await _gitWorkflowService.GetSnapshotAsync(viewModel.WorkspaceRoot, ct);
         ApplySnapshot(viewModel, snapshot);
-        viewModel.StatusText = snapshot.Status.Succeeded ? "Git status refreshed" : "Git status failed";
+        viewModel.StatusText = snapshot.Status.Succeeded ? Ui(viewModel, DesktopText.GitStatusRefreshed) : Ui(viewModel, DesktopText.GitStatusFailed);
         viewModel.AddLog(snapshot.Status.Succeeded
-            ? "Git status refreshed"
-            : $"Git status failed: {trimForLog(snapshot.Status.DisplayOutput)}");
+            ? Ui(viewModel, DesktopText.GitStatusRefreshed)
+            : $"{Ui(viewModel, DesktopText.GitStatusFailed)}: {trimForLog(snapshot.Status.DisplayOutput)}");
     }
 
     public async Task RefreshDiffAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
-        viewModel.StatusText = "Refreshing git diff";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitRefreshingDiff);
         var result = await gitService.GetDiffStatAsync(viewModel.WorkspaceRoot, ct);
         viewModel.GitDiffText = result.DisplayOutput;
-        viewModel.GitLastUpdatedText = CurrentTimestamp();
-        viewModel.StatusText = result.Succeeded ? "Git diff refreshed" : "Git diff failed";
+        viewModel.GitLastUpdatedText = CurrentTimestamp(viewModel);
+        viewModel.StatusText = result.Succeeded ? Ui(viewModel, DesktopText.GitDiffRefreshed) : Ui(viewModel, DesktopText.GitDiffFailed);
         viewModel.AddLog(result.Succeeded
-            ? "Git diff refreshed"
-            : $"Git diff failed: {trimForLog(result.DisplayOutput)}");
+            ? Ui(viewModel, DesktopText.GitDiffRefreshed)
+            : $"{Ui(viewModel, DesktopText.GitDiffFailed)}: {trimForLog(result.DisplayOutput)}");
     }
 
     public async Task LoadSelectedFileDiffAsync(MainViewModel viewModel, CancellationToken ct = default)
     {
         if (viewModel.SelectedGitChangedFile == null)
         {
-            viewModel.GitSelectedFileDiffText = "Select a changed file to view its diff.";
+            viewModel.GitSelectedFileDiffText = Ui(viewModel, DesktopText.GitSelectedFileEmpty);
             return;
         }
 
-        viewModel.StatusText = "Loading file diff";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitLoadingFileDiff);
         var result = await gitService.GetFileDiffAsync(viewModel.WorkspaceRoot, viewModel.SelectedGitChangedFile, ct);
         viewModel.GitSelectedFileDiffText = result.DisplayOutput;
-        viewModel.GitLastUpdatedText = CurrentTimestamp();
-        viewModel.StatusText = result.Succeeded ? "File diff loaded" : "File diff failed";
+        viewModel.GitLastUpdatedText = CurrentTimestamp(viewModel);
+        viewModel.StatusText = result.Succeeded ? Ui(viewModel, DesktopText.GitFileDiffLoaded) : Ui(viewModel, DesktopText.GitFileDiffFailed);
     }
 
     public async Task StageSelectedFileAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
@@ -68,13 +69,19 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
         var file = viewModel.SelectedGitChangedFile;
         if (file == null)
         {
-            viewModel.StatusText = "No selected changed file";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitNoSelectedChangedFile);
             return;
         }
 
-        viewModel.StatusText = "Staging selected file";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitStagingSelectedFile);
         var result = await gitService.StageFileAsync(viewModel.WorkspaceRoot, file, ct);
-        await ApplyGitMutationResultAsync(viewModel, result, "Selected file staged", "Stage selected failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(
+            viewModel,
+            result,
+            Ui(viewModel, DesktopText.GitSelectedFileStaged),
+            Ui(viewModel, DesktopText.GitStageSelectedFailed),
+            trimForLog,
+            ct);
     }
 
     public async Task StageApprovedFilesAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
@@ -83,9 +90,15 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
             .Where(file => file.ReviewStatus == GitChangeReviewStatus.Approved)
             .ToArray();
 
-        viewModel.StatusText = "Staging approved files";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitStagingApprovedFiles);
         var result = await gitService.StageFilesAsync(viewModel.WorkspaceRoot, files, ct);
-        await ApplyGitMutationResultAsync(viewModel, result, "Approved files staged", "Stage approved failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(
+            viewModel,
+            result,
+            Ui(viewModel, DesktopText.GitApprovedFilesStaged),
+            Ui(viewModel, DesktopText.GitStageApprovedFailed),
+            trimForLog,
+            ct);
     }
 
     public async Task UnstageSelectedFileAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
@@ -93,94 +106,100 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
         var file = viewModel.SelectedGitChangedFile;
         if (file == null)
         {
-            viewModel.StatusText = "No selected changed file";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitNoSelectedChangedFile);
             return;
         }
 
-        viewModel.StatusText = "Unstaging selected file";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitUnstagingSelectedFile);
         var result = await gitService.UnstageFileAsync(viewModel.WorkspaceRoot, file, ct);
-        await ApplyGitMutationResultAsync(viewModel, result, "Selected file unstaged", "Unstage selected failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(
+            viewModel,
+            result,
+            Ui(viewModel, DesktopText.GitSelectedFileUnstaged),
+            Ui(viewModel, DesktopText.GitUnstageSelectedFailed),
+            trimForLog,
+            ct);
     }
 
     public async Task CommitAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(viewModel.GitCommitMessage))
         {
-            viewModel.StatusText = "Commit message is required";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitCommitMessageRequired);
             return;
         }
 
         if (viewModel.GitChangedFiles.All(file => !file.IsStaged))
         {
-            viewModel.StatusText = "No staged files to commit";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitNoStagedFilesToCommit);
             return;
         }
 
-        viewModel.StatusText = "Creating commit";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitCreatingCommit);
         var result = await gitService.CommitAsync(viewModel.WorkspaceRoot, viewModel.GitCommitMessage.Trim(), ct);
         if (result.Succeeded)
         {
             viewModel.GitCommitMessage = string.Empty;
         }
 
-        await ApplyGitMutationResultAsync(viewModel, result, "Commit created", "Commit failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(viewModel, result, Ui(viewModel, DesktopText.GitCommitCreated), Ui(viewModel, DesktopText.GitCommitFailed), trimForLog, ct);
     }
 
     public async Task PullFastForwardOnlyAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
-        viewModel.StatusText = "Checking pull safety";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitCheckingPullSafety);
         var snapshot = await _gitWorkflowService.GetSnapshotAsync(viewModel.WorkspaceRoot, ct);
         ApplySnapshot(viewModel, snapshot);
 
         if (!snapshot.Status.Succeeded)
         {
-            viewModel.StatusText = $"Pull unavailable: {trimForLog(snapshot.Status.DisplayOutput)}";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitPullUnavailable, trimForLog(snapshot.Status.DisplayOutput));
             return;
         }
 
         var safety = GitPullSafetyAnalyzer.Analyze(snapshot.Status.DisplayOutput, snapshot.ChangedFiles);
         if (!safety.CanPull)
         {
-            viewModel.StatusText = $"Pull blocked: {safety.Reason}";
-            viewModel.AddLog($"Pull blocked: {safety.Reason}");
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitPullBlocked, safety.Reason);
+            viewModel.AddLog(Ui(viewModel, DesktopText.GitPullBlocked, safety.Reason));
             return;
         }
 
-        viewModel.StatusText = "Pulling with fast-forward only";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitPullingFastForward);
         var result = await gitService.PullFastForwardOnlyAsync(viewModel.WorkspaceRoot, ct);
-        await ApplyGitMutationResultAsync(viewModel, result, "Pull completed", "Pull failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(viewModel, result, Ui(viewModel, DesktopText.GitPullCompleted), Ui(viewModel, DesktopText.GitPullFailed), trimForLog, ct);
     }
 
     public async Task CreateBackupBranchAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
-        viewModel.StatusText = "Creating backup branch";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitCreatingBackupBranch);
         var branchName = GitBranchRecoveryAnalyzer.CreateBackupBranchName(DateTime.Now);
         var result = await gitService.CreateBranchAsync(viewModel.WorkspaceRoot, branchName, ct);
         await ApplyGitMutationResultAsync(
             viewModel,
             result,
-            $"Backup branch created: {branchName}",
-            "Backup branch failed",
+            Ui(viewModel, DesktopText.GitBackupBranchCreated, branchName),
+            Ui(viewModel, DesktopText.GitBackupBranchFailed),
             trimForLog,
             ct);
     }
 
     public async Task CheckoutMainAsync(MainViewModel viewModel, Func<string, string> trimForLog, CancellationToken ct = default)
     {
-        viewModel.StatusText = "Checking branch switch safety";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitCheckingBranchSwitchSafety);
         var snapshot = await _gitWorkflowService.GetSnapshotAsync(viewModel.WorkspaceRoot, ct);
         ApplySnapshot(viewModel, snapshot);
 
         if (!GitBranchRecoveryAnalyzer.CanSwitchBranch(snapshot.ChangedFiles, out var reason))
         {
-            viewModel.StatusText = $"Switch blocked: {reason}";
-            viewModel.AddLog($"Switch blocked: {reason}");
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitSwitchBlocked, reason);
+            viewModel.AddLog(Ui(viewModel, DesktopText.GitSwitchBlocked, reason));
             return;
         }
 
-        viewModel.StatusText = "Switching to main";
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitSwitchingToMain);
         var result = await gitService.CheckoutBranchAsync(viewModel.WorkspaceRoot, "main", ct);
-        await ApplyGitMutationResultAsync(viewModel, result, "Switched to main", "Switch to main failed", trimForLog, ct);
+        await ApplyGitMutationResultAsync(viewModel, result, Ui(viewModel, DesktopText.GitSwitchedToMain), Ui(viewModel, DesktopText.GitSwitchToMainFailed), trimForLog, ct);
     }
 
     public bool ApplyPromptResult(MainViewModel viewModel, DesktopGitPromptResult result, Func<string, string> trimForLog)
@@ -215,7 +234,7 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
                 .Where(text => !string.IsNullOrWhiteSpace(text)));
         viewModel.GitDiffText = snapshot.DiffStat.DisplayOutput;
         ApplyChangedFiles(viewModel, snapshot.ChangedFiles, selectedPath);
-        viewModel.GitLastUpdatedText = CurrentTimestamp();
+        viewModel.GitLastUpdatedText = CurrentTimestamp(viewModel);
     }
 
     public void SetSelectedReviewStatus(MainViewModel viewModel, GitChangeReviewStatus status)
@@ -223,14 +242,14 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
         var file = viewModel.SelectedGitChangedFile;
         if (file == null)
         {
-            viewModel.StatusText = "No selected changed file";
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitNoSelectedChangedFile);
             return;
         }
 
         file.ReviewStatus = status;
         _reviewStatuses[file.Path] = status;
-        viewModel.StatusText = $"Change marked {status}";
-        viewModel.AddLog($"Change review status: {status} - {file.Path}");
+        viewModel.StatusText = Ui(viewModel, DesktopText.GitChangeMarked, status);
+        viewModel.AddLog(Ui(viewModel, DesktopText.GitChangeReviewStatus, status, file.Path));
     }
 
     public void CaptureLastCodeReview(MainViewModel viewModel, int messageCountBeforeReview)
@@ -246,7 +265,7 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
 
         _lastCodeReviewText = review;
         viewModel.CanFixLastCodeReviewFindings = true;
-        viewModel.AddLog("Code review captured");
+        viewModel.AddLog(Ui(viewModel, DesktopText.GitCodeReviewCaptured));
     }
 
     public void ClearLastCodeReview(MainViewModel viewModel)
@@ -300,12 +319,25 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
 
         if (viewModel.GitChangedFiles.Count == 0)
         {
-            viewModel.GitSelectedFileDiffText = "No changed files.";
+            viewModel.GitSelectedFileDiffText = Ui(viewModel, DesktopText.GitNoChangedFiles);
         }
     }
 
-    private static string CurrentTimestamp()
+    private static string CurrentTimestamp(MainViewModel viewModel)
     {
-        return $"Last updated: {DateTime.Now:HH:mm:ss}";
+        return Ui(
+            viewModel,
+            DesktopText.GitLastUpdated,
+            DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+    }
+
+    private static string Ui(MainViewModel viewModel, string key)
+    {
+        return DesktopLocalizer.UiText(key, viewModel.IsKoreanUi);
+    }
+
+    private static string Ui(MainViewModel viewModel, string key, params object[] args)
+    {
+        return DesktopLocalizer.FormatUiText(key, viewModel.IsKoreanUi, args);
     }
 }

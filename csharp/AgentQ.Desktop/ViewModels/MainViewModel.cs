@@ -34,6 +34,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _latestCheckpointText = "No checkpoint loaded.";
     private string _latestSessionSummaryText = "No session summary saved.";
     private string _projectConfigText = "No project config loaded.";
+    private string _sourceFileFilter = string.Empty;
+    private string _sourceFilePreviewText = "Select a file to preview its source.";
     private string _reviewWorkflowText = "No auto verification is waiting. Review changes manually or start Auto fix from a failed verification.";
     private string _pendingReviewVerificationText = "No verification queued.";
     private string _planEvidenceSummary = "No plan evidence yet. Create or load a plan, then run an item to connect evidence and verification.";
@@ -45,6 +47,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private bool _hasPendingReviewVerification;
+    private SourceFileEntry? _selectedSourceFile;
     private FileChangeRecord? _selectedFileChange;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
@@ -105,6 +108,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> Logs { get; } = [];
 
     public ObservableCollection<FileChangeRecord> FileChanges { get; } = [];
+
+    public ObservableCollection<SourceFileEntry> SourceFiles { get; } = [];
 
     public ObservableCollection<AgentRunStep> RunSteps { get; } = [];
 
@@ -414,6 +419,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ProjectFolderText => Ui(DesktopText.ProjectFolder);
     public string BrowseFolderText => Ui(DesktopText.BrowseFolder);
     public string OpenFolderText => Ui(DesktopText.OpenFolder);
+    public string OpenVSCodeText => Ui(DesktopText.OpenVSCode);
     public string BuildEmbeddingIndexText => Ui(DesktopText.BuildEmbeddingIndex);
     public string ChatHeaderText => Ui(DesktopText.ChatHeader);
     public string AttachFilesText => Ui(DesktopText.AttachFiles);
@@ -603,6 +609,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _projectConfigText, value);
     }
 
+    public string SourceFileFilter
+    {
+        get => _sourceFileFilter;
+        set => SetField(ref _sourceFileFilter, value);
+    }
+
+    public string SourceFilePreviewText
+    {
+        get => _sourceFilePreviewText;
+        set => SetField(ref _sourceFilePreviewText, value);
+    }
+
     public string ReviewWorkflowText
     {
         get => _reviewWorkflowText;
@@ -675,6 +693,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _selectedFileChange;
         set => SetField(ref _selectedFileChange, value);
+    }
+
+    public SourceFileEntry? SelectedSourceFile
+    {
+        get => _selectedSourceFile;
+        set => SetField(ref _selectedSourceFile, value);
     }
 
     public GitChangedFile? SelectedGitChangedFile
@@ -1096,6 +1120,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(ProjectFolderText),
             nameof(BrowseFolderText),
             nameof(OpenFolderText),
+            nameof(OpenVSCodeText),
             nameof(BuildEmbeddingIndexText),
             nameof(ChatHeaderText),
             nameof(AttachFilesText),

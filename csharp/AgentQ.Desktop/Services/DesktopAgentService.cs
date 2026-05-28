@@ -151,6 +151,7 @@ public sealed class DesktopAgentService
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
         var manualFallbackRetryUsed = false;
+        var emptyResponseRetryUsed = false;
 
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
 
@@ -191,6 +192,39 @@ public sealed class DesktopAgentService
 
             if (response.ToolUses.Count == 0)
             {
+                if (ShouldRetryEmptyResponse(builder.ToString(), response.ToolUses.Count))
+                {
+                    if (!emptyResponseRetryUsed)
+                    {
+                        emptyResponseRetryUsed = true;
+                        _messages.Add(ChatMessage.UserText(
+                            "Your previous assistant turn was empty and used no tools. Retry now. " +
+                            "Use workspace tools when this is a coding task; otherwise give a concise answer. Do not return an empty response."));
+                        toolCallbacks?.OnRunStep?.Invoke(
+                            AgentRunState.Generating,
+                            "Retrying empty response",
+                            "The model returned no text and no tool calls.");
+                        continue;
+                    }
+
+                    const string emptyResponseMessage = "Model response was empty. Please retry, or switch to a different model/provider if this repeats.";
+                    builder.Append(emptyResponseMessage);
+                    onDelta?.Invoke(emptyResponseMessage);
+                    _messages.Add(ChatMessage.AssistantText(emptyResponseMessage));
+                    ReportConfidence(
+                        emptyResponseMessage,
+                        executedToolCount,
+                        fileChanges,
+                        executedCommands,
+                        [],
+                        touchedLessons.Count,
+                        replayEntries,
+                        toolCallbacks);
+                    toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Empty model response", emptyResponseMessage);
+                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                    return emptyResponseMessage;
+                }
+
                 if (!manualFallbackRetryUsed &&
                     ShouldRetryManualFallback(builder.ToString(), executedToolCount, fileChanges, workMode))
                 {
@@ -383,6 +417,9 @@ public sealed class DesktopAgentService
 
         return manualInstruction && codeHeavy;
     }
+
+    public static bool ShouldRetryEmptyResponse(string assistantText, int toolUseCount) =>
+        toolUseCount == 0 && string.IsNullOrWhiteSpace(assistantText);
 
     private List<ChatMessage> BuildRequestMessages(string? transientContext)
     {

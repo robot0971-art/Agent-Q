@@ -1,0 +1,34 @@
+<Window x:Class="AgentQ.Desktop.Views.CodePreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Code preview"
+        Width="760"
+        Height="760"
+        MinWidth="520"
+        MinHeight="420"
+        Background="#1E1E1E"
+        WindowStartupLocation="Manual">
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Background="#252526"
+                BorderBrush="#333333"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <TextBlock x:Name="PathText"
+                       Foreground="#D4D4D4"
+                       FontFamily="Consolas"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
+        <RichTextBox x:Name="CodeBox"
+                     IsReadOnly="True"
+                     BorderThickness="0"
+                     Background="#1E1E1E"
+                     Foreground="#D4D4D4"
+                     FontFamily="Consolas"
+                     FontSize="13"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
+    </DockPanel>
+</Window>

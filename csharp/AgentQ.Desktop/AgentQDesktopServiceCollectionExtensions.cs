@@ -47,6 +47,8 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<AgentSessionSummaryService>();
         services.AddSingleton<DesktopWorkspaceContextWorkflowService>();
         services.AddSingleton<DesktopWorkspaceCommandService>();
+        services.AddSingleton<DesktopSourceBrowserService>();
+        services.AddSingleton<DesktopCodePreviewWindowService>();
         services.AddSingleton<DesktopAgentRunWorkflowService>();
         services.AddSingleton<DesktopFileChangeReviewService>();
         services.AddSingleton<DesktopAttachmentSelectionService>();

@@ -37,6 +37,22 @@ public sealed class FileChangeRecord : INotifyPropertyChanged
         ? "No snapshot file"
         : $"Snapshot: {SnapshotPath}";
 
+    public string SourcePreviewText
+    {
+        get
+        {
+            var content = string.IsNullOrWhiteSpace(After) ? Before : After;
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return ExistedBefore
+                    ? "No source preview available."
+                    : "File was removed.";
+            }
+
+            return content;
+        }
+    }
+
     public FileChangeReviewStatus ReviewStatus
     {
         get => _reviewStatus;

@@ -1,4 +1,5 @@
 using AgentQ.Tools;
+using System.Globalization;
 
 namespace AgentQ.Desktop.Services;
 
@@ -38,6 +39,7 @@ public static class DesktopLocalizer
             nameof(DesktopText.ProjectFolder) => useKoreanUi ? "\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354" : "Project folder",
             nameof(DesktopText.BrowseFolder) => useKoreanUi ? "\uD3F4\uB354 \uC120\uD0DD" : "Browse",
             nameof(DesktopText.OpenFolder) => useKoreanUi ? "\uD3F4\uB354 \uC5F4\uAE30" : "Open",
+            nameof(DesktopText.OpenVSCode) => useKoreanUi ? "VS Code" : "VS Code",
             nameof(DesktopText.BuildEmbeddingIndex) => useKoreanUi ? "\uC784\uBCA0\uB529 \uC778\uB371\uC2A4 \uC0DD\uC131" : "Build embedding index",
             nameof(DesktopText.ChatHeader) => useKoreanUi ? "\uC0C8 \uB300\uD654" : "New chat",
             nameof(DesktopText.AttachFiles) => useKoreanUi ? "\uCCA8\uBD80" : "Attach",
@@ -80,6 +82,52 @@ public static class DesktopLocalizer
             nameof(DesktopText.GitDiffEmpty) => useKoreanUi ? "\uD604\uC7AC \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4 diff\uB97C \uBD88\uB7EC\uC624\uB824\uBA74 Diff\uB97C \uB204\uB974\uC138\uC694." : "Click Diff to load the current workspace diff.",
             nameof(DesktopText.GitSelectedFileEmpty) => useKoreanUi ? "\uBCC0\uACBD \uD30C\uC77C\uC744 \uC120\uD0DD\uD558\uBA74 diff\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4." : "Select a changed file to view its diff.",
             nameof(DesktopText.GitWaitingForRefresh) => useKoreanUi ? "Git \uD328\uB110\uC774 \uC0C8\uB85C\uACE0\uCE68\uC744 \uAE30\uB2E4\uB9AC\uB294 \uC911\uC785\uB2C8\uB2E4." : "Git panel is waiting for refresh.",
+            nameof(DesktopText.GitRefreshingStatus) => useKoreanUi ? "Git \uC0C1\uD0DC \uC0C8\uB85C\uACE0\uCE68 \uC911" : "Refreshing git status",
+            nameof(DesktopText.GitStatusRefreshed) => useKoreanUi ? "Git \uC0C1\uD0DC \uC0C8\uB85C\uACE0\uCE68 \uC644\uB8CC" : "Git status refreshed",
+            nameof(DesktopText.GitStatusFailed) => useKoreanUi ? "Git \uC0C1\uD0DC \uC0C8\uB85C\uACE0\uCE68 \uC2E4\uD328" : "Git status failed",
+            nameof(DesktopText.GitRefreshingDiff) => useKoreanUi ? "Git diff \uC0C8\uB85C\uACE0\uCE68 \uC911" : "Refreshing git diff",
+            nameof(DesktopText.GitDiffRefreshed) => useKoreanUi ? "Git diff \uC0C8\uB85C\uACE0\uCE68 \uC644\uB8CC" : "Git diff refreshed",
+            nameof(DesktopText.GitDiffFailed) => useKoreanUi ? "Git diff \uC0C8\uB85C\uACE0\uCE68 \uC2E4\uD328" : "Git diff failed",
+            nameof(DesktopText.GitLoadingFileDiff) => useKoreanUi ? "\uD30C\uC77C diff \uBD88\uB7EC\uC624\uB294 \uC911" : "Loading file diff",
+            nameof(DesktopText.GitFileDiffLoaded) => useKoreanUi ? "\uD30C\uC77C diff \uBD88\uB7EC\uC634" : "File diff loaded",
+            nameof(DesktopText.GitFileDiffFailed) => useKoreanUi ? "\uD30C\uC77C diff \uBD88\uB7EC\uC624\uAE30 \uC2E4\uD328" : "File diff failed",
+            nameof(DesktopText.GitNoSelectedChangedFile) => useKoreanUi ? "\uC120\uD0DD\uB41C \uBCC0\uACBD \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4" : "No selected changed file",
+            nameof(DesktopText.GitStagingSelectedFile) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C stage \uC911" : "Staging selected file",
+            nameof(DesktopText.GitStagingApprovedFiles) => useKoreanUi ? "\uC2B9\uC778\uB41C \uD30C\uC77C stage \uC911" : "Staging approved files",
+            nameof(DesktopText.GitUnstagingSelectedFile) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C unstage \uC911" : "Unstaging selected file",
+            nameof(DesktopText.GitSelectedFileStaged) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C stage \uC644\uB8CC" : "Selected file staged",
+            nameof(DesktopText.GitStageSelectedFailed) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C stage \uC2E4\uD328" : "Stage selected failed",
+            nameof(DesktopText.GitApprovedFilesStaged) => useKoreanUi ? "\uC2B9\uC778\uB41C \uD30C\uC77C stage \uC644\uB8CC" : "Approved files staged",
+            nameof(DesktopText.GitStageApprovedFailed) => useKoreanUi ? "\uC2B9\uC778\uB41C \uD30C\uC77C stage \uC2E4\uD328" : "Stage approved failed",
+            nameof(DesktopText.GitSelectedFileUnstaged) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C unstage \uC644\uB8CC" : "Selected file unstaged",
+            nameof(DesktopText.GitUnstageSelectedFailed) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C unstage \uC2E4\uD328" : "Unstage selected failed",
+            nameof(DesktopText.GitCommitMessageRequired) => useKoreanUi ? "\uCEE4\uBC0B \uBA54\uC2DC\uC9C0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4" : "Commit message is required",
+            nameof(DesktopText.GitNoStagedFilesToCommit) => useKoreanUi ? "\uCEE4\uBC0B\uD560 staged \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4" : "No staged files to commit",
+            nameof(DesktopText.GitCreatingCommit) => useKoreanUi ? "\uCEE4\uBC0B \uC0DD\uC131 \uC911" : "Creating commit",
+            nameof(DesktopText.GitCommitCreated) => useKoreanUi ? "\uCEE4\uBC0B \uC0DD\uC131 \uC644\uB8CC" : "Commit created",
+            nameof(DesktopText.GitCommitFailed) => useKoreanUi ? "\uCEE4\uBC0B \uC2E4\uD328" : "Commit failed",
+            nameof(DesktopText.GitCheckingPullSafety) => useKoreanUi ? "Pull \uC548\uC804\uC131 \uD655\uC778 \uC911" : "Checking pull safety",
+            nameof(DesktopText.GitPullUnavailable) => useKoreanUi ? "Pull \uC0AC\uC6A9 \uBD88\uAC00: {0}" : "Pull unavailable: {0}",
+            nameof(DesktopText.GitPullBlocked) => useKoreanUi ? "Pull \uCC28\uB2E8\uB428: {0}" : "Pull blocked: {0}",
+            nameof(DesktopText.GitPullingFastForward) => useKoreanUi ? "fast-forward only\uB85C pull \uC911" : "Pulling with fast-forward only",
+            nameof(DesktopText.GitPullCompleted) => useKoreanUi ? "Pull \uC644\uB8CC" : "Pull completed",
+            nameof(DesktopText.GitPullFailed) => useKoreanUi ? "Pull \uC2E4\uD328" : "Pull failed",
+            nameof(DesktopText.GitCreatingBackupBranch) => useKoreanUi ? "\uBC31\uC5C5 \uBE0C\uB79C\uCE58 \uC0DD\uC131 \uC911" : "Creating backup branch",
+            nameof(DesktopText.GitBackupBranchCreated) => useKoreanUi ? "\uBC31\uC5C5 \uBE0C\uB79C\uCE58 \uC0DD\uC131\uB428: {0}" : "Backup branch created: {0}",
+            nameof(DesktopText.GitBackupBranchFailed) => useKoreanUi ? "\uBC31\uC5C5 \uBE0C\uB79C\uCE58 \uC0DD\uC131 \uC2E4\uD328" : "Backup branch failed",
+            nameof(DesktopText.GitCheckingBranchSwitchSafety) => useKoreanUi ? "\uBE0C\uB79C\uCE58 \uC804\uD658 \uC548\uC804\uC131 \uD655\uC778 \uC911" : "Checking branch switch safety",
+            nameof(DesktopText.GitSwitchBlocked) => useKoreanUi ? "\uBE0C\uB79C\uCE58 \uC804\uD658 \uCC28\uB2E8\uB428: {0}" : "Switch blocked: {0}",
+            nameof(DesktopText.GitSwitchingToMain) => useKoreanUi ? "main\uC73C\uB85C \uC804\uD658 \uC911" : "Switching to main",
+            nameof(DesktopText.GitSwitchedToMain) => useKoreanUi ? "main\uC73C\uB85C \uC804\uD658\uB428" : "Switched to main",
+            nameof(DesktopText.GitSwitchToMainFailed) => useKoreanUi ? "main \uC804\uD658 \uC2E4\uD328" : "Switch to main failed",
+            nameof(DesktopText.GitChangeMarked) => useKoreanUi ? "\uBCC0\uACBD \uD45C\uC2DC\uB428: {0}" : "Change marked {0}",
+            nameof(DesktopText.GitChangeReviewStatus) => useKoreanUi ? "\uBCC0\uACBD \uAC80\uD1A0 \uC0C1\uD0DC: {0} - {1}" : "Change review status: {0} - {1}",
+            nameof(DesktopText.GitCodeReviewCaptured) => useKoreanUi ? "\uCF54\uB4DC \uB9AC\uBDF0 \uAE30\uB85D\uB428" : "Code review captured",
+            nameof(DesktopText.GitNoChangedFiles) => useKoreanUi ? "\uBCC0\uACBD \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." : "No changed files.",
+            nameof(DesktopText.GitLastUpdated) => useKoreanUi ? "\uB9C8\uC9C0\uB9C9 \uC5C5\uB370\uC774\uD2B8: {0}" : "Last updated: {0}",
+            nameof(DesktopText.NoValidProjectFolderToOpen) => useKoreanUi ? "\uC5F4 \uC218 \uC788\uB294 \uC720\uD6A8\uD55C \uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." : "No valid project folder to open.",
+            nameof(DesktopText.VSCodeOpened) => useKoreanUi ? "VS Code\uB85C \uD504\uB85C\uC81D\uD2B8\uB97C \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4." : "Project opened in VS Code.",
+            nameof(DesktopText.VSCodeOpenFailed) => useKoreanUi ? "VS Code\uB97C \uC2E4\uD589\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. PATH\uC5D0 'code' \uBA85\uB839\uC774 \uB4F1\uB85D\uB418\uC5B4 \uC788\uB294\uC9C0 \uD655\uC778\uD558\uC138\uC694." : "Could not start VS Code. Make sure the 'code' command is available on PATH.",
             nameof(DesktopText.ProjectNotAnalyzed) => useKoreanUi ? "\uC544\uC9C1 \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uB97C \uBD84\uC11D\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4." : "Workspace not analyzed yet.",
             nameof(DesktopText.ProjectAnalyzeToDetect) => useKoreanUi ? "\uBD84\uC11D\uD558\uBA74 \uAC10\uC9C0\uB429\uB2C8\uB2E4" : "Analyze to detect",
             nameof(DesktopText.ProjectAnalyzeStats) => useKoreanUi ? "\uBD84\uC11D\uD558\uBA74 \uD30C\uC77C\uACFC \uD3F4\uB354 \uC218\uB97C \uACC4\uC0B0\uD569\uB2C8\uB2E4." : "Analyze to count files and folders.",
@@ -95,6 +143,11 @@ public static class DesktopLocalizer
             nameof(DesktopText.EvalWaitingForRefresh) => useKoreanUi ? "\uCCAB \uC0C8\uB85C\uACE0\uCE68\uC744 \uAE30\uB2E4\uB9AC\uB294 \uC911\uC785\uB2C8\uB2E4." : "Waiting for first refresh.",
             _ => key
         };
+    }
+
+    public static string FormatUiText(string key, bool useKoreanUi, params object[] args)
+    {
+        return string.Format(CultureInfo.InvariantCulture, UiText(key, useKoreanUi), args);
     }
 
     public static string TimelineLabel(AgentRunState state, bool useKoreanUi)

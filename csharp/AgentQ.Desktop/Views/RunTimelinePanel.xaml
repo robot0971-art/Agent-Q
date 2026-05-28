@@ -10,7 +10,8 @@
                    Margin="0,0,0,10" />
         <ListBox ItemsSource="{Binding RunSteps}"
                  FontSize="12"
-                 HorizontalContentAlignment="Stretch">
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid Margin="0,0,0,10">
@@ -61,12 +62,12 @@
                                     <TextBlock Text="{Binding DisplayTitle}"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextMain}"
-                                               TextWrapping="Wrap" />
+                                               TextWrapping="WrapWithOverflow" />
                                 </DockPanel>
                                 <TextBlock Text="{Binding TimelineDetail}"
                                            Foreground="{DynamicResource TextMuted}"
                                            FontSize="11"
-                                           TextWrapping="Wrap" />
+                                           TextWrapping="WrapWithOverflow" />
                             </StackPanel>
                         </Border>
                     </Grid>

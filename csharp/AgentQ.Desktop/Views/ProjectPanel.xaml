@@ -16,9 +16,12 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Button Content="{Binding BrowseFolderText}" Click="BrowseWorkspace_OnClick" />
                 <Button Grid.Column="2" Content="{Binding OpenFolderText}" Click="OpenWorkspace_OnClick" />
+                <Button Grid.Column="4" Content="{Binding OpenVSCodeText}" Click="OpenWorkspaceInVSCode_OnClick" />
             </Grid>
             <Button Content="Analyze"
                     Height="34"

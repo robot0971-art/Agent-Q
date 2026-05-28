@@ -37,6 +37,7 @@
             <ListBox x:Name="FileChangesList"
                      ItemsSource="{Binding FileChanges}"
                      SelectedItem="{Binding SelectedFileChange, Mode=TwoWay}"
+                     SelectionChanged="FileChangesList_OnSelectionChanged"
                      FontSize="12"
                      HorizontalContentAlignment="Stretch"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -114,33 +115,106 @@
                                Margin="0,2,0,0" />
                 </StackPanel>
             </DockPanel>
-            <Border Grid.Row="2"
-                    Background="#0B1118"
-                    BorderBrush="{DynamicResource BorderBrushSoft}"
-                    BorderThickness="1">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto"
-                              PreviewMouseWheel="SmoothScrollViewer_OnPreviewMouseWheel">
-                    <ItemsControl ItemsSource="{Binding SelectedFileChange.DiffLines}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="0,0,0,1">
-                                    <TextBlock Text="{Binding Prefix}"
-                                               Width="18"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="{Binding Foreground}" />
-                                    <TextBlock Text="{Binding Text}"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               TextWrapping="NoWrap"
-                                               Foreground="{Binding Foreground}" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Border>
+            <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0">
+                <TabItem Header="Changes">
+                    <Border Background="#0B1118"
+                            BorderBrush="{DynamicResource BorderBrushSoft}"
+                            BorderThickness="1">
+                        <TabControl Background="Transparent" BorderThickness="0">
+                            <TabItem Header="Diff">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              PreviewMouseWheel="SmoothScrollViewer_OnPreviewMouseWheel">
+                                    <ItemsControl ItemsSource="{Binding SelectedFileChange.DiffLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="0,0,0,1">
+                                                    <TextBlock Text="{Binding Prefix}"
+                                                               Width="18"
+                                                               FontFamily="Consolas"
+                                                               FontSize="11"
+                                                               Foreground="{Binding Foreground}" />
+                                                    <TextBlock Text="{Binding Text}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="11"
+                                                               TextWrapping="NoWrap"
+                                                               Foreground="{Binding Foreground}" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </TabItem>
+                            <TabItem Header="File">
+                                <TextBox Text="{Binding SelectedFileChange.SourcePreviewText}"
+                                         IsReadOnly="True"
+                                         FontFamily="Consolas"
+                                         FontSize="11"
+                                         TextWrapping="NoWrap"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         VerticalScrollBarVisibility="Auto"
+                                         BorderThickness="0"
+                                         Background="#0B1118" />
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+                </TabItem>
+                <TabItem Header="Browse">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="130" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="72" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding SourceFileFilter, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="11"
+                                     ToolTip="Filter files" />
+                            <Button Grid.Column="2"
+                                    Content="Refresh"
+                                    Height="28"
+                                    Padding="0"
+                                    FontSize="11"
+                                    Click="RefreshSourceFiles_OnClick" />
+                        </Grid>
+                        <TreeView x:Name="SourceFilesTree"
+                                  Grid.Row="1"
+                                  ItemsSource="{Binding SourceFiles}"
+                                  SelectedItemChanged="SourceFilesTree_OnSelectedItemChanged"
+                                  FontFamily="Consolas"
+                                  FontSize="11"
+                                  Margin="0,0,0,8">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <StackPanel Margin="0,1,0,3">
+                                        <TextBlock Text="{Binding TreeDisplayName}"
+                                                   Foreground="{DynamicResource TextMain}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding DetailText}"
+                                                   Foreground="{DynamicResource TextMuted}"
+                                                   FontSize="10"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="14,0,0,0" />
+                                    </StackPanel>
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                        <TextBox Grid.Row="2"
+                                 Text="{Binding SourceFilePreviewText}"
+                                 IsReadOnly="True"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 TextWrapping="NoWrap"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </Grid>
+                </TabItem>
+            </TabControl>
         </Grid>
     </DockPanel>
 </UserControl>

@@ -13,6 +13,8 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
 
     public event EventHandler? OpenWorkspaceRequested;
 
+    public event EventHandler? OpenWorkspaceInVSCodeRequested;
+
     public event EventHandler? RefreshWorkspaceAnalysisRequested;
 
     public event EventHandler? BuildEmbeddingIndexRequested;
@@ -33,6 +35,11 @@ public partial class ProjectPanel : System.Windows.Controls.UserControl
     private void OpenWorkspace_OnClick(object sender, RoutedEventArgs e)
     {
         OpenWorkspaceRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OpenWorkspaceInVSCode_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenWorkspaceInVSCodeRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshWorkspaceAnalysis_OnClick(object sender, RoutedEventArgs e)
