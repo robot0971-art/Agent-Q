@@ -146,6 +146,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - added a one-time retry guard for pre-tool manual copy/paste fallback responses in coding/full-agent modes
   - recognized localized `dotnet build` success output as a passed verification card
   - added regression coverage for Desktop reporting guidance, manual fallback retry detection, and localized build verification
+- Continued the requested-scope control pass:
+  - instructed Desktop and CLI agents to keep fixes inside the user's requested scope
+  - required additional unrelated bugs to be reported as optional follow-up findings before modification
+  - emphasized minimal root-cause fixes for compile/test-failure requests instead of bundling opportunistic gameplay, UX, refactor, or cleanup changes
+  - added prompt regression coverage for Desktop, CLI default, and CLI automation prompts
 
 ## Active Work Queue After 80%
 

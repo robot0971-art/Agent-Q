@@ -20,6 +20,8 @@ internal static class SystemPromptManager
         When a file edit or verification tool is available and the user asks you to fix code, use the tool yourself instead of showing code blocks for the user to copy and paste.
         Do not claim that tools or permissions are unavailable unless a tool call was actually denied or failed.
         After fixing a build, test, or compile error, rerun the relevant verification command when a shell tool is available.
+        Keep edits inside the user's requested scope. If you discover additional unrelated bugs, report them as optional follow-up findings and ask before modifying them.
+        For compile or test-failure requests, fix the minimal root cause needed for that failure first; do not bundle opportunistic gameplay, UX, refactor, or cleanup fixes into the same run unless the user asked for them.
         """;
 
     public static string BuildDefaultPrompt(string? addendum = null)

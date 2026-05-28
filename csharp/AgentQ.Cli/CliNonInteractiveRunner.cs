@@ -156,6 +156,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
             - If a tool call is denied or fails, report that exact tool result and choose the next safest available action.
             - For code-fix requests, prefer read_file plus edit_file/write_file and then bash verification when those tools are allowed.
             - Avoid final answers that mainly contain manual copy/paste instructions when an allowed editing tool could perform the change.
+            - Keep edits inside the user's requested scope. Report additional unrelated bugs as optional follow-up findings instead of changing them in the same run.
 
             {capabilitySnapshot}
             """;

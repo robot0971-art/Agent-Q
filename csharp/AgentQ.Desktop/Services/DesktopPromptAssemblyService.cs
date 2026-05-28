@@ -229,6 +229,8 @@ public sealed class FinalReportingPromptRule : IDesktopPromptRule
         builder.AppendLine("- Do not include long code blocks or diff blocks unless the user explicitly asks for code.");
         builder.AppendLine("- Do not tell the user to copy and paste code when edit tools are available; use the tools, then report what changed.");
         builder.AppendLine("- Do not ask the user to manually verify a build or test that already passed during the run.");
+        builder.AppendLine("- Keep edits inside the user's requested scope. If you discover additional unrelated bugs, report them as optional follow-up findings and ask before modifying them.");
+        builder.AppendLine("- For compile or test-failure requests, fix the minimal root cause needed for that failure first; do not bundle opportunistic gameplay, UX, refactor, or cleanup fixes into the same run unless the user asked for them.");
         return builder.ToString().TrimEnd();
     }
 }

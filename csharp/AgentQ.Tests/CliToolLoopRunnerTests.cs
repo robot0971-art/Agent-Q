@@ -112,6 +112,9 @@ public sealed class CliToolLoopRunnerTests
         Assert.Contains("copy and paste", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("actually denied or failed", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("rerun the relevant verification command", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requested scope", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("optional follow-up findings", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("minimal root cause", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -141,6 +144,8 @@ public sealed class CliToolLoopRunnerTests
 
         Assert.NotNull(capturedContext);
         Assert.Contains("Allowed tools for this run: read_file, edit_file, bash.", capturedContext!.SystemPrompt);
+        Assert.Contains("requested scope", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("optional follow-up findings", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

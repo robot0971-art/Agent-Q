@@ -295,6 +295,9 @@ public sealed class DesktopServiceTests
         Assert.Contains("verification command", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not include long code blocks or diff blocks", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("copy and paste", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requested scope", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("optional follow-up findings", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("minimal root cause", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
