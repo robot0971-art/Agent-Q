@@ -4004,6 +4004,57 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.False(viewModel.CanClearRunPermissions);
     }
 
+    [Fact]
+    public void AgentRunStep_LocalizesTimelineTitleAndLabelForKoreanUi()
+    {
+        var step = new AgentRunStep
+        {
+            State = AgentRunState.WaitingForApproval,
+            Title = "Permission: Blocked",
+            Detail = "",
+            UseKoreanUi = true
+        };
+
+        Assert.Equal("승인", step.TimelineLabel);
+        Assert.Equal("권한: 차단됨", step.DisplayTitle);
+        Assert.Equal("추가 세부 정보 없음.", step.TimelineDetail);
+    }
+
+    [Fact]
+    public void MainViewModel_AddRunStep_UsesCurrentUiLanguageForTimelineItems()
+    {
+        var viewModel = new MainViewModel
+        {
+            UiLanguage = "\uD55C\uAD6D\uC5B4"
+        };
+
+        viewModel.AddRunStep(AgentRunState.RunningTool, "Evidence: bash");
+
+        var step = Assert.Single(viewModel.RunSteps);
+        Assert.True(step.UseKoreanUi);
+        Assert.Equal("근거: bash", step.DisplayTitle);
+    }
+
+    [Fact]
+    public void RunSummaryViewModel_LocalizesBusyApprovalState()
+    {
+        var summary = new RunSummaryViewModel();
+
+        summary.Update(
+            AgentRunState.WaitingForApproval,
+            "Approval needed",
+            [],
+            [],
+            [],
+            isBusy: true,
+            useKoreanUi: true);
+
+        Assert.Equal("승인 대기", summary.Phase);
+        Assert.Equal("요청된 도구 작업을 검토하세요.", summary.NextAction);
+        Assert.Equal("검증 안 됨", summary.VerificationStatus);
+        Assert.Equal("변경 0개", summary.ChangedFilesText);
+    }
+
     [Theory]
     [InlineData("npm run build")]
     [InlineData("cmd /c cd frontend && npm test")]

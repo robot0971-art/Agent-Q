@@ -58,7 +58,7 @@
                                                    FontSize="10"
                                                    FontWeight="SemiBold" />
                                     </Border>
-                                    <TextBlock Text="{Binding Title}"
+                                    <TextBlock Text="{Binding DisplayTitle}"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextMain}"
                                                TextWrapping="Wrap" />

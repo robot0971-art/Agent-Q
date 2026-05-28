@@ -172,6 +172,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - made the Desktop permission dialog follow the selected UI language for summaries, row labels, and button labels
   - kept Korean strings in WPF/.NET Unicode UI paths while preserving English fallback labels
   - added regression coverage for Korean and English permission summaries
+- Started the run-log localization pass:
+  - localized timeline badges, common permission/evidence titles, and empty detail text when Korean UI is selected
+  - localized Run Summary phase, next action, verification status, changed-file count, timing, and commit-readiness text for Korean UI
+  - preserved raw details and command output in their original language for debugging
+  - added regression coverage for localized timeline items and run summary approval state
 
 ## Active Work Queue After 80%
 

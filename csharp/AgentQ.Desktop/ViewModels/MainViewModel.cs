@@ -816,7 +816,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             State = state,
             Title = title,
-            Detail = detail ?? string.Empty
+            Detail = detail ?? string.Empty,
+            UseKoreanUi = IsKoreanUi
         });
         RefreshPlanEvidenceSummary();
     }
@@ -908,7 +909,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             RunSteps,
             FileChanges,
             Verification.Results,
-            IsBusy);
+            IsBusy,
+            IsKoreanUi);
     }
 
     public void ApplyWorkspaceAnalysis(WorkspaceAnalysis analysis)
