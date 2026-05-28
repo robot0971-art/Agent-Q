@@ -158,6 +158,29 @@ public sealed class DesktopAgentRunWorkflowService(
             viewModel.ClearRunPermissionStatus();
             permissionEnforcer.ApprovedForRunChanged += approved =>
                 dispatcher.Invoke(() => viewModel.SetRunPermissionApprovals(approved));
+            permissionEnforcer.PermissionEventRecorded += permissionEvent =>
+            {
+                void Record()
+                {
+                    viewModel.AddLog($"Permission: {permissionEvent.DisplayText}");
+                    viewModel.AddRunStep(
+                        permissionEvent.Outcome.Contains("Denied", StringComparison.OrdinalIgnoreCase) ||
+                        permissionEvent.Outcome.Contains("Blocked", StringComparison.OrdinalIgnoreCase)
+                            ? AgentRunState.WaitingForApproval
+                            : AgentRunState.RunningTool,
+                        $"Permission: {permissionEvent.Outcome}",
+                        permissionEvent.DisplayText);
+                }
+
+                if (dispatcher.CheckAccess())
+                {
+                    Record();
+                }
+                else
+                {
+                    dispatcher.Invoke(Record);
+                }
+            };
             var pendingDelta = new StringBuilder();
             var pendingDeltaLock = new object();
             var deltaFlushQueued = false;

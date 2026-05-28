@@ -160,6 +160,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - added a reset action to clear remembered run approvals while a run is active
   - wired permission approval state changes from the enforcer into the main view model
   - added regression coverage for the footer binding, reset action, and permission status formatting
+- Continued the permission UX refinement pass:
+  - recorded Desktop permission outcomes into the run log and timeline
+  - captured policy blocks, explicit denials, one-time approvals, reusable approvals, and approvals reused for the current run
+  - added regression coverage for permission event formatting
 
 ## Active Work Queue After 80%
 

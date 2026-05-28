@@ -3920,6 +3920,26 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopPermissionEnforcer_FormatsPermissionEventsForHistory()
+    {
+        var permissionEvent = new DesktopPermissionEvent(
+            "Approved",
+            "edit_file",
+            PermissionRiskLevel.ProjectWrite,
+            "Edit file",
+            "Assets/Scripts/UI/ClickHandler.cs",
+            PermissionApprovalChoice.AllowSimilarForRun);
+
+        var text = DesktopPermissionEnforcer.FormatPermissionEvent(permissionEvent);
+
+        Assert.Contains("Approved", text, StringComparison.Ordinal);
+        Assert.Contains("AllowSimilarForRun", text, StringComparison.Ordinal);
+        Assert.Contains("ProjectWrite", text, StringComparison.Ordinal);
+        Assert.Contains("edit_file", text, StringComparison.Ordinal);
+        Assert.Contains("Assets/Scripts/UI/ClickHandler.cs", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MainViewModel_SetRunPermissionApprovals_UpdatesStatusAndResetState()
     {
         var viewModel = new MainViewModel();

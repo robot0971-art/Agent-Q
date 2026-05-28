@@ -9,6 +9,8 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
 
     public event Action<IReadOnlyCollection<PermissionRiskLevel>>? ApprovedForRunChanged;
 
+    public event Action<DesktopPermissionEvent>? PermissionEventRecorded;
+
     public IReadOnlyCollection<PermissionRiskLevel> ApprovedForRun => _approvedForRun.ToArray();
 
     public async Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
@@ -19,6 +21,7 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             var assessment = policy.Assessment;
             if (policy.IsBlocked)
             {
+                RecordPermissionEvent("Blocked", toolName, assessment, PermissionApprovalChoice.Deny);
                 System.Windows.MessageBox.Show(
                     owner,
                     $"Blocked by AgentQ safety policy.{Environment.NewLine}{Environment.NewLine}" +
@@ -36,12 +39,14 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
 
             if (policy.Decision == ToolPermissionDecision.Allow)
             {
+                RecordPermissionEvent("Allowed by policy", toolName, assessment, null);
                 return true;
             }
 
             if (IsReusableApproval(assessment.RiskLevel) &&
                 _approvedForRun.Contains(assessment.RiskLevel))
             {
+                RecordPermissionEvent("Allowed by run approval", toolName, assessment, null);
                 return true;
             }
 
@@ -79,6 +84,11 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             }
 
             ApprovedForRunChanged?.Invoke(ApprovedForRun);
+            RecordPermissionEvent(
+                choice == PermissionApprovalChoice.Deny ? "Denied" : "Approved",
+                toolName,
+                assessment,
+                choice);
 
             return choice is PermissionApprovalChoice.AllowOnce
                 or PermissionApprovalChoice.AllowSimilarForRun
@@ -90,6 +100,21 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
     {
         _approvedForRun.Clear();
         ApprovedForRunChanged?.Invoke(ApprovedForRun);
+    }
+
+    private void RecordPermissionEvent(
+        string outcome,
+        string toolName,
+        ToolPermissionAssessment assessment,
+        PermissionApprovalChoice? choice)
+    {
+        PermissionEventRecorded?.Invoke(new DesktopPermissionEvent(
+            outcome,
+            toolName,
+            assessment.RiskLevel,
+            assessment.Operation,
+            assessment.Target,
+            choice));
     }
 
     public static IReadOnlyList<PermissionRiskLevel> GetReusableApprovals(
@@ -126,6 +151,18 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 _ => risk.ToString()
             });
         return $"Run permissions: {string.Join(", ", labels)}";
+    }
+
+    public static string FormatPermissionEvent(DesktopPermissionEvent permissionEvent)
+    {
+        var choiceText = permissionEvent.Choice == null
+            ? string.Empty
+            : $" ({permissionEvent.Choice})";
+        var target = string.IsNullOrWhiteSpace(permissionEvent.Target)
+            ? "(no target)"
+            : permissionEvent.Target;
+
+        return $"{permissionEvent.Outcome}{choiceText}: {permissionEvent.RiskLevel} {permissionEvent.ToolName} -> {target}";
     }
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)
@@ -204,4 +241,15 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             ? normalized
             : normalized[..maxChars] + Environment.NewLine + "...(truncated)";
     }
+}
+
+public sealed record DesktopPermissionEvent(
+    string Outcome,
+    string ToolName,
+    PermissionRiskLevel RiskLevel,
+    string Operation,
+    string Target,
+    PermissionApprovalChoice? Choice)
+{
+    public string DisplayText => DesktopPermissionEnforcer.FormatPermissionEvent(this);
 }
