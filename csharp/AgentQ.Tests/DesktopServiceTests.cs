@@ -252,12 +252,12 @@ public sealed class DesktopServiceTests
     }
 
     [Theory]
-    [InlineData("로그인 오류 고쳐줘", DesktopTaskKind.BugFix)]
-    [InlineData("새 설정 옵션 추가해줘", DesktopTaskKind.Feature)]
+    [InlineData("컴파일 오류 고쳐줘", DesktopTaskKind.VerificationFailure)]
+    [InlineData("새 기능 추가해줘", DesktopTaskKind.Feature)]
     [InlineData("이 변경사항 코드 리뷰해줘", DesktopTaskKind.CodeReview)]
     [InlineData("README 문서 고쳐줘", DesktopTaskKind.Documentation)]
-    [InlineData("프로젝트 구조 분석해줘", DesktopTaskKind.Analysis)]
-    [InlineData("이 서비스 구조 리팩터링하자", DesktopTaskKind.Refactor)]
+    [InlineData("구조를 분석해줘", DesktopTaskKind.Analysis)]
+    [InlineData("프로젝트 구조 리팩터링해줘", DesktopTaskKind.Refactor)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -266,19 +266,19 @@ public sealed class DesktopServiceTests
     [Fact]
     public void DesktopPromptAssemblyService_AddsTaskSpecificGuidance()
     {
-        var profile = DesktopPromptAssemblyService.BuildTaskProfile("로그인 오류 고쳐줘");
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("컴파일 오류 고쳐줘");
         var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
 
-        Assert.Equal(DesktopTaskKind.BugFix, profile.Kind);
+        Assert.Equal(DesktopTaskKind.VerificationFailure, profile.Kind);
         Assert.Contains("Dynamic task guidance", prompt);
         Assert.Contains("Context prioritization", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(profile.ContextHint, prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tool routing rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Execution strategy", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Patch the minimal root cause", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("bug fix", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("verification failure", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Treat compiler, linter, and test output", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("narrowest useful verification command", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

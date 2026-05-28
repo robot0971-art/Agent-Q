@@ -6,37 +6,37 @@ public static class DesktopTaskClassifier
     {
         var text = userText.ToLowerInvariant();
 
-        if (ContainsAny(text, "review", "code review", "리뷰", "검토"))
+        if (ContainsAny(text, "review", "code review", "\uB9AC\uBDF0", "\uAC80\uD1A0"))
         {
             return DesktopTaskKind.CodeReview;
         }
 
-        if (ContainsAny(text, "readme", "docs", "document", "문서", "릴리즈 노트", "설명"))
+        if (ContainsAny(text, "readme", "docs", "document", "\uBB38\uC11C", "\uB9B4\uB9AC\uC988 \uB178\uD2B8", "\uC124\uBA85"))
         {
             return DesktopTaskKind.Documentation;
         }
 
-        if (ContainsAny(text, "verify", "검증", "테스트", "빌드 실패", "컴파일"))
+        if (ContainsAny(text, "verify", "\uAC80\uC99D", "\uD14C\uC2A4\uD2B8", "\uBE4C\uB4DC \uC2E4\uD328", "\uCEF4\uD30C\uC77C"))
         {
             return DesktopTaskKind.VerificationFailure;
         }
 
-        if (ContainsAny(text, "test failed", "build failed", "verification failed", "실패", "에러", "오류", "안됨", "안 돼", "고쳐", "fix", "bug", "버그"))
+        if (ContainsAny(text, "test failed", "build failed", "verification failed", "\uC2E4\uD328", "\uC5D0\uB7EC", "\uC624\uB958", "\uC548\uB428", "\uC548 \uB3FC", "\uACE0\uCCD0", "\uACE0\uCE58", "fix", "bug", "\uBC84\uADF8"))
         {
             return DesktopTaskKind.BugFix;
         }
 
-        if (ContainsAny(text, "refactor", "리팩터", "리팩토", "정리", "구조 개선"))
+        if (ContainsAny(text, "refactor", "\uB9AC\uD329\uD130", "\uB9AC\uD329\uD1A0", "\uC815\uB9AC", "\uAD6C\uC870 \uAC1C\uC120"))
         {
             return DesktopTaskKind.Refactor;
         }
 
-        if (ContainsAny(text, "analyze", "분석", "파악", "찾아", "어디", "확인", "조사"))
+        if (ContainsAny(text, "analyze", "\uBD84\uC11D", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
         {
             return DesktopTaskKind.Analysis;
         }
 
-        if (ContainsAny(text, "add", "implement", "create", "만들", "추가", "구현", "넣자", "진행"))
+        if (ContainsAny(text, "add", "implement", "create", "\uB9CC\uB4E4", "\uCD94\uAC00", "\uAD6C\uD604", "\uC9DC", "\uC9C4\uD589"))
         {
             return DesktopTaskKind.Feature;
         }

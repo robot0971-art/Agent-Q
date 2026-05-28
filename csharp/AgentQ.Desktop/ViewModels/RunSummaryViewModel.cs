@@ -81,10 +81,10 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         bool isBusy,
         bool useKoreanUi = false)
     {
-        Phase = BuildPhase(state, statusText, isBusy, useKoreanUi);
+        Phase = DesktopLocalizer.RunSummaryPhase(state, statusText, isBusy, useKoreanUi);
         LastEvidence = BuildEvidence(runSteps, statusText, useKoreanUi);
         VerificationStatus = BuildVerificationStatus(verificationResults, useKoreanUi);
-        ChangedFilesText = useKoreanUi ? $"변경 {fileChanges.Count}개" : $"{fileChanges.Count} changed";
+        ChangedFilesText = DesktopLocalizer.ChangedFiles(fileChanges.Count, useKoreanUi);
         TimingText = BuildTimingText(runSteps, isBusy, useKoreanUi);
         CommitReadiness = BuildCommitReadiness(fileChanges, verificationResults, useKoreanUi);
         NextAction = BuildNextAction(state, statusText, fileChanges, verificationResults, isBusy, useKoreanUi);
@@ -96,77 +96,13 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
     {
         Phase = "Idle";
         NextAction = "Open a project, analyze it, then send a request.";
-        LastEvidence = "Evidence will appear after AgentQ reads files, searches, runs tools, or verifies changes.";
-        VerificationStatus = "Not verified";
-        CommitReadiness = "No changes";
-        ChangedFilesText = "0 changed";
-        TimingText = "No timing yet";
+        LastEvidence = DesktopLocalizer.NoEvidence(useKoreanUi: false);
+        VerificationStatus = DesktopLocalizer.NotVerified(useKoreanUi: false);
+        CommitReadiness = DesktopLocalizer.CommitReadinessNoChanges(useKoreanUi: false);
+        ChangedFilesText = DesktopLocalizer.ChangedFiles(0, useKoreanUi: false);
+        TimingText = DesktopLocalizer.NoTiming(useKoreanUi: false);
         AccentBrush = "#B7C4D1";
         PhaseBadgeBackground = "#13202D";
-    }
-
-    private static string BuildPhase(AgentRunState state, string statusText, bool isBusy, bool useKoreanUi)
-    {
-        if (useKoreanUi)
-        {
-            if (isBusy)
-            {
-                return state switch
-                {
-                    AgentRunState.GatheringContext => "컨텍스트 수집",
-                    AgentRunState.Generating => "응답 생성",
-                    AgentRunState.RunningTool => "도구 실행",
-                    AgentRunState.WaitingForApproval => "승인 대기",
-                    AgentRunState.RecordingChanges => "변경 기록",
-                    AgentRunState.Verifying => "검증 중",
-                    AgentRunState.Planning => "계획 중",
-                    _ => "실행 중"
-                };
-            }
-
-            if (IsProblemStatus(statusText))
-            {
-                return "확인 필요";
-            }
-
-            return state switch
-            {
-                AgentRunState.Done => "완료",
-                AgentRunState.Failed => "실패",
-                AgentRunState.Cancelled => "취소됨",
-                AgentRunState.Idle => "대기",
-                _ => state.ToString()
-            };
-        }
-
-        if (isBusy)
-        {
-            return state switch
-            {
-                AgentRunState.GatheringContext => "Gathering context",
-                AgentRunState.Generating => "Generating",
-                AgentRunState.RunningTool => "Running tool",
-                AgentRunState.WaitingForApproval => "Waiting for approval",
-                AgentRunState.RecordingChanges => "Recording changes",
-                AgentRunState.Verifying => "Verifying",
-                AgentRunState.Planning => "Planning",
-                _ => "Running"
-            };
-        }
-
-        if (IsProblemStatus(statusText))
-        {
-            return "Needs attention";
-        }
-
-        return state switch
-        {
-            AgentRunState.Done => "Completed",
-            AgentRunState.Failed => "Failed",
-            AgentRunState.Cancelled => "Cancelled",
-            AgentRunState.Idle => "Idle",
-            _ => state.ToString()
-        };
     }
 
     private static string BuildEvidence(IReadOnlyList<AgentRunStep> runSteps, string statusText, bool useKoreanUi)
@@ -181,19 +117,16 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         }
 
         return string.IsNullOrWhiteSpace(statusText)
-            ? useKoreanUi ? "AgentQ가 파일 읽기, 검색, 도구 실행, 검증을 수행하면 근거가 여기에 표시됩니다." : "Evidence will appear after AgentQ reads files, searches, runs tools, or verifies changes."
+            ? DesktopLocalizer.NoEvidence(useKoreanUi)
             : statusText;
     }
 
     private static string BuildVerificationStatus(IReadOnlyList<VerificationResultCard> verificationResults, bool useKoreanUi)
     {
         var last = verificationResults.FirstOrDefault();
-        if (last == null)
-        {
-            return useKoreanUi ? "검증 안 됨" : "Not verified";
-        }
-
-        return $"{last.Status}: {last.Title}";
+        return last == null
+            ? DesktopLocalizer.NotVerified(useKoreanUi)
+            : $"{last.Status}: {last.Title}";
     }
 
     private static string BuildCommitReadiness(
@@ -203,33 +136,33 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
     {
         if (fileChanges.Count == 0)
         {
-            return useKoreanUi ? "변경 없음" : "No changes";
+            return DesktopLocalizer.CommitReadinessNoChanges(useKoreanUi);
         }
 
         if (fileChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.NeedsEdit))
         {
-            return useKoreanUi ? "커밋 전 수정 필요" : "Needs edit before commit";
+            return DesktopLocalizer.CommitReadinessNeedsEdit(useKoreanUi);
         }
 
         if (fileChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.Pending))
         {
-            return useKoreanUi ? "변경 검토 필요" : "Review changes";
+            return DesktopLocalizer.CommitReadinessReviewChanges(useKoreanUi);
         }
 
         var lastVerification = verificationResults.FirstOrDefault();
         if (lastVerification?.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return useKoreanUi ? "커밋 준비됨" : "Ready to commit";
+            return DesktopLocalizer.CommitReadinessReady(useKoreanUi);
         }
 
-        return useKoreanUi ? "커밋 전 검증 필요" : "Verify before commit";
+        return DesktopLocalizer.CommitReadinessVerify(useKoreanUi);
     }
 
     private static string BuildTimingText(IReadOnlyList<AgentRunStep> runSteps, bool isBusy, bool useKoreanUi)
     {
         if (runSteps.Count == 0)
         {
-            return useKoreanUi ? "아직 시간 정보 없음" : "No timing yet";
+            return DesktopLocalizer.NoTiming(useKoreanUi);
         }
 
         var startedAt = runSteps.Min(step => step.CreatedAt);
@@ -240,9 +173,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
             elapsed = TimeSpan.Zero;
         }
 
-        return useKoreanUi
-            ? $"{FormatDuration(elapsed)} 경과 / {runSteps.Count:0}단계"
-            : $"{FormatDuration(elapsed)} elapsed / {runSteps.Count:0} step(s)";
+        return DesktopLocalizer.Timing(FormatDuration(elapsed), runSteps.Count, useKoreanUi);
     }
 
     private static string FormatDuration(TimeSpan elapsed)
@@ -263,36 +194,36 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         if (isBusy)
         {
             return state == AgentRunState.WaitingForApproval
-                ? useKoreanUi ? "요청된 도구 작업을 검토하세요." : "Review the requested tool action."
-                : useKoreanUi ? "현재 실행이 끝날 때까지 기다리세요." : "Wait for the current run to finish.";
+                ? DesktopLocalizer.NextActionReviewTool(useKoreanUi)
+                : DesktopLocalizer.NextActionWait(useKoreanUi);
         }
 
-        if (IsProblemStatus(statusText))
+        if (DesktopLocalizer.IsProblemStatus(statusText))
         {
-            return useKoreanUi ? "근거 또는 검증 패널에서 실패를 확인하세요." : "Open Evidence or Verify to inspect the failure.";
+            return DesktopLocalizer.NextActionInspectFailure(useKoreanUi);
         }
 
         if (fileChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.NeedsEdit))
         {
-            return useKoreanUi ? "수정 필요로 표시된 변경을 고치세요." : "Fix changes marked as needing edits.";
+            return DesktopLocalizer.NextActionFixNeedsEdit(useKoreanUi);
         }
 
         if (fileChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.Pending))
         {
-            return useKoreanUi ? "변경 파일을 검토한 뒤 검증을 실행하세요." : "Review changed files, then run verification.";
+            return DesktopLocalizer.NextActionReviewChanges(useKoreanUi);
         }
 
         if (fileChanges.Count > 0 && verificationResults.FirstOrDefault()?.Status.Equals("PASSED", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return useKoreanUi ? "커밋 메시지를 준비하고 커밋하세요." : "Prepare the commit message and commit.";
+            return DesktopLocalizer.NextActionCommit(useKoreanUi);
         }
 
         if (fileChanges.Count > 0)
         {
-            return useKoreanUi ? "커밋 전에 집중 검증을 실행하세요." : "Run focused verification before committing.";
+            return DesktopLocalizer.NextActionVerify(useKoreanUi);
         }
 
-        return useKoreanUi ? "요청을 보내거나 프로젝트 분석을 새로고침하세요." : "Send a request or refresh project analysis.";
+        return DesktopLocalizer.NextActionDefault(useKoreanUi);
     }
 
     private static string PickAccent(
@@ -300,7 +231,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
         string statusText,
         IReadOnlyList<VerificationResultCard> verificationResults)
     {
-        if (IsProblemStatus(statusText) || state == AgentRunState.Failed)
+        if (DesktopLocalizer.IsProblemStatus(statusText) || state == AgentRunState.Failed)
         {
             return "#F87171";
         }
@@ -329,15 +260,6 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
             "#5BA7FF" => "#0B2A4A",
             _ => "#13202D"
         };
-    }
-
-    private static bool IsProblemStatus(string statusText)
-    {
-        return statusText.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-               statusText.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
-               statusText.Contains("blocked", StringComparison.OrdinalIgnoreCase) ||
-               statusText.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
-               statusText.Contains("denied", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
