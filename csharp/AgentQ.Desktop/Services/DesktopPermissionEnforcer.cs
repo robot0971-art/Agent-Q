@@ -46,7 +46,7 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 : inputJson;
             var focusedPreview = BuildFocusedPreview(toolName, inputJson);
             var approvalHint = IsReusableApproval(assessment.RiskLevel)
-                ? $"{Environment.NewLine}Allow all for this run will skip repeat prompts for workspace file edits and verification commands only."
+                ? $"{Environment.NewLine}Allow similar will skip repeat prompts for this operation type during the current run. Allow edits + builds will skip repeat prompts for workspace file edits and verification commands only."
                 : string.Empty;
 
             var message =
@@ -66,16 +66,36 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 owner,
                 $"AgentQ permission: {assessment.RiskLevel}",
                 message,
+                IsReusableApproval(assessment.RiskLevel),
                 IsReusableApproval(assessment.RiskLevel));
 
-            if (choice == PermissionApprovalChoice.AllowAllForRun)
+            foreach (var approvedRisk in GetReusableApprovals(choice, assessment.RiskLevel))
             {
-                _approvedForRun.Add(PermissionRiskLevel.ProjectWrite);
-                _approvedForRun.Add(PermissionRiskLevel.VerificationCommand);
+                _approvedForRun.Add(approvedRisk);
             }
 
-            return choice is PermissionApprovalChoice.AllowOnce or PermissionApprovalChoice.AllowAllForRun;
+            return choice is PermissionApprovalChoice.AllowOnce
+                or PermissionApprovalChoice.AllowSimilarForRun
+                or PermissionApprovalChoice.AllowAllForRun;
         });
+    }
+
+    public static IReadOnlyList<PermissionRiskLevel> GetReusableApprovals(
+        PermissionApprovalChoice choice,
+        PermissionRiskLevel currentRiskLevel)
+    {
+        if (choice == PermissionApprovalChoice.AllowSimilarForRun &&
+            IsReusableApproval(currentRiskLevel))
+        {
+            return [currentRiskLevel];
+        }
+
+        if (choice == PermissionApprovalChoice.AllowAllForRun)
+        {
+            return [PermissionRiskLevel.ProjectWrite, PermissionRiskLevel.VerificationCommand];
+        }
+
+        return [];
     }
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)

@@ -151,6 +151,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - required additional unrelated bugs to be reported as optional follow-up findings before modification
   - emphasized minimal root-cause fixes for compile/test-failure requests instead of bundling opportunistic gameplay, UX, refactor, or cleanup changes
   - added prompt regression coverage for Desktop, CLI default, and CLI automation prompts
+- Started the permission UX refinement pass:
+  - split Desktop approval choices into one-time approval, same operation type for this run, and workspace edits plus build/test commands for this run
+  - clarified approval dialog text so users can reduce repeated prompts without granting broader shell or Git access
+  - added regression coverage for reusable permission scope decisions
 
 ## Active Work Queue After 80%
 

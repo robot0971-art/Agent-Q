@@ -8,12 +8,13 @@ public enum PermissionApprovalChoice
 {
     Deny,
     AllowOnce,
+    AllowSimilarForRun,
     AllowAllForRun
 }
 
 public sealed class PermissionApprovalDialog : Window
 {
-    private PermissionApprovalDialog(string title, string message, bool canAllowAll)
+    private PermissionApprovalDialog(string title, string message, bool canAllowSimilar, bool canAllowAll)
     {
         Title = title;
         Width = 560;
@@ -45,9 +46,18 @@ public sealed class PermissionApprovalDialog : Window
             DialogResult = true;
         }));
 
+        if (canAllowSimilar)
+        {
+            buttons.Children.Add(CreateButton("Allow similar", () =>
+            {
+                Choice = PermissionApprovalChoice.AllowSimilarForRun;
+                DialogResult = true;
+            }));
+        }
+
         if (canAllowAll)
         {
-            buttons.Children.Add(CreateButton("Allow all", () =>
+            buttons.Children.Add(CreateButton("Allow edits + builds", () =>
             {
                 Choice = PermissionApprovalChoice.AllowAllForRun;
                 DialogResult = true;
@@ -85,9 +95,10 @@ public sealed class PermissionApprovalDialog : Window
         Window owner,
         string title,
         string message,
+        bool canAllowSimilar,
         bool canAllowAll)
     {
-        var dialog = new PermissionApprovalDialog(title, message, canAllowAll)
+        var dialog = new PermissionApprovalDialog(title, message, canAllowSimilar, canAllowAll)
         {
             Owner = owner
         };
@@ -102,7 +113,7 @@ public sealed class PermissionApprovalDialog : Window
         var button = new SWC.Button
         {
             Content = content,
-            MinWidth = 86,
+            MinWidth = 92,
             Height = 30,
             Padding = new Thickness(12, 0, 12, 0),
             Margin = new Thickness(8, 0, 0, 0)

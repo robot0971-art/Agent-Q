@@ -3876,6 +3876,28 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.False(result.IsBlocked);
     }
 
+    [Fact]
+    public void DesktopPermissionEnforcer_AllowSimilarApprovesOnlyCurrentReusableRisk()
+    {
+        var approvals = DesktopPermissionEnforcer.GetReusableApprovals(
+            PermissionApprovalChoice.AllowSimilarForRun,
+            PermissionRiskLevel.ProjectWrite);
+
+        Assert.Equal([PermissionRiskLevel.ProjectWrite], approvals);
+    }
+
+    [Fact]
+    public void DesktopPermissionEnforcer_AllowAllApprovesEditsAndVerificationForRun()
+    {
+        var approvals = DesktopPermissionEnforcer.GetReusableApprovals(
+            PermissionApprovalChoice.AllowAllForRun,
+            PermissionRiskLevel.ProjectWrite);
+
+        Assert.Equal(
+            [PermissionRiskLevel.ProjectWrite, PermissionRiskLevel.VerificationCommand],
+            approvals);
+    }
+
     [Theory]
     [InlineData("npm run build")]
     [InlineData("cmd /c cd frontend && npm test")]
