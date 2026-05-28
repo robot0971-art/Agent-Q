@@ -202,6 +202,49 @@ public sealed class AutomationSupportTests
         Assert.Contains(result.ToolOutputs, record => record.ToolName == "edit_file" && !record.IsError);
     }
 
+    [Fact]
+    public async Task CliNonInteractiveRunner_IncludesToolCapabilitySnapshotInPrompt()
+    {
+        ChatContext? capturedContext = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            capturedContext = context;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "ok" },
+                new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "fix code"
+        };
+        config.AllowedToolNames.Add("read_file");
+        config.AllowedToolNames.Add("edit_file");
+        config.DeniedToolNames.Add("bash");
+
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool("read_file", ToolResult.Success("{\"content\":\"ok\"}")));
+        registry.Register(new FakeTool("edit_file", ToolResult.Success("{\"status\":\"success\"}")));
+        registry.Register(new FakeTool("bash", ToolResult.Success("{\"exitCode\":0}")));
+        registry.Register(new FakeTool("semantic_search", ToolResult.Success("{\"results\":[]}")));
+
+        await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames, deniedToolNames: config.DeniedToolNames),
+            new CliToolLoopRunner(),
+            "fix code");
+
+        Assert.NotNull(capturedContext);
+        Assert.Contains("Tool Permission State:", capturedContext!.SystemPrompt);
+        Assert.Contains("allowed tools: edit_file(permission-gated), read_file(permission-gated)", capturedContext.SystemPrompt);
+        Assert.Contains("denied tools: bash(permission-gated)", capturedContext.SystemPrompt);
+        Assert.Contains("not allowed in this run: semantic_search(permission-gated)", capturedContext.SystemPrompt);
+        Assert.Contains("never say you lack permission for an allowed tool", capturedContext.SystemPrompt);
+    }
+
     private static async IAsyncEnumerable<StreamChunk> StreamSequence(params StreamChunk[] chunks)
     {
         foreach (var chunk in chunks)

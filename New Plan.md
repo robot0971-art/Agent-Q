@@ -128,6 +128,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - injected non-interactive allowed/denied tool policy into the system prompt so models do not guess permission state
   - added one automatic retry when a non-interactive run falls back to manual instructions despite having an allowed edit tool
   - verified against the Gun Clicker Unity compile-error scenario with read, edit, and build tools
+- Continued the tool permission self-awareness pass:
+  - added a structured non-interactive tool capability snapshot built from the actual registered tool registry and allow/deny policy
+  - exposed allowed, denied, and not-allowed tool states in the system prompt so the model can reason from concrete permission state
+  - added regression coverage for permission-state prompt injection
 
 ## Active Work Queue After 80%
 

@@ -124,7 +124,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                     toolErrors.Add(error);
                 },
                 onPermissionDenied: toolName => deniedTools.Add(toolName),
-                systemPromptAddendum: BuildAutomationPrompt(config),
+                systemPromptAddendum: BuildAutomationPrompt(config, registry),
                 ct: ct);
     }
 
@@ -135,7 +135,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
             : new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
     }
 
-    private static string BuildAutomationPrompt(ProviderConfiguration config)
+    private static string BuildAutomationPrompt(ProviderConfiguration config, ToolRegistry registry)
     {
         var allowedTools = config.AllowToolsWithoutPrompt
             ? "all registered tools"
@@ -145,6 +145,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         var deniedTools = config.DeniedToolNames.Count == 0
             ? "none"
             : string.Join(", ", config.DeniedToolNames);
+        var capabilitySnapshot = ToolCapabilitySnapshot.Create(config, registry).ToPromptBlock();
 
         return
             $"""
@@ -155,6 +156,8 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
             - If a tool call is denied or fails, report that exact tool result and choose the next safest available action.
             - For code-fix requests, prefer read_file plus edit_file/write_file and then bash verification when those tools are allowed.
             - Avoid final answers that mainly contain manual copy/paste instructions when an allowed editing tool could perform the change.
+
+            {capabilitySnapshot}
             """;
     }
 
