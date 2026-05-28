@@ -24,14 +24,8 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 RecordPermissionEvent("Blocked", toolName, assessment, PermissionApprovalChoice.Deny);
                 System.Windows.MessageBox.Show(
                     owner,
-                    $"Blocked by AgentQ safety policy.{Environment.NewLine}{Environment.NewLine}" +
-                    $"Risk: {assessment.RiskLevel}{Environment.NewLine}" +
-                    $"Operation: {assessment.Operation}{Environment.NewLine}" +
-                    $"Target: {assessment.Target}{Environment.NewLine}" +
-                    $"Mode: {workMode}{Environment.NewLine}" +
-                    $"Policy: {policy.PolicyReason}{Environment.NewLine}{Environment.NewLine}" +
-                    assessment.Reason,
-                    "AgentQ permission blocked",
+                    BuildPermissionBlockedMessage(assessment, workMode, policy.PolicyReason, useKoreanUi),
+                    DesktopLocalizer.PermissionBlockedTitle(useKoreanUi),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
                 return false;
@@ -165,6 +159,13 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
 
     public static string BuildPermissionSummary(ToolPermissionAssessment assessment, bool useKoreanUi = true) =>
         DesktopLocalizer.PermissionSummary(assessment, useKoreanUi);
+
+    public static string BuildPermissionBlockedMessage(
+        ToolPermissionAssessment assessment,
+        AgentWorkMode workMode,
+        string policyReason,
+        bool useKoreanUi = true) =>
+        DesktopLocalizer.PermissionBlockedMessage(assessment, workMode, policyReason, useKoreanUi);
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)
     {

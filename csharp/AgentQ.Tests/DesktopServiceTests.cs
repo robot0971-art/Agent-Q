@@ -3952,8 +3952,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             Reason = "This appears to build or test the selected project."
         }, useKoreanUi: true);
 
-        Assert.Contains("빌드", summary, StringComparison.Ordinal);
-        Assert.Contains("테스트", summary, StringComparison.Ordinal);
+        Assert.Contains("\uBE4C\uB4DC", summary, StringComparison.Ordinal);
+        Assert.Contains("\uD14C\uC2A4\uD2B8", summary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3971,10 +3971,54 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopPermissionEnforcer_BuildsLocalizedBlockedPermissionMessage()
+    {
+        var assessment = new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.Destructive,
+            Operation = "Shell command",
+            Target = "Remove-Item -Recurse",
+            Reason = "This command matches a destructive shell pattern."
+        };
+
+        var message = DesktopPermissionEnforcer.BuildPermissionBlockedMessage(
+            assessment,
+            AgentWorkMode.Coding,
+            "Destructive commands are blocked by desktop policy.",
+            useKoreanUi: true);
+
+        Assert.Contains("AgentQ \uC548\uC804 \uC815\uCC45", message, StringComparison.Ordinal);
+        Assert.Contains("\uC704\uD5D8\uB3C4: Destructive", message, StringComparison.Ordinal);
+        Assert.Contains("\uC815\uCC45: Destructive commands are blocked by desktop policy.", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopPermissionEnforcer_BuildsEnglishBlockedPermissionMessage()
+    {
+        var assessment = new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.Destructive,
+            Operation = "Shell command",
+            Target = "Remove-Item -Recurse",
+            Reason = "This command matches a destructive shell pattern."
+        };
+
+        var message = DesktopPermissionEnforcer.BuildPermissionBlockedMessage(
+            assessment,
+            AgentWorkMode.Coding,
+            "Destructive commands are blocked by desktop policy.",
+            useKoreanUi: false);
+
+        Assert.Contains("Blocked by AgentQ safety policy.", message, StringComparison.Ordinal);
+        Assert.Contains("Risk: Destructive", message, StringComparison.Ordinal);
+        Assert.Contains("Policy: Destructive commands are blocked by desktop policy.", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PermissionDialogContent_SeparatesSummaryFromRawInput()
     {
         var content = new PermissionDialogContent(
-            "AgentQ가 프로젝트 파일을 수정하려고 합니다.",
+            "AgentQ\uAC00 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C\uC744 \uC218\uC815\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4.",
             "ProjectWrite / Edit file",
             "Assets/Scripts/UI/ClickHandler.cs",
             "This will modify a file inside the selected workspace.",
@@ -3984,7 +4028,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             "Path: Assets/Scripts/UI/ClickHandler.cs",
             "{\"path\":\"Assets/Scripts/UI/ClickHandler.cs\"}");
 
-        Assert.Equal("AgentQ가 프로젝트 파일을 수정하려고 합니다.", content.Summary);
+        Assert.Equal("AgentQ\uAC00 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C\uC744 \uC218\uC815\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4.", content.Summary);
         Assert.Contains("ProjectWrite", content.RiskLabel, StringComparison.Ordinal);
         Assert.Contains("ClickHandler.cs", content.Target, StringComparison.Ordinal);
         Assert.StartsWith("{", content.RawInput, StringComparison.Ordinal);

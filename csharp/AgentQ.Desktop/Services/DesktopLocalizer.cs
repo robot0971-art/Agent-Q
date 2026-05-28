@@ -284,6 +284,37 @@ public static class DesktopLocalizer
         };
     }
 
+    public static string PermissionBlockedTitle(bool useKoreanUi) =>
+        useKoreanUi ? "AgentQ \uAD8C\uD55C \uCC28\uB2E8" : "AgentQ permission blocked";
+
+    public static string PermissionBlockedMessage(
+        ToolPermissionAssessment assessment,
+        AgentWorkMode workMode,
+        string policyReason,
+        bool useKoreanUi)
+    {
+        if (!useKoreanUi)
+        {
+            return
+                $"Blocked by AgentQ safety policy.{Environment.NewLine}{Environment.NewLine}" +
+                $"Risk: {assessment.RiskLevel}{Environment.NewLine}" +
+                $"Operation: {assessment.Operation}{Environment.NewLine}" +
+                $"Target: {assessment.Target}{Environment.NewLine}" +
+                $"Mode: {workMode}{Environment.NewLine}" +
+                $"Policy: {policyReason}{Environment.NewLine}{Environment.NewLine}" +
+                assessment.Reason;
+        }
+
+        return
+            $"AgentQ \uC548\uC804 \uC815\uCC45\uC5D0 \uC758\uD574 \uCC28\uB2E8\uB418\uC5C8\uC2B5\uB2C8\uB2E4.{Environment.NewLine}{Environment.NewLine}" +
+            $"\uC704\uD5D8\uB3C4: {assessment.RiskLevel}{Environment.NewLine}" +
+            $"\uC791\uC5C5: {assessment.Operation}{Environment.NewLine}" +
+            $"\uB300\uC0C1: {assessment.Target}{Environment.NewLine}" +
+            $"\uBAA8\uB4DC: {workMode}{Environment.NewLine}" +
+            $"\uC815\uCC45: {policyReason}{Environment.NewLine}{Environment.NewLine}" +
+            assessment.Reason;
+    }
+
     public static string ReusableApprovalHint(bool useKoreanUi)
     {
         return useKoreanUi
