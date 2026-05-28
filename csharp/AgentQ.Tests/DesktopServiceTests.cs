@@ -3683,6 +3683,58 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void MainViewModel_KoreanUiSnapshot_CoversPrimaryDesktopBindings()
+    {
+        var viewModel = new MainViewModel
+        {
+            UiLanguage = "\uD55C\uAD6D\uC5B4"
+        };
+
+        var snapshot = new Dictionary<string, string>
+        {
+            [nameof(viewModel.MenuFileText)] = viewModel.MenuFileText,
+            [nameof(viewModel.SettingsHeaderText)] = viewModel.SettingsHeaderText,
+            [nameof(viewModel.ProjectHeaderText)] = viewModel.ProjectHeaderText,
+            [nameof(viewModel.ProjectFolderText)] = viewModel.ProjectFolderText,
+            [nameof(viewModel.ChatHeaderText)] = viewModel.ChatHeaderText,
+            [nameof(viewModel.AttachFilesText)] = viewModel.AttachFilesText,
+            [nameof(viewModel.CodeBlockText)] = viewModel.CodeBlockText,
+            [nameof(viewModel.SendText)] = viewModel.SendText,
+            [nameof(viewModel.StatusPanelText)] = viewModel.StatusPanelText,
+            [nameof(viewModel.RunLogText)] = viewModel.RunLogText,
+            [nameof(viewModel.ChangePreviewText)] = viewModel.ChangePreviewText,
+            [nameof(viewModel.EvidenceTrailText)] = viewModel.EvidenceTrailText,
+            [nameof(viewModel.EvalDashboardText)] = viewModel.EvalDashboardText,
+            [nameof(viewModel.LearningCandidatesText)] = viewModel.LearningCandidatesText,
+            [nameof(viewModel.SavedMemoryText)] = viewModel.SavedMemoryText,
+            [nameof(viewModel.SessionSummaryText)] = viewModel.SessionSummaryText,
+            [nameof(viewModel.GitStatusText)] = viewModel.GitStatusText,
+            [nameof(viewModel.WorkspaceProjectType)] = viewModel.WorkspaceProjectType,
+            [nameof(viewModel.EvalDashboardSummary)] = viewModel.EvalDashboardSummary
+        };
+
+        Assert.Equal("\uD30C\uC77C", snapshot[nameof(viewModel.MenuFileText)]);
+        Assert.Equal("\uC124\uC815", snapshot[nameof(viewModel.SettingsHeaderText)]);
+        Assert.Equal("\uD504\uB85C\uC81D\uD2B8", snapshot[nameof(viewModel.ProjectHeaderText)]);
+        Assert.Equal("\uD504\uB85C\uC81D\uD2B8 \uD3F4\uB354", snapshot[nameof(viewModel.ProjectFolderText)]);
+        Assert.Equal("\uC0C8 \uB300\uD654", snapshot[nameof(viewModel.ChatHeaderText)]);
+        Assert.Equal("\uCCA8\uBD80", snapshot[nameof(viewModel.AttachFilesText)]);
+        Assert.Equal("\uCF54\uB4DC \uBE14\uB85D", snapshot[nameof(viewModel.CodeBlockText)]);
+        Assert.Equal("\uC804\uC1A1\nCtrl+Enter", snapshot[nameof(viewModel.SendText)]);
+        Assert.Equal("\uC0C1\uD0DC \uD328\uB110", snapshot[nameof(viewModel.StatusPanelText)]);
+        Assert.Equal("\uC791\uC5C5 \uB85C\uADF8", snapshot[nameof(viewModel.RunLogText)]);
+        Assert.Equal("\uBCC0\uACBD \uBBF8\uB9AC\uBCF4\uAE30", snapshot[nameof(viewModel.ChangePreviewText)]);
+        Assert.Equal("\uADFC\uAC70 \uD750\uB984", snapshot[nameof(viewModel.EvidenceTrailText)]);
+        Assert.Equal("\uD3C9\uAC00", snapshot[nameof(viewModel.EvalDashboardText)]);
+        Assert.Equal("\uD559\uC2B5 \uD6C4\uBCF4", snapshot[nameof(viewModel.LearningCandidatesText)]);
+        Assert.Equal("\uC800\uC7A5\uB41C \uBA54\uBAA8\uB9AC", snapshot[nameof(viewModel.SavedMemoryText)]);
+        Assert.Equal("\uC138\uC158 \uC694\uC57D", snapshot[nameof(viewModel.SessionSummaryText)]);
+        Assert.Contains("\uC0C1\uD0DC", snapshot[nameof(viewModel.GitStatusText)]);
+        Assert.Contains("\uBD84\uC11D", snapshot[nameof(viewModel.WorkspaceProjectType)]);
+        Assert.Contains("\uC0C8\uB85C\uACE0\uCE68", snapshot[nameof(viewModel.EvalDashboardSummary)]);
+    }
+
+    [Fact]
     public void DesktopAgentRunWorkflowService_RemoveThinkingPlaceholder_RemovesPendingAssistantMessage()
     {
         var viewModel = new MainViewModel();
@@ -4477,6 +4529,24 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains("\uC0C1\uD0DC", viewModel.Git.StatusText);
         Assert.Contains("\uBD84\uC11D", viewModel.Project.ProjectType);
         Assert.Contains("\uC0C8\uB85C\uACE0\uCE68", viewModel.EvalDashboard.Summary);
+    }
+
+    [Fact]
+    public void MainViewModel_UiLanguageChange_LocalizesEmptyPanelsWithoutOverwritingLoadedPanelData()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.Git.StatusText = "## main...origin/main";
+        viewModel.Project.ProjectType = "Unity";
+        viewModel.EvalDashboard.Summary = "Replay: 3 tools";
+
+        viewModel.UiLanguage = "\uD55C\uAD6D\uC5B4";
+
+        Assert.Equal("## main...origin/main", viewModel.Git.StatusText);
+        Assert.Equal("Unity", viewModel.Project.ProjectType);
+        Assert.Equal("Replay: 3 tools", viewModel.EvalDashboard.Summary);
+        Assert.Contains("\uD604\uC7AC", viewModel.Git.DiffText);
+        Assert.Contains("\uBD84\uC11D", viewModel.Project.Stats);
+        Assert.Contains("\uCCAB", viewModel.EvalDashboard.UpdatedText);
     }
 
     [Fact]
