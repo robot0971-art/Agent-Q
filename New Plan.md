@@ -141,6 +141,11 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - injected the snapshot into Desktop system prompt assembly for each run
   - included Desktop-specific approval UI and PowerShell workspace-root guidance in the model-visible permission state
   - added regression coverage for Desktop prompt injection and permission-state formatting
+- Continued the Desktop autonomous fix reporting pass:
+  - added final-response rules so Desktop summarizes root cause, changed files, action taken, and verification status instead of long code/diff blocks
+  - added a one-time retry guard for pre-tool manual copy/paste fallback responses in coding/full-agent modes
+  - recognized localized `dotnet build` success output as a passed verification card
+  - added regression coverage for Desktop reporting guidance, manual fallback retry detection, and localized build verification
 
 ## Active Work Queue After 80%
 

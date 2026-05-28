@@ -7,6 +7,7 @@ public static class ShellVerificationResultDetector
     private static readonly string[] VerificationCommandMarkers =
     [
         "dotnet test",
+        "dotnet build",
         "npm test",
         "npm run test",
         "npm run build",
@@ -26,7 +27,11 @@ public static class ShellVerificationResultDetector
         "build succeeded",
         "compiled successfully",
         "built in",
+        "0 error",
+        "0 errors",
         "\uD1B5\uACFC!",
+        "\uBE4C\uB4DC\uD588\uC2B5\uB2C8\uB2E4",
+        "\uC624\uB958 0\uAC1C",
         "0 failed",
         "failed:     0",
         "\uC2E4\uD328:     0",
@@ -92,6 +97,11 @@ public static class ShellVerificationResultDetector
         if (command.Contains("dotnet test", StringComparison.OrdinalIgnoreCase))
         {
             return "dotnet test";
+        }
+
+        if (command.Contains("dotnet build", StringComparison.OrdinalIgnoreCase))
+        {
+            return "dotnet build";
         }
 
         if (command.Contains("npm run build", StringComparison.OrdinalIgnoreCase) ||

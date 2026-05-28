@@ -12,7 +12,8 @@ public static class DesktopPromptAssemblyService
         new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
         new VerificationFailurePromptRule(),
-        new EvidenceBackedPromptRule()
+        new EvidenceBackedPromptRule(),
+        new FinalReportingPromptRule()
     ];
 
     public static DesktopTaskProfile BuildTaskProfile(string userText)
@@ -211,6 +212,23 @@ public sealed class EvidenceBackedPromptRule : IDesktopPromptRule
         builder.AppendLine("- Include a short Needs verification section for anything inferred from naming, folder layout, memory, or incomplete search results.");
         builder.AppendLine("- Do not claim that a dependency, worker library, incremental index strategy, or release state exists unless a supporting file or command output was inspected.");
         builder.AppendLine("- For URL questions, report whether link auto-read is enabled, whether the fetch succeeded or failed, and what evidence was available.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class FinalReportingPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => true;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Final response rules:");
+        builder.AppendLine("- When files were changed, summarize the root cause, changed files, and action taken in concise Korean.");
+        builder.AppendLine("- Mention the exact verification command and result when verification ran successfully; if verification did not run, say what was not verified and why.");
+        builder.AppendLine("- Do not include long code blocks or diff blocks unless the user explicitly asks for code.");
+        builder.AppendLine("- Do not tell the user to copy and paste code when edit tools are available; use the tools, then report what changed.");
+        builder.AppendLine("- Do not ask the user to manually verify a build or test that already passed during the run.");
         return builder.ToString().TrimEnd();
     }
 }

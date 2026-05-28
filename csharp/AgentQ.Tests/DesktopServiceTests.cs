@@ -62,6 +62,31 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ShellVerificationResultDetector_CreatesCardForLocalizedPassedDotnetBuild()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            exitCode = 0,
+            stdout = "\uBE4C\uB4DC\uD588\uC2B5\uB2C8\uB2E4.\r\n    \uACBD\uACE0 0\uAC1C\r\n    \uC624\uB958 0\uAC1C",
+            stderr = "",
+            stdoutTruncated = false,
+            stderrTruncated = false,
+            timeoutMs = 120000
+        });
+
+        var created = ShellVerificationResultDetector.TryCreate(
+            "bash",
+            new Dictionary<string, object?> { ["command"] = "dotnet build .\\Game.csproj --no-restore" },
+            content,
+            out var result);
+
+        Assert.True(created);
+        Assert.Equal("PASSED", result.Status);
+        Assert.Equal("dotnet build", result.Title);
+        Assert.Contains("dotnet build", result.Command);
+    }
+
+    [Fact]
     public void ShellVerificationResultDetector_IgnoresFailedVerificationCommand()
     {
         var content = JsonSerializer.Serialize(new
@@ -256,6 +281,44 @@ public sealed class DesktopServiceTests
         Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed: read_file", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("requires approval: edit_file", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsFinalReportingRules()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("fix compile error");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Contains("Final response rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("root cause", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("changed files", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("verification command", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not include long code blocks or diff blocks", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("copy and paste", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesManualFallbackBeforeWorkspaceActions()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryManualFallback(
+            "\uC544\uB798\uCC98\uB7FC \uC218\uC815\uD558\uC138\uC694.\n```csharp\nDeliberateAgentQCompileBreak();\n```",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_DoesNotRetryManualFallbackAfterToolsRan()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryManualFallback(
+            "\uC544\uB798\uCC98\uB7FC \uC218\uC815\uD558\uC138\uC694.\n```csharp\nDeliberateAgentQCompileBreak();\n```",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding);
+
+        Assert.False(shouldRetry);
     }
 
     [Fact]

@@ -150,6 +150,7 @@ public sealed class DesktopAgentService
         var editFailureTracker = new Dictionary<string, int>(StringComparer.Ordinal);
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
+        var manualFallbackRetryUsed = false;
 
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
 
@@ -190,6 +191,21 @@ public sealed class DesktopAgentService
 
             if (response.ToolUses.Count == 0)
             {
+                if (!manualFallbackRetryUsed &&
+                    ShouldRetryManualFallback(builder.ToString(), executedToolCount, fileChanges, workMode))
+                {
+                    manualFallbackRetryUsed = true;
+                    var retryInstruction =
+                        "Your previous answer gave manual code or copy/paste style instructions without using available tools. " +
+                        "Use the available workspace tools now: inspect the relevant files, apply the smallest safe edit, run focused verification when useful, then give a concise changed-files/root-cause/action/verification summary.";
+                    _messages.Add(ChatMessage.UserText(retryInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        "Retrying with tools",
+                        "Manual fallback detected before any workspace action.");
+                    continue;
+                }
+
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
                 ReportConfidence(
                     builder.ToString(),
@@ -335,6 +351,37 @@ public sealed class DesktopAgentService
     public void ClearConversation()
     {
         _messages.Clear();
+    }
+
+    public static bool ShouldRetryManualFallback(
+        string assistantText,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode)
+    {
+        if (workMode == AgentWorkMode.Readonly ||
+            executedToolCount > 0 ||
+            fileChanges.Count > 0 ||
+            string.IsNullOrWhiteSpace(assistantText))
+        {
+            return false;
+        }
+
+        var lower = assistantText.ToLowerInvariant();
+        var manualInstruction =
+            lower.Contains("copy and paste", StringComparison.Ordinal) ||
+            lower.Contains("paste this", StringComparison.Ordinal) ||
+            lower.Contains("replace with", StringComparison.Ordinal) ||
+            lower.Contains("\uBCF5\uC0AC", StringComparison.Ordinal) ||
+            lower.Contains("\uBD99\uC5EC\uB123", StringComparison.Ordinal) ||
+            lower.Contains("\uC544\uB798\uCC98\uB7FC \uC218\uC815", StringComparison.Ordinal) ||
+            lower.Contains("\uB2E4\uC74C\uCC98\uB7FC \uC218\uC815", StringComparison.Ordinal);
+        var codeHeavy = lower.Contains("```", StringComparison.Ordinal) ||
+            lower.Contains("```diff", StringComparison.Ordinal) ||
+            lower.Contains("```csharp", StringComparison.Ordinal) ||
+            lower.Contains("```cs", StringComparison.Ordinal);
+
+        return manualInstruction && codeHeavy;
     }
 
     private List<ChatMessage> BuildRequestMessages(string? transientContext)
