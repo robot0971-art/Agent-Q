@@ -3,7 +3,7 @@ using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMode) : IPermissionEnforcer
+public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMode, bool useKoreanUi = false) : IPermissionEnforcer
 {
     private readonly HashSet<PermissionRiskLevel> _approvedForRun = [];
 
@@ -55,10 +55,10 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 : inputJson;
             var focusedPreview = BuildFocusedPreview(toolName, inputJson);
             var approvalHint = IsReusableApproval(assessment.RiskLevel)
-                ? $"{Environment.NewLine}Allow similar will skip repeat prompts for this operation type during the current run. Allow edits + builds will skip repeat prompts for workspace file edits and verification commands only."
+                ? BuildReusableApprovalHint(useKoreanUi)
                 : string.Empty;
             var dialogContent = new PermissionDialogContent(
-                BuildPermissionSummary(assessment),
+                BuildPermissionSummary(assessment, useKoreanUi),
                 $"{assessment.RiskLevel} / {assessment.Operation}",
                 assessment.Target,
                 assessment.Reason + approvalHint,
@@ -73,7 +73,8 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
                 $"AgentQ permission: {assessment.RiskLevel}",
                 dialogContent,
                 IsReusableApproval(assessment.RiskLevel),
-                IsReusableApproval(assessment.RiskLevel));
+                IsReusableApproval(assessment.RiskLevel),
+                useKoreanUi);
 
             foreach (var approvedRisk in GetReusableApprovals(choice, assessment.RiskLevel))
             {
@@ -162,8 +163,21 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
         return $"{permissionEvent.Outcome}{choiceText}: {permissionEvent.RiskLevel} {permissionEvent.ToolName} -> {target}";
     }
 
-    public static string BuildPermissionSummary(ToolPermissionAssessment assessment)
+    public static string BuildPermissionSummary(ToolPermissionAssessment assessment, bool useKoreanUi = true)
     {
+        if (!useKoreanUi)
+        {
+            return assessment.RiskLevel switch
+            {
+                PermissionRiskLevel.ProjectWrite => "AgentQ wants to modify a project file.",
+                PermissionRiskLevel.VerificationCommand => "AgentQ wants to run a build or test command.",
+                PermissionRiskLevel.GitWrite => "AgentQ wants to change Git state.",
+                PermissionRiskLevel.Network => "AgentQ wants to run a command that may use the network.",
+                PermissionRiskLevel.Destructive => "AgentQ tried to run a command classified as risky.",
+                _ => "AgentQ wants to run an operation that needs approval."
+            };
+        }
+
         return assessment.RiskLevel switch
         {
             PermissionRiskLevel.ProjectWrite => "AgentQ가 프로젝트 파일을 수정하려고 합니다.",
@@ -173,6 +187,13 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
             PermissionRiskLevel.Destructive => "AgentQ가 위험한 작업으로 분류된 명령을 실행하려고 했습니다.",
             _ => "AgentQ가 승인 필요한 작업을 실행하려고 합니다."
         };
+    }
+
+    private static string BuildReusableApprovalHint(bool useKoreanUi)
+    {
+        return useKoreanUi
+            ? $"{Environment.NewLine}같은 종류 허용은 이번 실행 동안 같은 작업 유형의 반복 확인을 건너뜁니다. 편집+빌드 허용은 워크스페이스 파일 편집과 빌드/테스트 명령에만 적용됩니다."
+            : $"{Environment.NewLine}Allow similar will skip repeat prompts for this operation type during the current run. Allow edits + builds will skip repeat prompts for workspace file edits and verification commands only.";
     }
 
     private static bool IsReusableApproval(PermissionRiskLevel riskLevel)

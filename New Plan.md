@@ -168,6 +168,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - rebuilt the Desktop permission dialog around a readable summary, risk/target/reason rows, focused preview, and raw input details
   - changed approval buttons to clearer Korean labels for one-time, same-kind, edit-plus-build, and deny decisions
   - added regression coverage for permission summaries and dialog content separation
+- Continued the permission UX refinement pass:
+  - made the Desktop permission dialog follow the selected UI language for summaries, row labels, and button labels
+  - kept Korean strings in WPF/.NET Unicode UI paths while preserving English fallback labels
+  - added regression coverage for Korean and English permission summaries
 
 ## Active Work Queue After 80%
 

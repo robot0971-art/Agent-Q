@@ -14,7 +14,12 @@ public enum PermissionApprovalChoice
 
 public sealed class PermissionApprovalDialog : Window
 {
-    private PermissionApprovalDialog(string title, PermissionDialogContent dialogContent, bool canAllowSimilar, bool canAllowAll)
+    private PermissionApprovalDialog(
+        string title,
+        PermissionDialogContent dialogContent,
+        bool canAllowSimilar,
+        bool canAllowAll,
+        bool useKoreanUi)
     {
         Title = title;
         Width = 640;
@@ -40,7 +45,7 @@ public sealed class PermissionApprovalDialog : Window
         };
         SWC.DockPanel.SetDock(buttons, SWC.Dock.Bottom);
 
-        buttons.Children.Add(CreateButton("이번만 허용", () =>
+        buttons.Children.Add(CreateButton(useKoreanUi ? "이번만 허용" : "Allow once", () =>
         {
             Choice = PermissionApprovalChoice.AllowOnce;
             DialogResult = true;
@@ -48,7 +53,7 @@ public sealed class PermissionApprovalDialog : Window
 
         if (canAllowSimilar)
         {
-            buttons.Children.Add(CreateButton("같은 종류 허용", () =>
+            buttons.Children.Add(CreateButton(useKoreanUi ? "같은 종류 허용" : "Allow similar", () =>
             {
                 Choice = PermissionApprovalChoice.AllowSimilarForRun;
                 DialogResult = true;
@@ -57,14 +62,14 @@ public sealed class PermissionApprovalDialog : Window
 
         if (canAllowAll)
         {
-            buttons.Children.Add(CreateButton("편집+빌드 허용", () =>
+            buttons.Children.Add(CreateButton(useKoreanUi ? "편집+빌드 허용" : "Allow edits + builds", () =>
             {
                 Choice = PermissionApprovalChoice.AllowAllForRun;
                 DialogResult = true;
             }));
         }
 
-        buttons.Children.Add(CreateButton("거부", () =>
+        buttons.Children.Add(CreateButton(useKoreanUi ? "거부" : "Deny", () =>
         {
             Choice = PermissionApprovalChoice.Deny;
             DialogResult = false;
@@ -80,17 +85,17 @@ public sealed class PermissionApprovalDialog : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 10)
         });
-        body.Children.Add(CreateKeyValueRow("위험도", dialogContent.RiskLabel));
-        body.Children.Add(CreateKeyValueRow("대상", dialogContent.Target));
-        body.Children.Add(CreateKeyValueRow("이유", dialogContent.Reason));
-        body.Children.Add(CreateKeyValueRow("정책", dialogContent.Policy));
-        body.Children.Add(CreateKeyValueRow("도구", $"{dialogContent.ToolName} - {dialogContent.ToolDescription}"));
+        body.Children.Add(CreateKeyValueRow(useKoreanUi ? "위험도" : "Risk", dialogContent.RiskLabel));
+        body.Children.Add(CreateKeyValueRow(useKoreanUi ? "대상" : "Target", dialogContent.Target));
+        body.Children.Add(CreateKeyValueRow(useKoreanUi ? "이유" : "Reason", dialogContent.Reason));
+        body.Children.Add(CreateKeyValueRow(useKoreanUi ? "정책" : "Policy", dialogContent.Policy));
+        body.Children.Add(CreateKeyValueRow(useKoreanUi ? "도구" : "Tool", $"{dialogContent.ToolName} - {dialogContent.ToolDescription}"));
 
         if (!string.IsNullOrWhiteSpace(dialogContent.FocusedPreview))
         {
             body.Children.Add(new SWC.TextBlock
             {
-                Text = "미리보기",
+                Text = useKoreanUi ? "미리보기" : "Preview",
                 FontWeight = FontWeights.SemiBold,
                 Foreground = SWM.Brushes.Black,
                 Margin = new Thickness(0, 12, 0, 4)
@@ -100,7 +105,7 @@ public sealed class PermissionApprovalDialog : Window
 
         body.Children.Add(new SWC.TextBlock
         {
-            Text = "세부 입력",
+            Text = useKoreanUi ? "세부 입력" : "Raw input",
             FontWeight = FontWeights.SemiBold,
             Foreground = SWM.Brushes.Black,
             Margin = new Thickness(0, 12, 0, 4)
@@ -126,9 +131,10 @@ public sealed class PermissionApprovalDialog : Window
         string title,
         PermissionDialogContent dialogContent,
         bool canAllowSimilar,
-        bool canAllowAll)
+        bool canAllowAll,
+        bool useKoreanUi = false)
     {
-        var dialog = new PermissionApprovalDialog(title, dialogContent, canAllowSimilar, canAllowAll)
+        var dialog = new PermissionApprovalDialog(title, dialogContent, canAllowSimilar, canAllowAll, useKoreanUi)
         {
             Owner = owner
         };

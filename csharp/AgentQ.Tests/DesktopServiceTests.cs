@@ -3948,10 +3948,24 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             Operation = "Verification command",
             Target = "dotnet build",
             Reason = "This appears to build or test the selected project."
-        });
+        }, useKoreanUi: true);
 
         Assert.Contains("빌드", summary, StringComparison.Ordinal);
         Assert.Contains("테스트", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopPermissionEnforcer_BuildsEnglishPermissionSummary()
+    {
+        var summary = DesktopPermissionEnforcer.BuildPermissionSummary(new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.ProjectWrite,
+            Operation = "Edit file",
+            Target = "README.md",
+            Reason = "This will modify a file inside the selected workspace."
+        }, useKoreanUi: false);
+
+        Assert.Equal("AgentQ wants to modify a project file.", summary);
     }
 
     [Fact]
