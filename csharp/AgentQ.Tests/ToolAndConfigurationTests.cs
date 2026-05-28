@@ -596,6 +596,23 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Contains(workspace.RootPath, stdout, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void BashTool_DescribesWindowsPowerShellSemantics()
+    {
+        var tool = new BashTool();
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("PowerShell", tool.Description, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("workspace root", tool.Description, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("&&", tool.Description, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains("bash command", tool.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     /// <summary>
     /// BashTool이 긴 출력을 잘라내고 절단 여부를 보고하는지 검증합니다.
     /// </summary>

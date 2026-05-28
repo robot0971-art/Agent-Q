@@ -43,7 +43,9 @@ public class BashTool : ITool
     /// <summary>
     /// Tool description.
     /// </summary>
-    public string Description => "Execute a shell command and return its output";
+    public string Description => OperatingSystem.IsWindows()
+        ? "Execute a PowerShell command from the workspace root and return its output. Do not use Bash-only chaining such as && or ||; use ; or a single direct command."
+        : "Execute a bash command from the workspace root and return its output";
 
     /// <summary>
     /// Whether this tool requires user permission.
@@ -58,7 +60,13 @@ public class BashTool : ITool
         type = "object",
         properties = new
         {
-            command = new { type = "string", description = "The shell command to execute" },
+            command = new
+            {
+                type = "string",
+                description = OperatingSystem.IsWindows()
+                    ? "PowerShell command to execute from the workspace root. Avoid Bash-only operators like && and ||."
+                    : "The shell command to execute"
+            },
             timeout = new { type = "integer", description = "Timeout in milliseconds (1000-120000, default 30000)" }
         },
         required = new[] { "command" }

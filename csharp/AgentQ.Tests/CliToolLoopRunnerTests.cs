@@ -107,6 +107,8 @@ public sealed class CliToolLoopRunnerTests
         Assert.Contains("Korean", capturedContext.SystemPrompt);
         Assert.Contains("PowerShell", capturedContext.SystemPrompt);
         Assert.Contains("uname", capturedContext.SystemPrompt);
+        Assert.Contains("Do not use Bash-only chaining", capturedContext.SystemPrompt);
+        Assert.Contains("starts in the configured workspace root", capturedContext.SystemPrompt);
         Assert.Contains("copy and paste", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("actually denied or failed", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("rerun the relevant verification command", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);

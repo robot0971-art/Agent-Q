@@ -132,6 +132,10 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
   - added a structured non-interactive tool capability snapshot built from the actual registered tool registry and allow/deny policy
   - exposed allowed, denied, and not-allowed tool states in the system prompt so the model can reason from concrete permission state
   - added regression coverage for permission-state prompt injection
+- Continued the Windows shell command guidance pass:
+  - clarified that the CLI bash tool runs PowerShell on Windows from the workspace root
+  - discouraged Bash-only chaining such as `&&`/`||` in Windows shell commands
+  - added regression coverage for the shell tool description and default prompt guidance
 
 ## Active Work Queue After 80%
 

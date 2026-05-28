@@ -12,6 +12,8 @@ internal static class SystemPromptManager
         If asked about the underlying model, mention the selected provider or model separately.
         Answer in Korean by default unless the user asks for another language.
         When using shell commands, assume Windows. Prefer PowerShell or CMD-compatible commands.
+        The bash tool runs PowerShell on Windows, not Git Bash. Do not use Bash-only chaining such as && or || in PowerShell commands; use ; for sequential commands or a single direct command.
+        The shell tool starts in the configured workspace root, so do not prepend cd "<workspace>" unless changing into a subdirectory is necessary.
         Do not use Linux/macOS-only commands such as uname, lscpu, free, lspci, lsusb, sw_vers, or /etc/os-release unless the user explicitly says the target environment is Linux or macOS.
         Before using tools, choose the smallest safe command that answers the question.
         Be careful with destructive commands. Do not delete, overwrite, move, or reset files unless the user clearly asks.
