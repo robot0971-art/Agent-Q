@@ -49,7 +49,7 @@ public sealed partial class WorkspaceIndexer
 
         if (files.Count == 0)
         {
-            return string.Empty;
+            return BuildEmptyWorkspaceContext(root, query);
         }
 
         var builder = new StringBuilder();
@@ -225,6 +225,7 @@ public sealed partial class WorkspaceIndexer
     {
         var name = Path.GetFileName(directory);
         return name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
@@ -239,11 +240,34 @@ public sealed partial class WorkspaceIndexer
 
         return parts.Any(part =>
             part.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("artifacts", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildEmptyWorkspaceContext(string root, string query)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Workspace context snapshot:");
+        builder.AppendLine($"Root: {root}");
+        builder.AppendLine("No user project files were found after excluding AgentQ metadata and build/tool folders.");
+        builder.AppendLine("Empty-workspace bootstrap guidance:");
+        builder.AppendLine("- Treat requests to make a website, portfolio, app, game, API, or project as a greenfield implementation task.");
+        builder.AppendLine("- Do not stop after asking for the stack when the requested product is clear enough to scaffold safely.");
+        builder.AppendLine("- Choose a common default stack only for details the user has not specified.");
+        builder.AppendLine("- User corrections override defaults: if JavaScript is requested after TypeScript was recommended, scaffold JavaScript files, not TypeScript.");
+        builder.AppendLine("- For a portfolio or website request with no language preference, prefer Vite + React + JavaScript with package.json, .jsx/.js src files, CSS, and README, then run npm install/build when available.");
+        builder.AppendLine("- Use TypeScript for a portfolio or website only when the user explicitly asks for TypeScript or an existing project already uses TypeScript.");
+        builder.AppendLine("- If a requested detail is missing, make a reasonable default explicit in the final summary and keep the scaffold easy to revise.");
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            builder.AppendLine($"User request: {query.Trim()}");
+        }
+
+        return builder.ToString().TrimEnd();
     }
 
     private sealed record WorkspaceFile(string FullPath, string RelativePath);

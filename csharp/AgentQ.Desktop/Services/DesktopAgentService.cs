@@ -494,12 +494,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var mcpContext = McpServerRegistry.BuildContext(projectConfig);
         var hasLinkIntent = HasLinkIntent(userText);
         var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
+        var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
             string.IsNullOrWhiteSpace(memoryContext) &&
             string.IsNullOrWhiteSpace(mcpContext) &&
-            string.IsNullOrWhiteSpace(linkStatusContext))
+            string.IsNullOrWhiteSpace(linkStatusContext) &&
+            string.IsNullOrWhiteSpace(explicitStackContext))
         {
             return string.Empty;
         }
@@ -517,6 +519,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
         builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
+
+        if (!string.IsNullOrWhiteSpace(explicitStackContext))
+        {
+            builder.AppendLine(explicitStackContext);
+        }
 
         if (!string.IsNullOrWhiteSpace(linkStatusContext))
         {
@@ -548,6 +555,27 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    public static string BuildExplicitStackPreferenceContext(string userText)
+    {
+        if (string.IsNullOrWhiteSpace(userText))
+        {
+            return string.Empty;
+        }
+
+        var text = userText.ToLowerInvariant();
+        if (ContainsAny(text, "javascript", "java script", "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8", "\uC790\uBC14 \uC2A4\uD06C\uB9BD\uD2B8", "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C", "\uC790\uBC14 \uC2A4\uD06C\uB9BD\uD2B8\uB85C", " js", ".js", ".jsx"))
+        {
+            return "Current user stack override: JavaScript was explicitly requested in this turn. Treat this as a hard constraint for implementation and final wording. Create or modify .js/.jsx files and do not choose TypeScript because the workspace, dashboard, memory, or earlier assistant recommendation mentioned TypeScript.";
+        }
+
+        if (ContainsAny(text, "typescript", "type script", "\uD0C0\uC785\uC2A4\uD06C\uB9BD\uD2B8", "\uD0C0\uC785 \uC2A4\uD06C\uB9BD\uD2B8", " ts", ".ts", ".tsx"))
+        {
+            return "Current user stack override: TypeScript was explicitly requested in this turn. TypeScript files are acceptable for this task.";
+        }
+
+        return string.Empty;
     }
 
     private static string BuildLinkStatusContext(
@@ -588,6 +616,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 text.Contains("사이트", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("웹사이트", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static bool ContainsAny(string text, params string[] values) =>
+        values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
 
     private static async Task<ChatMessage> CreateUserMessageAsync(
         string userText,

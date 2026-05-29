@@ -36,7 +36,27 @@ public static class DesktopTaskClassifier
             return DesktopTaskKind.Analysis;
         }
 
-        if (ContainsAny(text, "add", "implement", "create", "\uB9CC\uB4E4", "\uCD94\uAC00", "\uAD6C\uD604", "\uC9DC", "\uC9C4\uD589"))
+        if (ContainsAny(
+                text,
+                "add",
+                "implement",
+                "create",
+                "portfolio",
+                "website",
+                "web site",
+                "homepage",
+                "landing page",
+                "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+                "\uC6F9\uC0AC\uC774\uD2B8",
+                "\uC6F9 \uC0AC\uC774\uD2B8",
+                "\uD648\uD398\uC774\uC9C0",
+                "\uB79C\uB529",
+                "\uC0AC\uC774\uD2B8",
+                "\uB9CC\uB4E4",
+                "\uCD94\uAC00",
+                "\uAD6C\uD604",
+                "\uC9DC",
+                "\uC9C4\uD589"))
         {
             return DesktopTaskKind.Feature;
         }

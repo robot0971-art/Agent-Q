@@ -1053,7 +1053,7 @@ public sealed class WorkspaceAnalysisService
 
         if (result.Warnings.Count > 0)
         {
-            analysis.Hints.AddRange(result.Warnings.Select(warning => $"TypeScript worker: {warning}").Take(3));
+            analysis.Hints.AddRange(result.Warnings.Select(warning => $"JavaScript/TypeScript worker: {warning}").Take(3));
         }
 
         if (result.Packages.Count == 0 &&
@@ -1066,8 +1066,8 @@ public sealed class WorkspaceAnalysisService
             return;
         }
 
-        analysis.Hints.Add($"TypeScript worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.ReactComponents.Count:0} React components, {result.ReactHooks.Count:0} hooks, {result.ApiEndpoints.Count:0} API handlers.");
-        AddWorkerGenerationGuidance(analysis, "TypeScript worker", result.Capabilities, result.ScaffoldRecommendations);
+        analysis.Hints.Add($"JavaScript/TypeScript worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.ReactComponents.Count:0} React components, {result.ReactHooks.Count:0} hooks, {result.ApiEndpoints.Count:0} API handlers.");
+        AddWorkerGenerationGuidance(analysis, "JavaScript/TypeScript worker", result.Capabilities, result.ScaffoldRecommendations);
 
         foreach (var manager in result.PackageManagers)
         {

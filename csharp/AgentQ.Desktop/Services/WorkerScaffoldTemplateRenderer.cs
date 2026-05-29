@@ -15,6 +15,17 @@ public static class WorkerScaffoldTemplateRenderer
         var language = plan.Language.ToLowerInvariant();
         var framework = plan.Framework.ToLowerInvariant();
 
+        if (path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase))
+        {
+            return path.Contains(".test.", StringComparison.OrdinalIgnoreCase) ||
+                   path.Contains(".spec.", StringComparison.OrdinalIgnoreCase)
+                ? RenderJavaScriptTest(feature, context)
+                : path.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase)
+                    ? RenderReactJavaScriptComponent(feature)
+                    : RenderJavaScriptModule(feature);
+        }
+
         if (path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase))
         {
@@ -104,6 +115,51 @@ public static class WorkerScaffoldTemplateRenderer
           );
         }
         """;
+
+    private static string RenderReactJavaScriptComponent(WorkerScaffoldName feature) =>
+        $$"""
+        import { use{{feature.Pascal}} } from "./use{{feature.Pascal}}";
+
+        export function {{feature.Pascal}}View() {
+          const state = use{{feature.Pascal}}();
+
+          return (
+            <section aria-labelledby="{{feature.Kebab}}-title">
+              <h2 id="{{feature.Kebab}}-title">{{feature.Pascal}}</h2>
+              <p>{state.message}</p>
+            </section>
+          );
+        }
+        """;
+
+    private static string RenderJavaScriptModule(WorkerScaffoldName feature) =>
+        $$"""
+        export function create{{feature.Pascal}}State() {
+          return {
+            message: "{{feature.Pascal}} is ready"
+          };
+        }
+
+        export function use{{feature.Pascal}}() {
+          return create{{feature.Pascal}}State();
+        }
+        """;
+
+    private static string RenderJavaScriptTest(WorkerScaffoldName feature, WorkerScaffoldContext context)
+    {
+        var runner = context.UsesJest && !context.UsesVitest ? "@jest/globals" : "vitest";
+        return
+        $$"""
+        import { describe, expect, it } from "{{runner}}";
+        import { create{{feature.Pascal}}State } from "./use{{feature.Pascal}}";
+
+        describe("{{feature.Pascal}}", () => {
+          it("creates initial state", () => {
+            expect(create{{feature.Pascal}}State().message).toContain("{{feature.Pascal}}");
+          });
+        });
+        """;
+    }
 
     private static string RenderTypeScriptModule(WorkerScaffoldName feature) =>
         $$"""

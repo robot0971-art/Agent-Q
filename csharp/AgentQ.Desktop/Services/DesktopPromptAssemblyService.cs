@@ -8,6 +8,7 @@ public static class DesktopPromptAssemblyService
     [
         new ContextPrioritizationPromptRule(),
         new ToolRoutingPromptRule(),
+        new UserIntentPrecedencePromptRule(),
         new ExecutionStrategyPromptRule(),
         new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
@@ -153,6 +154,24 @@ public sealed class ToolRoutingPromptRule : IDesktopPromptRule
         builder.AppendLine("- Use semantic_search only when an embedding index is available and keyword/symbol search is likely too narrow.");
         builder.AppendLine("- Use MCP bridge tools only for project-configured external systems that native AgentQ tools cannot inspect directly.");
         builder.AppendLine("- Prefer read_file after search identifies a small candidate set; avoid broad file reads when a narrower search can locate the owner.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class UserIntentPrecedencePromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => true;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("User intent precedence:");
+        builder.AppendLine("- The user's latest explicit instruction overrides earlier assistant recommendations, inferred defaults, project guesses, and scaffold preferences.");
+        builder.AppendLine("- If you recommended TypeScript but the user asks for JavaScript, implement JavaScript files and commands. Do not continue with TypeScript unless the user changes back.");
+        builder.AppendLine("- For greenfield portfolio/homepage/website work, default to JavaScript unless the user explicitly asks for TypeScript.");
+        builder.AppendLine("- If the user corrects stack, framework, language, style, or scope, acknowledge internally and update the plan before touching files.");
+        builder.AppendLine("- Use defaults only for details the user has not specified. Never replace a specified choice with a default because it seems more modern or safer.");
+        builder.AppendLine("- When a user says 'not that', 'instead', 'use X', or similar correction, treat it as a hard constraint for the current task.");
         return builder.ToString().TrimEnd();
     }
 }

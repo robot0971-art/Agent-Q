@@ -270,6 +270,8 @@ public sealed class DesktopServiceTests
     [InlineData("README 문서 고쳐줘", DesktopTaskKind.Documentation)]
     [InlineData("구조를 분석해줘", DesktopTaskKind.Analysis)]
     [InlineData("프로젝트 구조 리팩터링해줘", DesktopTaskKind.Refactor)]
+    [InlineData("Build a portfolio website", DesktopTaskKind.Feature)]
+    [InlineData("Create a landing page", DesktopTaskKind.Feature)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -325,6 +327,28 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopPromptAssemblyService_AddsUserIntentPrecedenceRules()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("make the portfolio in JavaScript instead");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Contains("User intent precedence", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("latest explicit instruction overrides", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JavaScript files and commands", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not continue with TypeScript", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopAgentService_BuildsExplicitJavaScriptStackOverride()
+    {
+        var context = DesktopAgentService.BuildExplicitStackPreferenceContext("자바스크립트로 부탁");
+
+        Assert.Contains("JavaScript was explicitly requested", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(".js/.jsx", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not choose TypeScript", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesManualFallbackBeforeWorkspaceActions()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryManualFallback(
@@ -334,6 +358,61 @@ public sealed class DesktopServiceTests
             AgentWorkMode.Coding);
 
         Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopClipboardService_ReportsClipboardFailureWithoutThrowing()
+    {
+        var viewModel = new MainViewModel();
+        var service = new DesktopClipboardService(_ => throw new InvalidOperationException("clipboard is busy"));
+
+        var exception = Record.Exception(() => service.CopyMessage(
+            viewModel,
+            new ChatMessageViewModel
+            {
+                Role = "AgentQ",
+                Content = "hello"
+            }));
+
+        Assert.Null(exception);
+        Assert.Contains("Clipboard copy failed", viewModel.StatusText);
+    }
+
+    [Fact]
+    public void DesktopClipboardService_RetriesTransientClipboardFailure()
+    {
+        var viewModel = new MainViewModel();
+        var attempts = 0;
+        var service = new DesktopClipboardService(_ =>
+        {
+            attempts++;
+            if (attempts < 3)
+            {
+                throw new InvalidOperationException("clipboard is busy");
+            }
+        });
+
+        service.CopyText(viewModel, "hello", "copied");
+
+        Assert.Equal(3, attempts);
+        Assert.Equal("copied", viewModel.StatusText);
+    }
+
+    [Fact]
+    public void DesktopClipboardService_ReportsNothingToCopyForEmptyMessage()
+    {
+        var viewModel = new MainViewModel();
+        var service = new DesktopClipboardService(_ => throw new InvalidOperationException("should not copy"));
+
+        service.CopyMessage(
+            viewModel,
+            new ChatMessageViewModel
+            {
+                Role = "AgentQ",
+                Content = string.Empty
+            });
+
+        Assert.Equal("Nothing to copy", viewModel.StatusText);
     }
 
     [Fact]
@@ -1313,7 +1392,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("Vite", analysis.Framework);
         Assert.Contains("TypeScript", analysis.Framework);
         Assert.Contains("Playwright", analysis.Framework);
-        Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker indexed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("JavaScript/TypeScript worker indexed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.Hints, hint => hint.Contains("Playwright detected", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeyFiles, file => file == "frontend/playwright.config.ts");
         Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Playwright config", StringComparison.OrdinalIgnoreCase));
@@ -1322,7 +1401,7 @@ public sealed class DesktopServiceTests
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("component AppShell", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("hook useAppData", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("api POST /api/status", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker capability: create-react-feature", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("JavaScript/TypeScript worker capability: create-react-feature", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("frontend/src/App.tsx", StringComparison.OrdinalIgnoreCase) &&
                                                                 dependency.Contains("frontend/src/api.ts", StringComparison.OrdinalIgnoreCase));
     }
@@ -1572,6 +1651,25 @@ public sealed class DesktopServiceTests
         Assert.True(
             context.IndexOf("--- src/AuthLoginService.cs ---", StringComparison.Ordinal) <
             context.IndexOf("--- src/BillingReport.cs ---", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexer_TreatsAgentQOnlyWorkspaceAsGreenfieldBootstrap()
+    {
+        var root = CreateTempDirectory();
+        var replayDirectory = Path.Combine(root, ".agentq", "replay");
+        Directory.CreateDirectory(replayDirectory);
+        await File.WriteAllTextAsync(Path.Combine(replayDirectory, "run.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(root, ".agentq", "events.jsonl"), "{}");
+
+        var context = await new WorkspaceIndexer().BuildContextAsync(root, "Build a portfolio website", CancellationToken.None);
+
+        Assert.Contains("No user project files were found", context);
+        Assert.Contains("Empty-workspace bootstrap guidance", context);
+        Assert.Contains("Vite + React + JavaScript", context);
+        Assert.Contains("JavaScript is requested after TypeScript was recommended", context);
+        Assert.Contains("Use TypeScript", context);
+        Assert.DoesNotContain(".agentq", context, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -5252,6 +5350,47 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         var hook = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "user-dashboard", "useUserDashboard.ts"));
         Assert.Contains("export function UserDashboardView", view);
         Assert.Contains("export function useUserDashboard", hook);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_CreatesJavaScriptReactFeatureFiles()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Create portfolio homepage",
+            "javascript",
+            "React",
+            new WorkerScaffoldRecommendation
+            {
+                Name = "React JavaScript feature",
+                Description = "Create React feature in JavaScript.",
+                Files =
+                [
+                    "src/features/<feature>/<Feature>View.jsx",
+                    "src/features/<feature>/use<Feature>.js",
+                    "src/features/<feature>/<Feature>.test.js"
+                ],
+                VerificationCommands = ["npm test"]
+            });
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Portfolio Home"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("src/features/portfolio-home/PortfolioHomeView.jsx", result.CreatedFiles);
+        Assert.Contains("src/features/portfolio-home/usePortfolioHome.js", result.CreatedFiles);
+        Assert.DoesNotContain(result.CreatedFiles, file => file.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
+                                                           file.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase));
+        var view = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "portfolio-home", "PortfolioHomeView.jsx"));
+        var hook = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "portfolio-home", "usePortfolioHome.js"));
+        Assert.Contains("export function PortfolioHomeView", view);
+        Assert.Contains("export function usePortfolioHome", hook);
+        Assert.DoesNotContain("interface", hook, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
