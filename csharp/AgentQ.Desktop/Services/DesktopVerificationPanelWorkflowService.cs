@@ -11,6 +11,8 @@ public sealed class DesktopVerificationPanelWorkflowService(
 
     public bool HasFailedVerification => _lastFailedVerificationPlan != null;
 
+    public VerificationFailureAnalysis? LastVerificationFailureAnalysis => _lastVerificationFailureAnalysis;
+
     public string LastFailureSignature { get; private set; } = string.Empty;
 
     public AgentVerificationPlan? CreateRetryPlan()

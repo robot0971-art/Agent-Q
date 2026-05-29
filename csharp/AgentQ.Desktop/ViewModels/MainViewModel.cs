@@ -325,6 +325,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApprovePlan)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
                 RefreshRunSummary();
             }
         }
@@ -728,6 +729,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanExecuteWorkerScaffold => CurrentWorkerExecutionContext?.State == WorkerExecutionState.Ready && !IsBusy;
 
+    public bool CanRunWorkerRepair => CurrentWorkerExecutionContext?.State == WorkerExecutionState.RepairRequired && !IsBusy;
+
     public WorkerExecutionContext? CurrentWorkerExecutionContext
     {
         get => _currentWorkerExecutionContext;
@@ -1008,6 +1011,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? "Plan blocked by validation"
             : context.StatusMessage;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
     }
 
     public void ApprovePlan()
@@ -1029,6 +1033,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusText = "Plan approved";
         AddLog("Plan approved");
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
     }
 
     public void ClearPlanApprovalPreview()
@@ -1039,6 +1044,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PlanApprovalStateText = "No approval needed";
         PlanApprovalAccentBrush = "#B7C4D1";
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
     }
 
     private void FileChangesOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

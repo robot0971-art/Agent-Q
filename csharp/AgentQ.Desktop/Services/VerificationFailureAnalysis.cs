@@ -23,4 +23,15 @@ public sealed class VerificationFailureAnalysis
             return $"{Title}{Environment.NewLine}{Summary}{Environment.NewLine}Next: {SuggestedNextStep}{evidence}";
         }
     }
+
+    public List<ErrorLocation> ErrorLocations { get; set; } = [];
+}
+
+public sealed class ErrorLocation
+{
+    public string FilePath { get; set; } = string.Empty;
+    public int Line { get; set; }
+    public int Column { get; set; }
+    public string ErrorCode { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }

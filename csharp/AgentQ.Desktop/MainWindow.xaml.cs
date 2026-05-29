@@ -109,6 +109,8 @@ public partial class MainWindow : Window
             MarkPlanItemDone = () => MarkPlanItemDone_OnClick(this, new RoutedEventArgs()),
             ApprovePlan = () => ApprovePlan_OnClick(this, new RoutedEventArgs()),
             ExecuteScaffoldAsync = ExecuteScaffoldAsync,
+            ExecuteScaffoldAndVerifyAsync = ExecuteScaffoldAndVerifyAsync,
+            RunWorkerRepairAsync = RunWorkerRepairAsync,
             SaveCheckpoint = () => SaveCheckpoint_OnClick(this, new RoutedEventArgs()),
             LoadCheckpoint = () => LoadCheckpoint_OnClick(this, new RoutedEventArgs()),
             ResumeCheckpoint = () => ResumeCheckpoint_OnClick(this, new RoutedEventArgs()),
@@ -397,6 +399,21 @@ public partial class MainWindow : Window
     private async Task ExecuteScaffoldAsync()
     {
         await _planCommandService.ExecuteWorkerScaffoldAsync(_viewModel);
+    }
+
+    private async Task ExecuteScaffoldAndVerifyAsync()
+    {
+        await _planCommandService.ExecuteWorkerScaffoldAndVerifyAsync(
+            _viewModel,
+            plan => _verificationCommandService.RunVerificationPlanAsync(_viewModel, plan));
+    }
+
+    private async Task RunWorkerRepairAsync()
+    {
+        await _planCommandService.RunWorkerRepairAsync(
+            _viewModel,
+            SendCurrentMessageAsync,
+            plan => _verificationCommandService.RunVerificationPlanAsync(_viewModel, plan));
     }
 
     private async void MarkDoneAndContinue_OnClick(object sender, RoutedEventArgs e)

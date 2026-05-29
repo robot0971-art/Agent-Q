@@ -29,6 +29,11 @@ public sealed class MultiAgentRolePlan
 
         return $"Multi-agent role plan:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
     }
+
+    public IReadOnlyList<AgentRole> ResolveRoles()
+    {
+        return Steps.Select(step => AgentRoleCatalog.ForRole(step.Role)).ToList();
+    }
 }
 
 public sealed class MultiAgentRoleStep

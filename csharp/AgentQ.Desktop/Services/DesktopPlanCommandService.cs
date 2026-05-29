@@ -97,19 +97,19 @@ public sealed class DesktopPlanCommandService(
         viewModel.ApprovePlan();
     }
 
-    public async Task ExecuteWorkerScaffoldAsync(MainViewModel viewModel)
+    public async Task<WorkerScaffoldExecutionResult?> ExecuteWorkerScaffoldAsync(MainViewModel viewModel)
     {
         if (viewModel.IsBusy)
         {
             viewModel.StatusText = "AgentQ is busy";
-            return;
+            return null;
         }
 
         var context = viewModel.CurrentWorkerExecutionContext;
         if (context == null)
         {
             viewModel.StatusText = "No worker plan to execute";
-            return;
+            return null;
         }
 
         viewModel.IsBusy = true;
@@ -150,10 +150,128 @@ public sealed class DesktopPlanCommandService(
                 result.Succeeded ? "Worker scaffold executed" : "Worker scaffold failed",
                 FormatScaffoldResult(result));
             viewModel.AddLog(FormatScaffoldResult(result));
+            return result;
         }
         finally
         {
             viewModel.IsBusy = false;
+        }
+    }
+
+    public async Task ExecuteWorkerScaffoldAndVerifyAsync(
+        MainViewModel viewModel,
+        Func<AgentVerificationPlan, Task<DesktopVerificationWorkflowResult?>> runVerificationPlanAsync)
+    {
+        var result = await ExecuteWorkerScaffoldAsync(viewModel);
+        var context = viewModel.CurrentWorkerExecutionContext;
+        if (result?.Succeeded != true || context == null)
+        {
+            return;
+        }
+
+        var verificationPlan = context.VerificationPlans.FirstOrDefault();
+        if (verificationPlan == null)
+        {
+            viewModel.StatusText = "Worker scaffold executed; no verification command found";
+            viewModel.AddRunStep(
+                AgentRunState.Done,
+                "Worker scaffold verification skipped",
+                "No verification command was available.");
+            return;
+        }
+
+        viewModel.AddRunStep(
+            AgentRunState.Verifying,
+            "Worker scaffold verification",
+            verificationPlan.Command);
+        var verificationResult = await runVerificationPlanAsync(verificationPlan);
+        if (verificationResult == null)
+        {
+            return;
+        }
+
+        workerExecutionPipeline.ApplyVerificationResult(context, verificationResult);
+        viewModel.SetWorkerExecutionContext(context);
+        if (context.State == WorkerExecutionState.RepairRequired)
+        {
+            var repairPrompt = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
+            if (!string.IsNullOrWhiteSpace(repairPrompt))
+            {
+                viewModel.InputText = repairPrompt;
+                viewModel.AddRunStep(
+                    AgentRunState.Planning,
+                    "Worker repair prompt prepared",
+                    context.RepairPlan?.Summary);
+            }
+        }
+    }
+
+    public async Task RunWorkerRepairAsync(
+        MainViewModel viewModel,
+        Func<bool, Task> sendCurrentMessageAsync,
+        Func<AgentVerificationPlan, Task<DesktopVerificationWorkflowResult?>> runVerificationPlanAsync)
+    {
+        if (viewModel.IsBusy)
+        {
+            viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var context = viewModel.CurrentWorkerExecutionContext;
+        if (context?.RepairPlan == null || context.State != WorkerExecutionState.RepairRequired)
+        {
+            viewModel.StatusText = "No worker repair is ready";
+            return;
+        }
+
+        var prompt = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            viewModel.StatusText = "Worker repair prompt is empty";
+            return;
+        }
+
+        viewModel.InputText = prompt;
+        viewModel.AddRunStep(
+            AgentRunState.Planning,
+            "Worker repair started",
+            context.RepairPlan.Summary);
+        await sendCurrentMessageAsync(true);
+        if (viewModel.IsBusy)
+        {
+            return;
+        }
+
+        var verificationPlan = context.VerificationPlans.FirstOrDefault();
+        if (verificationPlan == null)
+        {
+            viewModel.StatusText = "Worker repair completed; no verification command found";
+            viewModel.AddRunStep(
+                AgentRunState.Done,
+                "Worker repair verification skipped",
+                "No verification command was available.");
+            return;
+        }
+
+        viewModel.AddRunStep(
+            AgentRunState.Verifying,
+            "Worker repair verification",
+            verificationPlan.Command);
+        var verificationResult = await runVerificationPlanAsync(verificationPlan);
+        if (verificationResult == null)
+        {
+            return;
+        }
+
+        workerExecutionPipeline.ApplyVerificationResult(context, verificationResult);
+        viewModel.SetWorkerExecutionContext(context);
+        if (context.State == WorkerExecutionState.RepairRequired)
+        {
+            viewModel.InputText = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
+            viewModel.AddRunStep(
+                AgentRunState.Planning,
+                "Worker repair prompt prepared",
+                context.RepairPlan?.Summary);
         }
     }
 

@@ -47,3 +47,44 @@ public static class DesktopTaskClassifier
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
 }
+
+public enum TaskComplexity
+{
+    Simple,
+    Moderate,
+    Complex
+}
+
+public static class DesktopTaskComplexityEstimator
+{
+    public static TaskComplexity EstimateComplexity(string userText)
+    {
+        var text = userText.ToLowerInvariant();
+        
+        // Complex signals: references to multiple features, files, or multi-step requests
+        var isComplex = text.Contains("and", StringComparison.OrdinalIgnoreCase) && 
+                        (text.Contains("then", StringComparison.OrdinalIgnoreCase) || 
+                         text.Contains("finally", StringComparison.OrdinalIgnoreCase)) ||
+                        text.Contains("multiple", StringComparison.OrdinalIgnoreCase) ||
+                        text.Contains("refactor everything", StringComparison.OrdinalIgnoreCase) ||
+                        text.Contains("oauth", StringComparison.OrdinalIgnoreCase) ||
+                        text.Contains("database", StringComparison.OrdinalIgnoreCase);
+
+        if (isComplex)
+        {
+            return TaskComplexity.Complex;
+        }
+
+        var isModerate = text.Contains("add", StringComparison.OrdinalIgnoreCase) || 
+                         text.Contains("implement", StringComparison.OrdinalIgnoreCase) || 
+                         text.Contains("refactor", StringComparison.OrdinalIgnoreCase) || 
+                         text.Contains("fix", StringComparison.OrdinalIgnoreCase);
+
+        if (isModerate)
+        {
+            return TaskComplexity.Moderate;
+        }
+
+        return TaskComplexity.Simple;
+    }
+}

@@ -14,6 +14,7 @@ public sealed class DesktopAutoFixWorkflowService(
     private int _pendingAutoFixNextAttempt;
     private int _pendingAutoFixMaxAttempts;
     private AutoFixLoopGuardState _pendingAutoFixLoopGuardState = AutoFixLoopGuardState.Empty;
+    private readonly RecoveryStrategyRouter _recoveryRouter = new();
 
     public Task RunAsync(
         MainViewModel viewModel,
@@ -145,7 +146,20 @@ public sealed class DesktopAutoFixWorkflowService(
         }
 
         var retryPlan = verificationPanelWorkflowService.CreateRetryPlan();
-        var fixPrompt = verificationPanelWorkflowService.BuildFixPrompt();
+        var failureAnalysis = verificationPanelWorkflowService.LastVerificationFailureAnalysis;
+        var fixPrompt = verificationPanelWorkflowService.BuildFixPrompt() ?? string.Empty;
+
+        if (failureAnalysis != null)
+        {
+            var dummyResult = new TaskStepResult();
+            var strategy = _recoveryRouter.SelectStrategy(failureAnalysis, dummyResult, startAttempt);
+            fixPrompt = $"{strategy.Prompt}\n\nOriginal Fix Instruction:\n{fixPrompt}";
+            if (strategy.AdditionalContextFiles.Count > 0)
+            {
+                fixPrompt += $"\n\nPlease review these files which are related to the failure:\n- {string.Join("\n- ", strategy.AdditionalContextFiles)}";
+            }
+        }
+
         if (retryPlan == null || string.IsNullOrWhiteSpace(fixPrompt))
         {
             viewModel.StatusText = startAttempt == 1

@@ -5591,6 +5591,206 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public async Task DesktopPlanCommandService_ExecutesWorkerScaffoldAndAppliesVerificationResult()
+    {
+        var root = CreateTempDirectory();
+        var pipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = root,
+            CurrentWorkerExecutionContext = pipeline.Begin(
+                new WorkerPlan
+                {
+                    Goal = "Search page",
+                    Language = "typescript",
+                    Framework = "React",
+                    Steps =
+                    [
+                        new WorkerPlanStep
+                        {
+                            Kind = WorkerPlanStepKind.CreateFile,
+                            Path = "src/features/<feature>/<Feature>View.tsx"
+                        }
+                    ],
+                    VerificationCommands = ["npm test"]
+                },
+                root)
+        };
+        viewModel.SetWorkerExecutionContext(viewModel.CurrentWorkerExecutionContext);
+        var service = CreateDesktopPlanCommandService(pipeline);
+        var verificationRan = false;
+
+        await service.ExecuteWorkerScaffoldAndVerifyAsync(
+            viewModel,
+            plan =>
+            {
+                verificationRan = true;
+                Assert.Equal("npm test", plan.Command);
+                return Task.FromResult<DesktopVerificationWorkflowResult?>(new DesktopVerificationWorkflowResult
+                {
+                    Plan = plan,
+                    RunResult = new VerificationRunResult { ExitCode = 0, StandardOutput = "ok" },
+                    Succeeded = true,
+                    RunState = AgentRunState.Done,
+                    RunStepTitle = "Verification passed",
+                    RunStepDetail = "ok",
+                    StatusText = "Verification passed",
+                    LogText = "ok"
+                });
+            });
+
+        Assert.True(verificationRan);
+        Assert.Equal(WorkerExecutionState.Succeeded, viewModel.CurrentWorkerExecutionContext!.State);
+        Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker scaffold verification");
+    }
+
+    [Fact]
+    public async Task DesktopPlanCommandService_PreparesWorkerRepairPromptAfterFailedVerification()
+    {
+        var root = CreateTempDirectory();
+        var pipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = root,
+            CurrentWorkerExecutionContext = pipeline.Begin(
+                new WorkerPlan
+                {
+                    Goal = "Search page",
+                    Language = "typescript",
+                    Framework = "React",
+                    Steps =
+                    [
+                        new WorkerPlanStep
+                        {
+                            Kind = WorkerPlanStepKind.CreateFile,
+                            Path = "src/features/<feature>/<Feature>View.tsx"
+                        }
+                    ],
+                    VerificationCommands = ["npm test"]
+                },
+                root)
+        };
+        viewModel.SetWorkerExecutionContext(viewModel.CurrentWorkerExecutionContext);
+        var service = CreateDesktopPlanCommandService(pipeline);
+
+        await service.ExecuteWorkerScaffoldAndVerifyAsync(
+            viewModel,
+            plan => Task.FromResult<DesktopVerificationWorkflowResult?>(new DesktopVerificationWorkflowResult
+            {
+                Plan = plan,
+                RunResult = new VerificationRunResult { ExitCode = 1, StandardOutput = "button hidden" },
+                FailureAnalysis = new VerificationFailureAnalysis
+                {
+                    Kind = VerificationFailureKind.TestFailure,
+                    Title = "Tests failed",
+                    Summary = "The scaffolded UI test failed.",
+                    SuggestedNextStep = "Inspect the generated component.",
+                    Evidence = ["SearchPageView did not render the expected button."]
+                },
+                FailureSummary = "button hidden",
+                RunState = AgentRunState.Failed,
+                RunStepTitle = "Verification failed",
+                RunStepDetail = "button hidden",
+                StatusText = "Verification failed",
+                LogText = "button hidden"
+            }));
+
+        Assert.Equal(WorkerExecutionState.RepairRequired, viewModel.CurrentWorkerExecutionContext!.State);
+        Assert.NotNull(viewModel.CurrentWorkerExecutionContext.RepairPlan);
+        Assert.Contains(viewModel.CurrentWorkerExecutionContext.RepairPlan!.Evidence, item =>
+            item.Contains("SearchPageView did not render", StringComparison.Ordinal));
+        Assert.Contains("Repair the failed worker scaffold execution.", viewModel.InputText);
+        Assert.Contains("Created:", viewModel.InputText);
+        Assert.Contains("Rerun verification:", viewModel.InputText);
+        Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker repair prompt prepared");
+    }
+
+    [Fact]
+    public async Task DesktopPlanCommandService_RunsWorkerRepairAndAppliesVerificationResult()
+    {
+        var root = CreateTempDirectory();
+        var pipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var context = pipeline.Begin(
+            new WorkerPlan
+            {
+                Goal = "Search page",
+                Language = "typescript",
+                Framework = "React",
+                Steps =
+                [
+                    new WorkerPlanStep
+                    {
+                        Kind = WorkerPlanStepKind.CreateFile,
+                        Path = "src/features/<feature>/<Feature>View.tsx"
+                    }
+                ],
+                VerificationCommands = ["npm test"]
+            },
+            root);
+        context.State = WorkerExecutionState.RepairRequired;
+        context.RepairPlan = new WorkerRepairPlan
+        {
+            Goal = "Repair Search page",
+            Language = "typescript",
+            Framework = "React",
+            Summary = "The scaffolded UI test failed.",
+            FailureKind = "TestFailure",
+            SuggestedNextStep = "Inspect generated UI.",
+            VerificationCommands = ["npm test"],
+            Evidence = ["Button was hidden."]
+        };
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = root,
+            CurrentWorkerExecutionContext = context
+        };
+        viewModel.SetWorkerExecutionContext(context);
+        var service = CreateDesktopPlanCommandService(pipeline);
+        var sent = false;
+        var verified = false;
+
+        await service.RunWorkerRepairAsync(
+            viewModel,
+            _ =>
+            {
+                sent = true;
+                Assert.Contains("Repair the failed worker scaffold execution.", viewModel.InputText);
+                return Task.CompletedTask;
+            },
+            plan =>
+            {
+                verified = true;
+                Assert.Equal("npm test", plan.Command);
+                return Task.FromResult<DesktopVerificationWorkflowResult?>(new DesktopVerificationWorkflowResult
+                {
+                    Plan = plan,
+                    RunResult = new VerificationRunResult { ExitCode = 0, StandardOutput = "ok" },
+                    Succeeded = true,
+                    RunState = AgentRunState.Done,
+                    RunStepTitle = "Verification passed",
+                    RunStepDetail = "ok",
+                    StatusText = "Verification passed",
+                    LogText = "ok"
+                });
+            });
+
+        Assert.True(sent);
+        Assert.True(verified);
+        Assert.Equal(WorkerExecutionState.Succeeded, viewModel.CurrentWorkerExecutionContext!.State);
+        Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker repair started");
+        Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker repair verification");
+    }
+
+    [Fact]
     public void ToolPermissionPolicy_ReadonlyBlocksProjectWrites()
     {
         var assessment = new ToolPermissionAssessment
@@ -5968,6 +6168,30 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     private sealed class CapturingLlmProviderFactory(ILlmProvider provider) : IDesktopLlmProviderFactory
     {
         public ILlmProvider CreateProvider(ProviderConfiguration config) => provider;
+    }
+
+    private static DesktopPlanCommandService CreateDesktopPlanCommandService(WorkerExecutionPipeline pipeline)
+    {
+        var approvalPipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var checkpointWorkflow = new DesktopPlanCheckpointWorkflowService(
+            new DesktopPlanWorkflowService(),
+            new DesktopCheckpointWorkflowService(new AgentCheckpointService(), new DesktopGitService()),
+            new DesktopPlanApprovalPreviewService(
+                new AgentPlanWorkerPlanAdapter(),
+                approvalPipeline));
+
+        return new DesktopPlanCommandService(
+            checkpointWorkflow,
+            new DesktopWorkspaceContextWorkflowService(
+                new WorkspaceAnalysisService(),
+                new ProjectAgentConfigService(),
+                new AgentSessionSummaryService(),
+                checkpointWorkflow,
+                new DesktopLearningSuggestionService()),
+            pipeline);
     }
 
     private static string CreateTempDirectory()

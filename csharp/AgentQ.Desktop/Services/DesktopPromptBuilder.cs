@@ -62,6 +62,63 @@ public static class DesktopPromptBuilder
         return builder.ToString().TrimEnd();
     }
 
+    public static string BuildWorkerRepairPrompt(WorkerExecutionContext context)
+    {
+        var repair = context.RepairPlan;
+        if (repair == null)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine("Repair the failed worker scaffold execution.");
+        builder.AppendLine("Inspect the generated and wired files before editing. Keep changes scoped to the worker plan and rerun the listed verification command.");
+        builder.AppendLine();
+        builder.AppendLine($"Original goal: {context.Plan.Goal}");
+        builder.AppendLine($"Language: {context.Plan.Language}");
+        builder.AppendLine($"Framework: {context.Plan.Framework}");
+        builder.AppendLine($"Failure kind: {repair.FailureKind}");
+        builder.AppendLine($"Failure summary: {repair.Summary}");
+        builder.AppendLine($"Suggested next step: {repair.SuggestedNextStep}");
+
+        if (context.ScaffoldResult != null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Scaffold result:");
+            foreach (var file in context.ScaffoldResult.CreatedFiles.Take(12))
+            {
+                builder.AppendLine($"- Created: {file}");
+            }
+
+            foreach (var change in context.ScaffoldResult.WiringChanges.Take(8))
+            {
+                builder.AppendLine($"- Wired: {change.Path} - {change.Summary}");
+            }
+        }
+
+        if (repair.Evidence.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Verification evidence:");
+            foreach (var item in repair.Evidence.Take(12))
+            {
+                builder.AppendLine($"- {item}");
+            }
+        }
+
+        if (repair.VerificationCommands.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Rerun verification:");
+            foreach (var command in repair.VerificationCommands)
+            {
+                builder.AppendLine($"- {command}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     public static string BuildPlannerPrompt(string goal)
     {
         var builder = new StringBuilder();

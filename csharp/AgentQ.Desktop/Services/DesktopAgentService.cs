@@ -63,6 +63,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly WorkspaceSymbolIndexService _symbolIndexService;
     private readonly WorkspaceAnalysisService _workspaceAnalysisService;
     private readonly List<ChatMessage> _messages = [];
+    private readonly ConversationCompactor _compactor = new();
+    private readonly TaskDecomposer _taskDecomposer = new();
+    private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
         IHttpClientFactory httpClientFactory,
@@ -86,6 +89,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _toolReplayService = toolReplayService;
         _symbolIndexService = symbolIndexService;
         _workspaceAnalysisService = workspaceAnalysisService;
+        
+        _taskExecutor = new TaskExecutor(
+            httpClientFactory,
+            linkContentFetcher,
+            projectMemoryService,
+            workspaceIndexer,
+            embeddingIndexStore,
+            embeddingClientFactory,
+            fileMutationSnapshotService,
+            toolReplayService,
+            symbolIndexService,
+            workspaceAnalysisService);
     }
 
     public async Task<string> SendAsync(
@@ -97,7 +112,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         Action<string>? onDelta = null,
         IPermissionEnforcer? permissionEnforcer = null,
         DesktopToolCallbacks? toolCallbacks = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool enableTaskDecomposition = false)
     {
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Run started", "Preparing provider and workspace context.");
         var provider = CreateProvider(config);
@@ -140,6 +156,25 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 string.Join(", ", touchedLessons.Select(lesson => string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title)));
         }
 
+        if (enableTaskDecomposition && 
+            DesktopTaskComplexityEstimator.EstimateComplexity(userText) == TaskComplexity.Complex &&
+            (taskProfile.Kind == DesktopTaskKind.Feature || taskProfile.Kind == DesktopTaskKind.Refactor || taskProfile.Kind == DesktopTaskKind.BugFix))
+        {
+            toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Decomposing task", "Task classified as complex. Splitting into steps...");
+            var workspaceAnalysis = await _workspaceAnalysisService.AnalyzeAsync(effectiveWorkspaceRoot, ct);
+            var plan = await _taskDecomposer.DecomposeAsync(userText, workspaceAnalysis, provider, config, ct);
+            
+            var runResult = await _taskExecutor.ExecuteAsync(
+                plan,
+                config,
+                effectiveWorkspaceRoot,
+                permissionEnforcer ?? new DenyByDefaultPermissionEnforcer(),
+                toolCallbacks,
+                ct);
+
+            return $"Task Decomposition Execution Completed. All Succeeded: {runResult.AllSucceeded}.";
+        }
+
         _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
         var builder = new StringBuilder();
         var enforcer = permissionEnforcer ?? new DenyByDefaultPermissionEnforcer();
@@ -168,6 +203,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             }
 
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Generating, $"Model turn {step}", "Waiting for assistant output or tool calls.");
+            
+            // Compact the conversation to avoid blowing context window on long runs
+            var compactedList = _compactor.Compact(_messages, maxEstimatedTokens: 80_000);
+            _messages.Clear();
+            _messages.AddRange(compactedList);
+
             var response = await GenerateAssistantTurnAsync(
                 provider,
                 config,

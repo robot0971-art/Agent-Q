@@ -13,6 +13,13 @@ public sealed class VerificationFailureClassifier
 
     public VerificationFailureAnalysis Analyze(AgentVerificationPlan plan, VerificationRunResult result, string workspaceRoot)
     {
+        var analysis = AnalyzeInternal(plan, result, workspaceRoot);
+        analysis.ErrorLocations = ExtractErrorLocations(result.CombinedOutput);
+        return analysis;
+    }
+
+    private VerificationFailureAnalysis AnalyzeInternal(AgentVerificationPlan plan, VerificationRunResult result, string workspaceRoot)
+    {
         var output = result.CombinedOutput;
         var evidence = ExtractEvidence(output)
             .Concat(string.IsNullOrWhiteSpace(workspaceRoot)
@@ -98,6 +105,33 @@ public sealed class VerificationFailureClassifier
             "The verification command failed, but no known failure pattern matched confidently.",
             "Read the output, inspect relevant files, and classify the cause before editing.",
             evidence);
+    }
+
+    private static List<ErrorLocation> ExtractErrorLocations(string output)
+    {
+        var locations = new List<ErrorLocation>();
+        if (string.IsNullOrWhiteSpace(output)) return locations;
+
+        // Pattern for C# errors, e.g.: File.cs(12,5): error CS1234: Message
+        var csPattern = new Regex(@"(?<file>[a-zA-Z0-9_\-\.\/\\]+\.cs)\((?<line>\d+),(?<col>\d+)\):\s+error\s+(?<code>CS\d+|MSB\d+):\s+(?<msg>[^\r\n]*)", RegexOptions.IgnoreCase);
+        var matches = csPattern.Matches(output);
+
+        foreach (Match match in matches)
+        {
+            if (int.TryParse(match.Groups["line"].Value, out var line) &&
+                int.TryParse(match.Groups["col"].Value, out var col))
+            {
+                locations.Add(new ErrorLocation
+                {
+                    FilePath = match.Groups["file"].Value,
+                    Line = line,
+                    Column = col,
+                    ErrorCode = match.Groups["code"].Value,
+                    Message = match.Groups["msg"].Value.Trim()
+                });
+            }
+        }
+        return locations;
     }
 
     public VerificationFailureAnalysis AnalyzeException(Exception ex)

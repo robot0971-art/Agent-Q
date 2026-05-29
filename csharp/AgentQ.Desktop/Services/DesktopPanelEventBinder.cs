@@ -40,6 +40,8 @@ public sealed class DesktopPanelEventBinder
         planPanel.MarkPlanItemDoneRequested += (_, _) => callbacks.MarkPlanItemDone();
         planPanel.ApprovePlanRequested += (_, _) => callbacks.ApprovePlan();
         planPanel.ExecuteScaffoldRequested += async (_, _) => await callbacks.ExecuteScaffoldAsync();
+        planPanel.ExecuteScaffoldAndVerifyRequested += async (_, _) => await callbacks.ExecuteScaffoldAndVerifyAsync();
+        planPanel.RunWorkerRepairRequested += async (_, _) => await callbacks.RunWorkerRepairAsync();
         planPanel.SaveCheckpointRequested += (_, _) => callbacks.SaveCheckpoint();
         planPanel.LoadCheckpointRequested += (_, _) => callbacks.LoadCheckpoint();
         planPanel.ResumeCheckpointRequested += (_, _) => callbacks.ResumeCheckpoint();
@@ -116,6 +118,8 @@ public sealed class DesktopPanelEventCallbacks
     public required Action MarkPlanItemDone { get; init; }
     public required Action ApprovePlan { get; init; }
     public required Func<Task> ExecuteScaffoldAsync { get; init; }
+    public required Func<Task> ExecuteScaffoldAndVerifyAsync { get; init; }
+    public required Func<Task> RunWorkerRepairAsync { get; init; }
     public required Action SaveCheckpoint { get; init; }
     public required Action LoadCheckpoint { get; init; }
     public required Action ResumeCheckpoint { get; init; }

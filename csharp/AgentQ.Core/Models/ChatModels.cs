@@ -33,6 +33,16 @@ public class ChatMessage
     public List<ChatContent> Content { get; set; } = new();
 
     /// <summary>
+    /// 압축 여부
+    /// </summary>
+    public bool IsCompacted { get; set; }
+
+    /// <summary>
+    /// 압축 요약본
+    /// </summary>
+    public string? CompactionSummary { get; set; }
+
+    /// <summary>
     /// 시스템 텍스트 메시지 생성
     /// </summary>
     /// <param name="text">텍스트 내용</param>

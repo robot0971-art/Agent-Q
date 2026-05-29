@@ -14,6 +14,8 @@ public partial class PlanPanel : System.Windows.Controls.UserControl
     public event EventHandler? MarkPlanItemDoneRequested;
     public event EventHandler? ApprovePlanRequested;
     public event EventHandler? ExecuteScaffoldRequested;
+    public event EventHandler? ExecuteScaffoldAndVerifyRequested;
+    public event EventHandler? RunWorkerRepairRequested;
     public event EventHandler? SaveCheckpointRequested;
     public event EventHandler? LoadCheckpointRequested;
     public event EventHandler? ResumeCheckpointRequested;
@@ -43,6 +45,16 @@ public partial class PlanPanel : System.Windows.Controls.UserControl
     private void ExecuteScaffold_OnClick(object sender, RoutedEventArgs e)
     {
         ExecuteScaffoldRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ExecuteScaffoldAndVerify_OnClick(object sender, RoutedEventArgs e)
+    {
+        ExecuteScaffoldAndVerifyRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RunWorkerRepair_OnClick(object sender, RoutedEventArgs e)
+    {
+        RunWorkerRepairRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void SaveCheckpoint_OnClick(object sender, RoutedEventArgs e)

@@ -143,6 +143,8 @@ public sealed class WorkerExecutionPipeline(
             Summary = verificationResult.FailureAnalysis?.Summary ?? verificationResult.FailureSummary,
             FailureSignature = signature,
             FailureKind = verificationResult.FailureAnalysis?.Kind.ToString() ?? "Unknown",
+            SuggestedNextStep = verificationResult.FailureAnalysis?.SuggestedNextStep ?? "Inspect the failed verification output before editing.",
+            Evidence = verificationResult.FailureAnalysis?.Evidence.ToList() ?? [],
             VerificationCommands = plan.VerificationCommands.ToList(),
             Risks = ["Repair should stay scoped to the failed verification evidence."]
         };

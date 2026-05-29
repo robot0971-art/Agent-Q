@@ -13,6 +13,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Button Content="Create plan"
                     Grid.Row="0"
@@ -66,10 +67,23 @@
             <Button Content="Execute scaffold"
                     Grid.Row="3"
                     Grid.Column="0"
-                    Grid.ColumnSpan="3"
+                    Grid.ColumnSpan="2"
                     Style="{DynamicResource PlanButton}"
                     Click="ExecuteScaffold_OnClick"
                     IsEnabled="{Binding CanExecuteWorkerScaffold}" />
+            <Button Content="Scaffold+verify"
+                    Grid.Row="3"
+                    Grid.Column="2"
+                    Style="{DynamicResource PlanButton}"
+                    Click="ExecuteScaffoldAndVerify_OnClick"
+                    IsEnabled="{Binding CanExecuteWorkerScaffold}" />
+            <Button Content="Run repair"
+                    Grid.Row="4"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="3"
+                    Style="{DynamicResource PlanButton}"
+                    Click="RunWorkerRepair_OnClick"
+                    IsEnabled="{Binding CanRunWorkerRepair}" />
         </Grid>
         <Grid>
             <Grid.RowDefinitions>

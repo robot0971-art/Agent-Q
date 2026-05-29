@@ -22,6 +22,10 @@ public sealed class WorkerRepairPlan : WorkerPlan
     public string FailureSignature { get; set; } = string.Empty;
 
     public string FailureKind { get; set; } = string.Empty;
+
+    public string SuggestedNextStep { get; set; } = string.Empty;
+
+    public List<string> Evidence { get; set; } = [];
 }
 
 public sealed class WorkerPlanStep
