@@ -11,7 +11,7 @@ using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopAgentService
+public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 {
     private const string SystemPrompt =
         """
@@ -636,17 +636,22 @@ public sealed class DesktopAgentService
         }
     }
 
-    private ILlmProvider CreateProvider(ProviderConfiguration config)
+    public ILlmProvider CreateProvider(ProviderConfiguration config)
     {
         ILlmProvider provider = config.Provider.ToLowerInvariant() switch
         {
-            "openai" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey)),
-            "opencode-go" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), name: "opencode-go"),
+            "openai" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o")),
+            "opencode-go" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o"), name: "opencode-go"),
             "anthropic" => new AnthropicProvider(CreateAnthropicClient(config.BaseUrl), config.ApiKey),
-            _ => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), name: config.Provider)
+            _ => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o"), name: config.Provider)
         };
 
         return new ResilientLlmProvider(provider);
+    }
+
+    private static string ResolveModel(ProviderConfiguration config, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(config.Model) ? fallback : config.Model;
     }
 
     private HttpClient CreateAnthropicClient(string baseUrl)

@@ -107,6 +107,8 @@ public partial class MainWindow : Window
             CreatePlan = () => CreatePlan_OnClick(this, new RoutedEventArgs()),
             ContinuePlanItem = () => ContinuePlanItem_OnClick(this, new RoutedEventArgs()),
             MarkPlanItemDone = () => MarkPlanItemDone_OnClick(this, new RoutedEventArgs()),
+            ApprovePlan = () => ApprovePlan_OnClick(this, new RoutedEventArgs()),
+            ExecuteScaffoldAsync = ExecuteScaffoldAsync,
             SaveCheckpoint = () => SaveCheckpoint_OnClick(this, new RoutedEventArgs()),
             LoadCheckpoint = () => LoadCheckpoint_OnClick(this, new RoutedEventArgs()),
             ResumeCheckpoint = () => ResumeCheckpoint_OnClick(this, new RoutedEventArgs()),
@@ -118,6 +120,8 @@ public partial class MainWindow : Window
             SaveSelectedMemoryLessonAsync = SaveSelectedMemoryLessonAsync,
             DismissSelectedMemoryLesson = DismissSelectedMemoryLesson,
             RefreshSavedMemoryAsync = RefreshSavedMemoryAsync,
+            PreviewMemoryCleanupAsync = PreviewMemoryCleanupAsync,
+            CompactMemoryAsync = CompactMemoryAsync,
             DisableSavedMemoryAsync = DisableSavedMemoryAsync,
             DeleteSavedMemoryAsync = DeleteSavedMemoryAsync,
             AttachFiles = () => _workspaceCommandService.SelectAttachments(this, _viewModel, _attachments),
@@ -385,6 +389,16 @@ public partial class MainWindow : Window
         _planCommandService.MarkPlanItemDone(_viewModel);
     }
 
+    private void ApprovePlan_OnClick(object sender, RoutedEventArgs e)
+    {
+        _planCommandService.ApprovePlan(_viewModel);
+    }
+
+    private async Task ExecuteScaffoldAsync()
+    {
+        await _planCommandService.ExecuteWorkerScaffoldAsync(_viewModel);
+    }
+
     private async void MarkDoneAndContinue_OnClick(object sender, RoutedEventArgs e)
     {
         await _planCommandService.MarkDoneAndContinueAsync(_viewModel, SendCurrentMessageAsync);
@@ -448,6 +462,22 @@ public partial class MainWindow : Window
         _viewModel.StatusText = $"Loaded {lessons.Count} local memory lesson(s)";
     }
 
+    private async Task PreviewMemoryCleanupAsync()
+    {
+        var report = await _projectMemoryService.PreviewLocalLessonGcAsync(_viewModel.WorkspaceRoot, null, CancellationToken.None);
+        _viewModel.MemoryGcPreviewText = FormatMemoryGcReport(report);
+        _viewModel.StatusText = $"Memory cleanup preview: {report.RemovedCount} removable lesson(s)";
+    }
+
+    private async Task CompactMemoryAsync()
+    {
+        var report = await _projectMemoryService.CompactLocalLessonsAsync(_viewModel.WorkspaceRoot, null, CancellationToken.None);
+        _viewModel.MemoryGcPreviewText = FormatMemoryGcReport(report);
+        await RefreshSavedMemoryAsync();
+        _viewModel.StatusText = $"Memory compacted: removed {report.RemovedCount} lesson(s)";
+        _viewModel.AddLog($"Memory compacted: {report.BeforeCount} -> {report.AfterCount}");
+    }
+
     private async Task DisableSavedMemoryAsync(ProjectMemoryLesson? lesson)
     {
         if (lesson == null || string.IsNullOrWhiteSpace(lesson.Id))
@@ -465,6 +495,19 @@ public partial class MainWindow : Window
         }
 
         _viewModel.StatusText = "Saved memory was not found";
+    }
+
+    private static string FormatMemoryGcReport(ProjectMemoryGcReport report)
+    {
+        if (report.RemovedCount == 0)
+        {
+            return $"Memory cleanup: {report.BeforeCount:0} lesson(s), nothing removable.";
+        }
+
+        var removals = string.Join(", ", report.RemovedLessons
+            .Take(4)
+            .Select(item => $"{item.Title} ({item.Reason})"));
+        return $"Memory cleanup: {report.BeforeCount:0} -> {report.AfterCount:0}, remove {report.RemovedCount:0}. {removals}";
     }
 
     private async Task DeleteSavedMemoryAsync(ProjectMemoryLesson? lesson)

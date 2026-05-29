@@ -22,11 +22,23 @@ public sealed class TypeScriptWorkerResult
 
     public List<TypeScriptReactComponent> ReactComponents { get; set; } = [];
 
+    public List<TypeScriptReactHook> ReactHooks { get; set; } = [];
+
+    public List<TypeScriptApiEndpoint> ApiEndpoints { get; set; } = [];
+
+    public List<TypeScriptTestTarget> TestTargets { get; set; } = [];
+
+    public TypeScriptPlaywrightInfo Playwright { get; set; } = new();
+
     public List<TypeScriptRouteInfo> Routes { get; set; } = [];
 
     public List<TypeScriptWorkerSymbol> Symbols { get; set; } = [];
 
     public List<TypeScriptProjectMapEntry> ProjectMap { get; set; } = [];
+
+    public List<WorkerCapability> Capabilities { get; set; } = [];
+
+    public List<WorkerScaffoldRecommendation> ScaffoldRecommendations { get; set; } = [];
 
     public List<string> Warnings { get; set; } = [];
 }
@@ -101,6 +113,50 @@ public sealed class TypeScriptReactComponent
     public string Name { get; set; } = string.Empty;
 }
 
+public sealed class TypeScriptReactHook
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+}
+
+public sealed class TypeScriptApiEndpoint
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Method { get; set; } = string.Empty;
+
+    public string Route { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = string.Empty;
+}
+
+public sealed class TypeScriptTestTarget
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Kind { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+}
+
+public sealed class TypeScriptPlaywrightInfo
+{
+    public bool HasDependency { get; set; }
+
+    public List<string> Configs { get; set; } = [];
+
+    public List<TypeScriptNpmScript> Scripts { get; set; } = [];
+
+    public List<string> ReportPaths { get; set; } = [];
+}
+
 public sealed class TypeScriptRouteInfo
 {
     public string Path { get; set; } = string.Empty;
@@ -128,4 +184,22 @@ public sealed class TypeScriptProjectMapEntry
     public string Role { get; set; } = string.Empty;
 
     public string Path { get; set; } = string.Empty;
+}
+
+public sealed class WorkerCapability
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+}
+
+public sealed class WorkerScaffoldRecommendation
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public List<string> Files { get; set; } = [];
+
+    public List<string> VerificationCommands { get; set; } = [];
 }

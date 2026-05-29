@@ -38,6 +38,8 @@ public sealed class DesktopPanelEventBinder
         planPanel.CreatePlanRequested += (_, _) => callbacks.CreatePlan();
         planPanel.ContinuePlanItemRequested += (_, _) => callbacks.ContinuePlanItem();
         planPanel.MarkPlanItemDoneRequested += (_, _) => callbacks.MarkPlanItemDone();
+        planPanel.ApprovePlanRequested += (_, _) => callbacks.ApprovePlan();
+        planPanel.ExecuteScaffoldRequested += async (_, _) => await callbacks.ExecuteScaffoldAsync();
         planPanel.SaveCheckpointRequested += (_, _) => callbacks.SaveCheckpoint();
         planPanel.LoadCheckpointRequested += (_, _) => callbacks.LoadCheckpoint();
         planPanel.ResumeCheckpointRequested += (_, _) => callbacks.ResumeCheckpoint();
@@ -50,6 +52,8 @@ public sealed class DesktopPanelEventBinder
         memoryPanel.SaveSelectedLessonRequested += async (_, lesson) => await callbacks.SaveSelectedMemoryLessonAsync(lesson);
         memoryPanel.DismissSelectedLessonRequested += (_, lesson) => callbacks.DismissSelectedMemoryLesson(lesson);
         memoryPanel.RefreshSavedMemoryRequested += async (_, _) => await callbacks.RefreshSavedMemoryAsync();
+        memoryPanel.PreviewMemoryCleanupRequested += async (_, _) => await callbacks.PreviewMemoryCleanupAsync();
+        memoryPanel.CompactMemoryRequested += async (_, _) => await callbacks.CompactMemoryAsync();
         memoryPanel.DisableSavedMemoryRequested += async (_, lesson) => await callbacks.DisableSavedMemoryAsync(lesson);
         memoryPanel.DeleteSavedMemoryRequested += async (_, lesson) => await callbacks.DeleteSavedMemoryAsync(lesson);
 
@@ -110,6 +114,8 @@ public sealed class DesktopPanelEventCallbacks
     public required Action CreatePlan { get; init; }
     public required Action ContinuePlanItem { get; init; }
     public required Action MarkPlanItemDone { get; init; }
+    public required Action ApprovePlan { get; init; }
+    public required Func<Task> ExecuteScaffoldAsync { get; init; }
     public required Action SaveCheckpoint { get; init; }
     public required Action LoadCheckpoint { get; init; }
     public required Action ResumeCheckpoint { get; init; }
@@ -121,6 +127,8 @@ public sealed class DesktopPanelEventCallbacks
     public required Func<ProjectMemoryLesson?, Task> SaveSelectedMemoryLessonAsync { get; init; }
     public required Action<ProjectMemoryLesson?> DismissSelectedMemoryLesson { get; init; }
     public required Func<Task> RefreshSavedMemoryAsync { get; init; }
+    public required Func<Task> PreviewMemoryCleanupAsync { get; init; }
+    public required Func<Task> CompactMemoryAsync { get; init; }
     public required Func<ProjectMemoryLesson?, Task> DisableSavedMemoryAsync { get; init; }
     public required Func<ProjectMemoryLesson?, Task> DeleteSavedMemoryAsync { get; init; }
     public required Action AttachFiles { get; init; }

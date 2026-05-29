@@ -32,6 +32,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -79,7 +80,37 @@
                                            FontSize="11"
                                            TextWrapping="Wrap" />
                             </DockPanel>
-                            <TextBlock Grid.Row="4"
+                            <Border Grid.Row="4"
+                                    Grid.ColumnSpan="2"
+                                    Background="#111827"
+                                    BorderBrush="#60A5FA"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="6"
+                                    Margin="0,6,0,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasVisualEvidence}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="Visual review"
+                                               Foreground="#93C5FD"
+                                               FontWeight="SemiBold"
+                                               FontSize="10"
+                                               Margin="0,0,0,3" />
+                                    <TextBlock Text="{Binding VisualEvidenceSummary}"
+                                               Foreground="{DynamicResource TextMain}"
+                                               FontSize="10"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Grid.Row="5"
                                        Grid.ColumnSpan="2"
                                        Text="{Binding OutputPreview}"
                                        Foreground="{DynamicResource TextMuted}"

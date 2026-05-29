@@ -576,13 +576,23 @@ public sealed class WorkspaceAnalysisService
                              result.Cpp.HeaderFiles.Count;
         var goSignalCount = result.Go.Modules.Count + result.Go.Packages.Count + result.Go.SourceFiles.Count;
         var rustSignalCount = result.Rust.Manifests.Count + result.Rust.Packages.Count + result.Rust.Targets.Count + result.Rust.SourceFiles.Count;
+        var javaSignalCount = result.Java.BuildFiles.Count + result.Java.SourceFiles.Count + result.Java.Symbols.Count;
+        var sqlSignalCount = result.Sql.Files.Count + result.Sql.Tables.Count;
+        var phpSignalCount = result.Php.ComposerFiles.Count + result.Php.SourceFiles.Count + result.Php.Symbols.Count;
+        var kotlinSignalCount = result.Kotlin.BuildFiles.Count + result.Kotlin.SourceFiles.Count + result.Kotlin.Symbols.Count;
+        var swiftSignalCount = result.Swift.PackageFiles.Count + result.Swift.ProjectFiles.Count + result.Swift.SourceFiles.Count + result.Swift.Symbols.Count;
+        var scriptSignalCount = result.Scripts.ShellFiles.Count + result.Scripts.PowerShellFiles.Count + result.Scripts.Commands.Count;
+        var rSignalCount = result.R.ProjectFiles.Count + result.R.SourceFiles.Count + result.R.ReportFiles.Count + result.R.Symbols.Count;
 
-        if (cppSignalCount == 0 && goSignalCount == 0 && rustSignalCount == 0)
+        if (cppSignalCount == 0 && goSignalCount == 0 && rustSignalCount == 0 &&
+            javaSignalCount == 0 && sqlSignalCount == 0 && phpSignalCount == 0 &&
+            kotlinSignalCount == 0 && swiftSignalCount == 0 && scriptSignalCount == 0 && rSignalCount == 0)
         {
             return;
         }
 
-        analysis.Hints.Add($"Native worker indexed C++ {cppSignalCount:0}, Go {goSignalCount:0}, Rust {rustSignalCount:0} signals.");
+        analysis.Hints.Add($"Native worker indexed C++ {cppSignalCount:0}, Go {goSignalCount:0}, Rust {rustSignalCount:0}, Java {javaSignalCount:0}, SQL {sqlSignalCount:0}, PHP {phpSignalCount:0}, Kotlin {kotlinSignalCount:0}, Swift {swiftSignalCount:0}, scripts {scriptSignalCount:0}, R {rSignalCount:0} signals.");
+        AddWorkerGenerationGuidance(analysis, "Native worker", result.Capabilities, result.ScaffoldRecommendations);
 
         if (cppSignalCount > 0)
         {
@@ -674,6 +684,34 @@ public sealed class WorkspaceAnalysisService
         {
             AddUnique(analysis.KeyFiles, file);
         }
+
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "Java", result.Java.Tooling, result.Java.Frameworks, result.Java.BuildFiles.Select(item => item.Path).Concat(result.Java.SourceFiles).Concat(result.Java.TestFiles), result.Java.Symbols, "java");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "SQL", result.Sql.Tooling, [], result.Sql.Files.Concat(result.Sql.Migrations), result.Sql.Tables.Select(table => new NativeLanguageSymbol { Path = table.Path, Kind = "table", Name = table.Name }), "sql");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "PHP", result.Php.Tooling, result.Php.Frameworks, result.Php.ComposerFiles.Select(item => item.Path).Concat(result.Php.SourceFiles).Concat(result.Php.TestFiles), result.Php.Symbols, "php");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "Kotlin", result.Kotlin.Tooling, result.Kotlin.Frameworks, result.Kotlin.BuildFiles.Select(item => item.Path).Concat(result.Kotlin.SourceFiles).Concat(result.Kotlin.TestFiles), result.Kotlin.Symbols, "kotlin");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "Swift", result.Swift.Tooling, result.Swift.Frameworks, result.Swift.PackageFiles.Select(item => item.Path).Concat(result.Swift.ProjectFiles.Select(item => item.Path)).Concat(result.Swift.SourceFiles).Concat(result.Swift.TestFiles), result.Swift.Symbols, "swift");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "Scripts", result.Scripts.Tooling, [], result.Scripts.ShellFiles.Concat(result.Scripts.PowerShellFiles), result.Scripts.Commands.Select(command => new NativeLanguageSymbol { Path = command.Path, Kind = "command", Name = command.Name }), "script");
+        AddNativeLanguageSignals(analysis, detectedTypes, frameworks, "R", result.R.Tooling, [], result.R.ProjectFiles.Select(item => item.Path).Concat(result.R.SourceFiles).Concat(result.R.ReportFiles), result.R.Symbols, "r");
+
+        if (javaSignalCount > 0)
+        {
+            AddUnique(analysis.VerificationCommands, result.Java.Tooling.Contains("Maven", StringComparer.OrdinalIgnoreCase) ? "mvn test" : "gradle test");
+        }
+
+        if (phpSignalCount > 0)
+        {
+            AddUnique(analysis.VerificationCommands, "composer test");
+        }
+
+        if (kotlinSignalCount > 0)
+        {
+            AddUnique(analysis.VerificationCommands, "./gradlew test");
+        }
+
+        if (swiftSignalCount > 0)
+        {
+            AddUnique(analysis.VerificationCommands, "swift test");
+        }
     }
 
     private static void DetectDocker(
@@ -694,6 +732,38 @@ public sealed class WorkspaceAnalysisService
         AddUnique(analysis.VerificationCommands, "docker compose config");
         AddUnique(analysis.VerificationCommands, "docker compose up --build");
         analysis.Hints.Add("Docker Compose file detected.");
+    }
+
+    private static void AddNativeLanguageSignals(
+        WorkspaceAnalysis analysis,
+        List<string> detectedTypes,
+        List<string> frameworks,
+        string language,
+        IEnumerable<string> tooling,
+        IEnumerable<string> detectedFrameworks,
+        IEnumerable<string> files,
+        IEnumerable<NativeLanguageSymbol> symbols,
+        string symbolPrefix)
+    {
+        var fileList = files.Where(file => !string.IsNullOrWhiteSpace(file)).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
+        var symbolList = symbols.Where(symbol => !string.IsNullOrWhiteSpace(symbol.Name)).Take(10).ToList();
+        if (fileList.Count == 0 && symbolList.Count == 0)
+        {
+            return;
+        }
+
+        detectedTypes.Add(language);
+        AddUniqueRange(frameworks, tooling);
+        AddUniqueRange(frameworks, detectedFrameworks);
+        foreach (var file in fileList)
+        {
+            AddUnique(analysis.KeyFiles, file);
+        }
+
+        foreach (var symbol in symbolList)
+        {
+            AddUnique(analysis.KeySymbols, $"{symbolPrefix} {symbol.Kind} {symbol.Name} ({symbol.Path})");
+        }
     }
 
     private static void DetectDatabaseTooling(WorkspaceAnalysis analysis, List<string> frameworks)
@@ -989,12 +1059,15 @@ public sealed class WorkspaceAnalysisService
         if (result.Packages.Count == 0 &&
             result.Tsconfigs.Count == 0 &&
             result.Symbols.Count == 0 &&
-            result.Imports.Count == 0)
+            result.Imports.Count == 0 &&
+            result.Playwright.Configs.Count == 0 &&
+            !result.Playwright.HasDependency)
         {
             return;
         }
 
-        analysis.Hints.Add($"TypeScript worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.ReactComponents.Count:0} React components.");
+        analysis.Hints.Add($"TypeScript worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.ReactComponents.Count:0} React components, {result.ReactHooks.Count:0} hooks, {result.ApiEndpoints.Count:0} API handlers.");
+        AddWorkerGenerationGuidance(analysis, "TypeScript worker", result.Capabilities, result.ScaffoldRecommendations);
 
         foreach (var manager in result.PackageManagers)
         {
@@ -1019,6 +1092,37 @@ public sealed class WorkspaceAnalysisService
             AddNodeCommand(analysis, packageDirectory, $"npm run {script.Name}");
         }
 
+        if (result.Playwright.HasDependency || result.Playwright.Configs.Count > 0 || result.Playwright.Scripts.Count > 0)
+        {
+            frameworks.Add("Playwright");
+            analysis.Hints.Add($"Playwright detected with {result.Playwright.Configs.Count:0} config file(s) and {result.Playwright.Scripts.Count:0} script(s).");
+        }
+
+        foreach (var config in result.Playwright.Configs.Take(4))
+        {
+            AddUnique(analysis.KeyFiles, config);
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("Playwright config", [config], [config]));
+        }
+
+        foreach (var reportPath in result.Playwright.ReportPaths.Take(3))
+        {
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("Playwright reports", [reportPath], [reportPath]));
+        }
+
+        foreach (var script in result.Playwright.Scripts.Take(4))
+        {
+            var packageDirectory = Path.GetDirectoryName(script.PackagePath)?.Replace('\\', '/') ?? string.Empty;
+            AddNodeCommand(analysis, packageDirectory, $"npm run {script.Name}");
+        }
+
+        if (result.Playwright.Scripts.Count == 0 && (result.Playwright.HasDependency || result.Playwright.Configs.Count > 0))
+        {
+            var packageDirectory = result.Playwright.Configs
+                .Select(config => Path.GetDirectoryName(config)?.Replace('\\', '/') ?? string.Empty)
+                .FirstOrDefault(directory => !string.IsNullOrWhiteSpace(directory)) ?? string.Empty;
+            AddNodeCommand(analysis, packageDirectory, "npx playwright test");
+        }
+
         foreach (var entry in result.ProjectMap.Take(8))
         {
             AddUnique(analysis.ProjectMap, FormatProjectMapEntry(entry.Role, [entry.Path], [entry.Path]));
@@ -1027,6 +1131,23 @@ public sealed class WorkspaceAnalysisService
         foreach (var component in result.ReactComponents.Take(8))
         {
             AddUnique(analysis.KeySymbols, $"component {component.Name} ({component.Path}:{component.Line:0})");
+        }
+
+        foreach (var hook in result.ReactHooks.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"hook {hook.Name} ({hook.Path}:{hook.Line:0})");
+        }
+
+        foreach (var endpoint in result.ApiEndpoints.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"api {endpoint.Method} {endpoint.Route} ({endpoint.Path}:{endpoint.Line:0})");
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("API route handlers", [endpoint.Path], [endpoint.Path]));
+        }
+
+        foreach (var target in result.TestTargets.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"{target.Kind} {target.Name} ({target.Path}:{target.Line:0})");
+            AddUnique(analysis.ProjectMap, FormatProjectMapEntry("JavaScript tests", [target.Path], [target.Path]));
         }
 
         foreach (var exported in result.Exports.Take(8))
@@ -1102,7 +1223,8 @@ public sealed class WorkspaceAnalysisService
             return;
         }
 
-        analysis.Hints.Add($"Python worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.CallSites.Count:0} calls, {result.FastApiRoutes.Count:0} FastAPI routes.");
+        analysis.Hints.Add($"Python worker indexed {result.Symbols.Count:0} symbols, {result.Imports.Count:0} imports, {result.CallSites.Count:0} calls, {result.FastApiRoutes.Count:0} FastAPI routes, {result.WebRoutes.Count:0} web routes.");
+        AddWorkerGenerationGuidance(analysis, "Python worker", result.Capabilities, result.ScaffoldRecommendations);
 
         foreach (var pyproject in result.Pyprojects.Take(6))
         {
@@ -1137,10 +1259,32 @@ public sealed class WorkspaceAnalysisService
             frameworks.Add("FastAPI");
         }
 
+        foreach (var route in result.WebRoutes.Take(10))
+        {
+            AddUnique(analysis.KeySymbols, $"route {route.Framework} {route.Method} {route.Route} -> {route.Name} ({route.Path}:{route.Line:0})");
+            if (!string.IsNullOrWhiteSpace(route.Framework))
+            {
+                frameworks.Add(route.Framework);
+                AddUnique(analysis.ProjectMap, FormatProjectMapEntry($"{route.Framework} routes", [route.Path], [route.Path]));
+            }
+        }
+
         foreach (var model in result.SqlAlchemyModels.Take(10))
         {
             AddUnique(analysis.KeySymbols, $"model {model.Name} ({model.Path}:{model.Line:0})");
             frameworks.Add("SQLAlchemy");
+        }
+
+        foreach (var task in result.CeleryTasks.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"celery task {task.Name} ({task.Path}:{task.Line:0})");
+            frameworks.Add("Celery");
+        }
+
+        foreach (var command in result.CliCommands.Take(8))
+        {
+            AddUnique(analysis.KeySymbols, $"cli {command.Command} -> {command.Name} ({command.Path}:{command.Line:0})");
+            frameworks.Add(command.Framework);
         }
 
         foreach (var symbol in result.Symbols.Take(10))
@@ -1181,6 +1325,40 @@ public sealed class WorkspaceAnalysisService
         if (joined.Contains("pytest", StringComparison.OrdinalIgnoreCase))
         {
             frameworks.Add("pytest");
+        }
+    }
+
+    private static void AddWorkerGenerationGuidance(
+        WorkspaceAnalysis analysis,
+        string workerName,
+        IEnumerable<WorkerCapability> capabilities,
+        IEnumerable<WorkerScaffoldRecommendation> recommendations)
+    {
+        foreach (var capability in capabilities.Take(6))
+        {
+            if (!string.IsNullOrWhiteSpace(capability.Name))
+            {
+                analysis.Hints.Add($"{workerName} capability: {capability.Name} - {capability.Description}");
+            }
+        }
+
+        foreach (var recommendation in recommendations.Take(4))
+        {
+            if (string.IsNullOrWhiteSpace(recommendation.Name))
+            {
+                continue;
+            }
+
+            analysis.Hints.Add($"{workerName} scaffold: {recommendation.Name} - {recommendation.Description}");
+            foreach (var command in recommendation.VerificationCommands.Take(3))
+            {
+                AddUnique(analysis.VerificationCommands, command);
+            }
+
+            foreach (var file in recommendation.Files.Take(4))
+            {
+                AddUnique(analysis.ProjectMap, FormatProjectMapEntry($"Suggested scaffold: {recommendation.Name}", [file], []));
+            }
         }
     }
 

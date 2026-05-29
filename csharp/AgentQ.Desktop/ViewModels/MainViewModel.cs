@@ -25,6 +25,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private double _desktopFontSize = 14;
     private bool _autoAttachWorkspaceContext = true;
     private bool _autoFetchLinks = true;
+    private bool _enableScreenshotLlmVisionReview;
     private string _uiLanguage = "English";
     private AgentWorkMode _workMode = AgentWorkMode.Coding;
     private bool _isBusy;
@@ -38,20 +39,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _sourceFilePreviewText = "Select a file to preview its source.";
     private string _reviewWorkflowText = "No auto verification is waiting. Review changes manually or start Auto fix from a failed verification.";
     private string _pendingReviewVerificationText = "No verification queued.";
+    private string _memoryGcPreviewText = "Memory cleanup preview not run.";
     private string _planEvidenceSummary = "No plan evidence yet. Create or load a plan, then run an item to connect evidence and verification.";
     private string _planEvidenceStatusText = "No plan selected";
     private string _planEvidenceAccentBrush = "#B7C4D1";
+    private string _planApprovalPreviewText = "No plan approval preview.";
+    private string _planApprovalStateText = "No approval needed";
+    private string _planApprovalAccentBrush = "#B7C4D1";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private string _runPermissionStatusText = "Run permissions: none";
     private bool _canClearRunPermissions;
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
     private bool _hasPendingReviewVerification;
+    private bool _hasPendingPlanApproval;
     private SourceFileEntry? _selectedSourceFile;
     private FileChangeRecord? _selectedFileChange;
     private AgentPlanItem? _selectedPlanItem;
     private ProjectMemoryLesson? _selectedPendingMemoryLesson;
     private ProjectMemoryLesson? _selectedSavedMemoryLesson;
+    private WorkerExecutionContext? _currentWorkerExecutionContext;
     private AgentRunState _currentRunState = AgentRunState.Idle;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -316,6 +323,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (SetField(ref _isBusy, value))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApprovePlan)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
                 RefreshRunSummary();
             }
         }
@@ -372,6 +381,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _autoFetchLinks;
         set => SetField(ref _autoFetchLinks, value);
+    }
+
+    public bool EnableScreenshotLlmVisionReview
+    {
+        get => _enableScreenshotLlmVisionReview;
+        set => SetField(ref _enableScreenshotLlmVisionReview, value);
     }
 
     public string UiLanguage
@@ -633,6 +648,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _pendingReviewVerificationText, value);
     }
 
+    public string MemoryGcPreviewText
+    {
+        get => _memoryGcPreviewText;
+        set => SetField(ref _memoryGcPreviewText, value);
+    }
+
     public bool HasPendingReviewVerification
     {
         get => _hasPendingReviewVerification;
@@ -669,6 +690,48 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _planEvidenceAccentBrush;
         set => SetField(ref _planEvidenceAccentBrush, value);
+    }
+
+    public string PlanApprovalPreviewText
+    {
+        get => _planApprovalPreviewText;
+        set => SetField(ref _planApprovalPreviewText, value);
+    }
+
+    public string PlanApprovalStateText
+    {
+        get => _planApprovalStateText;
+        set => SetField(ref _planApprovalStateText, value);
+    }
+
+    public string PlanApprovalAccentBrush
+    {
+        get => _planApprovalAccentBrush;
+        set => SetField(ref _planApprovalAccentBrush, value);
+    }
+
+    public bool HasPendingPlanApproval
+    {
+        get => _hasPendingPlanApproval;
+        set
+        {
+            if (!SetField(ref _hasPendingPlanApproval, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApprovePlan)));
+        }
+    }
+
+    public bool CanApprovePlan => HasPendingPlanApproval && !IsBusy;
+
+    public bool CanExecuteWorkerScaffold => CurrentWorkerExecutionContext?.State == WorkerExecutionState.Ready && !IsBusy;
+
+    public WorkerExecutionContext? CurrentWorkerExecutionContext
+    {
+        get => _currentWorkerExecutionContext;
+        set => SetField(ref _currentWorkerExecutionContext, value);
     }
 
     public string EvalDashboardSummary
@@ -754,6 +817,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             DesktopFontSize = DesktopFontSize,
             DesktopAutoAttachWorkspaceContext = AutoAttachWorkspaceContext,
             DesktopAutoFetchLinks = AutoFetchLinks,
+            DesktopEnableScreenshotLlmVisionReview = EnableScreenshotLlmVisionReview,
             DesktopWorkMode = WorkMode.ToString(),
             DesktopUiLanguage = UiLanguage,
             DesktopMaxToolSteps = WorkMode switch
@@ -783,6 +847,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DesktopFontSize = config.DesktopFontSize <= 0 ? 14 : config.DesktopFontSize;
         AutoAttachWorkspaceContext = config.DesktopAutoAttachWorkspaceContext;
         AutoFetchLinks = config.DesktopAutoFetchLinks;
+        EnableScreenshotLlmVisionReview = config.DesktopEnableScreenshotLlmVisionReview;
         UiLanguage = string.IsNullOrWhiteSpace(config.DesktopUiLanguage) ? "English" : config.DesktopUiLanguage;
         WorkMode = Enum.TryParse<AgentWorkMode>(config.DesktopWorkMode, ignoreCase: true, out var workMode)
             ? workMode
@@ -893,6 +958,89 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApproveAllAndVerify)));
     }
 
+    public void SetPlanApprovalPreview(WorkerPlanPreview preview)
+    {
+        CurrentWorkerExecutionContext = null;
+        PlanApprovalPreviewText = BuildPlanApprovalPreviewText(preview);
+        PlanApprovalStateText = preview.ApprovalState switch
+        {
+            WorkerPlanApprovalState.Blocked => "Plan blocked",
+            WorkerPlanApprovalState.NeedsApproval => "Plan approval required",
+            _ => "Plan ready"
+        };
+        PlanApprovalAccentBrush = preview.ApprovalState switch
+        {
+            WorkerPlanApprovalState.Blocked => "#EF4444",
+            WorkerPlanApprovalState.NeedsApproval => "#F59E0B",
+            _ => "#37D67A"
+        };
+        HasPendingPlanApproval = preview.ApprovalState == WorkerPlanApprovalState.NeedsApproval;
+        StatusText = preview.ApprovalState == WorkerPlanApprovalState.Blocked
+            ? "Plan blocked by validation"
+            : StatusText;
+    }
+
+    public void SetWorkerExecutionContext(WorkerExecutionContext context)
+    {
+        CurrentWorkerExecutionContext = context;
+        PlanApprovalPreviewText = BuildPlanApprovalPreviewText(context.Preview);
+        PlanApprovalStateText = context.State switch
+        {
+            WorkerExecutionState.Blocked => "Plan blocked",
+            WorkerExecutionState.AwaitingApproval => "Plan approval required",
+            WorkerExecutionState.Ready => "Plan ready",
+            WorkerExecutionState.ScaffoldExecuted => "Scaffold executed",
+            WorkerExecutionState.ScaffoldFailed => "Scaffold failed",
+            WorkerExecutionState.Succeeded => "Plan verified",
+            WorkerExecutionState.RepairRequired => "Plan repair required",
+            WorkerExecutionState.StoppedRepeatedFailure => "Plan stopped",
+            _ => "Plan ready"
+        };
+        PlanApprovalAccentBrush = context.State switch
+        {
+            WorkerExecutionState.Blocked or WorkerExecutionState.StoppedRepeatedFailure => "#EF4444",
+            WorkerExecutionState.ScaffoldFailed => "#EF4444",
+            WorkerExecutionState.AwaitingApproval or WorkerExecutionState.RepairRequired => "#F59E0B",
+            _ => "#37D67A"
+        };
+        HasPendingPlanApproval = context.State == WorkerExecutionState.AwaitingApproval;
+        StatusText = context.State == WorkerExecutionState.Blocked
+            ? "Plan blocked by validation"
+            : context.StatusMessage;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+    }
+
+    public void ApprovePlan()
+    {
+        if (!HasPendingPlanApproval)
+        {
+            return;
+        }
+
+        if (CurrentWorkerExecutionContext != null)
+        {
+            CurrentWorkerExecutionContext.State = WorkerExecutionState.Ready;
+            CurrentWorkerExecutionContext.StatusMessage = "Worker plan approved.";
+        }
+
+        HasPendingPlanApproval = false;
+        PlanApprovalStateText = "Plan approved";
+        PlanApprovalAccentBrush = "#37D67A";
+        StatusText = "Plan approved";
+        AddLog("Plan approved");
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+    }
+
+    public void ClearPlanApprovalPreview()
+    {
+        HasPendingPlanApproval = false;
+        CurrentWorkerExecutionContext = null;
+        PlanApprovalPreviewText = "No plan approval preview.";
+        PlanApprovalStateText = "No approval needed";
+        PlanApprovalAccentBrush = "#B7C4D1";
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+    }
+
     private void FileChangesOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems != null)
@@ -975,6 +1123,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _ => "#FBBF24"
         };
         PlanEvidenceSummary = $"Evidence: {evidence} | Verification: {verification} | Eval: {TrimPlanEvidence(eval, 120)}";
+    }
+
+    private static string BuildPlanApprovalPreviewText(WorkerPlanPreview preview)
+    {
+        var summary = preview.ApprovalSummary;
+        var files = summary.CreatedFiles
+            .Concat(summary.ModifiedFiles)
+            .Concat(summary.DeletedFiles)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+        var fileText = files.Count == 0 ? "Files: none detected" : $"Files: {string.Join(", ", files)}";
+        var riskText = summary.RiskReasons.Count == 0
+            ? $"Risk: {summary.RiskLevel}"
+            : $"Risk: {summary.RiskLevel} ({string.Join("; ", summary.RiskReasons.Take(2))})";
+        var changes = summary.ExpectedChanges.Count == 0
+            ? "Expected changes: plan checklist only"
+            : $"Expected changes: {string.Join("; ", summary.ExpectedChanges.Take(3))}";
+        return $"{preview.DecisionSummary}{Environment.NewLine}{fileText}{Environment.NewLine}{changes}{Environment.NewLine}{riskText}";
     }
 
     private static string BuildCompactEvidence(IReadOnlyList<AgentRunStep> steps)

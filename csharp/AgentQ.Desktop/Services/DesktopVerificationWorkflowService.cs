@@ -1,20 +1,25 @@
+using AgentQ.Core.Providers;
+
 namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopVerificationWorkflowService(
     DesktopVerificationRunner runner,
-    VerificationFailureClassifier classifier)
+    VerificationFailureClassifier classifier,
+    VerificationArtifactEvidenceBuilder artifactEvidenceBuilder,
+    DesktopScreenshotLlmVisionWorkflowService screenshotLlmVisionWorkflowService)
 {
     public async Task<DesktopVerificationWorkflowResult> RunAsync(
         AgentVerificationPlan plan,
         string workspaceRoot,
         IEnumerable<string>? projectAllowedCommands,
         TimeSpan timeout,
-        CancellationToken ct)
+        CancellationToken ct,
+        ProviderConfiguration? providerConfiguration = null)
     {
         try
         {
             var result = await runner.RunAsync(plan, workspaceRoot, timeout, projectAllowedCommands, ct);
-            var summary = BuildSummary(result);
+            var summary = BuildSummary(result, workspaceRoot);
 
             if (result.Succeeded)
             {
@@ -32,7 +37,17 @@ public sealed class DesktopVerificationWorkflowService(
                 };
             }
 
-            var analysis = classifier.Analyze(plan, result);
+            var analysis = classifier.Analyze(plan, result, workspaceRoot);
+            var llmVisionEvidence = await screenshotLlmVisionWorkflowService.BuildEvidenceAsync(
+                result,
+                workspaceRoot,
+                providerConfiguration,
+                ct);
+            if (llmVisionEvidence.Count > 0)
+            {
+                analysis = AppendEvidence(analysis, llmVisionEvidence);
+            }
+
             return new DesktopVerificationWorkflowResult
             {
                 Plan = plan,
@@ -82,16 +97,37 @@ public sealed class DesktopVerificationWorkflowService(
         }
     }
 
-    private static string BuildSummary(VerificationRunResult result)
+    private string BuildSummary(VerificationRunResult result, string workspaceRoot)
     {
-        return string.IsNullOrWhiteSpace(result.CombinedOutput)
+        var summary = string.IsNullOrWhiteSpace(result.CombinedOutput)
             ? $"Exit code: {result.ExitCode}"
             : $"Exit code: {result.ExitCode} - {TrimForLog(result.CombinedOutput)}";
+
+        if (result.Artifacts.Count == 0)
+        {
+            return summary;
+        }
+
+        return $"{summary} | Artifacts: {artifactEvidenceBuilder.BuildSummary(result.Artifacts, workspaceRoot)}";
     }
 
     private static string TrimForLog(string value)
     {
         value = value.ReplaceLineEndings(" ");
         return value.Length <= 180 ? value : value[..180] + "...";
+    }
+
+    private static VerificationFailureAnalysis AppendEvidence(
+        VerificationFailureAnalysis analysis,
+        IReadOnlyList<string> evidence)
+    {
+        return new VerificationFailureAnalysis
+        {
+            Kind = analysis.Kind,
+            Title = analysis.Title,
+            Summary = analysis.Summary,
+            SuggestedNextStep = analysis.SuggestedNextStep,
+            Evidence = analysis.Evidence.Concat(evidence).Take(12).ToList()
+        };
     }
 }

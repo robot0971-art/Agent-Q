@@ -14,7 +14,25 @@ public sealed class NativeWorkerResult
 
     public NativeRustInfo Rust { get; set; } = new();
 
+    public NativeJavaInfo Java { get; set; } = new();
+
+    public NativeSqlInfo Sql { get; set; } = new();
+
+    public NativePhpInfo Php { get; set; } = new();
+
+    public NativeKotlinInfo Kotlin { get; set; } = new();
+
+    public NativeSwiftInfo Swift { get; set; } = new();
+
+    public NativeScriptInfo Scripts { get; set; } = new();
+
+    public NativeRInfo R { get; set; } = new();
+
     public List<NativeProjectMapEntry> ProjectMap { get; set; } = [];
+
+    public List<WorkerCapability> Capabilities { get; set; } = [];
+
+    public List<WorkerScaffoldRecommendation> ScaffoldRecommendations { get; set; } = [];
 
     public List<string> Warnings { get; set; } = [];
 }
@@ -124,6 +142,117 @@ public sealed class NativeRustTarget
     public string Kind { get; set; } = string.Empty;
 
     public string SourcePath { get; set; } = string.Empty;
+}
+
+public sealed class NativeJavaInfo
+{
+    public List<NativePathItem> BuildFiles { get; set; } = [];
+
+    public List<string> SourceFiles { get; set; } = [];
+
+    public List<string> TestFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Symbols { get; set; } = [];
+
+    public List<string> Frameworks { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativeSqlInfo
+{
+    public List<string> Files { get; set; } = [];
+
+    public List<string> Migrations { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Tables { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativePhpInfo
+{
+    public List<NativePathItem> ComposerFiles { get; set; } = [];
+
+    public List<string> SourceFiles { get; set; } = [];
+
+    public List<string> TestFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Symbols { get; set; } = [];
+
+    public List<string> Frameworks { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativeKotlinInfo
+{
+    public List<NativePathItem> BuildFiles { get; set; } = [];
+
+    public List<string> SourceFiles { get; set; } = [];
+
+    public List<string> TestFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Symbols { get; set; } = [];
+
+    public List<string> Frameworks { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativeSwiftInfo
+{
+    public List<NativePathItem> PackageFiles { get; set; } = [];
+
+    public List<NativePathItem> ProjectFiles { get; set; } = [];
+
+    public List<string> SourceFiles { get; set; } = [];
+
+    public List<string> TestFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Symbols { get; set; } = [];
+
+    public List<string> Frameworks { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativeScriptInfo
+{
+    public List<string> ShellFiles { get; set; } = [];
+
+    public List<string> PowerShellFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Commands { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativeRInfo
+{
+    public List<NativePathItem> ProjectFiles { get; set; } = [];
+
+    public List<string> SourceFiles { get; set; } = [];
+
+    public List<string> ReportFiles { get; set; } = [];
+
+    public List<NativeLanguageSymbol> Symbols { get; set; } = [];
+
+    public List<string> Tooling { get; set; } = [];
+}
+
+public sealed class NativePathItem
+{
+    public string Path { get; set; } = string.Empty;
+}
+
+public sealed class NativeLanguageSymbol
+{
+    public string Path { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
 }
 
 public sealed class NativeProjectMapEntry

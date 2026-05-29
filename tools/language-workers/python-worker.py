@@ -39,9 +39,14 @@ result = {
     "callSites": [],
     "symbols": [],
     "fastapiRoutes": [],
+    "webRoutes": [],
     "sqlalchemyModels": [],
+    "celeryTasks": [],
+    "cliCommands": [],
     "pytestTargets": [],
     "projectMap": [],
+    "capabilities": [],
+    "scaffoldRecommendations": [],
     "failureHints": [],
     "warnings": [],
 }
@@ -183,6 +188,13 @@ def analyze_python_file(path, module_index):
             route = fastapi_route(node)
             if route:
                 result["fastapiRoutes"].append({"path": relative, "line": node.lineno, "name": node.name, **route})
+            for web_route in web_routes(node):
+                result["webRoutes"].append({"path": relative, "line": node.lineno, "name": node.name, **web_route})
+            if is_celery_task(node):
+                result["celeryTasks"].append({"path": relative, "line": node.lineno, "name": node.name})
+            cli_command = cli_command_info(node)
+            if cli_command:
+                result["cliCommands"].append({"path": relative, "line": node.lineno, "name": node.name, **cli_command})
             if is_pytest_function(node):
                 result["pytestTargets"].append({"path": relative, "line": node.lineno, "kind": "test-function", "name": node.name})
         elif isinstance(node, ast.Call):
@@ -226,6 +238,75 @@ def fastapi_route(node):
         if call and call.args and isinstance(call.args[0], ast.Constant):
             route_path = str(call.args[0].value)
         return {"method": method.upper(), "route": route_path}
+    return None
+
+
+def web_routes(node):
+    routes = []
+    for decorator in node.decorator_list:
+        call = decorator if isinstance(decorator, ast.Call) else None
+        target = call.func if call else decorator
+        name = name_of(target)
+        if not name:
+            continue
+
+        route_path = ""
+        if call and call.args and isinstance(call.args[0], ast.Constant):
+            route_path = str(call.args[0].value)
+
+        if name.endswith(".route"):
+            methods = []
+            if call:
+                for keyword in call.keywords:
+                    if keyword.arg == "methods" and isinstance(keyword.value, (ast.List, ast.Tuple)):
+                        methods = [
+                            str(item.value).upper()
+                            for item in keyword.value.elts
+                            if isinstance(item, ast.Constant)
+                        ]
+            routes.append({
+                "framework": "Flask",
+                "method": ",".join(methods) if methods else "GET",
+                "route": route_path,
+            })
+        elif name == "require_http_methods" and call and call.args and isinstance(call.args[0], (ast.List, ast.Tuple)):
+            methods = [
+                str(item.value).upper()
+                for item in call.args[0].elts
+                if isinstance(item, ast.Constant)
+            ]
+            routes.append({
+                "framework": "Django",
+                "method": ",".join(methods),
+                "route": "",
+            })
+        elif name.startswith("require_") and name.endswith("_methods"):
+            routes.append({
+                "framework": "Django",
+                "method": name.replace("require_", "").replace("_methods", "").upper(),
+                "route": "",
+            })
+    return routes
+
+
+def is_celery_task(node):
+    for decorator in node.decorator_list:
+        name = name_of(decorator.func if isinstance(decorator, ast.Call) else decorator)
+        if name.endswith(".task") or name in {"shared_task", "celery.task"}:
+            return True
+    return False
+
+
+def cli_command_info(node):
+    for decorator in node.decorator_list:
+        call = decorator if isinstance(decorator, ast.Call) else None
+        target = call.func if call else decorator
+        name = name_of(target)
+        if name.endswith(".command") or name in {"click.command", "app.command", "typer.command"}:
+            command_name = node.name.replace("_", "-")
+            if call and call.args and isinstance(call.args[0], ast.Constant):
+                command_name = str(call.args[0].value)
+            return {"framework": "Click/Typer", "command": command_name}
     return None
 
 
@@ -311,6 +392,67 @@ def add_failure_hints():
         result["failureHints"].append("pyproject.toml files were found but tomllib is unavailable in this Python runtime.")
 
 
+def add_capability(name, description):
+    if not any(item.get("name") == name for item in result["capabilities"]):
+        result["capabilities"].append({"name": name, "description": description})
+
+
+def add_scaffold_recommendation(name, description, files, verification_commands):
+    if not any(item.get("name") == name for item in result["scaffoldRecommendations"]):
+        result["scaffoldRecommendations"].append({
+            "name": name,
+            "description": description,
+            "files": files,
+            "verificationCommands": verification_commands,
+        })
+
+
+def add_generation_guidance():
+    dependencies = "\n".join(
+        dep
+        for group in result["requirements"]
+        for dep in group.get("dependencies", [])
+    )
+    dependencies += "\n" + "\n".join(
+        dep
+        for group in result["pyprojects"]
+        for dep in group.get("dependencies", [])
+    )
+    lowered = dependencies.lower()
+
+    add_capability("analyze-python", "Analyze Python imports, symbols, call sites, tests, web routes, models, tasks, and CLI commands.")
+
+    if "fastapi" in lowered:
+        add_capability("create-fastapi-feature", "Create FastAPI routers, schemas, services, persistence boundaries, and pytest coverage.")
+        add_scaffold_recommendation(
+            "FastAPI service feature",
+            "Create router, schema, service, model/repository boundary, and API tests.",
+            ["<python_router>/<feature_snake>.py", "<python_app>/schemas/<feature_snake>.py", "<python_app>/services/<feature_snake>.py", "<test_root>/test_<feature_snake>.py"],
+            ["python -m pytest"],
+        )
+
+    if "django" in lowered or any(route.get("framework") == "Django" for route in result["webRoutes"]):
+        add_capability("create-django-app", "Create Django app modules with models, views, urls, forms/serializers, migrations, and tests.")
+        add_scaffold_recommendation(
+            "Django application slice",
+            "Create model, view, URL wiring, serializer/form, migration, and tests.",
+            ["<app>/models.py", "<app>/views.py", "<app>/urls.py", "<app>/tests/test_<feature_snake>.py"],
+            ["python manage.py test"],
+        )
+
+    if "flask" in lowered or any(route.get("framework") == "Flask" for route in result["webRoutes"]):
+        add_capability("create-flask-blueprint", "Create Flask blueprints with service modules, validation, and tests.")
+        add_scaffold_recommendation(
+            "Flask blueprint feature",
+            "Create blueprint, service module, template/API response, and tests.",
+            ["<python_app>/blueprints/<feature_snake>.py", "<python_app>/services/<feature_snake>.py", "<test_root>/test_<feature_snake>.py"],
+            ["python -m pytest"],
+        )
+
+    if "celery" in lowered or result["celeryTasks"]:
+        add_capability("create-celery-workflow", "Create Celery tasks with queue boundaries, retry behavior, and tests.")
+
+
 def main():
     for path in find_named("pyproject.toml"):
         analyze_pyproject(path)
@@ -326,6 +468,7 @@ def main():
         analyze_python_file(path, module_index)
 
     add_failure_hints()
+    add_generation_guidance()
 
     if result["fastapiRoutes"]:
         add_project_map("FastAPI routes", os.path.dirname(result["fastapiRoutes"][0]["path"]))

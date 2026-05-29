@@ -4,7 +4,7 @@ using System.Text;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopVerificationRunner
+public sealed class DesktopVerificationRunner(IEnumerable<IVerificationArtifactCollector> artifactCollectors)
 {
     public async Task<VerificationRunResult> RunAsync(
         AgentVerificationPlan plan,
@@ -25,7 +25,8 @@ public sealed class DesktopVerificationRunner
 
         try
         {
-            return await RunPowerShellCommandAsync(plan.Command, workingDirectory, timeout, ct);
+            var result = await RunPowerShellCommandAsync(plan.Command, workingDirectory, timeout, ct);
+            return AttachArtifacts(plan, result, workingDirectory);
         }
         finally
         {
@@ -83,6 +84,28 @@ public sealed class DesktopVerificationRunner
             StandardOutput = await stdoutTask,
             StandardError = await stderrTask
         };
+    }
+
+    private VerificationRunResult AttachArtifacts(
+        AgentVerificationPlan plan,
+        VerificationRunResult result,
+        string workingDirectory)
+    {
+        var artifacts = artifactCollectors
+            .SelectMany(collector => collector.Collect(plan, result, workingDirectory))
+            .GroupBy(artifact => artifact.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        return artifacts.Count == 0
+            ? result
+            : new VerificationRunResult
+            {
+                ExitCode = result.ExitCode,
+                StandardOutput = result.StandardOutput,
+                StandardError = result.StandardError,
+                Artifacts = artifacts
+            };
     }
 
     private static void TryDeleteVerificationOutput(string workingDirectory)

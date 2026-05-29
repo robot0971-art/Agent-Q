@@ -6,13 +6,14 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopAutoFixWorkflowService(
     DesktopGitService gitService,
-    DesktopVerificationPanelWorkflowService verificationPanelWorkflowService)
+    DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
+    AutoFixLoopGuard loopGuard)
 {
     private readonly List<FileChangeRecord> _pendingAutoFixChanges = [];
     private AgentVerificationPlan? _pendingAutoFixVerificationPlan;
     private int _pendingAutoFixNextAttempt;
     private int _pendingAutoFixMaxAttempts;
-    private string _pendingAutoFixPreviousFailureSignature = string.Empty;
+    private AutoFixLoopGuardState _pendingAutoFixLoopGuardState = AutoFixLoopGuardState.Empty;
 
     public Task RunAsync(
         MainViewModel viewModel,
@@ -23,7 +24,7 @@ public sealed class DesktopAutoFixWorkflowService(
             viewModel,
             maxAttempts,
             startAttempt: 1,
-            previousFailureSignature: verificationPanelWorkflowService.LastFailureSignature,
+            loopGuardState: loopGuard.RecordFailure(AutoFixLoopGuardState.Empty, verificationPanelWorkflowService.LastFailureSignature).State,
             sendCurrentMessageAsync);
     }
 
@@ -75,7 +76,7 @@ public sealed class DesktopAutoFixWorkflowService(
         var retryPlan = _pendingAutoFixVerificationPlan;
         var nextAttempt = _pendingAutoFixNextAttempt;
         var maxAttempts = _pendingAutoFixMaxAttempts;
-        var previousFailureSignature = _pendingAutoFixPreviousFailureSignature;
+        var loopGuardState = _pendingAutoFixLoopGuardState;
         ClearPendingReview();
         viewModel.ClearPendingReviewVerification();
 
@@ -93,13 +94,13 @@ public sealed class DesktopAutoFixWorkflowService(
         }
 
         var currentFailureSignature = verificationPanelWorkflowService.LastFailureSignature;
-        if (!string.IsNullOrWhiteSpace(currentFailureSignature) &&
-            string.Equals(previousFailureSignature, currentFailureSignature, StringComparison.Ordinal))
+        var loopDecision = loopGuard.RecordFailure(loopGuardState, currentFailureSignature);
+        if (loopDecision.ShouldStop)
         {
             viewModel.AddRunStep(
                 AgentRunState.Failed,
                 "Auto fix stopped: repeated failure",
-                "The latest verification failed in the same way as before.");
+                loopDecision.Message);
             viewModel.StatusText = "Auto fix stopped: repeated failure";
             return;
         }
@@ -114,7 +115,7 @@ public sealed class DesktopAutoFixWorkflowService(
             return;
         }
 
-        await RunAsync(viewModel, maxAttempts, nextAttempt, currentFailureSignature, sendCurrentMessageAsync);
+        await RunAsync(viewModel, maxAttempts, nextAttempt, loopDecision.State, sendCurrentMessageAsync);
     }
 
     public void ClearPendingReview()
@@ -123,14 +124,14 @@ public sealed class DesktopAutoFixWorkflowService(
         _pendingAutoFixChanges.Clear();
         _pendingAutoFixNextAttempt = 0;
         _pendingAutoFixMaxAttempts = 0;
-        _pendingAutoFixPreviousFailureSignature = string.Empty;
+        _pendingAutoFixLoopGuardState = AutoFixLoopGuardState.Empty;
     }
 
     private async Task RunAsync(
         MainViewModel viewModel,
         int maxAttempts,
         int startAttempt,
-        string previousFailureSignature,
+        AutoFixLoopGuardState loopGuardState,
         Func<bool, Task> sendCurrentMessageAsync)
     {
         if (startAttempt > maxAttempts)
@@ -194,7 +195,7 @@ public sealed class DesktopAutoFixWorkflowService(
             viewModel.FileChanges.Skip(fileChangeCountBeforeAttempt).ToList(),
             startAttempt + 1,
             maxAttempts,
-            previousFailureSignature);
+            loopGuardState);
     }
 
     private void PauseForReview(
@@ -203,14 +204,14 @@ public sealed class DesktopAutoFixWorkflowService(
         IReadOnlyList<FileChangeRecord> changes,
         int nextAttempt,
         int maxAttempts,
-        string previousFailureSignature)
+        AutoFixLoopGuardState loopGuardState)
     {
         _pendingAutoFixVerificationPlan = retryPlan;
         _pendingAutoFixChanges.Clear();
         _pendingAutoFixChanges.AddRange(changes);
         _pendingAutoFixNextAttempt = nextAttempt;
         _pendingAutoFixMaxAttempts = maxAttempts;
-        _pendingAutoFixPreviousFailureSignature = previousFailureSignature;
+        _pendingAutoFixLoopGuardState = loopGuardState;
         viewModel.SetPendingReviewVerification(retryPlan, changes.Count, nextAttempt, maxAttempts);
 
         viewModel.AddRunStep(

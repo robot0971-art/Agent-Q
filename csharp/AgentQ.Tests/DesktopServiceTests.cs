@@ -1,10 +1,13 @@
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
+using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -711,6 +714,13 @@ public sealed class DesktopServiceTests
         Directory.CreateDirectory(Path.Combine(root, "src"));
         Directory.CreateDirectory(Path.Combine(root, "cmd", "app"));
         Directory.CreateDirectory(Path.Combine(root, "rust", "src"));
+        Directory.CreateDirectory(Path.Combine(root, "java", "src", "main", "java", "demo"));
+        Directory.CreateDirectory(Path.Combine(root, "db", "migrations"));
+        Directory.CreateDirectory(Path.Combine(root, "php", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "kotlin", "src", "main", "kotlin"));
+        Directory.CreateDirectory(Path.Combine(root, "swift", "Sources", "Demo"));
+        Directory.CreateDirectory(Path.Combine(root, "scripts"));
+        Directory.CreateDirectory(Path.Combine(root, "R"));
         await File.WriteAllTextAsync(
             Path.Combine(root, "CMakeLists.txt"),
             """
@@ -737,6 +747,17 @@ public sealed class DesktopServiceTests
             version = "0.1.0"
             """);
         await File.WriteAllTextAsync(Path.Combine(root, "rust", "src", "lib.rs"), "pub fn ok() -> bool { true }");
+        await File.WriteAllTextAsync(Path.Combine(root, "java", "pom.xml"), "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency><dependency><artifactId>junit-jupiter</artifactId></dependency></dependencies></project>");
+        await File.WriteAllTextAsync(Path.Combine(root, "java", "src", "main", "java", "demo", "DemoController.java"), "package demo; public class DemoController {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "db", "migrations", "001_create_users.sql"), "create table users (id integer primary key);");
+        await File.WriteAllTextAsync(Path.Combine(root, "php", "composer.json"), """{"require":{"laravel/framework":"^11.0"},"require-dev":{"phpunit/phpunit":"^11.0"}}""");
+        await File.WriteAllTextAsync(Path.Combine(root, "php", "app", "UserController.php"), "<?php class UserController {} function route_users() {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "kotlin", "build.gradle.kts"), """plugins { id("io.ktor.plugin") version "2.3.0" }""");
+        await File.WriteAllTextAsync(Path.Combine(root, "kotlin", "src", "main", "kotlin", "Application.kt"), "class Application\nfun main() {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "swift", "Package.swift"), "// swift-tools-version: 5.9");
+        await File.WriteAllTextAsync(Path.Combine(root, "swift", "Sources", "Demo", "ContentView.swift"), "import SwiftUI\nstruct ContentView: View {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "scripts", "build.ps1"), "function Invoke-Build { Write-Host build }");
+        await File.WriteAllTextAsync(Path.Combine(root, "R", "analysis.R"), "summarise_users <- function(data) { data }");
 
         var result = await new NativeWorkerHost().AnalyzeAsync(root, CancellationToken.None);
 
@@ -753,6 +774,24 @@ public sealed class DesktopServiceTests
         Assert.Contains(result.ProjectMap, entry => entry.Role == "C++ compile database");
         Assert.Contains(result.ProjectMap, entry => entry.Role == "Go modules");
         Assert.Contains(result.ProjectMap, entry => entry.Role == "Cargo manifests");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-cpp-cmake-target");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-go-service");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-rust-crate-feature");
+        Assert.Contains(result.Java.Symbols, symbol => symbol.Name == "DemoController");
+        Assert.Contains(result.Sql.Tables, table => table.Name == "users");
+        Assert.Contains(result.Php.Frameworks, framework => framework == "Laravel");
+        Assert.Contains(result.Kotlin.Symbols, symbol => symbol.Name == "Application");
+        Assert.Contains(result.Swift.Frameworks, framework => framework == "SwiftUI");
+        Assert.Contains(result.Scripts.Commands, command => command.Name == "Invoke-Build");
+        Assert.Contains(result.R.Symbols, symbol => symbol.Name == "summarise_users");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-java-service");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-sql-migration");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-php-feature");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-kotlin-feature");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-swift-feature");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-automation-script");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-r-analysis");
+        Assert.Contains(result.ScaffoldRecommendations, recommendation => recommendation.Name == "Rust crate feature");
     }
 
     [Fact]
@@ -764,6 +803,13 @@ public sealed class DesktopServiceTests
         Directory.CreateDirectory(Path.Combine(root, "src"));
         Directory.CreateDirectory(Path.Combine(root, "cmd", "app"));
         Directory.CreateDirectory(Path.Combine(root, "rust", "src"));
+        Directory.CreateDirectory(Path.Combine(root, "java", "src", "main", "java", "demo"));
+        Directory.CreateDirectory(Path.Combine(root, "db", "migrations"));
+        Directory.CreateDirectory(Path.Combine(root, "php", "app"));
+        Directory.CreateDirectory(Path.Combine(root, "kotlin", "src", "main", "kotlin"));
+        Directory.CreateDirectory(Path.Combine(root, "swift", "Sources", "Demo"));
+        Directory.CreateDirectory(Path.Combine(root, "scripts"));
+        Directory.CreateDirectory(Path.Combine(root, "R"));
         await File.WriteAllTextAsync(Path.Combine(root, "CMakeLists.txt"), "project(native_demo)");
         await File.WriteAllTextAsync(
             Path.Combine(root, "build", "compile_commands.json"),
@@ -780,6 +826,17 @@ public sealed class DesktopServiceTests
             version = "0.1.0"
             """);
         await File.WriteAllTextAsync(Path.Combine(root, "rust", "src", "lib.rs"), "pub fn ok() -> bool { true }");
+        await File.WriteAllTextAsync(Path.Combine(root, "java", "pom.xml"), "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency></dependencies></project>");
+        await File.WriteAllTextAsync(Path.Combine(root, "java", "src", "main", "java", "demo", "DemoController.java"), "package demo; public class DemoController {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "db", "migrations", "001_create_users.sql"), "create table users (id integer primary key);");
+        await File.WriteAllTextAsync(Path.Combine(root, "php", "composer.json"), """{"require":{"laravel/framework":"^11.0"}}""");
+        await File.WriteAllTextAsync(Path.Combine(root, "php", "app", "UserController.php"), "<?php class UserController {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "kotlin", "build.gradle.kts"), """plugins { id("io.ktor.plugin") version "2.3.0" }""");
+        await File.WriteAllTextAsync(Path.Combine(root, "kotlin", "src", "main", "kotlin", "Application.kt"), "class Application");
+        await File.WriteAllTextAsync(Path.Combine(root, "swift", "Package.swift"), "// swift-tools-version: 5.9");
+        await File.WriteAllTextAsync(Path.Combine(root, "swift", "Sources", "Demo", "ContentView.swift"), "import SwiftUI\nstruct ContentView: View {}");
+        await File.WriteAllTextAsync(Path.Combine(root, "scripts", "build.ps1"), "function Invoke-Build { Write-Host build }");
+        await File.WriteAllTextAsync(Path.Combine(root, "R", "analysis.R"), "summarise_users <- function(data) { data }");
 
         var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
 
@@ -792,6 +849,21 @@ public sealed class DesktopServiceTests
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("go module example.com/native", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("cargo native-rust", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("compile command", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Native worker capability: create-cpp-cmake-target", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Suggested scaffold: Rust crate feature", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Java", analysis.ProjectType);
+        Assert.Contains("SQL", analysis.ProjectType);
+        Assert.Contains("PHP", analysis.ProjectType);
+        Assert.Contains("Kotlin", analysis.ProjectType);
+        Assert.Contains("Swift", analysis.ProjectType);
+        Assert.Contains("R", analysis.ProjectType);
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("java class DemoController", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("sql table users", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("php class UserController", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("kotlin class Application", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("swift struct ContentView", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("script command Invoke-Build", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("r function summarise_users", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1115,10 +1187,13 @@ public sealed class DesktopServiceTests
             {
               "name": "agentq-web",
               "dependencies": { "react": "latest" },
-              "devDependencies": { "vite": "latest", "typescript": "latest" },
-              "scripts": { "build": "vite build", "test": "vitest" }
+              "devDependencies": { "vite": "latest", "typescript": "latest", "@playwright/test": "latest" },
+              "scripts": { "build": "vite build", "test": "vitest", "test:e2e": "playwright test" }
             }
             """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "playwright.config.ts"),
+            "export default {};");
         await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "tsconfig.json"),
             """{"compilerOptions":{"jsx":"react-jsx","target":"ES2022","module":"ESNext","baseUrl":".","paths":{"@/*":["src/*"]}}}""");
@@ -1147,6 +1222,21 @@ public sealed class DesktopServiceTests
               return import('@/api');
             }
             """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "pages", "Dashboard.test.tsx"),
+            """
+            describe("DashboardView", () => {
+              it("loads", () => {});
+            });
+            """);
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src", "app", "api", "users"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "app", "api", "users", "route.ts"),
+            """
+            export async function GET() {
+              return Response.json([]);
+            }
+            """);
 
         var result = await new TypeScriptWorkerHost().AnalyzeAsync(root, CancellationToken.None);
 
@@ -1161,6 +1251,18 @@ public sealed class DesktopServiceTests
                                                   import.ResolvedPath == "frontend/src/api.ts");
         Assert.Contains(result.ReactComponents, component => component.Name == "DashboardView");
         Assert.Contains(result.Routes, route => route.Path.Contains("Dashboard.tsx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.ReactHooks, hook => hook.Name == "useDashboard");
+        Assert.Contains(result.ApiEndpoints, endpoint => endpoint.Method == "GET" &&
+                                                         endpoint.Route.Contains("/api/users", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.TestTargets, target => target.Kind == "it" &&
+                                                     target.Name == "loads");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-react-feature");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "verify-playwright");
+        Assert.True(result.Playwright.HasDependency);
+        Assert.Contains(result.Playwright.Configs, config => config == "frontend/playwright.config.ts");
+        Assert.Contains(result.Playwright.Scripts, script => script.Name == "test:e2e" &&
+                                                            script.Command == "playwright test");
+        Assert.Contains(result.ScaffoldRecommendations, recommendation => recommendation.Name == "React application feature");
         Assert.Contains(result.Exports, export => export.Name == "useDashboard");
         Assert.Contains(result.Exports, export => export.Name == "loadDashboard");
         Assert.Contains(result.Symbols, symbol => symbol.Name == "loadRoute");
@@ -1176,10 +1278,13 @@ public sealed class DesktopServiceTests
             """
             {
               "dependencies": { "react": "latest" },
-              "devDependencies": { "vite": "latest", "typescript": "latest" },
-              "scripts": { "build": "vite build" }
+              "devDependencies": { "vite": "latest", "typescript": "latest", "@playwright/test": "latest" },
+              "scripts": { "build": "vite build", "test:e2e": "playwright test" }
             }
             """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "playwright.config.ts"),
+            "export default {};");
         await File.WriteAllTextAsync(
             Path.Combine(root, "frontend", "tsconfig.json"),
             """{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}""");
@@ -1191,18 +1296,33 @@ public sealed class DesktopServiceTests
             """
             import { apiClient } from '@/api';
 
+            export const useAppData = () => apiClient;
+
             export function AppShell() {
               return apiClient;
             }
             """);
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "src", "app", "api", "status"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "frontend", "src", "app", "api", "status", "route.ts"),
+            "export async function POST() { return Response.json({ ok: true }); }");
 
         var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
 
         Assert.Contains("React", analysis.Framework);
         Assert.Contains("Vite", analysis.Framework);
         Assert.Contains("TypeScript", analysis.Framework);
+        Assert.Contains("Playwright", analysis.Framework);
         Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker indexed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Playwright detected", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeyFiles, file => file == "frontend/playwright.config.ts");
+        Assert.Contains(analysis.ProjectMap, entry => entry.Contains("Playwright config", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.VerificationCommands, command => command.Contains("cd frontend", StringComparison.OrdinalIgnoreCase) &&
+                                                                  command.Contains("npm run test:e2e", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("component AppShell", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("hook useAppData", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("api POST /api/status", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("TypeScript worker capability: create-react-feature", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("frontend/src/App.tsx", StringComparison.OrdinalIgnoreCase) &&
                                                                 dependency.Contains("frontend/src/api.ts", StringComparison.OrdinalIgnoreCase));
     }
@@ -1247,6 +1367,27 @@ public sealed class DesktopServiceTests
                 return [User()]
             """);
         await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "views.py"),
+            """
+            import click
+            from celery import shared_task
+            from flask import Flask
+
+            app = Flask(__name__)
+
+            @app.route("/health", methods=["GET", "POST"])
+            def health():
+                return "ok"
+
+            @shared_task
+            def rebuild_cache():
+                return True
+
+            @click.command("sync-users")
+            def sync_users():
+                return None
+            """);
+        await File.WriteAllTextAsync(
             Path.Combine(root, "backend", "tests", "test_users.py"),
             """
             import pytest
@@ -1269,6 +1410,14 @@ public sealed class DesktopServiceTests
         Assert.Contains(result.CallSites, item => item.Name == "User" &&
                                                   item.EnclosingSymbol == "list_users");
         Assert.Contains(result.FastApiRoutes, route => route.Route == "/users" && route.Method == "GET");
+        Assert.Contains(result.WebRoutes, route => route.Framework == "Flask" &&
+                                                  route.Route == "/health" &&
+                                                  route.Method == "GET,POST");
+        Assert.Contains(result.CeleryTasks, task => task.Name == "rebuild_cache");
+        Assert.Contains(result.CliCommands, command => command.Command == "sync-users");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-fastapi-feature");
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-flask-blueprint");
+        Assert.Contains(result.ScaffoldRecommendations, recommendation => recommendation.Name == "FastAPI service feature");
         Assert.Contains(result.SqlAlchemyModels, model => model.Name == "User");
         Assert.Contains(result.PytestTargets, target => target.Path == "backend/tests/test_users.py" &&
                                                        target.Kind == "test-file");
@@ -1289,6 +1438,9 @@ public sealed class DesktopServiceTests
             fastapi
             sqlalchemy
             pytest
+            flask
+            celery
+            click
             """);
         await File.WriteAllTextAsync(
             Path.Combine(root, "backend", "app", "__init__.py"),
@@ -1311,16 +1463,43 @@ public sealed class DesktopServiceTests
             def create_user():
                 return User()
             """);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "backend", "app", "tasks.py"),
+            """
+            from celery import shared_task
+            from flask import Flask
+            import click
+
+            app = Flask(__name__)
+
+            @app.route("/health")
+            def health():
+                return "ok"
+
+            @shared_task
+            def rebuild_cache():
+                return True
+
+            @click.command()
+            def sync_users():
+                return None
+            """);
         await File.WriteAllTextAsync(Path.Combine(root, "backend", "tests", "test_api.py"), "def test_api(): assert True");
 
         var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
 
         Assert.Contains("FastAPI", analysis.Framework);
+        Assert.Contains("Flask", analysis.Framework);
+        Assert.Contains("Celery", analysis.Framework);
         Assert.Contains("SQLAlchemy", analysis.Framework);
         Assert.Contains("pytest", analysis.Framework);
         Assert.Contains(analysis.Hints, hint => hint.Contains("Python worker indexed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("route POST /users", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("route Flask GET /health", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("model User", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("celery task rebuild_cache", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("cli sync-users", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Hints, hint => hint.Contains("Python worker capability: create-fastapi-feature", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeySymbols, symbol => symbol.Contains("call User", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(analysis.KeyDependencies, dependency => dependency.Contains("backend/app/main.py", StringComparison.OrdinalIgnoreCase) &&
                                                                 dependency.Contains("backend/app/models.py", StringComparison.OrdinalIgnoreCase));
@@ -1793,6 +1972,473 @@ public sealed class DesktopServiceTests
         Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd .. && npm run build"));
         Assert.False(VerificationCommandPolicy.IsAllowed("cmd /c cd frontend & del * && npm run build"));
         Assert.False(VerificationCommandPolicy.IsAllowed("dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter FullyQualifiedName~DesktopServiceTests;Remove-Item"));
+    }
+
+    [Fact]
+    public void VerificationCommandPolicy_AllowsPlaywrightCommands()
+    {
+        Assert.True(VerificationCommandPolicy.IsAllowed("npx playwright test"));
+        Assert.True(VerificationCommandPolicy.IsAllowed("npm run test:e2e"));
+        Assert.True(VerificationCommandPolicy.IsAllowed("cmd /c cd frontend && npm run test:e2e"));
+        Assert.True(VerificationCommandPolicy.IsAllowed("cmd /c cd frontend && npx playwright test"));
+    }
+
+    [Fact]
+    public void PlaywrightVerificationArtifactCollector_FindsReportsAndScreenshots()
+    {
+        var root = CreateTempDirectory();
+        var screenshotDirectory = Path.Combine(root, "frontend", "test-results", "login-chromium");
+        Directory.CreateDirectory(screenshotDirectory);
+        File.WriteAllBytes(Path.Combine(screenshotDirectory, "failure.png"), [1, 2, 3]);
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "playwright-report"));
+
+        var artifacts = new PlaywrightVerificationArtifactCollector().Collect(
+            new AgentVerificationPlan
+            {
+                Title = "E2E",
+                Command = "cmd /c cd frontend && npm run test:e2e",
+                Reason = "Run Playwright checks."
+            },
+            new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "Running playwright test"
+            },
+            root);
+
+        Assert.Contains(artifacts, artifact => artifact.Kind == "playwright-report" &&
+                                              artifact.Path == "frontend/playwright-report");
+        Assert.Contains(artifacts, artifact => artifact.Kind == "screenshot" &&
+                                              artifact.Path == "frontend/test-results/login-chromium/failure.png");
+    }
+
+    [Fact]
+    public void PlaywrightVerificationArtifactCollector_IgnoresNonPlaywrightRuns()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        File.WriteAllBytes(Path.Combine(root, "test-results", "failure.png"), [1, 2, 3]);
+
+        var artifacts = new PlaywrightVerificationArtifactCollector().Collect(
+            new AgentVerificationPlan
+            {
+                Title = "Unit tests",
+                Command = "npm test",
+                Reason = "Run unit tests."
+            },
+            new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "failed"
+            },
+            root);
+
+        Assert.Empty(artifacts);
+    }
+
+    [Fact]
+    public void VerificationArtifactEvidenceBuilder_SummarizesArtifacts()
+    {
+        var summary = new VerificationArtifactEvidenceBuilder().BuildSummary(
+            [
+                new VerificationArtifact
+                {
+                    Kind = "screenshot",
+                    Path = "frontend/test-results/login/failure.png",
+                    Description = "Playwright screenshot evidence."
+                },
+                new VerificationArtifact
+                {
+                    Kind = "playwright-report",
+                    Path = "frontend/playwright-report",
+                    Description = "Playwright HTML report directory."
+                }
+            ]);
+
+        Assert.Contains("Artifact screenshot", summary);
+        Assert.Contains("frontend/test-results/login/failure.png", summary);
+        Assert.Contains("Artifact playwright-report", summary);
+    }
+
+    [Fact]
+    public void ScreenshotEvidenceQualityChecker_FlagsSmallMissingAndDuplicateScreenshots()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        File.WriteAllBytes(Path.Combine(root, "test-results", "small.png"), [1, 2, 3]);
+        var largeBytes = Enumerable.Range(0, 1024).Select(index => (byte)(index % 255)).ToArray();
+        File.WriteAllBytes(Path.Combine(root, "test-results", "a.png"), largeBytes);
+        File.WriteAllBytes(Path.Combine(root, "test-results", "b.png"), largeBytes);
+
+        var results = new ScreenshotEvidenceQualityChecker().Check(
+            [
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/small.png" },
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/missing.png" },
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/a.png" },
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/b.png" },
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/raw.bmp" }
+            ],
+            root);
+
+        Assert.Contains(results, result => result.Path == "test-results/small.png" &&
+                                           result.Status == ScreenshotEvidenceQualityStatus.TooSmall);
+        Assert.Contains(results, result => result.Path == "test-results/missing.png" &&
+                                           result.Status == ScreenshotEvidenceQualityStatus.Missing);
+        Assert.Contains(results, result => result.Path == "test-results/a.png" &&
+                                           result.Status == ScreenshotEvidenceQualityStatus.Valid);
+        Assert.Contains(results, result => result.Path == "test-results/b.png" &&
+                                           result.Status == ScreenshotEvidenceQualityStatus.Duplicate);
+        Assert.Contains(results, result => result.Path == "test-results/raw.bmp" &&
+                                           result.Status == ScreenshotEvidenceQualityStatus.UnsupportedExtension);
+    }
+
+    [Fact]
+    public void VerificationArtifactEvidenceBuilder_IncludesScreenshotQualityEvidence()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        File.WriteAllBytes(Path.Combine(root, "test-results", "failure.png"), [1, 2, 3]);
+
+        var evidence = new VerificationArtifactEvidenceBuilder().BuildEvidence(
+            [
+                new VerificationArtifact
+                {
+                    Kind = "screenshot",
+                    Path = "test-results/failure.png",
+                    Description = "Playwright screenshot evidence."
+                }
+            ],
+            root);
+
+        Assert.Contains(evidence, item => item.Contains("Artifact screenshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(evidence, item => item.Contains("Screenshot quality TooSmall", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ScreenshotVisualReviewService_QueuesOnlyValidScreenshots()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        var largeBytes = Enumerable.Range(0, 1024).Select(index => (byte)(index % 255)).ToArray();
+        File.WriteAllBytes(Path.Combine(root, "test-results", "valid.png"), largeBytes);
+        File.WriteAllBytes(Path.Combine(root, "test-results", "tiny.png"), [1, 2, 3]);
+
+        var candidates = new ScreenshotVisualReviewService().SelectCandidates(
+            [
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/valid.png" },
+                new VerificationArtifact { Kind = "screenshot", Path = "test-results/tiny.png" },
+                new VerificationArtifact { Kind = "playwright-report", Path = "playwright-report" }
+            ],
+            root);
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("test-results/valid.png", candidate.RelativePath);
+        Assert.True(Path.IsPathRooted(candidate.FullPath));
+        Assert.Contains("reviewed", candidate.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScreenshotVisualHeuristicEvaluator_FlagsDarkScreensAndPassesVariedScreenshots()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        var darkPath = Path.Combine(root, "test-results", "dark.png");
+        var variedPath = Path.Combine(root, "test-results", "varied.png");
+        SaveTestPng(darkPath, 32, 32, (_, _) => (0, 0, 0));
+        SaveTestPng(variedPath, 32, 32, (x, y) => ((byte)(x * 7), (byte)(y * 7), (byte)((x + y) * 3)));
+
+        var evaluator = new ScreenshotVisualHeuristicEvaluator();
+        var dark = evaluator.Evaluate(new ScreenshotVisualReviewCandidate
+        {
+            RelativePath = "test-results/dark.png",
+            FullPath = darkPath
+        });
+        var varied = evaluator.Evaluate(new ScreenshotVisualReviewCandidate
+        {
+            RelativePath = "test-results/varied.png",
+            FullPath = variedPath
+        });
+
+        Assert.Equal(ScreenshotVisualReviewStatus.Fail, dark.Status);
+        Assert.Equal(ScreenshotVisualReviewStatus.Pass, varied.Status);
+        Assert.True(varied.BrightnessVariance > dark.BrightnessVariance);
+    }
+
+    [Fact]
+    public void ScreenshotVisualReviewService_ReturnsHeuristicEvidence()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        SaveTestPng(Path.Combine(root, "test-results", "valid.png"), 160, 120, (x, y) => ((byte)((x * 17 + y) % 255), (byte)((y * 13 + x) % 255), (byte)((x * y) % 255)));
+
+        var evidence = new ScreenshotVisualReviewService().BuildEvidence(
+            [new VerificationArtifact { Kind = "screenshot", Path = "test-results/valid.png" }],
+            root);
+
+        Assert.Contains(evidence, item => item.Contains("Screenshot visual review Pass", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(evidence, item => item.Contains("brightness=", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void VerificationArtifactEvidenceBuilder_QueuesValidScreenshotVisualReview()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        SaveTestPng(Path.Combine(root, "test-results", "valid.png"), 160, 120, (x, y) => ((byte)((x * 17 + y) % 255), (byte)((y * 13 + x) % 255), (byte)((x * y) % 255)));
+
+        var evidence = new VerificationArtifactEvidenceBuilder().BuildEvidence(
+            [new VerificationArtifact { Kind = "screenshot", Path = "test-results/valid.png" }],
+            root);
+
+        Assert.Contains(evidence, item => item.Contains("Screenshot quality Valid", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(evidence, item => item.Contains("Screenshot visual review Pass", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ScreenshotLlmVisionReviewer_SendsScreenshotAndParsesJson()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        var screenshotPath = Path.Combine(root, "test-results", "valid.png");
+        SaveTestPng(screenshotPath, 160, 120, (x, y) => ((byte)((x * 17 + y) % 255), (byte)((y * 13 + x) % 255), (byte)((x * y) % 255)));
+        var provider = new CapturingLlmProvider("""{"status":"fail","summary":"Primary button overlaps the header.","findings":["Button text is clipped","Header overlaps content"]}""");
+
+        var result = await new ScreenshotLlmVisionReviewer(provider).ReviewAsync(
+            new ScreenshotLlmVisionReviewRequest
+            {
+                Candidate = new ScreenshotVisualReviewCandidate
+                {
+                    RelativePath = "test-results/valid.png",
+                    FullPath = screenshotPath,
+                    Reason = "Review for broken layout."
+                },
+                HeuristicResult = new ScreenshotVisualReviewResult
+                {
+                    RelativePath = "test-results/valid.png",
+                    Status = ScreenshotVisualReviewStatus.Pass,
+                    Message = "Screenshot passed first-pass heuristic review.",
+                    AverageBrightness = 0.45,
+                    BrightnessVariance = 0.02
+                },
+                Evidence = ["Playwright failed: button should be visible."],
+                VerificationOutput = "1 failed"
+            });
+
+        Assert.Equal(ScreenshotLlmVisionReviewStatus.Fail, result.Status);
+        Assert.Equal("Primary button overlaps the header.", result.Summary);
+        Assert.Contains("Button text is clipped", result.Findings);
+        var message = Assert.Single(provider.LastContext!.Messages);
+        Assert.Contains(message.Content, content => content.Type == ContentType.Image &&
+                                                   content.MediaType == "image/png" &&
+                                                   !string.IsNullOrWhiteSpace(content.Base64Data));
+        Assert.Contains(message.Content, content => content.Type == ContentType.Text &&
+                                                   content.Text!.Contains("Heuristic status: Pass", StringComparison.OrdinalIgnoreCase) &&
+                                                   content.Text.Contains("Playwright failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ScreenshotLlmVisionReviewer_FallsBackForNonJsonResponse()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        var screenshotPath = Path.Combine(root, "test-results", "valid.png");
+        SaveTestPng(screenshotPath, 160, 120, (x, y) => ((byte)((x + y) % 255), (byte)((x * 2) % 255), (byte)((y * 3) % 255)));
+
+        var result = await new ScreenshotLlmVisionReviewer(new CapturingLlmProvider("The page looks mostly okay.")).ReviewAsync(
+            new ScreenshotLlmVisionReviewRequest
+            {
+                Candidate = new ScreenshotVisualReviewCandidate
+                {
+                    RelativePath = "test-results/valid.png",
+                    FullPath = screenshotPath
+                }
+            });
+
+        Assert.Equal(ScreenshotLlmVisionReviewStatus.Unknown, result.Status);
+        Assert.Contains("mostly okay", result.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ScreenshotLlmVisionEvidenceBuilder_SummarizesFindings()
+    {
+        var evidence = new ScreenshotLlmVisionEvidenceBuilder().BuildEvidence(
+            new ScreenshotLlmVisionReviewResult
+            {
+                RelativePath = "test-results/failure.png",
+                Status = ScreenshotLlmVisionReviewStatus.Warning,
+                Summary = "The UI may be clipped.",
+                Findings = ["Footer text is cut off", "Modal is too narrow"]
+            });
+
+        Assert.Contains("Screenshot LLM vision review Warning", evidence, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Footer text is cut off", evidence, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopScreenshotLlmVisionWorkflowService_RunsOnlyWhenEnabled()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test-results"));
+        var screenshotPath = Path.Combine(root, "test-results", "failure.png");
+        SaveTestPng(screenshotPath, 160, 120, (x, y) => ((byte)((x * 11 + y) % 255), (byte)((y * 7 + x) % 255), (byte)((x + y) % 255)));
+        var provider = new CapturingLlmProvider("""{"status":"warning","summary":"The submit button may be clipped.","findings":["Submit text is partially hidden"]}""");
+        var service = new DesktopScreenshotLlmVisionWorkflowService(
+            new CapturingLlmProviderFactory(provider),
+            new ScreenshotVisualReviewService(),
+            new ScreenshotVisualHeuristicEvaluator(),
+            new ScreenshotLlmVisionEvidenceBuilder());
+        var result = new VerificationRunResult
+        {
+            ExitCode = 1,
+            StandardOutput = "1 failed",
+            Artifacts = [new VerificationArtifact { Kind = "screenshot", Path = "test-results/failure.png" }]
+        };
+
+        Assert.Empty(await service.BuildEvidenceAsync(result, root, new ProviderConfiguration(), CancellationToken.None));
+
+        var evidence = await service.BuildEvidenceAsync(
+            result,
+            root,
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                Model = "vision-model",
+                DesktopEnableScreenshotLlmVisionReview = true
+            },
+            CancellationToken.None);
+
+        Assert.Contains(evidence, item => item.Contains("Screenshot LLM vision review Warning", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(evidence, item => item.Contains("Submit text is partially hidden", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(provider.LastContext);
+    }
+
+    [Fact]
+    public void DesktopPromptBuilder_PrioritizesScreenshotVisionEvidenceForAutoFix()
+    {
+        var prompt = DesktopPromptBuilder.BuildVerificationFixPrompt(
+            new AgentVerificationPlan
+            {
+                Title = "Playwright",
+                Command = "npm run test:e2e"
+            },
+            new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "1 failed"
+            },
+            new VerificationFailureAnalysis
+            {
+                Kind = VerificationFailureKind.TestFailure,
+                Title = "Tests failed",
+                Summary = "Playwright failed.",
+                SuggestedNextStep = "Inspect the failing UI.",
+                Evidence =
+                [
+                    "Screenshot LLM vision review Fail: test-results/login.png. Login button overlaps the modal title. Findings: Button text is clipped",
+                    "Assert.True expected button to be visible"
+                ]
+            });
+
+        Assert.Contains("Visual UI evidence from screenshot review:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Login button overlaps the modal title", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("inspect the relevant UI component, style, layout, route, and test assertion", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Evidence:", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void VerificationResultCard_FailedHighlightsVisualEvidence()
+    {
+        var card = VerificationResultCard.Failed(
+            new AgentVerificationPlan
+            {
+                Title = "Playwright",
+                Command = "npm run test:e2e"
+            },
+            new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "1 failed"
+            },
+            new VerificationFailureAnalysis
+            {
+                Kind = VerificationFailureKind.TestFailure,
+                Title = "Tests failed",
+                Summary = "The browser test failed.",
+                Evidence =
+                [
+                    "Screenshot LLM vision review Fail: test-results/login.png. Login button overlaps the modal title.",
+                    "Assert.True expected button to be visible"
+                ]
+            },
+            "Exit code: 1");
+
+        Assert.True(card.HasVisualEvidence);
+        Assert.Contains("Screenshot LLM vision review Fail", card.VisualEvidenceSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Assert.True", card.VisualEvidenceSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void VerificationFailureClassifier_IncludesArtifactEvidence()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "frontend", "test-results", "login"));
+        File.WriteAllBytes(Path.Combine(root, "frontend", "test-results", "login", "failure.png"), [1, 2, 3]);
+
+        var analysis = new VerificationFailureClassifier().Analyze(
+            new AgentVerificationPlan
+            {
+                Title = "E2E",
+                Command = "cmd /c cd frontend && npm run test:e2e",
+                Reason = "Run browser checks."
+            },
+            new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "1 failed",
+                Artifacts =
+                [
+                    new VerificationArtifact
+                    {
+                        Kind = "screenshot",
+                        Path = "frontend/test-results/login/failure.png",
+                        Description = "Playwright screenshot evidence."
+                    }
+                ]
+            },
+            root);
+
+        Assert.Equal(VerificationFailureKind.TestFailure, analysis.Kind);
+        Assert.Contains(analysis.Evidence, evidence => evidence.Contains("frontend/test-results/login/failure.png", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.Evidence, evidence => evidence.Contains("Screenshot quality TooSmall", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AutoFixLoopGuard_StopsAfterThreeIdenticalFailures()
+    {
+        var guard = new AutoFixLoopGuard();
+
+        var first = guard.RecordFailure(AutoFixLoopGuardState.Empty, "Tests failed|button hidden");
+        var second = guard.RecordFailure(first.State, "Tests failed|button hidden");
+        var third = guard.RecordFailure(second.State, "Tests failed|button hidden");
+
+        Assert.False(first.ShouldStop);
+        Assert.False(second.ShouldStop);
+        Assert.True(third.ShouldStop);
+        Assert.Equal(3, third.State.RepeatedCount);
+        Assert.Contains("repeated 3", third.Message);
+    }
+
+    [Fact]
+    public void AutoFixLoopGuard_ResetsCountForDifferentFailure()
+    {
+        var guard = new AutoFixLoopGuard();
+
+        var first = guard.RecordFailure(AutoFixLoopGuardState.Empty, "Tests failed|button hidden");
+        var second = guard.RecordFailure(first.State, "Compilation failed|CS1002");
+
+        Assert.False(second.ShouldStop);
+        Assert.Equal(1, second.State.RepeatedCount);
+        Assert.Equal("Compilation failed|CS1002", second.State.FailureSignature);
     }
 
     [Fact]
@@ -3584,6 +4230,70 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void ProjectMemoryGcService_RemovesExpiredLowConfidenceStaleAndDuplicates()
+    {
+        var now = DateTime.Now;
+        var lessons = new List<ProjectMemoryLesson>
+        {
+            new() { Id = "keep", Title = "Keep", Content = "Useful current lesson", Confidence = 0.9, CreatedAt = now },
+            new() { Id = "expired", Title = "Expired", Content = "Old lesson", Confidence = 0.9, ExpiresAt = now.AddDays(-1) },
+            new() { Id = "low", Title = "Low", Content = "Weak lesson", Confidence = 0.1, CreatedAt = now },
+            new() { Id = "stale", Title = "Stale", Content = "Unused lesson", Confidence = 0.9, CreatedAt = now.AddDays(-220) },
+            new() { Id = "dup-a", Title = "Duplicate", Content = "Same content", Confidence = 0.9, CreatedAt = now },
+            new() { Id = "dup-b", Title = "Duplicate", Content = "Same content", Confidence = 0.8, CreatedAt = now }
+        };
+
+        var report = new ProjectMemoryGcService().Apply(lessons);
+
+        Assert.Equal(6, report.BeforeCount);
+        Assert.Equal(2, report.AfterCount);
+        Assert.Equal(4, report.RemovedCount);
+        Assert.Contains(report.RemovedLessons, item => item.Id == "expired" && item.Reason == "expired");
+        Assert.Contains(report.RemovedLessons, item => item.Id == "low" && item.Reason == "low confidence");
+        Assert.Contains(report.RemovedLessons, item => item.Id == "stale" && item.Reason == "stale unused");
+        Assert.Contains(report.RemovedLessons, item => item.Id == "dup-b" && item.Reason == "duplicate");
+        Assert.Contains(lessons, lesson => lesson.Id == "keep");
+        Assert.Contains(lessons, lesson => lesson.Id == "dup-a");
+    }
+
+    [Fact]
+    public async Task ProjectMemoryService_CompactLocalLessonsAsync_RemovesGcCandidates()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, ".agentq"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, ".agentq", "memory.local.json"),
+            $$"""
+            {
+              "lessons": [
+                {
+                  "id": "keep",
+                  "title": "Keep",
+                  "content": "Useful lesson",
+                  "confidence": 0.9,
+                  "createdAt": "{{DateTime.Now:o}}"
+                },
+                {
+                  "id": "expired",
+                  "title": "Expired",
+                  "content": "Expired lesson",
+                  "confidence": 0.9,
+                  "expiresAt": "{{DateTime.Now.AddDays(-1):o}}"
+                }
+              ]
+            }
+            """);
+
+        var service = new ProjectMemoryService();
+        var report = await service.CompactLocalLessonsAsync(root, null, CancellationToken.None);
+        var lessons = await service.LoadLocalLessonsAsync(root, CancellationToken.None);
+
+        Assert.Equal(1, report.RemovedCount);
+        Assert.Single(lessons);
+        Assert.Equal("keep", lessons[0].Id);
+    }
+
+    [Fact]
     public async Task DesktopProviderModelDiscoveryService_FetchesOpenAiCompatibleModels()
     {
         using var factory = new StubHttpClientFactory(
@@ -3924,6 +4634,949 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal(AgentPlanItemStatus.Pending, items[2].Status);
         Assert.Equal("Add desktop service tests", items[2].Title);
         Assert.Equal(AgentPlanItemStatus.Blocked, items[4].Status);
+    }
+
+    [Fact]
+    public void WorkerPlanApprovalSummaryBuilder_SummarizesFilesRiskAndVerification()
+    {
+        var plan = new WorkerPlan
+        {
+            Goal = "Add account login",
+            Language = "csharp",
+            Framework = ".NET",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.ModifyFile,
+                    Path = "src/AuthService.cs",
+                    Reason = "Update login/session behavior.",
+                    ExpectedChange = "Validate credentials and issue sessions.",
+                    RequiresApproval = true
+                },
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.ModifyFile,
+                    Path = "src/UserService.cs",
+                    Reason = "Load users for auth."
+                },
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "src/LoginRequestDto.cs",
+                    ExpectedChange = "Add request DTO."
+                },
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "tests/AuthServiceTests.cs",
+                    ExpectedChange = "Cover login success and failure."
+                },
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "db/migrations/20260529_add_login_sessions.sql",
+                    ExpectedChange = "Create login session table."
+                }
+            ],
+            VerificationCommands = ["dotnet test", "npx playwright test"],
+            Risks = ["Database migration changes persisted schema."]
+        };
+
+        var summary = new WorkerPlanApprovalSummaryBuilder().Build(plan);
+
+        Assert.Equal(3, summary.CreateCount);
+        Assert.Equal(2, summary.ModifyCount);
+        Assert.Equal(0, summary.DeleteCount);
+        Assert.Equal(WorkerPlanRiskLevel.High, summary.RiskLevel);
+        Assert.True(summary.HasHighRiskChanges);
+        Assert.True(summary.CanApproveLowRiskOnly);
+        Assert.Contains(summary.ModifiedFiles, file => file == "src/AuthService.cs");
+        Assert.Contains(summary.CreatedFiles, file => file.Contains("migrations", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summary.ExpectedChanges, change => change.Contains("Validate credentials", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summary.RiskReasons, reason => reason.Contains("high-risk", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summary.RiskReasons, reason => reason.Contains("Database migration", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summary.VerificationCommands, command => command == "dotnet test");
+    }
+
+    [Fact]
+    public void WorkerPlanApprovalSummaryBuilder_KeepsSmallTestOnlyPlanLowRisk()
+    {
+        var plan = new WorkerPlan
+        {
+            Goal = "Add parser coverage",
+            Language = "csharp",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "tests/ParserTests.cs",
+                    ExpectedChange = "Add parser edge-case tests."
+                }
+            ],
+            VerificationCommands = ["dotnet test --filter ParserTests"]
+        };
+
+        var summary = new WorkerPlanApprovalSummaryBuilder().Build(plan);
+
+        Assert.Equal(WorkerPlanRiskLevel.Low, summary.RiskLevel);
+        Assert.False(summary.HasHighRiskChanges);
+        Assert.False(summary.CanApproveLowRiskOnly);
+        Assert.Equal(["tests/ParserTests.cs"], summary.CreatedFiles);
+        Assert.Equal(["dotnet test --filter ParserTests"], summary.VerificationCommands);
+    }
+
+    [Fact]
+    public void WorkerPlanCandidateBuilder_ConvertsScaffoldRecommendationToWorkerPlan()
+    {
+        var recommendation = new WorkerScaffoldRecommendation
+        {
+            Name = "React application feature",
+            Description = "Create component, hook, API module, route/view integration, and Vitest coverage.",
+            Files =
+            [
+                "src/features/<feature>/<FeatureView>.tsx",
+                "src/features/<feature>/use<Feature>.ts",
+                "src/features/<feature>/api.ts",
+                "src/features/<feature>/<feature>.test.tsx"
+            ],
+            VerificationCommands = ["npm test", "npm run build"]
+        };
+
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Create a dashboard feature",
+            "typescript",
+            "React",
+            recommendation);
+
+        Assert.Equal("Create a dashboard feature", plan.Goal);
+        Assert.Equal("typescript", plan.Language);
+        Assert.Equal("React", plan.Framework);
+        Assert.Equal(4, plan.Steps.Count(step => step.Kind == WorkerPlanStepKind.CreateFile));
+        Assert.Equal(2, plan.Steps.Count(step => step.Kind == WorkerPlanStepKind.Verify));
+        Assert.Contains(plan.Steps, step => step.Path == "src/features/<feature>/<FeatureView>.tsx" &&
+                                           step.ExpectedChange.Contains("FeatureView", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(plan.VerificationCommands, command => command == "npm run build");
+        Assert.Empty(plan.Risks);
+    }
+
+    [Fact]
+    public void WorkerPlanCandidateBuilder_MarksDatabaseScaffoldAsApprovalRequired()
+    {
+        var recommendation = new WorkerScaffoldRecommendation
+        {
+            Name = "SQL migration",
+            Description = "Create migration and rollback-friendly schema changes.",
+            Files = ["db/migrations/<timestamp>_<feature>.sql"],
+            VerificationCommands = ["sqlfluff lint"]
+        };
+
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Add billing table",
+            "sql",
+            "PostgreSQL",
+            recommendation);
+        var summary = new WorkerPlanApprovalSummaryBuilder().Build(plan);
+
+        Assert.Single(plan.Steps, step => step.Kind == WorkerPlanStepKind.CreateFile);
+        Assert.Contains(plan.Steps, step => step.RequiresApproval &&
+                                           step.Path == "db/migrations/<timestamp>_<feature>.sql");
+        Assert.Contains(plan.Risks, risk => risk.Contains("high-risk", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(WorkerPlanRiskLevel.High, summary.RiskLevel);
+        Assert.Contains(summary.VerificationCommands, command => command == "sqlfluff lint");
+    }
+
+    [Fact]
+    public void WorkerPlanValidator_BlocksPathsOutsideWorkspace()
+    {
+        var root = CreateTempDirectory();
+        var outside = Path.Combine(Path.GetTempPath(), $"agentq-outside-{Guid.NewGuid():N}.txt");
+        var plan = new WorkerPlan
+        {
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = outside,
+                    ExpectedChange = "Create outside file."
+                }
+            ]
+        };
+
+        var result = new WorkerPlanValidator().Validate(plan, root);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, issue => issue.Code == "path_outside_workspace" &&
+                                               issue.Severity == WorkerPlanValidationSeverity.Blocker);
+    }
+
+    [Fact]
+    public void WorkerPlanValidator_RequiresApprovalForDeleteAndApprovalSteps()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.DeleteFile,
+                    Path = "src/OldService.cs"
+                },
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.ModifyFile,
+                    Path = "src/AuthService.cs",
+                    RequiresApproval = true
+                }
+            ],
+            VerificationCommands = ["cmd /c test.cmd"]
+        };
+
+        var result = new WorkerPlanValidator().Validate(plan, root);
+
+        Assert.True(result.IsValid);
+        Assert.True(result.RequiresApproval);
+        Assert.Contains(result.Issues, issue => issue.Code == "delete_requires_approval");
+        Assert.Contains(result.Issues, issue => issue.Code == "step_requires_approval");
+    }
+
+    [Fact]
+    public void WorkerPlanValidator_BlocksUnsafeVerificationCommands()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.Verify,
+                    ExpectedChange = "Remove-Item -Recurse ."
+                }
+            ],
+            VerificationCommands = ["Remove-Item -Recurse ."]
+        };
+
+        var result = new WorkerPlanValidator().Validate(plan, root);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, issue => issue.Code == "verification_step_not_allowed");
+        Assert.Contains(result.Issues, issue => issue.Code == "verification_command_not_allowed");
+    }
+
+    [Fact]
+    public void WorkerPlanPreviewBuilder_MarksLowRiskValidPlanReady()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Goal = "Add parser tests",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "tests/ParserTests.cs",
+                    ExpectedChange = "Add parser coverage."
+                }
+            ],
+            VerificationCommands = ["cmd /c test.cmd"]
+        };
+
+        var preview = new WorkerPlanPreviewBuilder().Build(plan, root);
+
+        Assert.Equal(WorkerPlanApprovalState.Ready, preview.ApprovalState);
+        Assert.True(preview.Validation.IsValid);
+        Assert.Equal(WorkerPlanRiskLevel.Low, preview.ApprovalSummary.RiskLevel);
+        Assert.Contains("1 create, 0 modify, 0 delete", preview.DecisionSummary);
+        Assert.Contains("Ready", preview.DecisionSummary);
+    }
+
+    [Fact]
+    public void WorkerPlanPreviewBuilder_MarksHighRiskValidPlanNeedsApproval()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Summary = "Create auth migration",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "db/migrations/001_auth.sql",
+                    ExpectedChange = "Add auth session table.",
+                    RequiresApproval = true
+                }
+            ],
+            VerificationCommands = ["cmd /c test.cmd"]
+        };
+
+        var preview = new WorkerPlanPreviewBuilder().Build(plan, root);
+
+        Assert.Equal(WorkerPlanApprovalState.NeedsApproval, preview.ApprovalState);
+        Assert.True(preview.Validation.IsValid);
+        Assert.True(preview.Validation.RequiresApproval);
+        Assert.Equal(WorkerPlanRiskLevel.High, preview.ApprovalSummary.RiskLevel);
+        Assert.Contains("Approval required", preview.DecisionSummary);
+    }
+
+    [Fact]
+    public void WorkerPlanPreviewBuilder_MarksInvalidPlanBlocked()
+    {
+        var root = CreateTempDirectory();
+        var outside = Path.Combine(Path.GetTempPath(), $"agentq-plan-{Guid.NewGuid():N}.cs");
+        var plan = new WorkerPlan
+        {
+            Goal = "Write outside",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = outside
+                }
+            ],
+            VerificationCommands = ["Remove-Item -Recurse ."]
+        };
+
+        var preview = new WorkerPlanPreviewBuilder().Build(plan, root);
+
+        Assert.Equal(WorkerPlanApprovalState.Blocked, preview.ApprovalState);
+        Assert.False(preview.Validation.IsValid);
+        Assert.Contains(preview.Validation.Issues, issue => issue.Severity == WorkerPlanValidationSeverity.Blocker);
+        Assert.Contains("Blocked", preview.DecisionSummary);
+    }
+
+    [Fact]
+    public void AgentPlanWorkerPlanAdapter_ExtractsFilesRiskAndVerification()
+    {
+        var plan = new AgentPlanWorkerPlanAdapter().Convert(
+            [
+                new AgentPlanItem
+                {
+                    Order = 1,
+                    Title = "Modify AuthService.cs",
+                    Detail = "Update login behavior."
+                },
+                new AgentPlanItem
+                {
+                    Order = 2,
+                    Title = "Add db/migrations/001_login.sql",
+                    Detail = "Create auth session table and verify with Playwright."
+                }
+            ],
+            "Add login",
+            ["npm run test:e2e", "dotnet test"]);
+
+        Assert.Contains(plan.Steps, step => step.Path == "AuthService.cs" &&
+                                           step.RequiresApproval);
+        Assert.Contains(plan.Steps, step => step.Path == "db/migrations/001_login.sql" &&
+                                           step.RequiresApproval);
+        Assert.Contains(plan.VerificationCommands, command => command == "npm run test:e2e");
+        Assert.Contains(plan.Risks, risk => risk.Contains("high-risk", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void MainViewModel_SetPlanApprovalPreview_RequiresApprovalForHighRiskPlan()
+    {
+        var viewModel = new MainViewModel();
+        var preview = new WorkerPlanPreviewBuilder().Build(
+            new WorkerPlan
+            {
+                Goal = "Add auth migration",
+                Steps =
+                [
+                    new WorkerPlanStep
+                    {
+                        Kind = WorkerPlanStepKind.CreateFile,
+                        Path = "db/migrations/001_auth.sql",
+                        ExpectedChange = "Add auth session table.",
+                        RequiresApproval = true
+                    }
+                ],
+                VerificationCommands = ["cmd /c test.cmd"]
+            },
+            CreateTempDirectory());
+
+        viewModel.SetPlanApprovalPreview(preview);
+
+        Assert.True(viewModel.HasPendingPlanApproval);
+        Assert.True(viewModel.CanApprovePlan);
+        Assert.Contains("Plan approval required", viewModel.PlanApprovalStateText);
+        Assert.Contains("db/migrations/001_auth.sql", viewModel.PlanApprovalPreviewText);
+
+        viewModel.ApprovePlan();
+
+        Assert.False(viewModel.HasPendingPlanApproval);
+        Assert.Equal("Plan approved", viewModel.PlanApprovalStateText);
+    }
+
+    [Fact]
+    public void DesktopPlanApprovalPreviewService_AttachesWorkerExecutionContext()
+    {
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = CreateTempDirectory(),
+            InputText = "Add login"
+        };
+        viewModel.PlanItems.Add(new AgentPlanItem
+        {
+            Order = 1,
+            Title = "Add db/migrations/001_login.sql",
+            Detail = "Create login table."
+        });
+        var service = new DesktopPlanApprovalPreviewService(
+            new AgentPlanWorkerPlanAdapter(),
+            new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard()));
+
+        service.ApplyPreview(viewModel);
+
+        Assert.NotNull(viewModel.CurrentWorkerExecutionContext);
+        Assert.Equal(WorkerExecutionState.AwaitingApproval, viewModel.CurrentWorkerExecutionContext.State);
+        Assert.True(viewModel.HasPendingPlanApproval);
+        Assert.Contains("Plan approval required", viewModel.PlanApprovalStateText);
+    }
+
+    [Fact]
+    public void DesktopPlanCheckpointWorkflowService_BlocksUntilWorkerPlanApproved()
+    {
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = CreateTempDirectory(),
+            CurrentWorkerExecutionContext = new WorkerExecutionContext
+            {
+                Plan = new WorkerPlan(),
+                Preview = new WorkerPlanPreview(),
+                State = WorkerExecutionState.AwaitingApproval
+            }
+        };
+        viewModel.PlanItems.Add(new AgentPlanItem
+        {
+            Order = 1,
+            Title = "Fix UI"
+        });
+        viewModel.SelectedPlanItem = viewModel.PlanItems[0];
+        var service = new DesktopPlanCheckpointWorkflowService(
+            new DesktopPlanWorkflowService(),
+            new DesktopCheckpointWorkflowService(new AgentCheckpointService(), new DesktopGitService()),
+            new DesktopPlanApprovalPreviewService(
+                new AgentPlanWorkerPlanAdapter(),
+                new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard())));
+
+        Assert.Null(service.PrepareNextPlanItem(viewModel));
+        Assert.Equal("Plan approval required before execution", viewModel.StatusText);
+
+        viewModel.CurrentWorkerExecutionContext.State = WorkerExecutionState.Ready;
+        Assert.NotNull(service.PrepareNextPlanItem(viewModel));
+        Assert.Equal(AgentPlanItemStatus.InProgress, viewModel.PlanItems[0].Status);
+    }
+
+    [Fact]
+    public void WorkerExecutionPipeline_BeginsWithApprovalAndBuildsVerificationPlans()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Goal = "Add auth migration",
+            Language = "sql",
+            Framework = "PostgreSQL",
+            Steps =
+            [
+                new WorkerPlanStep
+                {
+                    Kind = WorkerPlanStepKind.CreateFile,
+                    Path = "db/migrations/001_auth.sql",
+                    ExpectedChange = "Add auth table.",
+                    RequiresApproval = true
+                }
+            ],
+            VerificationCommands = ["cmd /c test.cmd"]
+        };
+
+        var context = new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard())
+            .Begin(plan, root);
+
+        Assert.Equal(WorkerExecutionState.AwaitingApproval, context.State);
+        Assert.Single(context.VerificationPlans);
+        Assert.Equal("cmd /c test.cmd", context.VerificationPlans[0].Command);
+
+        Assert.True(new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard()).Approve(context));
+        Assert.Equal(WorkerExecutionState.Ready, context.State);
+    }
+
+    [Fact]
+    public void WorkerExecutionPipeline_BlocksInvalidPlans()
+    {
+        var root = CreateTempDirectory();
+        var outside = Path.Combine(Path.GetTempPath(), $"agentq-outside-{Guid.NewGuid():N}.cs");
+        var context = new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard())
+            .Begin(
+                new WorkerPlan
+                {
+                    Steps =
+                    [
+                        new WorkerPlanStep
+                        {
+                            Kind = WorkerPlanStepKind.CreateFile,
+                            Path = outside
+                        }
+                    ]
+                },
+                root);
+
+        Assert.Equal(WorkerExecutionState.Blocked, context.State);
+        Assert.Contains("Blocked", context.StatusMessage);
+    }
+
+    [Fact]
+    public void WorkerExecutionPipeline_CreatesRepairPlanAfterFailedVerification()
+    {
+        var pipeline = new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard());
+        var context = pipeline.Begin(
+            new WorkerPlan
+            {
+                Goal = "Fix UI",
+                Language = "typescript",
+                VerificationCommands = ["npm run test:e2e"]
+            },
+            CreateTempDirectory());
+
+        pipeline.ApplyVerificationResult(
+            context,
+            new DesktopVerificationWorkflowResult
+            {
+                Plan = new AgentVerificationPlan
+                {
+                    Title = "Worker verification",
+                    Command = "npm run test:e2e"
+                },
+                RunResult = new VerificationRunResult
+                {
+                    ExitCode = 1,
+                    StandardOutput = "1 failed"
+                },
+                FailureAnalysis = new VerificationFailureAnalysis
+                {
+                    Kind = VerificationFailureKind.TestFailure,
+                    Title = "Tests failed",
+                    Summary = "Playwright failed."
+                },
+                RunState = AgentRunState.Failed,
+                RunStepTitle = "Verification failed",
+                StatusText = "Verification failed",
+                LogText = "Exit code: 1",
+                FailureSummary = "Exit code: 1 - 1 failed"
+            });
+
+        Assert.Equal(WorkerExecutionState.RepairRequired, context.State);
+        Assert.NotNull(context.RepairPlan);
+        Assert.Equal("TestFailure", context.RepairPlan.FailureKind);
+        Assert.Contains("npm run test:e2e", context.RepairPlan.VerificationCommands);
+    }
+
+    [Fact]
+    public void WorkerExecutionPipeline_StopsAfterRepeatedFailures()
+    {
+        var pipeline = new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard());
+        var context = pipeline.Begin(new WorkerPlan { Goal = "Fix tests" }, CreateTempDirectory());
+        var result = new DesktopVerificationWorkflowResult
+        {
+            Plan = new AgentVerificationPlan
+            {
+                Title = "Worker verification",
+                Command = "cmd /c test.cmd"
+            },
+            RunResult = new VerificationRunResult
+            {
+                ExitCode = 1,
+                StandardOutput = "same failure"
+            },
+            FailureAnalysis = new VerificationFailureAnalysis
+            {
+                Kind = VerificationFailureKind.TestFailure,
+                Title = "Tests failed",
+                Summary = "Same assertion."
+            },
+            RunState = AgentRunState.Failed,
+            RunStepTitle = "Verification failed",
+            StatusText = "Verification failed",
+            LogText = "Exit code: 1",
+            FailureSummary = "Exit code: 1 - same failure"
+        };
+
+        pipeline.ApplyVerificationResult(context, result);
+        pipeline.ApplyVerificationResult(context, result);
+        pipeline.ApplyVerificationResult(context, result);
+
+        Assert.Equal(WorkerExecutionState.StoppedRepeatedFailure, context.State);
+        Assert.Contains("repeated 3", context.StatusMessage);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_CreatesReactFeatureFiles()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Create dashboard",
+            "typescript",
+            "React",
+            new WorkerScaffoldRecommendation
+            {
+                Name = "React application feature",
+                Description = "Create React feature.",
+                Files =
+                [
+                    "src/features/<feature>/<Feature>View.tsx",
+                    "src/features/<feature>/use<Feature>.ts",
+                    "src/features/<feature>/<Feature>.test.ts"
+                ],
+                VerificationCommands = ["npm test"]
+            });
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "User Dashboard"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("src/features/user-dashboard/UserDashboardView.tsx", result.CreatedFiles);
+        Assert.Contains("npm test", result.VerificationCommands);
+        var view = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "user-dashboard", "UserDashboardView.tsx"));
+        var hook = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "user-dashboard", "useUserDashboard.ts"));
+        Assert.Contains("export function UserDashboardView", view);
+        Assert.Contains("export function useUserDashboard", hook);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_CreatesPythonFastApiFeatureFiles()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Create billing API",
+            "python",
+            "FastAPI",
+            new WorkerScaffoldRecommendation
+            {
+                Name = "FastAPI service feature",
+                Description = "Create FastAPI route and tests.",
+                Files =
+                [
+                    "app/<feature_snake>.py",
+                    "tests/test_<feature_snake>.py"
+                ],
+                VerificationCommands = ["python -m pytest"]
+            });
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Billing Portal"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("app/billing_portal.py", result.CreatedFiles);
+        var module = await File.ReadAllTextAsync(Path.Combine(root, "app", "billing_portal.py"));
+        Assert.Contains("APIRouter", module);
+        Assert.Contains("get_billing_portal", module);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_BlocksWorkspaceEscapeAndSkipsExistingFiles()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "Existing.ts"), "keep");
+        var plan = new WorkerPlan
+        {
+            Language = "typescript",
+            Framework = "React",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "src/Existing.ts" },
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "../escape.ts" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Unsafe"
+            });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("src/Existing.ts", result.SkippedFiles);
+        Assert.Contains(result.Issues, issue => issue.Contains("escapes workspace", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(root, "src", "Existing.ts")));
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_UsesDetectedReactLayoutAndTestRunner()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src", "components"));
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"devDependencies":{"jest":"latest"}}""");
+        var plan = new WorkerPlan
+        {
+            Goal = "Reports",
+            Language = "typescript",
+            Framework = "React",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<feature_dir>/<Feature>View.tsx" },
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<feature_dir>/<Feature><ts_test_suffix>.tsx" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Reports"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("src/components/reports/ReportsView.tsx", result.CreatedFiles);
+        Assert.Contains("src/components/reports/Reports.spec.tsx", result.CreatedFiles);
+        var test = await File.ReadAllTextAsync(Path.Combine(root, "src", "components", "reports", "Reports.spec.tsx"));
+        Assert.Contains("@jest/globals", test);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_UsesDetectedPythonRouterAndTestRoots()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "service", "api"));
+        Directory.CreateDirectory(Path.Combine(root, "test"));
+        var context = new WorkerScaffoldContext
+        {
+            PythonAppRoot = "service",
+            PythonRouterRoot = "service/api",
+            TestRoot = "test"
+        };
+        var plan = new WorkerPlan
+        {
+            Goal = "Billing",
+            Language = "python",
+            Framework = "FastAPI",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<python_router>/<feature_snake>.py" },
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<test_root>/test_<feature_snake>.py" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Billing",
+                ScaffoldContext = context,
+                EnableAutoWiring = false
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("service/api/billing.py", result.CreatedFiles);
+        Assert.Contains("test/test_billing.py", result.CreatedFiles);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_WiresReactFeatureIndex()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlan
+        {
+            Goal = "Reports",
+            Language = "typescript",
+            Framework = "React",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<feature_dir>/<Feature>View.tsx" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Reports"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("src/features/reports/index.ts", result.WiredFiles);
+        var index = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "reports", "index.ts"));
+        Assert.Contains("export { ReportsView } from \"./ReportsView\";", index);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_WiresFastApiRouterIntoMain()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "app"));
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "app", "main.py"),
+            "from fastapi import FastAPI\n\napp = FastAPI()\n");
+        var plan = new WorkerPlan
+        {
+            Goal = "Billing",
+            Language = "python",
+            Framework = "FastAPI",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "<python_router>/<feature_snake>.py" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Billing"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("app/main.py", result.WiredFiles);
+        var main = await File.ReadAllTextAsync(Path.Combine(root, "app", "main.py"));
+        Assert.Contains("from app.routers.billing import router as billing_router", main);
+        Assert.Contains("app.include_router(billing_router)", main);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldExecutor_WiresRustModuleIntoLib()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "lib.rs"), "pub fn existing() {}\n");
+        var plan = new WorkerPlan
+        {
+            Goal = "Billing",
+            Language = "rust",
+            Framework = "Cargo",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "src/<feature_snake>.rs" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Billing"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("src/lib.rs", result.WiredFiles);
+        var lib = await File.ReadAllTextAsync(Path.Combine(root, "src", "lib.rs"));
+        Assert.Contains("pub mod billing;", lib);
+    }
+
+    [Fact]
+    public async Task WorkerExecutionPipeline_ExecutesScaffoldAndUpdatesContext()
+    {
+        var root = CreateTempDirectory();
+        var pipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var context = pipeline.Begin(
+            new WorkerPlan
+            {
+                Goal = "Profile page",
+                Language = "typescript",
+                Framework = "React",
+                Steps =
+                [
+                    new WorkerPlanStep
+                    {
+                        Kind = WorkerPlanStepKind.CreateFile,
+                        Path = "src/features/<feature>/<Feature>View.tsx"
+                    }
+                ],
+                VerificationCommands = ["npm test"]
+            },
+            root);
+
+        var result = await pipeline.ExecuteScaffoldAsync(context, root, "Profile Page");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(WorkerExecutionState.ScaffoldExecuted, context.State);
+        Assert.Contains("src/features/profile-page/ProfilePageView.tsx", result.CreatedFiles);
+        Assert.True(File.Exists(Path.Combine(root, "src", "features", "profile-page", "ProfilePageView.tsx")));
+    }
+
+    [Fact]
+    public async Task DesktopPlanCommandService_ExecutesWorkerScaffoldAndRegistersVerification()
+    {
+        var root = CreateTempDirectory();
+        var viewModel = new MainViewModel
+        {
+            WorkspaceRoot = root,
+            CurrentWorkerExecutionContext = new WorkerExecutionPipeline(
+                    new WorkerPlanPreviewBuilder(),
+                    new AutoFixLoopGuard(),
+                    new WorkerScaffoldExecutor())
+                .Begin(
+                    new WorkerPlan
+                    {
+                        Goal = "Search page",
+                        Language = "typescript",
+                        Framework = "React",
+                        Steps =
+                        [
+                            new WorkerPlanStep
+                            {
+                                Kind = WorkerPlanStepKind.CreateFile,
+                                Path = "src/features/<feature>/<Feature>View.tsx"
+                            }
+                        ],
+                        VerificationCommands = ["npm test"]
+                    },
+                    root)
+        };
+        viewModel.SetWorkerExecutionContext(viewModel.CurrentWorkerExecutionContext);
+        var service = new DesktopPlanCommandService(
+            new DesktopPlanCheckpointWorkflowService(
+                new DesktopPlanWorkflowService(),
+                new DesktopCheckpointWorkflowService(new AgentCheckpointService(), new DesktopGitService()),
+                new DesktopPlanApprovalPreviewService(
+                    new AgentPlanWorkerPlanAdapter(),
+                    new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()))),
+            new DesktopWorkspaceContextWorkflowService(
+                new WorkspaceAnalysisService(),
+                new ProjectAgentConfigService(),
+                new AgentSessionSummaryService(),
+                new DesktopPlanCheckpointWorkflowService(
+                    new DesktopPlanWorkflowService(),
+                    new DesktopCheckpointWorkflowService(new AgentCheckpointService(), new DesktopGitService()),
+                    new DesktopPlanApprovalPreviewService(
+                        new AgentPlanWorkerPlanAdapter(),
+                        new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()))),
+                new DesktopLearningSuggestionService()),
+            new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()));
+
+        await service.ExecuteWorkerScaffoldAsync(viewModel);
+
+        Assert.Equal(WorkerExecutionState.ScaffoldExecuted, viewModel.CurrentWorkerExecutionContext!.State);
+        Assert.Contains(viewModel.VerificationPlans, plan => plan.Command == "npm test");
+        Assert.Contains(viewModel.FileChanges, change => change.RelativePath == "src/features/search-page/SearchPageView.tsx" &&
+                                                        !change.ExistedBefore);
+        Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker scaffold executed");
     }
 
     [Fact]
@@ -4270,11 +5923,83 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains("Missing command", analysis.Title, StringComparison.OrdinalIgnoreCase);
     }
 
+    private sealed class CapturingLlmProvider(string responseText) : ILlmProvider
+    {
+        public string Name => "capturing";
+
+        public string DefaultModel => "vision-test";
+
+        public ChatContext? LastContext { get; private set; }
+
+        public Task<ChatResponse> GenerateResponseAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            CancellationToken ct = default)
+        {
+            LastContext = context;
+            return Task.FromResult(new ChatResponse
+            {
+                Model = DefaultModel,
+                Content = [ChatContent.CreateText(responseText)]
+            });
+        }
+
+        public async IAsyncEnumerable<StreamChunk> GenerateStreamAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    private sealed class CapturingLlmProviderFactory(ILlmProvider provider) : IDesktopLlmProviderFactory
+    {
+        public ILlmProvider CreateProvider(ProviderConfiguration config) => provider;
+    }
+
     private static string CreateTempDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "agentq-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static void SaveTestPng(
+        string path,
+        int width,
+        int height,
+        Func<int, int, (byte R, byte G, byte B)> colorAt)
+    {
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var (r, g, b) = colorAt(x, y);
+                var offset = (y * stride) + (x * 4);
+                pixels[offset] = b;
+                pixels[offset + 1] = g;
+                pixels[offset + 2] = r;
+                pixels[offset + 3] = 255;
+            }
+        }
+
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            pixels,
+            stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     [Fact]

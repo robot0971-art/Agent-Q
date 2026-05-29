@@ -33,9 +33,20 @@ const result = {
   imports: [],
   exports: [],
   reactComponents: [],
+  reactHooks: [],
+  apiEndpoints: [],
+  testTargets: [],
+  playwright: {
+    hasDependency: false,
+    configs: [],
+    scripts: [],
+    reportPaths: []
+  },
   routes: [],
   symbols: [],
   projectMap: [],
+  capabilities: [],
+  scaffoldRecommendations: [],
   warnings: []
 };
 
@@ -118,8 +129,20 @@ function analyzePackageJson(file) {
     devDependencies: Object.keys(json.devDependencies || {})
   });
 
+  const dependencyNames = new Set([
+    ...Object.keys(json.dependencies || {}),
+    ...Object.keys(json.devDependencies || {})
+  ].map((name) => name.toLowerCase()));
+  if (dependencyNames.has("@playwright/test") || dependencyNames.has("playwright")) {
+    result.playwright.hasDependency = true;
+  }
+
   for (const [name, command] of Object.entries(json.scripts || {})) {
-    result.npmScripts.push({ packagePath, name, command: String(command) });
+    const script = { packagePath, name, command: String(command) };
+    result.npmScripts.push(script);
+    if (isPlaywrightScript(name, script.command)) {
+      result.playwright.scripts.push(script);
+    }
   }
 
   const dir = path.dirname(packagePath);
@@ -217,6 +240,11 @@ function analyzeSource(file) {
       result.reactComponents.push({ path: relativePath, line: i + 1, name: match[1] });
     }
 
+    match = line.match(/^(?:export\s+)?(?:const|function)\s+(use[A-Z][A-Za-z0-9_$]*)/);
+    if (match && /\.(jsx|tsx?)$/i.test(relativePath)) {
+      addUniqueByPathLineName(result.reactHooks, { path: relativePath, line: i + 1, name: match[1] });
+    }
+
     match = line.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
     if (match) {
       addSymbolIfMissing(relativePath, i + 1, "function", match[1], line.startsWith("export") ? "export" : "declaration");
@@ -231,10 +259,98 @@ function analyzeSource(file) {
     if (match) {
       addSymbolIfMissing(relativePath, i + 1, "const", match[1], line.startsWith("export") ? "export" : "declaration");
     }
+
+    match = line.match(/^(?:export\s+)?(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(/);
+    if (match && /(^|\/)(app|pages|api)\//i.test(relativePath)) {
+      addUniqueByPathLineName(result.apiEndpoints, {
+        path: relativePath,
+        line: i + 1,
+        method: match[1],
+        route: routeFromFile(relativePath),
+        kind: "handler"
+      });
+    }
+
+    match = line.match(/\b(test|it|describe)\s*\(\s*["'`]([^"'`]+)["'`]/);
+    if (match && /\.(test|spec)\.(jsx?|tsx?)$/i.test(relativePath)) {
+      addUniqueByPathLineName(result.testTargets, {
+        path: relativePath,
+        line: i + 1,
+        kind: match[1],
+        name: match[2]
+      });
+    }
   }
 
   if (/(^|\/)(pages|app|routes)\//i.test(relativePath)) {
     result.routes.push({ path: relativePath, kind: "file-route" });
+  }
+
+  if (/(^|\/)(__tests__|tests?)\//i.test(relativePath) || /\.(test|spec)\.(jsx?|tsx?)$/i.test(relativePath)) {
+    addUniqueByPathLineName(result.testTargets, {
+      path: relativePath,
+      line: 0,
+      kind: "test-file",
+      name: path.basename(relativePath)
+    });
+  }
+}
+
+function detectPlaywrightArtifacts() {
+  const configNames = [
+    "playwright.config.ts",
+    "playwright.config.js",
+    "playwright.config.mjs",
+    "playwright.config.cjs",
+    "playwright.config.mts",
+    "playwright.config.cts"
+  ];
+
+  for (const name of configNames) {
+    for (const file of findNamed(root, name)) {
+      const relativePath = rel(file);
+      if (!result.playwright.configs.includes(relativePath)) {
+        result.playwright.configs.push(relativePath);
+        addProjectMap("Playwright config", relativePath);
+      }
+    }
+  }
+
+  for (const name of ["playwright-report", "test-results"]) {
+    for (const directory of findDirectoryNamed(root, name)) {
+      const relativePath = rel(directory);
+      if (!result.playwright.reportPaths.includes(relativePath)) {
+        result.playwright.reportPaths.push(relativePath);
+      }
+    }
+  }
+}
+
+function isPlaywrightScript(name, command) {
+  const normalizedName = String(name).toLowerCase();
+  const normalizedCommand = String(command).toLowerCase();
+  return normalizedName.includes("playwright") ||
+    normalizedName.includes("e2e") ||
+    normalizedCommand.includes("playwright test");
+}
+
+function routeFromFile(relativePath) {
+  let route = relativePath
+    .replace(/\.(jsx?|tsx?)$/i, "")
+    .replace(/^.*\/app\//i, "/")
+    .replace(/^.*\/pages\//i, "/")
+    .replace(/^.*\/api\//i, "/api/")
+    .replace(/\/route$/i, "")
+    .replace(/\/index$/i, "")
+    .replace(/\[(\.{3})?([^\]]+)\]/g, ":$2");
+  route = route.replaceAll("\\", "/").replace(/\/+/g, "/");
+  return route.startsWith("/") ? route : `/${route}`;
+}
+
+function addUniqueByPathLineName(list, item) {
+  const name = item.name || item.method || item.kind || "";
+  if (!list.some((existing) => existing.path === item.path && existing.line === item.line && (existing.name || existing.method || existing.kind || "") === name)) {
+    list.push(item);
   }
 }
 
@@ -317,6 +433,7 @@ function resolveCandidate(basePath) {
 
 function main() {
   detectPackageManagers();
+  detectPlaywrightArtifacts();
   const files = walk(root);
   for (const file of findNamed(root, "tsconfig.json")) {
     analyzeTsconfig(file);
@@ -331,7 +448,61 @@ function main() {
     analyzePackageJson(file);
   }
 
+  addGenerationGuidance();
   console.log(JSON.stringify(result));
+}
+
+function addGenerationGuidance() {
+  const dependencies = new Set(
+    result.packages.flatMap((pkg) => [...pkg.dependencies, ...pkg.devDependencies]).map((name) => name.toLowerCase())
+  );
+
+  addCapability("analyze-js-ts", "Analyze JavaScript/TypeScript imports, exports, components, hooks, routes, tests, and package scripts.");
+  addCapability("extend-react-ui", "Extend React/Vite/Next.js UI surfaces using detected components, hooks, and route files.");
+
+  if (dependencies.has("next")) {
+    addCapability("create-next-feature", "Create a Next.js feature with App Router pages, route handlers, client/server components, and tests.");
+    addScaffoldRecommendation(
+      "Next.js full-stack feature",
+      "Create app route, API handler, shared lib module, component, hook, and colocated tests.",
+      ["app/<feature>/page.tsx", "app/api/<feature>/route.ts", "components/<FeaturePanel>.tsx", "lib/<feature>.ts", "__tests__/<feature>.test.ts"],
+      ["npm run lint", "npm test", "npm run build"]
+    );
+  } else if (dependencies.has("react")) {
+    addCapability("create-react-feature", "Create a React feature with component, hook, state boundary, API client, and tests.");
+    addScaffoldRecommendation(
+      "React application feature",
+      "Create component, hook, API module, route/view integration, and Vitest/Jest coverage.",
+      ["<feature_dir>/<Feature>View.tsx", "<feature_dir>/use<Feature>.ts", "<feature_dir>/api.ts", "<feature_dir>/<Feature><ts_test_suffix>.tsx"],
+      ["npm test", "npm run build"]
+    );
+  }
+
+  if (dependencies.has("express") || dependencies.has("fastify") || dependencies.has("nestjs") || dependencies.has("@nestjs/core")) {
+    addCapability("create-node-api", "Create Node API endpoints with routing, validation, service modules, and tests.");
+    addScaffoldRecommendation(
+      "Node API module",
+      "Create route/controller, service, validation schema, and request-level tests.",
+      ["src/routes/<feature>.ts", "src/services/<feature>.ts", "src/schemas/<feature>.ts", "src/routes/<feature>.test.ts"],
+      ["npm test", "npm run build"]
+    );
+  }
+
+  if (result.playwright.hasDependency || result.playwright.configs.length > 0 || result.playwright.scripts.length > 0) {
+    addCapability("verify-playwright", "Run Playwright browser checks and use screenshots/reports as UI verification evidence.");
+  }
+}
+
+function addCapability(name, description) {
+  if (!result.capabilities.some((item) => item.name === name)) {
+    result.capabilities.push({ name, description });
+  }
+}
+
+function addScaffoldRecommendation(name, description, files, verificationCommands) {
+  if (!result.scaffoldRecommendations.some((item) => item.name === name)) {
+    result.scaffoldRecommendations.push({ name, description, files, verificationCommands });
+  }
 }
 
 function findNamed(dir, name, results = []) {
@@ -351,6 +522,35 @@ function findNamed(dir, name, results = []) {
     } else if (entry.name === name) {
       results.push(full);
     }
+  }
+
+  return results;
+}
+
+function findDirectoryNamed(dir, name, results = []) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    if (ignored.has(entry.name)) {
+      continue;
+    }
+
+    if (entry.name === name) {
+      results.push(full);
+      continue;
+    }
+
+    findDirectoryNamed(full, name, results);
   }
 
   return results;

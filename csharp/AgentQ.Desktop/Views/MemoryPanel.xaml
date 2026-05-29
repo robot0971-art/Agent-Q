@@ -35,6 +35,7 @@
                 <RowDefinition Height="210" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding LearningCandidatesText}"
@@ -137,6 +138,20 @@
                         FontSize="11"
                         Margin="0,0,6,0"
                         Click="RefreshSavedMemory_OnClick" />
+                <Button Content="Preview GC"
+                        Width="84"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="0,0,6,0"
+                        Click="PreviewMemoryCleanup_OnClick" />
+                <Button Content="Compact"
+                        Width="68"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="0,0,6,0"
+                        Click="CompactMemory_OnClick" />
                 <Button Content="{Binding DisableText}"
                         Width="66"
                         Height="24"
@@ -152,11 +167,17 @@
                         Click="DeleteSavedMemory_OnClick" />
             </WrapPanel>
             <TextBlock Grid.Row="7"
+                       Text="{Binding MemoryGcPreviewText}"
+                       Foreground="{DynamicResource TextMuted}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,6" />
+            <TextBlock Grid.Row="8"
                        Text="{Binding SessionSummaryText}"
                        Foreground="{DynamicResource TextMuted}"
                        FontSize="11"
                        Margin="0,0,0,4" />
-            <TextBox Grid.Row="8"
+            <TextBox Grid.Row="9"
                      Text="{Binding LatestSessionSummaryText}"
                      IsReadOnly="True"
                      FontFamily="Consolas"

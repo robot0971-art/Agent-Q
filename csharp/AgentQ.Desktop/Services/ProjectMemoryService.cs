@@ -29,6 +29,7 @@ public sealed class ProjectMemoryService
         "project-memory");
 
     private readonly WorkspaceAnalysisService _workspaceAnalysisService;
+    private readonly ProjectMemoryGcService _gcService = new();
 
     public ProjectMemoryService(WorkspaceAnalysisService? workspaceAnalysisService = null)
     {
@@ -261,6 +262,33 @@ public sealed class ProjectMemoryService
         return document?.Lessons
             .OrderByDescending(lesson => lesson.LastUsedAt ?? lesson.CreatedAt)
             .ToList() ?? [];
+    }
+
+    public async Task<ProjectMemoryGcReport> PreviewLocalLessonGcAsync(
+        string workspaceRoot,
+        ProjectMemoryGcOptions? options,
+        CancellationToken ct)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var document = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct);
+        return _gcService.Preview(document?.Lessons ?? [], options);
+    }
+
+    public async Task<ProjectMemoryGcReport> CompactLocalLessonsAsync(
+        string workspaceRoot,
+        ProjectMemoryGcOptions? options,
+        CancellationToken ct)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var path = GetLocalMemoryPath(root);
+        var document = await LoadWorkspaceMemoryFileAsync(path, ct) ?? new ProjectMemoryFile();
+        var report = _gcService.Apply(document.Lessons, options);
+        if (report.RemovedCount > 0)
+        {
+            await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        }
+
+        return report;
     }
 
     public async Task<bool> DisableLocalLessonAsync(string workspaceRoot, string lessonId, CancellationToken ct)

@@ -16,6 +16,8 @@ public partial class MemoryPanel : System.Windows.Controls.UserControl
     public event EventHandler<ProjectMemoryLesson?>? SaveSelectedLessonRequested;
     public event EventHandler<ProjectMemoryLesson?>? DismissSelectedLessonRequested;
     public event EventHandler? RefreshSavedMemoryRequested;
+    public event EventHandler? PreviewMemoryCleanupRequested;
+    public event EventHandler? CompactMemoryRequested;
     public event EventHandler<ProjectMemoryLesson?>? DisableSavedMemoryRequested;
     public event EventHandler<ProjectMemoryLesson?>? DeleteSavedMemoryRequested;
 
@@ -51,6 +53,16 @@ public partial class MemoryPanel : System.Windows.Controls.UserControl
     private void RefreshSavedMemory_OnClick(object sender, RoutedEventArgs e)
     {
         RefreshSavedMemoryRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void PreviewMemoryCleanup_OnClick(object sender, RoutedEventArgs e)
+    {
+        PreviewMemoryCleanupRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CompactMemory_OnClick(object sender, RoutedEventArgs e)
+    {
+        CompactMemoryRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void DisableSavedMemory_OnClick(object sender, RoutedEventArgs e)

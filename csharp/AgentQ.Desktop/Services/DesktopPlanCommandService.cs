@@ -1,10 +1,12 @@
+using System.IO;
 using AgentQ.Desktop.ViewModels;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopPlanCommandService(
     DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
-    DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService)
+    DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
+    WorkerExecutionPipeline workerExecutionPipeline)
 {
     public async Task CreatePlanAsync(MainViewModel viewModel, Func<bool, Task> sendCurrentMessageAsync)
     {
@@ -82,6 +84,74 @@ public sealed class DesktopPlanCommandService(
         planCheckpointWorkflowService.MarkSelectedPlanItemDone(viewModel);
     }
 
+    public void ApprovePlan(MainViewModel viewModel)
+    {
+        if (viewModel.CurrentWorkerExecutionContext != null &&
+            workerExecutionPipeline.Approve(viewModel.CurrentWorkerExecutionContext))
+        {
+            viewModel.SetWorkerExecutionContext(viewModel.CurrentWorkerExecutionContext);
+            viewModel.AddLog("Plan approved");
+            return;
+        }
+
+        viewModel.ApprovePlan();
+    }
+
+    public async Task ExecuteWorkerScaffoldAsync(MainViewModel viewModel)
+    {
+        if (viewModel.IsBusy)
+        {
+            viewModel.StatusText = "AgentQ is busy";
+            return;
+        }
+
+        var context = viewModel.CurrentWorkerExecutionContext;
+        if (context == null)
+        {
+            viewModel.StatusText = "No worker plan to execute";
+            return;
+        }
+
+        viewModel.IsBusy = true;
+        try
+        {
+            viewModel.AddRunStep(
+                AgentRunState.RunningTool,
+                "Worker scaffold execution",
+                context.Plan.Summary);
+            var result = await workerExecutionPipeline.ExecuteScaffoldAsync(
+                context,
+                viewModel.WorkspaceRoot,
+                ResolveFeatureName(context.Plan),
+                CancellationToken.None);
+
+            foreach (var file in result.CreatedFiles)
+            {
+                viewModel.FileChanges.Add(await CreateCreatedFileChangeAsync(viewModel.WorkspaceRoot, file));
+            }
+
+            foreach (var verificationPlan in context.VerificationPlans)
+            {
+                if (!viewModel.VerificationPlans.Any(plan =>
+                        string.Equals(plan.Command, verificationPlan.Command, StringComparison.OrdinalIgnoreCase)))
+                {
+                    viewModel.VerificationPlans.Add(verificationPlan);
+                }
+            }
+
+            viewModel.SetWorkerExecutionContext(context);
+            viewModel.AddRunStep(
+                result.Succeeded ? AgentRunState.Done : AgentRunState.Failed,
+                result.Succeeded ? "Worker scaffold executed" : "Worker scaffold failed",
+                FormatScaffoldResult(result));
+            viewModel.AddLog(FormatScaffoldResult(result));
+        }
+        finally
+        {
+            viewModel.IsBusy = false;
+        }
+    }
+
     public async Task MarkDoneAndContinueAsync(MainViewModel viewModel, Func<bool, Task> sendCurrentMessageAsync)
     {
         MarkPlanItemDone(viewModel);
@@ -89,6 +159,59 @@ public sealed class DesktopPlanCommandService(
         {
             await ContinueNextPlanItemAsync(viewModel, sendCurrentMessageAsync);
         }
+    }
+
+    private static string ResolveFeatureName(WorkerPlan plan)
+    {
+        if (!string.IsNullOrWhiteSpace(plan.Goal))
+        {
+            return plan.Goal;
+        }
+
+        return string.IsNullOrWhiteSpace(plan.Summary) ? "Feature" : plan.Summary;
+    }
+
+    private static async Task<FileChangeRecord> CreateCreatedFileChangeAsync(string workspaceRoot, string relativePath)
+    {
+        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
+        var after = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath) : string.Empty;
+        var diffLines = after.Split(['\r', '\n'], StringSplitOptions.None)
+            .Where(line => line.Length > 0)
+            .Select(line => new DiffLine
+            {
+                Kind = DiffLineKind.Added,
+                Text = line
+            })
+            .ToList();
+
+        return new FileChangeRecord
+        {
+            Path = fullPath,
+            RelativePath = relativePath.Replace('\\', '/'),
+            ExistedBefore = false,
+            After = after,
+            DiffLines = diffLines
+        };
+    }
+
+    private static string FormatScaffoldResult(WorkerScaffoldExecutionResult result)
+    {
+        var created = result.CreatedFiles.Count == 0
+            ? "Created: none"
+            : $"Created: {string.Join(", ", result.CreatedFiles.Take(5))}";
+        var skipped = result.SkippedFiles.Count == 0
+            ? string.Empty
+            : $" Skipped: {string.Join(", ", result.SkippedFiles.Take(5))}.";
+        var wired = result.WiredFiles.Count == 0
+            ? string.Empty
+            : $" Wired: {string.Join(", ", result.WiredFiles.Take(5))}.";
+        var issues = result.Issues.Count == 0
+            ? string.Empty
+            : $" Issues: {string.Join("; ", result.Issues.Take(3))}.";
+        var verification = result.VerificationCommands.Count == 0
+            ? string.Empty
+            : $" Verification: {string.Join(", ", result.VerificationCommands.Take(3))}.";
+        return $"{created}.{skipped}{wired}{issues}{verification}".Trim();
     }
 
     public async Task SaveCheckpointAsync(MainViewModel viewModel)

@@ -20,11 +20,21 @@ public sealed class PythonWorkerResult
 
     public List<PythonFastApiRoute> FastApiRoutes { get; set; } = [];
 
+    public List<PythonWebRoute> WebRoutes { get; set; } = [];
+
     public List<PythonSqlAlchemyModel> SqlAlchemyModels { get; set; } = [];
+
+    public List<PythonCeleryTask> CeleryTasks { get; set; } = [];
+
+    public List<PythonCliCommand> CliCommands { get; set; } = [];
 
     public List<PythonPytestTarget> PytestTargets { get; set; } = [];
 
     public List<PythonProjectMapEntry> ProjectMap { get; set; } = [];
+
+    public List<WorkerCapability> Capabilities { get; set; } = [];
+
+    public List<WorkerScaffoldRecommendation> ScaffoldRecommendations { get; set; } = [];
 
     public List<string> FailureHints { get; set; } = [];
 
@@ -99,6 +109,21 @@ public sealed class PythonFastApiRoute
     public string Route { get; set; } = string.Empty;
 }
 
+public sealed class PythonWebRoute
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Framework { get; set; } = string.Empty;
+
+    public string Method { get; set; } = string.Empty;
+
+    public string Route { get; set; } = string.Empty;
+}
+
 public sealed class PythonSqlAlchemyModel
 {
     public string Path { get; set; } = string.Empty;
@@ -106,6 +131,28 @@ public sealed class PythonSqlAlchemyModel
     public int Line { get; set; }
 
     public string Name { get; set; } = string.Empty;
+}
+
+public sealed class PythonCeleryTask
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+}
+
+public sealed class PythonCliCommand
+{
+    public string Path { get; set; } = string.Empty;
+
+    public int Line { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Framework { get; set; } = string.Empty;
+
+    public string Command { get; set; } = string.Empty;
 }
 
 public sealed class PythonPytestTarget

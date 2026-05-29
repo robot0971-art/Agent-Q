@@ -187,6 +187,49 @@ AgentQ has reached the current 80% target for the internal Windows beta path: th
    - Exercise file change review, approve/reject/revert, snapshot rollback, memory operations, and telemetry dashboard refresh.
    - Fix any beta-blocking UX confusion or mojibake found during that pass.
 
+2. Worker Plan/Execute/Verify Pipeline
+   - Split worker-driven creation into a read-only Plan phase and a bounded Execute phase.
+   - Add `WorkerPlan`, `WorkerPlanStep`, and `WorkerRepairPlan` models for create/modify/run/verify steps.
+   - Design Plan approval around a short decision summary instead of a long raw step list:
+     - changed-file count and paths grouped by create/modify/delete
+     - expected change summary per file or subsystem
+     - risk level and reason, including database/auth/security/test-only flags
+     - verification commands and rollback/snapshot availability
+   - Keep raw plan steps available behind an expanded detail view, but make the default approval surface optimized for actual human review.
+   - Add approval options such as low-risk only, approve all, edit plan, and reject when the plan mixes safe and high-risk changes.
+   - Require Execute to modify only files listed in the approved plan; if a new file must be touched, stop and create a follow-up plan.
+   - Reuse the existing Verify and Auto Fix pieces as the first repair loop:
+     - execute plan
+     - run focused verification
+     - classify failure
+     - create repair plan
+     - execute repair
+     - rerun verification
+   - Stop the loop on repeated identical failure signatures, no file changes, or max attempts.
+   - Treat repeated identical Playwright/visual failures as hard stops instead of continuing UI repair indefinitely.
+   - Record plan, execute, verification, failure classification, and repair evidence in the Evidence/Plan/Verify surfaces.
+
+3. Playwright Verification Integration Phase 1
+   - Detect Playwright through `playwright.config.*`, `@playwright/test`, and package scripts.
+   - Prefer project-owned commands such as `npm run test:e2e`, `npx playwright test`, or configured package-manager equivalents.
+   - Add Playwright verification plans for web projects after build/unit verification when a local dev server command can be inferred.
+   - Collect and surface Playwright report, trace, screenshot, console, and network-error paths when available.
+   - Feed Playwright failures into the same repair loop, but keep Phase 1 as external project Playwright execution rather than an embedded browser runtime.
+   - Defer an AgentQ-owned `playwright-worker.mjs` smoke-test runner until external command integration is stable.
+
+4. Visual Verification After Playwright
+   - Extend the web verification pipeline beyond DOM/flow success:
+     - build
+     - unit tests
+     - Playwright flow
+     - screenshot capture
+     - visual heuristics
+     - optional LLM screenshot review
+   - Add low-cost visual heuristics before LLM review, including blank page, missing primary element, console errors, viewport overflow, obvious text overlap, and unexpected horizontal scrolling.
+   - Attach screenshots and visual findings to Evidence and Verify cards so UI regressions are reviewable even when tests pass.
+   - Gate LLM visual review behind clear evidence and cost controls; use it for ambiguous layout/visual quality issues rather than every run.
+   - Feed visual failures into the same repair loop with strict repeated-failure and max-attempt stops.
+
 ## Later 80% -> 90% Candidates
 
 These are important, but should come after the Windows 1.0 stabilization pass unless a demo exposes them as blockers.
@@ -197,6 +240,15 @@ These are important, but should come after the Windows 1.0 stabilization pass un
 
 2. Error History And Failure Memory
    - Surface previously seen failures more directly in Auto Fix and Verify.
+   - Add Memory lifecycle controls before relying on long-term memory heavily:
+     - expiration/TTL
+     - confidence/usefulness score
+     - last-used tracking
+     - duplicate merge
+     - stale memory detection
+     - contradiction detection against current workspace evidence
+     - periodic memory GC
+   - Treat current workspace evidence as stronger than remembered project facts.
 
 3. Context Compression And Tool Router
    - Use trend metrics to tune default tool routing prompts once enough beta run data exists.
@@ -207,11 +259,19 @@ These are important, but should come after the Windows 1.0 stabilization pass un
 5. Focused Verification Selection
    - Add focused test/build selection for more languages and project layouts.
 
-4. Cross-Platform Strategy
+6. Worker-Guided Project Creation
+   - Turn language worker `scaffoldRecommendations` into concrete `WorkerPlan` candidates.
+   - Start with React/Next.js, FastAPI, Java/Spring, Rust crate, C++ CMake, and SQL migration paths.
+   - Add language-specific failure classifiers for TypeScript, Python, Java, Rust, C++, SQL, and Playwright failures.
+   - Use worker re-analysis after Execute and after Repair to confirm expected files, symbols, routes, and tests now exist.
+
+7. Cross-Platform Strategy
    - Keep Windows WPF for near-term 1.0.
    - Reduce Windows-specific service coupling.
+   - Keep Plan/Execute/Verify/Repair, worker orchestration, memory, permissions, and verification in shared core services that both Desktop and CLI can call.
+   - Preserve Desktop as the rich review/evidence/visual UX while ensuring CLI can run the same pipeline for terminal-first users.
    - Start Avalonia prototype only after Windows demo flows are stable.
 
-5. Code Signing Pipeline
+8. Code Signing Pipeline
    - Revisit when paid certificate/HSM/cloud signing budget is available.
    - Automate signing for desktop executable and installer in CI.

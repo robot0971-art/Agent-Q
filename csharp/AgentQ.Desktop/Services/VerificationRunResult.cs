@@ -8,6 +8,8 @@ public sealed class VerificationRunResult
 
     public string StandardError { get; init; } = string.Empty;
 
+    public IReadOnlyList<VerificationArtifact> Artifacts { get; init; } = [];
+
     public bool Succeeded => ExitCode == 0;
 
     public string CombinedOutput => string.Join(Environment.NewLine, StandardOutput, StandardError).Trim();

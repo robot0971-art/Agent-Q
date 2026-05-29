@@ -4,10 +4,22 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class VerificationFailureClassifier
 {
+    private readonly VerificationArtifactEvidenceBuilder _artifactEvidenceBuilder = new();
+
     public VerificationFailureAnalysis Analyze(AgentVerificationPlan plan, VerificationRunResult result)
     {
+        return Analyze(plan, result, workspaceRoot: string.Empty);
+    }
+
+    public VerificationFailureAnalysis Analyze(AgentVerificationPlan plan, VerificationRunResult result, string workspaceRoot)
+    {
         var output = result.CombinedOutput;
-        var evidence = ExtractEvidence(output);
+        var evidence = ExtractEvidence(output)
+            .Concat(string.IsNullOrWhiteSpace(workspaceRoot)
+                ? _artifactEvidenceBuilder.BuildEvidence(result.Artifacts)
+                : _artifactEvidenceBuilder.BuildEvidence(result.Artifacts, workspaceRoot))
+            .Take(10)
+            .ToList();
 
         if (Matches(output, "The command is not in the verification allowlist", "not in the verification allowlist"))
         {

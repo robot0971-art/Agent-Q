@@ -14,6 +14,10 @@ public sealed class VerificationResultCard
 
     public string OutputPreview { get; init; } = string.Empty;
 
+    public string VisualEvidenceSummary { get; init; } = string.Empty;
+
+    public bool HasVisualEvidence => !string.IsNullOrWhiteSpace(VisualEvidenceSummary);
+
     public DateTime CreatedAt { get; init; } = DateTime.Now;
 
     public string CreatedAtText => CreatedAt.ToString("HH:mm:ss");
@@ -51,6 +55,7 @@ public sealed class VerificationResultCard
             Summary = summary,
             Detail = analysis.Summary,
             OutputPreview = BuildOutputPreview(result?.CombinedOutput ?? string.Join(Environment.NewLine, analysis.Evidence)),
+            VisualEvidenceSummary = BuildVisualEvidenceSummary(analysis.Evidence),
             AccentBrush = "#EF4444",
             BadgeBackground = "#3A1518"
         };
@@ -66,6 +71,7 @@ public sealed class VerificationResultCard
             Summary = summary,
             Detail = analysis.Summary,
             OutputPreview = BuildOutputPreview(string.Join(Environment.NewLine, analysis.Evidence)),
+            VisualEvidenceSummary = BuildVisualEvidenceSummary(analysis.Evidence),
             AccentBrush = "#F59E0B",
             BadgeBackground = "#3A2A10"
         };
@@ -83,5 +89,19 @@ public sealed class VerificationResultCard
             .Where(line => line.Length > 0)
             .Take(5);
         return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildVisualEvidenceSummary(IReadOnlyList<string> evidence)
+    {
+        var items = evidence
+            .Where(item => item.Contains("Screenshot LLM vision review", StringComparison.OrdinalIgnoreCase) ||
+                           item.Contains("Screenshot visual review", StringComparison.OrdinalIgnoreCase) ||
+                           item.Contains("Screenshot quality", StringComparison.OrdinalIgnoreCase))
+            .Take(3)
+            .ToList();
+
+        return items.Count == 0
+            ? string.Empty
+            : string.Join(Environment.NewLine, items);
     }
 }

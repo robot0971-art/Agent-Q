@@ -27,8 +27,22 @@ public static class DesktopPromptBuilder
             builder.AppendLine($"Title: {analysis.Title}");
             builder.AppendLine($"Summary: {analysis.Summary}");
             builder.AppendLine($"Suggested next step: {analysis.SuggestedNextStep}");
+            var visualEvidence = ExtractVisualReviewEvidence(analysis.Evidence);
+            if (visualEvidence.Count > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Visual UI evidence from screenshot review:");
+                foreach (var item in visualEvidence)
+                {
+                    builder.AppendLine($"- {item}");
+                }
+
+                builder.AppendLine("Use this visual evidence to inspect the relevant UI component, style, layout, route, and test assertion before editing.");
+            }
+
             if (analysis.Evidence.Count > 0)
             {
+                builder.AppendLine();
                 builder.AppendLine("Evidence:");
                 foreach (var item in analysis.Evidence)
                 {
@@ -288,5 +302,14 @@ public static class DesktopPromptBuilder
         }
 
         return value[..maxLength] + Environment.NewLine + marker;
+    }
+
+    private static IReadOnlyList<string> ExtractVisualReviewEvidence(IReadOnlyList<string> evidence)
+    {
+        return evidence
+            .Where(item => item.Contains("Screenshot LLM vision review", StringComparison.OrdinalIgnoreCase) ||
+                           item.Contains("Screenshot visual review", StringComparison.OrdinalIgnoreCase))
+            .Take(4)
+            .ToList();
     }
 }

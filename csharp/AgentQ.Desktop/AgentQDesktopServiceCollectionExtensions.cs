@@ -29,6 +29,14 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopAgentService>();
+        services.AddSingleton<IDesktopLlmProviderFactory>(provider => provider.GetRequiredService<DesktopAgentService>());
+        services.AddSingleton<IVerificationArtifactCollector, PlaywrightVerificationArtifactCollector>();
+        services.AddSingleton<ScreenshotEvidenceQualityChecker>();
+        services.AddSingleton<ScreenshotVisualHeuristicEvaluator>();
+        services.AddSingleton<ScreenshotVisualReviewService>();
+        services.AddSingleton<ScreenshotLlmVisionEvidenceBuilder>();
+        services.AddSingleton<DesktopScreenshotLlmVisionWorkflowService>();
+        services.AddSingleton<VerificationArtifactEvidenceBuilder>();
         services.AddSingleton<DesktopVerificationRunner>();
         services.AddSingleton<VerificationFailureClassifier>();
         services.AddSingleton<DesktopVerificationWorkflowService>();
@@ -42,6 +50,13 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<FileMutationSnapshotService>();
         services.AddSingleton<DesktopCheckpointWorkflowService>();
         services.AddSingleton<DesktopPlanWorkflowService>();
+        services.AddSingleton<AgentPlanWorkerPlanAdapter>();
+        services.AddSingleton<WorkerPlanApprovalSummaryBuilder>();
+        services.AddSingleton<WorkerPlanValidator>();
+        services.AddSingleton<WorkerPlanPreviewBuilder>();
+        services.AddSingleton<WorkerExecutionPipeline>();
+        services.AddSingleton<WorkerScaffoldExecutor>();
+        services.AddSingleton<DesktopPlanApprovalPreviewService>();
         services.AddSingleton<DesktopPlanCheckpointWorkflowService>();
         services.AddSingleton<DesktopPlanCommandService>();
         services.AddSingleton<AgentSessionSummaryService>();
@@ -53,6 +68,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopFileChangeReviewService>();
         services.AddSingleton<DesktopAttachmentSelectionService>();
         services.AddSingleton<DesktopClipboardService>();
+        services.AddSingleton<AutoFixLoopGuard>();
         services.AddSingleton<DesktopAutoFixWorkflowService>();
         services.AddSingleton<DesktopWindowCommandService>();
         services.AddSingleton<DesktopPanelEventBinder>();

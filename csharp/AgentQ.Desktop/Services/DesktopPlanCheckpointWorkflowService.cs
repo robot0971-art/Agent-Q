@@ -4,7 +4,8 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopPlanCheckpointWorkflowService(
     DesktopPlanWorkflowService planWorkflowService,
-    DesktopCheckpointWorkflowService checkpointWorkflowService)
+    DesktopCheckpointWorkflowService checkpointWorkflowService,
+    DesktopPlanApprovalPreviewService approvalPreviewService)
 {
     private AgentCheckpoint? _lastCheckpoint;
 
@@ -42,6 +43,7 @@ public sealed class DesktopPlanCheckpointWorkflowService(
 
         planWorkflowService.ReplacePlanItems(viewModel.PlanItems, items);
         SelectNextOpenPlanItem(viewModel);
+        approvalPreviewService.ApplyPreview(viewModel);
         viewModel.StatusText = $"Plan captured: {viewModel.PlanItems.Count} items";
         viewModel.AddLog($"Plan captured: {viewModel.PlanItems.Count} items");
         return true;
@@ -55,6 +57,21 @@ public sealed class DesktopPlanCheckpointWorkflowService(
         if (item == null)
         {
             viewModel.StatusText = "No plan item to continue";
+            return null;
+        }
+
+        if (viewModel.CurrentWorkerExecutionContext?.State == WorkerExecutionState.Blocked)
+        {
+            viewModel.StatusText = "Plan is blocked by validation";
+            viewModel.AddLog("Plan execution blocked: validation failed");
+            return null;
+        }
+
+        if (viewModel.CurrentWorkerExecutionContext?.State == WorkerExecutionState.AwaitingApproval ||
+            viewModel.HasPendingPlanApproval)
+        {
+            viewModel.StatusText = "Plan approval required before execution";
+            viewModel.AddLog("Plan execution blocked: approval required");
             return null;
         }
 
@@ -140,5 +157,6 @@ public sealed class DesktopPlanCheckpointWorkflowService(
     {
         planWorkflowService.ApplyCheckpoint(viewModel.PlanItems, checkpoint);
         SelectNextOpenPlanItem(viewModel);
+        approvalPreviewService.ApplyPreview(viewModel);
     }
 }

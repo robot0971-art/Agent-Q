@@ -29,6 +29,7 @@ public sealed class DesktopVerificationCommandService(
                 plan,
                 workspaceContextWorkflowService.ProjectConfig?.VerificationCommands,
                 TimeSpan.FromMinutes(2),
+                viewModel.ToConfiguration(),
                 operationCts.Token);
         }
         finally

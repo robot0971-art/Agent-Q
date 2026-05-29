@@ -31,6 +31,7 @@ public sealed class DesktopVerificationPanelWorkflowService(
         AgentVerificationPlan plan,
         IEnumerable<string>? projectAllowedCommands,
         TimeSpan timeout,
+        AgentQ.Core.Providers.ProviderConfiguration? providerConfiguration,
         CancellationToken ct)
     {
         viewModel.AddRunStep(AgentRunState.Verifying, $"Running verification: {plan.Title}", plan.Command);
@@ -42,7 +43,8 @@ public sealed class DesktopVerificationPanelWorkflowService(
             viewModel.WorkspaceRoot,
             projectAllowedCommands,
             timeout,
-            ct);
+            ct,
+            providerConfiguration);
 
         ApplyResult(viewModel, result);
         return result;

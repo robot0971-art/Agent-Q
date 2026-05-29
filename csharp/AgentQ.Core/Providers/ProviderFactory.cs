@@ -126,6 +126,8 @@ public class ProviderConfiguration
     /// </summary>
     public bool DesktopAutoFetchLinks { get; set; } = true;
 
+    public bool DesktopEnableScreenshotLlmVisionReview { get; set; }
+
     /// <summary>
     /// 데스크톱 에이전트 작업 모드
     /// </summary>
