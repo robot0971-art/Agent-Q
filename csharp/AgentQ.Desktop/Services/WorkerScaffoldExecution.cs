@@ -25,7 +25,20 @@ public sealed class WorkerScaffoldExecutionResult
 
     public List<string> WiredFiles { get; init; } = [];
 
+    public List<WorkerScaffoldWiringChange> WiringChanges { get; init; } = [];
+
     public List<string> Issues { get; init; } = [];
 
     public List<string> VerificationCommands { get; init; } = [];
+}
+
+public sealed class WorkerScaffoldWiringChange
+{
+    public required string Path { get; init; }
+
+    public string Before { get; init; } = string.Empty;
+
+    public string After { get; init; } = string.Empty;
+
+    public string Summary { get; init; } = string.Empty;
 }

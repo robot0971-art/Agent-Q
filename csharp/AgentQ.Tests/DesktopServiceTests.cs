@@ -5417,6 +5417,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
 
         Assert.True(result.Succeeded);
         Assert.Contains("src/features/reports/index.ts", result.WiredFiles);
+        var wiring = Assert.Single(result.WiringChanges);
+        Assert.Equal("src/features/reports/index.ts", wiring.Path);
+        Assert.Contains("Export ReportsView", wiring.Summary);
+        Assert.Contains("export { ReportsView }", wiring.After);
         var index = await File.ReadAllTextAsync(Path.Combine(root, "src", "features", "reports", "index.ts"));
         Assert.Contains("export { ReportsView } from \"./ReportsView\";", index);
     }
@@ -5450,6 +5454,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
 
         Assert.True(result.Succeeded);
         Assert.Contains("app/main.py", result.WiredFiles);
+        Assert.Contains(result.WiringChanges, change => change.Path == "app/main.py" &&
+                                                        change.Before.Contains("app = FastAPI()", StringComparison.Ordinal) &&
+                                                        change.After.Contains("app.include_router(billing_router)", StringComparison.Ordinal));
         var main = await File.ReadAllTextAsync(Path.Combine(root, "app", "main.py"));
         Assert.Contains("from app.routers.billing import router as billing_router", main);
         Assert.Contains("app.include_router(billing_router)", main);
@@ -5482,6 +5489,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
 
         Assert.True(result.Succeeded);
         Assert.Contains("src/lib.rs", result.WiredFiles);
+        Assert.Contains(result.WiringChanges, change => change.Path == "src/lib.rs" &&
+                                                        change.After.Contains("pub mod billing;", StringComparison.Ordinal));
         var lib = await File.ReadAllTextAsync(Path.Combine(root, "src", "lib.rs"));
         Assert.Contains("pub mod billing;", lib);
     }
@@ -5576,6 +5585,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains(viewModel.VerificationPlans, plan => plan.Command == "npm test");
         Assert.Contains(viewModel.FileChanges, change => change.RelativePath == "src/features/search-page/SearchPageView.tsx" &&
                                                         !change.ExistedBefore);
+        Assert.Contains(viewModel.FileChanges, change => change.RelativePath == "src/features/search-page/index.ts" &&
+                                                        change.After.Contains("export { SearchPageView }", StringComparison.Ordinal));
         Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker scaffold executed");
     }
 

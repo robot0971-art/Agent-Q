@@ -130,6 +130,11 @@ public sealed class DesktopPlanCommandService(
                 viewModel.FileChanges.Add(await CreateCreatedFileChangeAsync(viewModel.WorkspaceRoot, file));
             }
 
+            foreach (var change in result.WiringChanges)
+            {
+                viewModel.FileChanges.Add(CreateWiringFileChange(viewModel.WorkspaceRoot, change));
+            }
+
             foreach (var verificationPlan in context.VerificationPlans)
             {
                 if (!viewModel.VerificationPlans.Any(plan =>
@@ -192,6 +197,36 @@ public sealed class DesktopPlanCommandService(
             After = after,
             DiffLines = diffLines
         };
+    }
+
+    private static FileChangeRecord CreateWiringFileChange(
+        string workspaceRoot,
+        WorkerScaffoldWiringChange change)
+    {
+        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, change.Path));
+        return new FileChangeRecord
+        {
+            Path = fullPath,
+            RelativePath = change.Path.Replace('\\', '/'),
+            ExistedBefore = !string.IsNullOrEmpty(change.Before),
+            Before = change.Before,
+            After = change.After,
+            DiffLines = BuildSimpleDiff(change.Before, change.After)
+        };
+    }
+
+    private static IReadOnlyList<DiffLine> BuildSimpleDiff(string before, string after)
+    {
+        var beforeLines = before.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+        var afterLines = after.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+        var diff = new List<DiffLine>();
+        diff.AddRange(beforeLines
+            .Where(line => !afterLines.Contains(line))
+            .Select(line => new DiffLine { Kind = DiffLineKind.Removed, Text = line }));
+        diff.AddRange(afterLines
+            .Where(line => !beforeLines.Contains(line))
+            .Select(line => new DiffLine { Kind = DiffLineKind.Added, Text = line }));
+        return diff;
     }
 
     private static string FormatScaffoldResult(WorkerScaffoldExecutionResult result)

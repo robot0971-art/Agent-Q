@@ -67,7 +67,7 @@ public sealed class WorkerScaffoldExecutor
 
         if (request.EnableAutoWiring)
         {
-            result.WiredFiles.AddRange(await _autoWirer.WireAsync(
+            result.WiringChanges.AddRange(await _autoWirer.WireAsync(
                 root,
                 request.Plan,
                 feature,
@@ -75,6 +75,7 @@ public sealed class WorkerScaffoldExecutor
                 result.CreatedFiles,
                 result.Issues,
                 ct));
+            result.WiredFiles.AddRange(result.WiringChanges.Select(change => change.Path));
         }
 
         result.Succeeded = result.Issues.Count == 0;

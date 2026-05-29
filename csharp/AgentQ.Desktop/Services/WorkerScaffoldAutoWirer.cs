@@ -5,7 +5,7 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class WorkerScaffoldAutoWirer
 {
-    public async Task<IReadOnlyList<string>> WireAsync(
+    public async Task<IReadOnlyList<WorkerScaffoldWiringChange>> WireAsync(
         string workspaceRoot,
         WorkerPlan plan,
         WorkerScaffoldName feature,
@@ -14,36 +14,36 @@ public sealed class WorkerScaffoldAutoWirer
         List<string> issues,
         CancellationToken ct = default)
     {
-        var wired = new List<string>();
+        var changes = new List<WorkerScaffoldWiringChange>();
         if (createdFiles.Count == 0)
         {
-            return wired;
+            return changes;
         }
 
         if (plan.Language.Contains("typescript", StringComparison.OrdinalIgnoreCase) ||
             plan.Framework.Contains("react", StringComparison.OrdinalIgnoreCase))
         {
-            await WireReactIndexAsync(workspaceRoot, feature, createdFiles, wired, ct);
+            await WireReactIndexAsync(workspaceRoot, feature, createdFiles, changes, ct);
         }
 
         if (plan.Framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
         {
-            await WireFastApiRouterAsync(workspaceRoot, feature, context, createdFiles, wired, issues, ct);
+            await WireFastApiRouterAsync(workspaceRoot, feature, context, createdFiles, changes, issues, ct);
         }
 
         if (plan.Language.Contains("rust", StringComparison.OrdinalIgnoreCase))
         {
-            await WireRustModuleAsync(workspaceRoot, feature, createdFiles, wired, issues, ct);
+            await WireRustModuleAsync(workspaceRoot, feature, createdFiles, changes, issues, ct);
         }
 
-        return wired;
+        return changes;
     }
 
     private static async Task WireReactIndexAsync(
         string workspaceRoot,
         WorkerScaffoldName feature,
         IReadOnlyList<string> createdFiles,
-        List<string> wired,
+        List<WorkerScaffoldWiringChange> changes,
         CancellationToken ct)
     {
         var viewFile = createdFiles.FirstOrDefault(file =>
@@ -62,8 +62,16 @@ public sealed class WorkerScaffoldAutoWirer
         var indexRelative = $"{directory}/index.ts";
         var indexPath = Path.Combine(workspaceRoot, indexRelative);
         var exportLine = $"export {{ {feature.Pascal}View }} from \"./{feature.Pascal}View\";";
-        await AppendLineIfMissingAsync(indexPath, exportLine, ct);
-        wired.Add(indexRelative);
+        var change = await AppendLineIfMissingAsync(
+            indexPath,
+            indexRelative,
+            exportLine,
+            $"Export {feature.Pascal}View from feature barrel.",
+            ct);
+        if (change != null)
+        {
+            changes.Add(change);
+        }
     }
 
     private static async Task WireFastApiRouterAsync(
@@ -71,7 +79,7 @@ public sealed class WorkerScaffoldAutoWirer
         WorkerScaffoldName feature,
         WorkerScaffoldContext context,
         IReadOnlyList<string> createdFiles,
-        List<string> wired,
+        List<WorkerScaffoldWiringChange> changes,
         List<string> issues,
         CancellationToken ct)
     {
@@ -94,29 +102,38 @@ public sealed class WorkerScaffoldAutoWirer
         var modulePath = routerFile[..^3].Replace('/', '.');
         var importLine = $"from {modulePath} import router as {feature.Snake}_router";
         var includeLine = $"app.include_router({feature.Snake}_router)";
-        var text = await File.ReadAllTextAsync(appFile, ct);
-        if (!text.Contains("FastAPI(", StringComparison.Ordinal) &&
-            !text.Contains("app =", StringComparison.Ordinal))
+        var before = await File.ReadAllTextAsync(appFile, ct);
+        if (!before.Contains("FastAPI(", StringComparison.Ordinal) &&
+            !before.Contains("app =", StringComparison.Ordinal))
         {
             issues.Add($"{appRelative} does not look like a FastAPI app entrypoint.");
             return;
         }
 
-        text = AddLineAfterImports(text, importLine);
-        if (!text.Contains(includeLine, StringComparison.Ordinal))
+        var after = AddLineAfterImports(before, importLine);
+        if (!after.Contains(includeLine, StringComparison.Ordinal))
         {
-            text = text.TrimEnd() + Environment.NewLine + includeLine + Environment.NewLine;
+            after = after.TrimEnd() + Environment.NewLine + includeLine + Environment.NewLine;
         }
 
-        await File.WriteAllTextAsync(appFile, text, new UTF8Encoding(false), ct);
-        wired.Add(appRelative);
+        if (!string.Equals(before, after, StringComparison.Ordinal))
+        {
+            await File.WriteAllTextAsync(appFile, after, new UTF8Encoding(false), ct);
+            changes.Add(new WorkerScaffoldWiringChange
+            {
+                Path = appRelative,
+                Before = before,
+                After = after,
+                Summary = $"Register FastAPI router {feature.Snake}_router."
+            });
+        }
     }
 
     private static async Task WireRustModuleAsync(
         string workspaceRoot,
         WorkerScaffoldName feature,
         IReadOnlyList<string> createdFiles,
-        List<string> wired,
+        List<WorkerScaffoldWiringChange> changes,
         List<string> issues,
         CancellationToken ct)
     {
@@ -135,23 +152,43 @@ public sealed class WorkerScaffoldAutoWirer
         }
 
         var line = $"pub mod {feature.Snake};";
-        await AppendLineIfMissingAsync(libPath, line, ct);
-        wired.Add("src/lib.rs");
+        var change = await AppendLineIfMissingAsync(
+            libPath,
+            "src/lib.rs",
+            line,
+            $"Expose Rust module {feature.Snake}.",
+            ct);
+        if (change != null)
+        {
+            changes.Add(change);
+        }
     }
 
-    private static async Task AppendLineIfMissingAsync(string path, string line, CancellationToken ct)
+    private static async Task<WorkerScaffoldWiringChange?> AppendLineIfMissingAsync(
+        string path,
+        string relativePath,
+        string line,
+        string summary,
+        CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var text = File.Exists(path) ? await File.ReadAllTextAsync(path, ct) : string.Empty;
-        if (text.Contains(line, StringComparison.Ordinal))
+        var before = File.Exists(path) ? await File.ReadAllTextAsync(path, ct) : string.Empty;
+        if (before.Contains(line, StringComparison.Ordinal))
         {
-            return;
+            return null;
         }
 
-        var next = string.IsNullOrWhiteSpace(text)
+        var after = string.IsNullOrWhiteSpace(before)
             ? line + Environment.NewLine
-            : text.TrimEnd() + Environment.NewLine + line + Environment.NewLine;
-        await File.WriteAllTextAsync(path, next, new UTF8Encoding(false), ct);
+            : before.TrimEnd() + Environment.NewLine + line + Environment.NewLine;
+        await File.WriteAllTextAsync(path, after, new UTF8Encoding(false), ct);
+        return new WorkerScaffoldWiringChange
+        {
+            Path = relativePath.Replace('\\', '/'),
+            Before = before,
+            After = after,
+            Summary = summary
+        };
     }
 
     private static string? FindFirstExisting(string workspaceRoot, IEnumerable<string> candidates)
