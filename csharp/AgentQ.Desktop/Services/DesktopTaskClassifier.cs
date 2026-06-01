@@ -31,7 +31,22 @@ public static class DesktopTaskClassifier
             return DesktopTaskKind.Refactor;
         }
 
-        if (ContainsAny(text, "analyze", "\uBD84\uC11D", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
+        var asksToCreate = ContainsAny(
+            text,
+            "add",
+            "implement",
+            "create",
+            "make",
+            "build",
+            "\uB9CC\uB4E4",
+            "\uCD94\uAC00",
+            "\uAD6C\uD604",
+            "\uC0DD\uC131",
+            "\uC9DC",
+            "\uC9C4\uD589");
+
+        if (!asksToCreate &&
+            ContainsAny(text, "analyze", "\uBD84\uC11D", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
         {
             return DesktopTaskKind.Analysis;
         }
@@ -46,12 +61,18 @@ public static class DesktopTaskClassifier
                 "web site",
                 "homepage",
                 "landing page",
+                "python",
+                "data analysis",
+                "data tool",
                 "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
                 "\uC6F9\uC0AC\uC774\uD2B8",
                 "\uC6F9 \uC0AC\uC774\uD2B8",
                 "\uD648\uD398\uC774\uC9C0",
                 "\uB79C\uB529",
                 "\uC0AC\uC774\uD2B8",
+                "\uD30C\uC774\uC36C",
+                "\uB370\uC774\uD130 \uBD84\uC11D",
+                "\uBD84\uC11D \uB3C4\uAD6C",
                 "\uB9CC\uB4E4",
                 "\uCD94\uAC00",
                 "\uAD6C\uD604",

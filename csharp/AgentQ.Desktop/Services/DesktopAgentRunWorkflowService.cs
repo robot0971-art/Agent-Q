@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using AgentQ.Core.Providers;
@@ -13,7 +13,7 @@ public sealed class DesktopAgentRunWorkflowService(
     DesktopLearningSuggestionService learningSuggestionService,
     DesktopTelemetryService telemetryService)
 {
-    private const string ThinkingPlaceholder = "생각중...";
+    private const string ThinkingPlaceholder = "\uC0DD\uAC01\uC911...";
     private const string ContinuationPrompt =
         "Continue the previous run from where it stopped. Do not repeat completed work. Inspect current files or command results if needed, then continue until the task is complete or you need user input.";
     private readonly DesktopUsageTracker _usageTracker = new();

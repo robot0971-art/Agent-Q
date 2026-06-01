@@ -152,6 +152,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> WorkspaceHints => Project.Hints;
 
+    public ObservableCollection<WorkerScaffoldRecommendation> WorkspaceScaffoldRecommendations => Project.ScaffoldRecommendations;
+
     public ObservableCollection<string> Attachments { get; } = [];
 
     public ObservableCollection<ProjectMemoryLesson> PendingMemoryLessons { get; } = [];

@@ -41,6 +41,8 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
 
     public ObservableCollection<string> Hints { get; } = [];
 
+    public ObservableCollection<WorkerScaffoldRecommendation> ScaffoldRecommendations { get; } = [];
+
     public bool UseKoreanUi
     {
         get => _useKoreanUi;
@@ -186,6 +188,7 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         ReplaceItems(KeyDependencies, analysis.KeyDependencies);
         ReplaceItems(KeyFiles, analysis.KeyFiles);
         ReplaceItems(Hints, analysis.Hints);
+        ReplaceItems(ScaffoldRecommendations, analysis.ScaffoldRecommendations);
     }
 
     public void ResetEmptyState()
@@ -276,6 +279,15 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
     }
 
     private static void ReplaceItems(ObservableCollection<string> target, IEnumerable<string> values)
+    {
+        target.Clear();
+        foreach (var value in values)
+        {
+            target.Add(value);
+        }
+    }
+
+    private static void ReplaceItems<T>(ObservableCollection<T> target, IEnumerable<T> values)
     {
         target.Clear();
         foreach (var value in values)

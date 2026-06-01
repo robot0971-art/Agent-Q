@@ -511,13 +511,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         AgentWorkMode workMode,
         DesktopTaskKind taskKind)
     {
-        if (!ShouldRetryNoToolCodingFallback(
-                userText,
-                assistantText,
-                executedToolCount,
-                fileChanges,
-                workMode,
-                taskKind))
+        if (workMode == AgentWorkMode.Readonly ||
+            fileChanges.Count > 0 ||
+            string.IsNullOrWhiteSpace(userText) ||
+            string.IsNullOrWhiteSpace(assistantText) ||
+            !IsActionableCodingTask(taskKind) ||
+            !UserAskedForWorkspaceWork(userText))
         {
             return false;
         }
@@ -542,7 +541,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "\uC694\uCCAD\uD558\uC2E0 \uB0B4\uC6A9\uC774 \uC5C6\uC5B4",
                    "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uB3C4\uC640",
                    "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558") &&
-               !LooksLikeWorkspaceActionSummary(assistantLower);
+            !LooksLikeWorkspaceActionSummary(assistantLower);
     }
 
     public static bool ShouldRetryNoToolCodingFallback(
@@ -563,27 +562,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return false;
         }
 
-        var userLower = userText.ToLowerInvariant();
         var assistantLower = assistantText.ToLowerInvariant();
-        var userAskedForWork = ContainsAny(
-            userLower,
-            "make",
-            "build",
-            "create",
-            "implement",
-            "fix",
-            "portfolio",
-            "homepage",
-            "website",
-            "\uB9CC\uB4E4",
-            "\uAD6C\uD604",
-            "\uACE0\uCCD0",
-            "\uC218\uC815",
-            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
-            "\uD648\uD398\uC774\uC9C0",
-            "\uC6F9\uC0AC\uC774\uD2B8",
-            "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8");
-        if (!userAskedForWork)
+        if (!UserAskedForWorkspaceWork(userText))
         {
             return false;
         }
@@ -598,10 +578,46 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         IReadOnlyList<FileChangeRecord> fileChanges,
         AgentWorkMode workMode,
         DesktopTaskKind taskKind) =>
-        ShouldRetryNoToolCodingFallback(userText, assistantText, executedToolCount, fileChanges, workMode, taskKind);
+        workMode != AgentWorkMode.Readonly &&
+        fileChanges.Count == 0 &&
+        !string.IsNullOrWhiteSpace(userText) &&
+        !string.IsNullOrWhiteSpace(assistantText) &&
+        IsActionableCodingTask(taskKind) &&
+        UserAskedForWorkspaceWork(userText) &&
+        !LooksLikeWorkspaceActionSummary(assistantText.ToLowerInvariant());
 
     private static bool IsActionableCodingTask(DesktopTaskKind taskKind) =>
         taskKind is DesktopTaskKind.Feature or DesktopTaskKind.BugFix or DesktopTaskKind.Refactor or DesktopTaskKind.VerificationFailure;
+
+    private static bool UserAskedForWorkspaceWork(string userText)
+    {
+        var userLower = userText.ToLowerInvariant();
+        return ContainsAny(
+            userLower,
+            "make",
+            "build",
+            "create",
+            "implement",
+            "fix",
+            "python",
+            "data analysis",
+            "data tool",
+            "portfolio",
+            "homepage",
+            "website",
+            "\uB9CC\uB4E4",
+            "\uC0DD\uC131",
+            "\uAD6C\uD604",
+            "\uACE0\uCCD0",
+            "\uC218\uC815",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+            "\uD648\uD398\uC774\uC9C0",
+            "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8",
+            "\uD30C\uC774\uC36C",
+            "\uB370\uC774\uD130 \uBD84\uC11D",
+            "\uBD84\uC11D \uB3C4\uAD6C");
+    }
 
     private static bool LooksLikeWorkspaceActionSummary(string assistantLower)
     {
@@ -660,13 +676,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var hasLinkIntent = HasLinkIntent(userText);
         var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
+        var scaffoldDecisionContext = await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
             string.IsNullOrWhiteSpace(memoryContext) &&
             string.IsNullOrWhiteSpace(mcpContext) &&
             string.IsNullOrWhiteSpace(linkStatusContext) &&
-            string.IsNullOrWhiteSpace(explicitStackContext))
+            string.IsNullOrWhiteSpace(explicitStackContext) &&
+            string.IsNullOrWhiteSpace(scaffoldDecisionContext))
         {
             return string.Empty;
         }
@@ -695,6 +713,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             builder.AppendLine(linkStatusContext);
         }
 
+        if (!string.IsNullOrWhiteSpace(scaffoldDecisionContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(scaffoldDecisionContext);
+        }
+
         if (!string.IsNullOrWhiteSpace(workspaceContext))
         {
             builder.AppendLine();
@@ -720,6 +744,48 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    private async Task<string> BuildScaffoldDecisionContextAsync(
+        string workspaceRoot,
+        DesktopTaskProfile taskProfile,
+        CancellationToken ct)
+    {
+        if (taskProfile.Kind != DesktopTaskKind.Feature)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var analysis = await _workspaceAnalysisService.AnalyzeAsync(workspaceRoot, ct);
+            var builder = new StringBuilder();
+            builder.AppendLine("Scaffold decision context:");
+            builder.AppendLine("Available scaffold candidates are optional references. The assistant must decide whether to ask a focused question, implement manually with file tools, or mirror a candidate structure.");
+
+            if (analysis.ScaffoldRecommendations.Count == 0)
+            {
+                builder.AppendLine("No exact worker scaffold candidate was found for this workspace. If the task is still clear, implement the requested files manually with workspace tools.");
+                return builder.ToString().TrimEnd();
+            }
+
+            foreach (var recommendation in analysis.ScaffoldRecommendations.Take(4))
+            {
+                var files = recommendation.Files.Count == 0
+                    ? "no file list"
+                    : string.Join(", ", recommendation.Files.Take(8));
+                var commands = recommendation.VerificationCommands.Count == 0
+                    ? "no verification command"
+                    : string.Join(", ", recommendation.VerificationCommands.Take(3));
+                builder.AppendLine($"- {recommendation.Name}: {recommendation.Description}; files: {files}; verify: {commands}");
+            }
+
+            return builder.ToString().TrimEnd();
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     public static string BuildExplicitStackPreferenceContext(string userText)

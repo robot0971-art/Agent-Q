@@ -32,5 +32,7 @@ public sealed class WorkspaceAnalysis
 
     public List<string> Hints { get; set; } = [];
 
+    public List<WorkerScaffoldRecommendation> ScaffoldRecommendations { get; set; } = [];
+
     public string Summary => $"{ProjectType} / {Framework}";
 }

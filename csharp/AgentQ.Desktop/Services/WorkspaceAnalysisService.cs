@@ -1061,7 +1061,8 @@ public sealed class WorkspaceAnalysisService
             result.Symbols.Count == 0 &&
             result.Imports.Count == 0 &&
             result.Playwright.Configs.Count == 0 &&
-            !result.Playwright.HasDependency)
+            !result.Playwright.HasDependency &&
+            result.ScaffoldRecommendations.Count == 0)
         {
             return;
         }
@@ -1347,6 +1348,12 @@ public sealed class WorkspaceAnalysisService
             if (string.IsNullOrWhiteSpace(recommendation.Name))
             {
                 continue;
+            }
+
+            if (!analysis.ScaffoldRecommendations.Any(existing =>
+                    string.Equals(existing.Name, recommendation.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                analysis.ScaffoldRecommendations.Add(recommendation);
             }
 
             analysis.Hints.Add($"{workerName} scaffold: {recommendation.Name} - {recommendation.Description}");

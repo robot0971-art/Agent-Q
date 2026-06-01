@@ -8,7 +8,8 @@ public sealed class DesktopWorkspaceContextWorkflowService(
     ProjectAgentConfigService projectConfigService,
     AgentSessionSummaryService sessionSummaryService,
     DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
-    DesktopLearningSuggestionService learningSuggestionService)
+    DesktopLearningSuggestionService learningSuggestionService,
+    DesktopPlanApprovalPreviewService approvalPreviewService)
 {
     private AgentSessionSummary? _lastSessionSummary;
     private WorkspaceAnalysis? _lastWorkspaceAnalysis;
@@ -73,6 +74,11 @@ public sealed class DesktopWorkspaceContextWorkflowService(
                 ct);
             _lastWorkspaceAnalysis = analysis;
             viewModel.ApplyWorkspaceAnalysis(analysis);
+            if (approvalPreviewService.ApplyScaffoldRecommendationPreview(viewModel, viewModel.InputText))
+            {
+                viewModel.AddLog($"Worker scaffold ready: {viewModel.CurrentWorkerExecutionContext?.Plan.Summary}");
+            }
+
             AddWorkspaceMemoryCandidates(viewModel, analysis);
             viewModel.StatusText = "Workspace analysis refreshed";
             viewModel.AddLog($"Workspace analyzed: {analysis.Summary}");

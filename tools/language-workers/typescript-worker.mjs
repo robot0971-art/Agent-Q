@@ -456,9 +456,35 @@ function addGenerationGuidance() {
   const dependencies = new Set(
     result.packages.flatMap((pkg) => [...pkg.dependencies, ...pkg.devDependencies]).map((name) => name.toLowerCase())
   );
+  const hasProjectShape = result.packages.length > 0 ||
+    result.tsconfigs.length > 0 ||
+    result.imports.length > 0 ||
+    result.exports.length > 0 ||
+    result.reactComponents.length > 0 ||
+    result.routes.length > 0 ||
+    result.testTargets.length > 0;
+  const hasRunnableAppEntry = fileExists("index.html") &&
+    (fileExists("src/main.tsx") ||
+      fileExists("src/main.jsx") ||
+      fileExists("src/main.ts") ||
+      fileExists("src/main.js") ||
+      fileExists("src/App.tsx") ||
+      fileExists("src/App.jsx"));
 
   addCapability("analyze-js-ts", "Analyze JavaScript/TypeScript imports, exports, components, hooks, routes, tests, and package scripts.");
   addCapability("extend-react-ui", "Extend React/Vite/Next.js UI surfaces using detected components, hooks, and route files.");
+  addCapability("create-vite-react-project", "Create a new Vite React TypeScript project with package scripts, entrypoint, app shell, styles, and build verification.");
+
+  if (!hasProjectShape ||
+    !hasRunnableAppEntry ||
+    (dependencies.size === 0 && result.imports.length === 0 && result.exports.length === 0)) {
+    addScaffoldRecommendation(
+      "Vite React TypeScript project",
+      "Create a runnable React/Vite starter project with package.json, TypeScript config, HTML entrypoint, app shell, and styles.",
+      ["package.json", "index.html", "vite.config.ts", "tsconfig.json", "src/main.tsx", "src/App.tsx", "src/styles.css"],
+      ["npm install", "npm run build"]
+    );
+  }
 
   if (dependencies.has("next")) {
     addCapability("create-next-feature", "Create a Next.js feature with App Router pages, route handlers, client/server components, and tests.");
@@ -491,6 +517,10 @@ function addGenerationGuidance() {
   if (result.playwright.hasDependency || result.playwright.configs.length > 0 || result.playwright.scripts.length > 0) {
     addCapability("verify-playwright", "Run Playwright browser checks and use screenshots/reports as UI verification evidence.");
   }
+}
+
+function fileExists(relativePath) {
+  return fs.existsSync(path.join(root, relativePath));
 }
 
 function addCapability(name, description) {

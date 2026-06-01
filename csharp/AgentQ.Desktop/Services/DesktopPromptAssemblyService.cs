@@ -9,6 +9,7 @@ public static class DesktopPromptAssemblyService
         new ContextPrioritizationPromptRule(),
         new ToolRoutingPromptRule(),
         new UserIntentPrecedencePromptRule(),
+        new ScaffoldDecisionPromptRule(),
         new ExecutionStrategyPromptRule(),
         new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
@@ -172,6 +173,23 @@ public sealed class UserIntentPrecedencePromptRule : IDesktopPromptRule
         builder.AppendLine("- If the user corrects stack, framework, language, style, or scope, acknowledge internally and update the plan before touching files.");
         builder.AppendLine("- Use defaults only for details the user has not specified. Never replace a specified choice with a default because it seems more modern or safer.");
         builder.AppendLine("- When a user says 'not that', 'instead', 'use X', or similar correction, treat it as a hard constraint for the current task.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class ScaffoldDecisionPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => profile.Kind is DesktopTaskKind.Feature;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Scaffold decision rules:");
+        builder.AppendLine("- Treat scaffold recommendations as optional accelerators, not as automatic instructions.");
+        builder.AppendLine("- First decide whether the user's latest request has enough product intent to act. Ask a focused question only when missing choices would materially change the result.");
+        builder.AppendLine("- If the request names a concrete stack or artifact, create the smallest useful project/files with workspace tools even when no scaffold recommendation exactly matches.");
+        builder.AppendLine("- If a scaffold recommendation matches the request and workspace state, you may mirror its file structure, but adapt stack, language, sections, and copy to the user's latest wording.");
+        builder.AppendLine("- Do not reset to a greeting or broad 'what do you want to build?' question after the user has already named a project direction.");
         return builder.ToString().TrimEnd();
     }
 }

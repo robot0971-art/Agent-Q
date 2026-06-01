@@ -15,6 +15,31 @@ public static class WorkerScaffoldTemplateRenderer
         var language = plan.Language.ToLowerInvariant();
         var framework = plan.Framework.ToLowerInvariant();
 
+        if (path.Equals("package.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderPackageJson(feature, framework);
+        }
+
+        if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderIndexHtml(feature);
+        }
+
+        if (path.Equals("vite.config.ts", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderViteConfig();
+        }
+
+        if (path.Equals("tsconfig.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderTsConfig();
+        }
+
+        if (path.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderCss(feature);
+        }
+
         if (path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase))
         {
@@ -29,6 +54,16 @@ public static class WorkerScaffoldTemplateRenderer
         if (path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase))
         {
+            if (path.Equals("src/App.tsx", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderReactApp(feature);
+            }
+
+            if (path.Equals("src/main.tsx", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderReactMain();
+            }
+
             return path.Contains(".test.", StringComparison.OrdinalIgnoreCase) ||
                    path.Contains(".spec.", StringComparison.OrdinalIgnoreCase)
                 ? RenderTypeScriptTest(feature, context)
@@ -99,6 +134,176 @@ public static class WorkerScaffoldTemplateRenderer
 
         return $"# {Path.GetFileName(relativePath)}{Environment.NewLine}{Environment.NewLine}Scaffold for {feature.Pascal}.{Environment.NewLine}";
     }
+
+    private static string RenderPackageJson(WorkerScaffoldName feature, string framework)
+    {
+        var devScript = framework.Contains("vite", StringComparison.OrdinalIgnoreCase) ||
+                        framework.Contains("react", StringComparison.OrdinalIgnoreCase)
+            ? "vite --host 127.0.0.1"
+            : "vite";
+        return
+        $$"""
+        {
+          "name": "{{feature.Kebab}}",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "scripts": {
+            "dev": "{{devScript}}",
+            "build": "tsc -b && vite build",
+            "preview": "vite preview",
+            "test": "vitest run"
+          },
+          "dependencies": {
+            "react": "latest",
+            "react-dom": "latest"
+          },
+          "devDependencies": {
+            "@types/react": "latest",
+            "@types/react-dom": "latest",
+            "@vitejs/plugin-react": "latest",
+            "typescript": "latest",
+            "vite": "latest",
+            "vitest": "latest"
+          }
+        }
+        """;
+    }
+
+    private static string RenderIndexHtml(WorkerScaffoldName feature) =>
+        $$"""
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>{{feature.Pascal}}</title>
+          </head>
+          <body>
+            <div id="root"></div>
+            <script type="module" src="/src/main.tsx"></script>
+          </body>
+        </html>
+        """;
+
+    private static string RenderViteConfig() =>
+        """
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+
+        export default defineConfig({
+          plugins: [react()]
+        });
+        """;
+
+    private static string RenderTsConfig() =>
+        """
+        {
+          "compilerOptions": {
+            "target": "ES2020",
+            "useDefineForClassFields": true,
+            "lib": ["DOM", "DOM.Iterable", "ES2020"],
+            "allowJs": false,
+            "skipLibCheck": true,
+            "esModuleInterop": true,
+            "allowSyntheticDefaultImports": true,
+            "strict": true,
+            "forceConsistentCasingInFileNames": true,
+            "module": "ESNext",
+            "moduleResolution": "Node",
+            "resolveJsonModule": true,
+            "isolatedModules": true,
+            "noEmit": true,
+            "jsx": "react-jsx"
+          },
+          "include": ["src"]
+        }
+        """;
+
+    private static string RenderCss(WorkerScaffoldName feature) =>
+        $$"""
+        :root {
+          color: #172033;
+          background: #f7f8fb;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          min-width: 320px;
+          min-height: 100vh;
+        }
+
+        button,
+        input,
+        textarea,
+        select {
+          font: inherit;
+        }
+
+        .app-shell {
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          padding: 32px;
+        }
+
+        .app-panel {
+          width: min(100%, 720px);
+          border: 1px solid #d7deea;
+          border-radius: 8px;
+          background: #ffffff;
+          padding: 28px;
+          box-shadow: 0 18px 48px rgb(23 32 51 / 10%);
+        }
+
+        .app-panel h1 {
+          margin: 0 0 10px;
+          font-size: 32px;
+          line-height: 1.15;
+        }
+
+        .app-panel p {
+          margin: 0;
+          color: #536179;
+          line-height: 1.6;
+        }
+        """;
+
+    private static string RenderReactApp(WorkerScaffoldName feature) =>
+        $$"""
+        import "./styles.css";
+
+        export function App() {
+          return (
+            <main className="app-shell">
+              <section className="app-panel" aria-labelledby="app-title">
+                <h1 id="app-title">{{feature.Pascal}}</h1>
+                <p>{{feature.Pascal}} is ready.</p>
+              </section>
+            </main>
+          );
+        }
+
+        export default App;
+        """;
+
+    private static string RenderReactMain() =>
+        """
+        import { StrictMode } from "react";
+        import { createRoot } from "react-dom/client";
+        import App from "./App";
+
+        createRoot(document.getElementById("root")!).render(
+          <StrictMode>
+            <App />
+          </StrictMode>
+        );
+        """;
 
     private static string RenderReactComponent(WorkerScaffoldName feature) =>
         $$"""

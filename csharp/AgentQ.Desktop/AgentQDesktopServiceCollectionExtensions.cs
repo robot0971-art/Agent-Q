@@ -56,6 +56,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<WorkerPlanPreviewBuilder>();
         services.AddSingleton<WorkerExecutionPipeline>();
         services.AddSingleton<WorkerScaffoldExecutor>();
+        services.AddSingleton<DesktopScaffoldIntentRouter>();
         services.AddSingleton<DesktopPlanApprovalPreviewService>();
         services.AddSingleton<DesktopPlanCheckpointWorkflowService>();
         services.AddSingleton<DesktopPlanCommandService>();

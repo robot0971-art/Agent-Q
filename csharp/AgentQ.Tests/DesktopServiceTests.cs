@@ -1,4 +1,4 @@
-using AgentQ.Desktop.Services;
+﻿using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
@@ -264,14 +264,15 @@ public sealed class DesktopServiceTests
     }
 
     [Theory]
-    [InlineData("컴파일 오류 고쳐줘", DesktopTaskKind.VerificationFailure)]
-    [InlineData("새 기능 추가해줘", DesktopTaskKind.Feature)]
-    [InlineData("이 변경사항 코드 리뷰해줘", DesktopTaskKind.CodeReview)]
-    [InlineData("README 문서 고쳐줘", DesktopTaskKind.Documentation)]
-    [InlineData("구조를 분석해줘", DesktopTaskKind.Analysis)]
-    [InlineData("프로젝트 구조 리팩터링해줘", DesktopTaskKind.Refactor)]
+    [InlineData("\uCEF4\uD30C\uC77C \uC624\uB958 \uACE0\uCCD0\uC918", DesktopTaskKind.VerificationFailure)]
+    [InlineData("\uC0C8 \uAE30\uB2A5 \uCD94\uAC00\uD574\uC918", DesktopTaskKind.Feature)]
+    [InlineData("\uC774 \uBCC0\uACBD\uC0AC\uD56D \uCF54\uB4DC \uB9AC\uBDF0\uD574\uC918", DesktopTaskKind.CodeReview)]
+    [InlineData("README \uBB38\uC11C \uACE0\uCCD0\uC918", DesktopTaskKind.Documentation)]
+    [InlineData("\uAD6C\uC870\uB97C \uBD84\uC11D\uD574\uC918", DesktopTaskKind.Analysis)]
+    [InlineData("\uD504\uB85C\uC81D\uD2B8 \uAD6C\uC870 \uB9AC\uD329\uD130\uB9C1\uD574\uC918", DesktopTaskKind.Refactor)]
     [InlineData("Build a portfolio website", DesktopTaskKind.Feature)]
     [InlineData("Create a landing page", DesktopTaskKind.Feature)]
+    [InlineData("\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC5B4 \uBCF4\uC790", DesktopTaskKind.Feature)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -280,7 +281,7 @@ public sealed class DesktopServiceTests
     [Fact]
     public void DesktopPromptAssemblyService_AddsTaskSpecificGuidance()
     {
-        var profile = DesktopPromptAssemblyService.BuildTaskProfile("컴파일 오류 고쳐줘");
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("\uCEF4\uD30C\uC77C \uC624\uB958 \uACE0\uCCD0\uC918");
         var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
 
         Assert.Equal(DesktopTaskKind.VerificationFailure, profile.Kind);
@@ -307,6 +308,17 @@ public sealed class DesktopServiceTests
         Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed: read_file", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("requires approval: edit_file", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsScaffoldDecisionRulesForFeatureTasks()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC5B4 \uBCF4\uC790");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Contains("Scaffold decision rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("optional accelerators", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("workspace tools", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -341,7 +353,7 @@ public sealed class DesktopServiceTests
     [Fact]
     public void DesktopAgentService_BuildsExplicitJavaScriptStackOverride()
     {
-        var context = DesktopAgentService.BuildExplicitStackPreferenceContext("자바스크립트로 부탁");
+        var context = DesktopAgentService.BuildExplicitStackPreferenceContext("\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C \uBD80\uD0C1");
 
         Assert.Contains("JavaScript was explicitly requested", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".js/.jsx", context, StringComparison.OrdinalIgnoreCase);
@@ -364,8 +376,8 @@ public sealed class DesktopServiceTests
     public void DesktopAgentService_RetriesGenericGreetingAfterCodingTask()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
-            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
-            "안녕하세요! 무엇을 도와드릴까요?",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C \uB9CC\uB4E4\uC5B4\uC918",
+            "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
             executedToolCount: 0,
             fileChanges: [],
             AgentWorkMode.Coding,
@@ -378,8 +390,8 @@ public sealed class DesktopServiceTests
     public void DesktopAgentService_RetriesBroadClarificationAfterCodingTask()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
-            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
-            "현재 프로젝트는 Next.js 14 + TypeScript로 보입니다. 구체적으로 어떤 기능을 원하시는지 알려주시면 JavaScript(.js/.jsx)로 구현하겠습니다.",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C \uB9CC\uB4E4\uC5B4\uC918",
+            "\uD604\uC7AC \uD504\uB85C\uC81D\uD2B8\uB294 Next.js 14 + TypeScript\uB85C \uBCF4\uC785\uB2C8\uB2E4. \uAD6C\uCCB4\uC801\uC73C\uB85C \uC5B4\uB5A4 \uAE30\uB2A5\uC744 \uC6D0\uD558\uC2DC\uB294\uC9C0 \uC54C\uB824\uC8FC\uC2DC\uBA74 JavaScript(.js/.jsx)\uB85C \uAD6C\uD604\uD558\uACA0\uC2B5\uB2C8\uB2E4.",
             executedToolCount: 0,
             fileChanges: [],
             AgentWorkMode.Coding,
@@ -392,8 +404,8 @@ public sealed class DesktopServiceTests
     public void DesktopAgentService_RetriesNoRequestClaimAfterCodingTask()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
-            "쇼핑몰 장바구니 기능 자바스크립트로 수정해줘",
-            "요청하신 내용이 없어서 구현 가능한 주요 기능들을 안내해 드립니다.",
+            "\uC1FC\uD551\uBAB0 \uC7A5\uBC14\uAD6C\uB2C8 \uAE30\uB2A5 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C \uC218\uC815\uD574\uC918",
+            "\uC694\uCCAD\uD558\uC2E0 \uB0B4\uC6A9\uC774 \uC5C6\uC5B4\uC11C \uAD6C\uD604 \uAC00\uB2A5\uD55C \uC8FC\uC694 \uAE30\uB2A5\uB4E4\uC744 \uC548\uB0B4\uD574 \uB4DC\uB9BD\uB2C8\uB2E4.",
             executedToolCount: 0,
             fileChanges: [],
             AgentWorkMode.Coding,
@@ -431,17 +443,45 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void DesktopAgentService_DoesNotRetryGenericGreetingAfterToolUse()
+    public void DesktopAgentService_RetriesGenericGreetingAfterReadOnlyToolUse()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
-            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
-            "안녕하세요! 무엇을 도와드릴까요?",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uC0DD\uC131",
+            "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
             executedToolCount: 1,
             fileChanges: [],
             AgentWorkMode.Coding,
             DesktopTaskKind.Feature);
 
-        Assert.False(shouldRetry);
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesGenericGreetingForPythonDataToolRequest()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC5B4 \uBCF4\uC790",
+            "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RejectsNoChangeFeatureAnswerAfterReadOnlyToolUse()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uC0DD\uC131",
+            "\uD604\uC7AC \uD504\uB85C\uC81D\uD2B8\uB294 Vite + React \uAE30\uBC18\uC758 \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC571\uC73C\uB85C \uBCF4\uC785\uB2C8\uB2E4. \uC694\uCCAD\uD558\uC2E0 \uAE30\uB2A5\uC744 \uC54C\uB824\uC8FC\uC138\uC694.",
+            executedToolCount: 2,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldReject);
     }
 
     [Fact]
@@ -710,11 +750,11 @@ public sealed class DesktopServiceTests
     [Fact]
     public void ModelReasoningTagFilter_StripsThinkTagsFromProviderOutput()
     {
-        var text = "찾아보겠습니다.</think>`EmbeddingIndexBuilder.cs` 확인<think>hidden</think>완료";
+        var text = "李얠븘蹂닿쿋?듬땲??</think>`EmbeddingIndexBuilder.cs` ?뺤씤<think>hidden</think>?꾨즺";
 
         var filtered = ModelReasoningTagFilter.Strip(text);
 
-        Assert.Equal("찾아보겠습니다.`EmbeddingIndexBuilder.cs` 확인완료", filtered);
+        Assert.Equal("李얠븘蹂닿쿋?듬땲??`EmbeddingIndexBuilder.cs` ?뺤씤?꾨즺", filtered);
     }
 
     [Fact]
@@ -1429,6 +1469,130 @@ public sealed class DesktopServiceTests
         Assert.Contains(result.Exports, export => export.Name == "useDashboard");
         Assert.Contains(result.Exports, export => export.Name == "loadDashboard");
         Assert.Contains(result.Symbols, symbol => symbol.Name == "loadRoute");
+    }
+
+    [Fact]
+    public async Task TypeScriptWorkerHost_RecommendsNewViteReactProjectForEmptyWorkspace()
+    {
+        var root = CreateTempDirectory();
+
+        var result = await new TypeScriptWorkerHost().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Capabilities, capability => capability.Name == "create-vite-react-project");
+        Assert.Contains(result.ScaffoldRecommendations, recommendation =>
+            recommendation.Name == "Vite React TypeScript project" &&
+            recommendation.Files.Contains("package.json") &&
+            recommendation.Files.Contains("src/App.tsx"));
+    }
+
+    [Fact]
+    public async Task TypeScriptWorkerHost_RecommendsNewViteReactProjectForPackageOnlyWorkspace()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"dependencies":{"react":"latest","vite":"latest"},"scripts":{"build":"vite build"}}""");
+
+        var result = await new TypeScriptWorkerHost().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Contains(result.ScaffoldRecommendations, recommendation =>
+            recommendation.Name == "Vite React TypeScript project" &&
+            recommendation.Files.Contains("index.html") &&
+            recommendation.Files.Contains("src/main.tsx"));
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_PreservesWorkerScaffoldRecommendations()
+    {
+        var root = CreateTempDirectory();
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Contains(analysis.ScaffoldRecommendations, recommendation =>
+            recommendation.Name == "Vite React TypeScript project" &&
+            recommendation.Files.Contains("package.json"));
+        Assert.Contains(analysis.ProjectMap, entry =>
+            entry.Contains("Suggested scaffold: Vite React TypeScript project", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DesktopScaffoldIntentRouter_PrefersProjectScaffoldForPackageOnlyPortfolioRequest()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"dependencies":{"react":"latest"}}""");
+        var recommendations = new List<WorkerScaffoldRecommendation>
+        {
+            new()
+            {
+                Name = "React application feature",
+                Files =
+                [
+                    "<feature_dir>/<Feature>View.tsx",
+                    "<feature_dir>/use<Feature>.ts"
+                ],
+                VerificationCommands = ["npm test"]
+            },
+            new()
+            {
+                Name = "Vite React TypeScript project",
+                Files =
+                [
+                    "package.json",
+                    "index.html",
+                    "src/main.tsx",
+                    "src/App.tsx"
+                ],
+                VerificationCommands = ["npm run build"]
+            }
+        };
+
+        var selected = new DesktopScaffoldIntentRouter().SelectRecommendation(
+            recommendations,
+            "?ы듃?대━???앹꽦",
+            root);
+
+        Assert.Equal("Vite React TypeScript project", selected.Name);
+    }
+
+    [Fact]
+    public async Task DesktopScaffoldIntentRouter_DoesNotForceProjectScaffoldForRunnableApp()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"dependencies":{"react":"latest"}}""");
+        await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "<div id=\"root\"></div>");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.tsx"), "export {};");
+
+        var shouldHandle = new DesktopScaffoldIntentRouter().ShouldHandleLocally("\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC0DD\uC131", root);
+
+        Assert.False(shouldHandle);
+    }
+
+    [Fact]
+    public void DesktopScaffoldIntentRouter_AsksForBriefBeforeAmbiguousPortfolioScaffold()
+    {
+        var root = CreateTempDirectory();
+
+        var shouldAsk = new DesktopScaffoldIntentRouter().ShouldAskForProjectBrief(
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC0DD\uC131",
+            root);
+
+        Assert.True(shouldAsk);
+    }
+
+    [Fact]
+    public void DesktopScaffoldIntentRouter_DoesNotAskBriefForExplicitReactProjectScaffold()
+    {
+        var root = CreateTempDirectory();
+
+        var router = new DesktopScaffoldIntentRouter();
+        var shouldAsk = router.ShouldAskForProjectBrief("React project create", root);
+        var shouldHandle = router.ShouldHandleLocally("React project create", root);
+
+        Assert.False(shouldAsk);
+        Assert.True(shouldHandle);
     }
 
     [Fact]
@@ -5478,6 +5642,52 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public async Task WorkerScaffoldExecutor_CreatesViteReactProjectFiles()
+    {
+        var root = CreateTempDirectory();
+        var plan = new WorkerPlanCandidateBuilder().BuildCandidate(
+            "Create client app",
+            "typescript",
+            "Vite React",
+            new WorkerScaffoldRecommendation
+            {
+                Name = "Vite React TypeScript project",
+                Description = "Create a runnable React/Vite starter project.",
+                Files =
+                [
+                    "package.json",
+                    "index.html",
+                    "vite.config.ts",
+                    "tsconfig.json",
+                    "src/main.tsx",
+                    "src/App.tsx",
+                    "src/styles.css"
+                ],
+                VerificationCommands = ["npm install", "npm run build"]
+            });
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Client App"
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("package.json", result.CreatedFiles);
+        Assert.Contains("src/main.tsx", result.CreatedFiles);
+        Assert.Contains("src/App.tsx", result.CreatedFiles);
+        Assert.Contains("npm run build", result.VerificationCommands);
+        var packageJson = await File.ReadAllTextAsync(Path.Combine(root, "package.json"));
+        var app = await File.ReadAllTextAsync(Path.Combine(root, "src", "App.tsx"));
+        var main = await File.ReadAllTextAsync(Path.Combine(root, "src", "main.tsx"));
+        Assert.Contains("\"dev\": \"vite --host 127.0.0.1\"", packageJson);
+        Assert.Contains("export function App()", app);
+        Assert.Contains("createRoot", main);
+    }
+
+    [Fact]
     public async Task WorkerScaffoldExecutor_CreatesPythonFastApiFeatureFiles()
     {
         var root = CreateTempDirectory();
@@ -5799,7 +6009,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
                     new DesktopPlanApprovalPreviewService(
                         new AgentPlanWorkerPlanAdapter(),
                         new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()))),
-                new DesktopLearningSuggestionService()),
+                new DesktopLearningSuggestionService(),
+                new DesktopPlanApprovalPreviewService(
+                    new AgentPlanWorkerPlanAdapter(),
+                    new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()))),
             new WorkerExecutionPipeline(new WorkerPlanPreviewBuilder(), new AutoFixLoopGuard(), new WorkerScaffoldExecutor()));
 
         await service.ExecuteWorkerScaffoldAsync(viewModel);
@@ -5811,6 +6024,40 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains(viewModel.FileChanges, change => change.RelativePath == "src/features/search-page/index.ts" &&
                                                         change.After.Contains("export { SearchPageView }", StringComparison.Ordinal));
         Assert.Contains(viewModel.RunSteps, step => step.Title == "Worker scaffold executed");
+    }
+
+    [Fact]
+    public async Task DesktopWorkspaceContextWorkflowService_PreparesScaffoldFromWorkerRecommendation()
+    {
+        var root = CreateTempDirectory();
+        var viewModel = new MainViewModel { WorkspaceRoot = root };
+        var approvalPipeline = new WorkerExecutionPipeline(
+            new WorkerPlanPreviewBuilder(),
+            new AutoFixLoopGuard(),
+            new WorkerScaffoldExecutor());
+        var approvalPreview = new DesktopPlanApprovalPreviewService(
+            new AgentPlanWorkerPlanAdapter(),
+            approvalPipeline);
+        var checkpointWorkflow = new DesktopPlanCheckpointWorkflowService(
+            new DesktopPlanWorkflowService(),
+            new DesktopCheckpointWorkflowService(new AgentCheckpointService(), new DesktopGitService()),
+            approvalPreview);
+        var service = new DesktopWorkspaceContextWorkflowService(
+            new WorkspaceAnalysisService(),
+            new ProjectAgentConfigService(),
+            new AgentSessionSummaryService(),
+            checkpointWorkflow,
+            new DesktopLearningSuggestionService(),
+            approvalPreview);
+
+        await service.RefreshWorkspaceAnalysisAsync(viewModel, value => value);
+
+        Assert.NotNull(viewModel.CurrentWorkerExecutionContext);
+        Assert.Equal(WorkerExecutionState.Ready, viewModel.CurrentWorkerExecutionContext!.State);
+        Assert.Contains(viewModel.CurrentWorkerExecutionContext.Plan.Steps, step =>
+            step.Kind == WorkerPlanStepKind.CreateFile &&
+            step.Path == "package.json");
+        Assert.True(viewModel.CanExecuteWorkerScaffold);
     }
 
     [Fact]
@@ -6219,9 +6466,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             UseKoreanUi = true
         };
 
-        Assert.Equal("승인", step.TimelineLabel);
-        Assert.Equal("권한: 차단됨", step.DisplayTitle);
-        Assert.Equal("추가 세부 정보 없음.", step.TimelineDetail);
+        Assert.Equal("\uC2B9\uC778", step.TimelineLabel);
+        Assert.Equal("\uAD8C\uD55C: \uCC28\uB2E8\uB428", step.DisplayTitle);
+        Assert.Equal("\uCD94\uAC00 \uC138\uBD80 \uC815\uBCF4 \uC5C6\uC74C.", step.TimelineDetail);
     }
 
     [Fact]
@@ -6236,7 +6483,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
 
         var step = Assert.Single(viewModel.RunSteps);
         Assert.True(step.UseKoreanUi);
-        Assert.Equal("근거: bash", step.DisplayTitle);
+        Assert.Equal("\uADFC\uAC70: bash", step.DisplayTitle);
     }
 
     [Fact]
@@ -6253,10 +6500,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             isBusy: true,
             useKoreanUi: true);
 
-        Assert.Equal("승인 대기", summary.Phase);
-        Assert.Equal("요청된 도구 작업을 검토하세요.", summary.NextAction);
-        Assert.Equal("검증 안 됨", summary.VerificationStatus);
-        Assert.Equal("변경 0개", summary.ChangedFilesText);
+        Assert.Equal("\uC2B9\uC778 \uB300\uAE30", summary.Phase);
+        Assert.Equal("\uC694\uCCAD\uB41C \uB3C4\uAD6C \uC791\uC5C5\uC744 \uAC80\uD1A0\uD558\uC138\uC694.", summary.NextAction);
+        Assert.Equal("\uAC80\uC99D \uC548 \uB428", summary.VerificationStatus);
+        Assert.Equal("\uBCC0\uACBD 0\uAC1C", summary.ChangedFilesText);
     }
 
     [Theory]
@@ -6413,7 +6660,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
                 new ProjectAgentConfigService(),
                 new AgentSessionSummaryService(),
                 checkpointWorkflow,
-                new DesktopLearningSuggestionService()),
+                new DesktopLearningSuggestionService(),
+                new DesktopPlanApprovalPreviewService(
+                    new AgentPlanWorkerPlanAdapter(),
+                    approvalPipeline)),
             pipeline);
     }
 
