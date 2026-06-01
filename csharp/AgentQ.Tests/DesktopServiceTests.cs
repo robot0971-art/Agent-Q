@@ -361,6 +361,90 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesGenericGreetingAfterCodingTask()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
+            "안녕하세요! 무엇을 도와드릴까요?",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesBroadClarificationAfterCodingTask()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
+            "현재 프로젝트는 Next.js 14 + TypeScript로 보입니다. 구체적으로 어떤 기능을 원하시는지 알려주시면 JavaScript(.js/.jsx)로 구현하겠습니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesNoRequestClaimAfterCodingTask()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "쇼핑몰 장바구니 기능 자바스크립트로 수정해줘",
+            "요청하신 내용이 없어서 구현 가능한 주요 기능들을 안내해 드립니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesAnyNoToolFeatureAnswerBeforeWorkspaceAction()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "Create a Unity portfolio homepage with React JavaScript",
+            "I will build a Vite + React + JavaScript portfolio with Hero, About, Projects, Skills, and Contact sections.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RejectsNoToolCodingCompletionAfterRetry()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "Create a Unity portfolio homepage with React JavaScript",
+            "I can create this as a Vite + React + JavaScript portfolio site.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_DoesNotRetryGenericGreetingAfterToolUse()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "포트폴리오 홈페이지 자바스크립트로 만들어줘",
+            "안녕하세요! 무엇을 도와드릴까요?",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
     public void DesktopClipboardService_ReportsClipboardFailureWithoutThrowing()
     {
         var viewModel = new MainViewModel();

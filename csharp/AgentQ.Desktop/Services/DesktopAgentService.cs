@@ -186,6 +186,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
         var manualFallbackRetryUsed = false;
+        var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
 
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
@@ -279,6 +280,49 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "Retrying with tools",
                         "Manual fallback detected before any workspace action.");
                     continue;
+                }
+
+                if (!genericGreetingRetryUsed &&
+                    ShouldRetryNoToolCodingFallback(
+                        userText,
+                        builder.ToString(),
+                        executedToolCount,
+                        fileChanges,
+                        workMode,
+                        taskProfile.Kind))
+                {
+                    genericGreetingRetryUsed = true;
+                    var retryInstruction =
+                        "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
+                        "Do not greet or ask the same broad question. Continue the requested task now: inspect the workspace with tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
+                    _messages.Add(ChatMessage.UserText(retryInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        "Retrying generic reset",
+                        "Assistant answered with a generic greeting before using workspace tools.");
+                    continue;
+                }
+
+                if (ShouldRejectNoToolCodingCompletion(
+                        userText,
+                        builder.ToString(),
+                        executedToolCount,
+                        fileChanges,
+                        workMode,
+                        taskProfile.Kind))
+                {
+                    const string noToolCompletionMessage =
+                        "Coding task did not use any workspace tools, so AgentQ stopped this answer instead of treating it as complete. Please retry after ensuring workspace edit permissions are enabled.";
+                    builder.AppendLine();
+                    builder.Append(noToolCompletionMessage);
+                    onDelta?.Invoke(Environment.NewLine + noToolCompletionMessage);
+                    _messages.Add(ChatMessage.AssistantText(noToolCompletionMessage));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "No workspace action",
+                        "A coding task ended without tool use after retry.");
+                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                    return builder.ToString();
                 }
 
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
@@ -457,6 +501,127 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             lower.Contains("```cs", StringComparison.Ordinal);
 
         return manualInstruction && codeHeavy;
+    }
+
+    public static bool ShouldRetryGenericGreetingFallback(
+        string userText,
+        string assistantText,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind)
+    {
+        if (!ShouldRetryNoToolCodingFallback(
+                userText,
+                assistantText,
+                executedToolCount,
+                fileChanges,
+                workMode,
+                taskKind))
+        {
+            return false;
+        }
+
+        var assistantLower = assistantText.ToLowerInvariant();
+        return ContainsAny(
+                   assistantLower,
+                   "hello! what can i help",
+                   "how can i help",
+                   "what would you like me to",
+                   "what feature would you like",
+                   "which feature would you like",
+                   "please tell me what feature",
+                   "tell me the specific feature",
+                   "no request was provided",
+                   "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744 \uB3C4\uC640",
+                   "\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694",
+                   "\uC5B4\uB5A4 \uAE30\uB2A5\uC744 \uAD6C\uD604\uD558\uACE0 \uC2F6",
+                   "\uC5B4\uB5A4 \uAE30\uB2A5\uC744 \uC6D0\uD558",
+                   "\uAD6C\uCCB4\uC801\uC73C\uB85C \uC5B4\uB5A4 \uAE30\uB2A5",
+                   "\uC6D0\uD558\uC2DC\uB294 \uC791\uC5C5\uC744 \uC54C\uB824",
+                   "\uC694\uCCAD\uD558\uC2E0 \uB0B4\uC6A9\uC774 \uC5C6\uC5B4",
+                   "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uB3C4\uC640",
+                   "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558") &&
+               !LooksLikeWorkspaceActionSummary(assistantLower);
+    }
+
+    public static bool ShouldRetryNoToolCodingFallback(
+        string userText,
+        string assistantText,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind)
+    {
+        if (workMode == AgentWorkMode.Readonly ||
+            executedToolCount > 0 ||
+            fileChanges.Count > 0 ||
+            string.IsNullOrWhiteSpace(userText) ||
+            string.IsNullOrWhiteSpace(assistantText) ||
+            !IsActionableCodingTask(taskKind))
+        {
+            return false;
+        }
+
+        var userLower = userText.ToLowerInvariant();
+        var assistantLower = assistantText.ToLowerInvariant();
+        var userAskedForWork = ContainsAny(
+            userLower,
+            "make",
+            "build",
+            "create",
+            "implement",
+            "fix",
+            "portfolio",
+            "homepage",
+            "website",
+            "\uB9CC\uB4E4",
+            "\uAD6C\uD604",
+            "\uACE0\uCCD0",
+            "\uC218\uC815",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+            "\uD648\uD398\uC774\uC9C0",
+            "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8");
+        if (!userAskedForWork)
+        {
+            return false;
+        }
+
+        return !LooksLikeWorkspaceActionSummary(assistantLower);
+    }
+
+    public static bool ShouldRejectNoToolCodingCompletion(
+        string userText,
+        string assistantText,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind) =>
+        ShouldRetryNoToolCodingFallback(userText, assistantText, executedToolCount, fileChanges, workMode, taskKind);
+
+    private static bool IsActionableCodingTask(DesktopTaskKind taskKind) =>
+        taskKind is DesktopTaskKind.Feature or DesktopTaskKind.BugFix or DesktopTaskKind.Refactor or DesktopTaskKind.VerificationFailure;
+
+    private static bool LooksLikeWorkspaceActionSummary(string assistantLower)
+    {
+        return ContainsAny(
+            assistantLower,
+            "changed",
+            "created",
+            "updated",
+            "modified",
+            "wrote",
+            "edited",
+            "ran ",
+            "test passed",
+            "build passed",
+            "\uBCC0\uACBD",
+            "\uC0DD\uC131",
+            "\uC218\uC815\uD588",
+            "\uAD6C\uD604\uD588",
+            "\uD14C\uC2A4\uD2B8 \uD1B5\uACFC",
+            "\uBE4C\uB4DC \uD1B5\uACFC");
     }
 
     public static bool ShouldRetryEmptyResponse(string assistantText, int toolUseCount) =>
