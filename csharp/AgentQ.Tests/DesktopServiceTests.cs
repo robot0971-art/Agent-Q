@@ -471,6 +471,20 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesAgentQIdentityGreetingAfterWorkspaceLook()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "\uC5EC\uAE30\uC5D0 \uB0B4 \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uBA3C\uC800 \uC791\uC5C5 \uACF5\uAC04\uC744 \uC0B4\uD3B4\uBCF4\uACA0\uC2B5\uB2C8\uB2E4.\uB124, \uB9DE\uC2B5\uB2C8\uB2E4! \uC800\uB294 AgentQ Desktop\uC785\uB2C8\uB2E4. robot0971-art \uB2D8\uC774 \uAC1C\uBC1C\uD55C Windows \uB370\uC2A4\uD06C\uD1B1 \uCF54\uB529 \uC5B4\uC2DC\uC2A4\uD134\uD2B8\uC785\uB2C8\uB2E4.\n\n\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void DesktopAgentService_RejectsNoChangeFeatureAnswerAfterReadOnlyToolUse()
     {
         var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(

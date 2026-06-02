@@ -239,6 +239,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     if (!emptyResponseRetryUsed)
                     {
                         emptyResponseRetryUsed = true;
+                        builder.Clear();
                         _messages.Add(ChatMessage.UserText(
                             "Your previous assistant turn was empty and used no tools. Retry now. " +
                             "Use workspace tools when this is a coding task; otherwise give a concise answer. Do not return an empty response."));
@@ -271,6 +272,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     ShouldRetryManualFallback(builder.ToString(), executedToolCount, fileChanges, workMode))
                 {
                     manualFallbackRetryUsed = true;
+                    builder.Clear();
                     var retryInstruction =
                         "Your previous answer gave manual code or copy/paste style instructions without using available tools. " +
                         "Use the available workspace tools now: inspect the relevant files, apply the smallest safe edit, run focused verification when useful, then give a concise changed-files/root-cause/action/verification summary.";
@@ -292,6 +294,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         taskProfile.Kind))
                 {
                     genericGreetingRetryUsed = true;
+                    builder.Clear();
                     var retryInstruction =
                         "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
                         "Do not greet or ask the same broad question. Continue the requested task now: inspect the workspace with tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
