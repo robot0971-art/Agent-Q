@@ -321,10 +321,11 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         catch (Exception ex)
         {
-            viewModel.AddRunStep(AgentRunState.Failed, "Run failed", ex.Message);
+            var providerError = DesktopProviderFailureClassifier.Describe(ex);
+            viewModel.AddRunStep(AgentRunState.Failed, providerError.Title, providerError.Detail);
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
-            viewModel.StatusText = $"Error: {ex.Message}";
-            viewModel.AddLog($"Error: {ex.Message}");
+            viewModel.StatusText = providerError.StatusText;
+            viewModel.AddLog(providerError.LogText);
             RecordTelemetry(
                 "run_failed",
                 viewModel.WorkspaceRoot,
@@ -333,7 +334,7 @@ public sealed class DesktopAgentRunWorkflowService(
                 succeeded: false,
                 isError: true,
                 durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds,
-                detail: ex.Message);
+                detail: providerError.Detail);
         }
         finally
         {

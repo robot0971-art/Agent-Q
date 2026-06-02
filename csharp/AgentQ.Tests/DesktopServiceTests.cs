@@ -4829,6 +4829,37 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopProviderFailureClassifier_DescribesProviderAuthErrors()
+    {
+        var description = DesktopProviderFailureClassifier.Describe(
+            new HttpRequestException("bad api key", null, HttpStatusCode.Unauthorized));
+
+        Assert.Equal("Provider authentication failed", description.Title);
+        Assert.Contains("API key", description.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bad api key", description.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopProviderFailureClassifier_DescribesProviderRateLimits()
+    {
+        var description = DesktopProviderFailureClassifier.Describe(
+            new HttpRequestException("rate limited", null, HttpStatusCode.TooManyRequests));
+
+        Assert.Equal("Provider rate limit reached", description.Title);
+        Assert.Contains("Wait briefly", description.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopProviderFailureClassifier_DescribesOutputLengthErrors()
+    {
+        var description = DesktopProviderFailureClassifier.Describe(
+            new InvalidOperationException("maximum context length exceeded"));
+
+        Assert.Equal("Provider output length exceeded", description.Title);
+        Assert.Contains("smaller chunks", description.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void MainViewModel_ApplyProviderModels_SelectsFirstModelWhenCurrentIsUnavailable()
     {
         var viewModel = new MainViewModel
