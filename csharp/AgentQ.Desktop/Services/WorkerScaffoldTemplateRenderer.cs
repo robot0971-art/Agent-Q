@@ -25,7 +25,8 @@ public static class WorkerScaffoldTemplateRenderer
             return RenderIndexHtml(feature, language);
         }
 
-        if (path.Equals("vite.config.ts", StringComparison.OrdinalIgnoreCase))
+        if (path.Equals("vite.config.ts", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("vite.config.js", StringComparison.OrdinalIgnoreCase))
         {
             return RenderViteConfig();
         }
@@ -82,8 +83,41 @@ public static class WorkerScaffoldTemplateRenderer
                     : RenderTypeScriptModule(feature);
         }
 
+        if (path.Equals("requirements.txt", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderPythonRequirements(framework);
+        }
+
         if (path.EndsWith(".py", StringComparison.OrdinalIgnoreCase))
         {
+            if (path.Equals("tests/test_analyzer.py", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderPythonAnalyzerTest(feature);
+            }
+
+            if (path.Equals("tests/test_app.py", StringComparison.OrdinalIgnoreCase) &&
+                framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderFastApiTest(feature);
+            }
+
+            if (path.Equals("src/main.py", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderPythonCliMain(feature);
+            }
+
+            if (path.Equals("app/main.py", StringComparison.OrdinalIgnoreCase) &&
+                framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderFastApiMain();
+            }
+
+            if (path.Equals("app/routes.py", StringComparison.OrdinalIgnoreCase) &&
+                framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderFastApiRoutes(feature);
+            }
+
             return path.Contains("test", StringComparison.OrdinalIgnoreCase)
                 ? RenderPytest(feature)
                 : framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase)
@@ -474,11 +508,89 @@ public static class WorkerScaffoldTemplateRenderer
             return {{feature.Pascal}}Response(message="{{feature.Pascal}} is ready")
         """;
 
+    private static string RenderFastApiMain() =>
+        """
+        from fastapi import FastAPI
+
+        from app.routes import router
+
+
+        app = FastAPI()
+        app.include_router(router)
+        """;
+
+    private static string RenderFastApiRoutes(WorkerScaffoldName feature) =>
+        RenderFastApiModule(feature);
+
     private static string RenderPythonModule(WorkerScaffoldName feature) =>
         $$"""
         def create_{{feature.Snake}}_message() -> str:
             return "{{feature.Pascal}} is ready"
         """;
+
+    private static string RenderPythonCliMain(WorkerScaffoldName feature) =>
+        $$"""
+        from src.analyzer import create_{{feature.Snake}}_message
+
+
+        def main() -> None:
+            print(create_{{feature.Snake}}_message())
+
+
+        if __name__ == "__main__":
+            main()
+        """;
+
+    private static string RenderPythonAnalyzerTest(WorkerScaffoldName feature) =>
+        $$"""
+        from src.analyzer import create_{{feature.Snake}}_message
+
+
+        def test_{{feature.Snake}}_message() -> None:
+            assert "{{feature.Pascal}}" in create_{{feature.Snake}}_message()
+        """;
+
+    private static string RenderFastApiTest(WorkerScaffoldName feature) =>
+        $$"""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+
+        def test_{{feature.Snake}}_route() -> None:
+            client = TestClient(app)
+            response = client.get("/{{feature.Kebab}}")
+            assert response.status_code == 200
+            assert response.json()["message"] == "{{feature.Pascal}} is ready"
+        """;
+
+    private static string RenderPythonRequirements(string framework)
+    {
+        if (framework.Contains("fastapi", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+                """
+                fastapi
+                httpx
+                pytest
+                """;
+        }
+
+        if (framework.Contains("streamlit", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+                """
+                pandas
+                streamlit
+                """;
+        }
+
+        return
+            """
+            pandas
+            pytest
+            """;
+    }
 
     private static string RenderPytest(WorkerScaffoldName feature) =>
         $$"""

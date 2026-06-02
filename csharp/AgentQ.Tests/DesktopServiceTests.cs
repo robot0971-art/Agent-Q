@@ -1926,9 +1926,60 @@ public sealed class DesktopServiceTests
         Assert.Contains("src/App.jsx", created);
         Assert.True(File.Exists(Path.Combine(root, "package.json")));
         Assert.True(File.Exists(Path.Combine(root, "src", "main.jsx")));
+        Assert.True(File.Exists(Path.Combine(root, "vite.config.js")));
         Assert.Contains("/src/main.jsx", File.ReadAllText(Path.Combine(root, "index.html")), StringComparison.Ordinal);
+        Assert.Contains("defineConfig", File.ReadAllText(Path.Combine(root, "vite.config.js")), StringComparison.Ordinal);
+        Assert.Contains("@vitejs/plugin-react", File.ReadAllText(Path.Combine(root, "vite.config.js")), StringComparison.Ordinal);
+        Assert.Contains("import App from \"./App.jsx\"", File.ReadAllText(Path.Combine(root, "src", "main.jsx")), StringComparison.Ordinal);
         Assert.Contains("\"build\": \"vite build\"", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.Ordinal);
         Assert.DoesNotContain("typescript", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_CreatesPythonDataAnalysisFilesWithMatchingImports()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "Create a Python data analysis tool"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.True(File.Exists(Path.Combine(root, "src", "analyzer.py")));
+        Assert.True(File.Exists(Path.Combine(root, "src", "main.py")));
+        Assert.True(File.Exists(Path.Combine(root, "tests", "test_analyzer.py")));
+        Assert.Contains("from src.analyzer import create_data_analysis_tool_message", File.ReadAllText(Path.Combine(root, "src", "main.py")), StringComparison.Ordinal);
+        Assert.Contains("from src.analyzer import create_data_analysis_tool_message", File.ReadAllText(Path.Combine(root, "tests", "test_analyzer.py")), StringComparison.Ordinal);
+        Assert.Contains("pytest", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_CreatesFastApiFilesWithMatchingImports()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "Create a FastAPI server"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.Contains("from app.routes import router", File.ReadAllText(Path.Combine(root, "app", "main.py")), StringComparison.Ordinal);
+        Assert.Contains("app = FastAPI()", File.ReadAllText(Path.Combine(root, "app", "main.py")), StringComparison.Ordinal);
+        Assert.Contains("router = APIRouter", File.ReadAllText(Path.Combine(root, "app", "routes.py")), StringComparison.Ordinal);
+        Assert.Contains("from app.main import app", File.ReadAllText(Path.Combine(root, "tests", "test_app.py")), StringComparison.Ordinal);
+        Assert.Contains("fastapi", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
+        Assert.Contains("httpx", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
+        Assert.Contains("pytest", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
     }
 
     [Fact]
