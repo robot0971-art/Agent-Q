@@ -13,6 +13,7 @@ public class ResilientLlmProvider : ILlmProvider
     private readonly ILlmProvider _inner;
     private readonly int _maxRetries;
     private readonly TimeSpan _initialDelay;
+    private readonly Action<LlmProviderRetryInfo>? _onRetry;
 
     /// <summary>
     /// 지정된 내부 제공자를 감싸는 ResilientLlmProvider의 새 인스턴스를 초기화합니다.
@@ -20,11 +21,16 @@ public class ResilientLlmProvider : ILlmProvider
     /// <param name="inner">실제 요청을 수행할 내부 LLM 제공자</param>
     /// <param name="maxRetries">최대 재시도 횟수 (기본값: 3)</param>
     /// <param name="initialDelay">첫 번째 재시도 전 대기 시간 (기본값: 1초)</param>
-    public ResilientLlmProvider(ILlmProvider inner, int maxRetries = 3, TimeSpan? initialDelay = null)
+    public ResilientLlmProvider(
+        ILlmProvider inner,
+        int maxRetries = 3,
+        TimeSpan? initialDelay = null,
+        Action<LlmProviderRetryInfo>? onRetry = null)
     {
         _inner = inner;
         _maxRetries = maxRetries;
         _initialDelay = initialDelay ?? TimeSpan.FromSeconds(1);
+        _onRetry = onRetry;
     }
 
     /// <summary>
@@ -56,6 +62,7 @@ public class ResilientLlmProvider : ILlmProvider
             catch (Exception ex) when (IsRetryable(ex) && attempt <= _maxRetries)
             {
                 var delay = GetDelay(attempt);
+                NotifyRetry(attempt, delay, ex);
                 await Task.Delay(delay, ct);
             }
         }
@@ -109,6 +116,7 @@ public class ResilientLlmProvider : ILlmProvider
                 if (IsRetryable(error) && attempt <= _maxRetries && !producedAny)
                 {
                     var delay = GetDelay(attempt);
+                    NotifyRetry(attempt, delay, error);
                     await Task.Delay(delay, ct);
                     continue; // Retry from the beginning
                 }
@@ -142,4 +150,23 @@ public class ResilientLlmProvider : ILlmProvider
     {
         return TimeSpan.FromTicks(_initialDelay.Ticks * (long)Math.Pow(2, attempt - 1));
     }
+
+    private void NotifyRetry(int attempt, TimeSpan delay, Exception error)
+    {
+        _onRetry?.Invoke(new LlmProviderRetryInfo(
+            ProviderName: Name,
+            Attempt: attempt,
+            MaxRetries: _maxRetries,
+            Delay: delay,
+            ErrorMessage: error.Message,
+            StatusCode: error is HttpRequestException http ? http.StatusCode : null));
+    }
 }
+
+public sealed record LlmProviderRetryInfo(
+    string ProviderName,
+    int Attempt,
+    int MaxRetries,
+    TimeSpan Delay,
+    string ErrorMessage,
+    HttpStatusCode? StatusCode);

@@ -41,6 +41,30 @@ public sealed class ProviderUnitTests
     }
 
     [Fact]
+    public async Task ResilientProvider_ReportsRetryAttempts()
+    {
+        var retries = new List<LlmProviderRetryInfo>();
+        var inner = new EventuallySuccessfulProvider(
+            failuresBeforeSuccess: 1,
+            new HttpRequestException("rate limited", null, HttpStatusCode.TooManyRequests));
+        var provider = new ResilientLlmProvider(
+            inner,
+            maxRetries: 3,
+            initialDelay: TimeSpan.Zero,
+            onRetry: retries.Add);
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        Assert.Equal("ok", response.Id);
+        var retry = Assert.Single(retries);
+        Assert.Equal("eventual", retry.ProviderName);
+        Assert.Equal(1, retry.Attempt);
+        Assert.Equal(3, retry.MaxRetries);
+        Assert.Equal(HttpStatusCode.TooManyRequests, retry.StatusCode);
+        Assert.Contains("rate limited", retry.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task OpenAiStream_IgnoresMalformedChunks_AndCompletesBufferedToolCalls()
     {
         const string body =

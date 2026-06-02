@@ -116,7 +116,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         bool enableTaskDecomposition = false)
     {
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Run started", "Preparing provider and workspace context.");
-        var provider = CreateProvider(config);
+        var provider = CreateProvider(config, toolCallbacks);
         var effectiveWorkspaceRoot = ResolveWorkspaceRoot(workspaceRoot);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
@@ -1049,6 +1049,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     public ILlmProvider CreateProvider(ProviderConfiguration config)
     {
+        return CreateProvider(config, callbacks: null);
+    }
+
+    private ILlmProvider CreateProvider(ProviderConfiguration config, DesktopToolCallbacks? callbacks)
+    {
         ILlmProvider provider = config.Provider.ToLowerInvariant() switch
         {
             "openai" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o")),
@@ -1057,7 +1062,20 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             _ => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o"), name: config.Provider)
         };
 
-        return new ResilientLlmProvider(provider);
+        return new ResilientLlmProvider(provider, onRetry: retry =>
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Generating,
+                $"Provider retry {retry.Attempt}/{retry.MaxRetries}",
+                FormatProviderRetryDetail(retry)));
+    }
+
+    private static string FormatProviderRetryDetail(LlmProviderRetryInfo retry)
+    {
+        var status = retry.StatusCode == null ? "network/timeout" : $"HTTP {(int)retry.StatusCode} {retry.StatusCode}";
+        var delay = retry.Delay == TimeSpan.Zero
+            ? "immediately"
+            : $"after {retry.Delay.TotalSeconds:0.#}s";
+        return $"{retry.ProviderName} retrying {delay} because {status}: {DesktopPromptBuilder.Truncate(retry.ErrorMessage, 160)}";
     }
 
     private static string ResolveModel(ProviderConfiguration config, string fallback)
