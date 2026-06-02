@@ -494,6 +494,21 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_BuildsScaffoldAwareNoToolRetryInstruction()
+    {
+        var root = CreateTempDirectory();
+        var plan = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+
+        var retryInstruction = DesktopAgentService.BuildNoToolRetryInstruction(plan);
+        var rejectMessage = DesktopAgentService.BuildNoToolCompletionMessage(plan);
+
+        Assert.Contains("create_project_scaffold", retryInstruction, StringComparison.Ordinal);
+        Assert.Contains("verify_project_scaffold", retryInstruction, StringComparison.Ordinal);
+        Assert.DoesNotContain("list_directory first", retryInstruction, StringComparison.Ordinal);
+        Assert.Contains("model did not call create_project_scaffold", rejectMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_RejectsNoToolCodingCompletionAfterRetry()
     {
         var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
@@ -593,6 +608,23 @@ public sealed class DesktopServiceTests
 
         Assert.False(shouldRetry);
         Assert.False(shouldReject);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_BuildPlanContext_IncludesExactToolInputs()
+    {
+        var root = CreateTempDirectory();
+        var result = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+
+        var context = ProjectScaffoldPlanner.BuildPlanContext(result);
+
+        Assert.Contains("Use this exact tool sequence", context, StringComparison.Ordinal);
+        Assert.Contains("create_project_scaffold", context, StringComparison.Ordinal);
+        Assert.Contains("\"intent\"", context, StringComparison.Ordinal);
+        Assert.Contains("\"plan\"", context, StringComparison.Ordinal);
+        Assert.Contains("\"overwriteExistingFiles\": false", context, StringComparison.Ordinal);
+        Assert.Contains("verify_project_scaffold", context, StringComparison.Ordinal);
+        Assert.Contains("\"verificationCommands\"", context, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -341,14 +341,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
-                    var retryInstruction =
-                        "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
-                        "Do not describe your system prompt, identity, or tool inventory. Continue the requested task now: call list_directory first if you need folder structure or empty-workspace evidence, then inspect relevant files with read_file/search tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
+                    var retryInstruction = BuildNoToolRetryInstruction(projectScaffoldPlan);
                     _messages.Add(ChatMessage.UserText(retryInstruction));
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Planning,
-                        "Retrying generic reset",
-                        "Assistant answered with a generic greeting before using workspace tools.");
+                        HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
+                            ? "Retrying scaffold creation"
+                            : "Retrying generic reset",
+                        HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
+                            ? "Assistant answered without calling create_project_scaffold for a prepared scaffold plan."
+                            : "Assistant answered with a generic greeting before using workspace tools.");
                     continue;
                 }
 
@@ -360,8 +362,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         workMode,
                         taskProfile.Kind))
                 {
-                    const string noToolCompletionMessage =
-                        "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
+                    var noToolCompletionMessage = BuildNoToolCompletionMessage(projectScaffoldPlan);
                     builder.Clear();
                     builder.Append(noToolCompletionMessage);
                     onDelta?.Invoke(noToolCompletionMessage);
@@ -655,6 +656,35 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "write_file",
                    "grep_search") &&
             !LooksLikeWorkspaceActionSummary(assistantLower);
+    }
+
+    private static bool HasProceedableProjectScaffoldPlan(ProjectScaffoldPlanningResult projectScaffoldPlan) =>
+        projectScaffoldPlan.IsGreenfieldRequest &&
+        projectScaffoldPlan.CanProceed &&
+        projectScaffoldPlan.Intent != null &&
+        projectScaffoldPlan.Plan != null;
+
+    public static string BuildNoToolRetryInstruction(ProjectScaffoldPlanningResult projectScaffoldPlan)
+    {
+        if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
+        {
+            return
+                "The desktop preflight already produced a project scaffold plan. Do not answer in prose. " +
+                "Call create_project_scaffold now with the attached intent and plan. " +
+                "After it succeeds, call verify_project_scaffold with the same plan. " +
+                "If create_project_scaffold reports existing file collisions, report the collision and ask before overwrite.";
+        }
+
+        return
+            "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
+            "Do not describe your system prompt, identity, or tool inventory. Continue the requested task now: call list_directory first if you need folder structure or empty-workspace evidence, then inspect relevant files with read_file/search tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
+    }
+
+    public static string BuildNoToolCompletionMessage(ProjectScaffoldPlanningResult projectScaffoldPlan)
+    {
+        return HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
+            ? "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved intent and plan, then verify_project_scaffold."
+            : "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
     }
 
     public static bool ShouldRetryNoToolCodingFallback(

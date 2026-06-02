@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 
 namespace AgentQ.Desktop.Services;
 
@@ -76,6 +77,32 @@ public sealed class ProjectScaffoldPlanner
         var commands = result.Plan.VerificationCommands.Count == 0
             ? "none"
             : string.Join(", ", result.Plan.VerificationCommands);
+        var createInput = JsonSerializer.Serialize(new
+        {
+            intent = new
+            {
+                projectType = result.Intent.ProjectType,
+                language = result.Intent.Language,
+                framework = result.Intent.Framework,
+                style = result.Intent.Style
+            },
+            plan = new
+            {
+                name = result.Plan.Name,
+                files = result.Plan.Files,
+                verificationCommands = result.Plan.VerificationCommands
+            },
+            overwriteExistingFiles = false
+        }, new JsonSerializerOptions { WriteIndented = true });
+        var verifyInput = JsonSerializer.Serialize(new
+        {
+            plan = new
+            {
+                name = result.Plan.Name,
+                files = result.Plan.Files,
+                verificationCommands = result.Plan.VerificationCommands
+            }
+        }, new JsonSerializerOptions { WriteIndented = true });
         return
             "Project scaffold preflight plan:\n" +
             $"- projectType: {result.Intent.ProjectType}\n" +
@@ -84,7 +111,13 @@ public sealed class ProjectScaffoldPlanner
             $"- style: {result.Intent.Style}\n" +
             $"- files: {files}\n" +
             $"- verificationCommands: {commands}\n" +
-            "- Treat this plan as the deterministic scaffold direction. User-stated language/framework choices override worker recommendations.";
+            "- Treat this plan as the deterministic scaffold direction. User-stated language/framework choices override worker recommendations.\n" +
+            "Use this exact tool sequence:\n" +
+            "1. Call create_project_scaffold with:\n" +
+            createInput + "\n" +
+            "2. If create_project_scaffold returns succeeded=true, call verify_project_scaffold with:\n" +
+            verifyInput + "\n" +
+            "If create_project_scaffold reports existing file collisions, report the collision and ask before overwrite.";
     }
 
     private static ProjectScaffoldIntentModel BuildIntent(string normalized)
