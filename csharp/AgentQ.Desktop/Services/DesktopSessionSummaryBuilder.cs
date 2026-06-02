@@ -44,7 +44,15 @@ public static class DesktopSessionSummaryBuilder
             string.Equals(message.Role, "AgentQ", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(message.Content));
 
-        var title = openPlanItems.Count > 0
+        var latestClarifyingStep = runSteps
+            .LastOrDefault(step => step.State == AgentRunState.Clarifying);
+        var pendingQuestion = latestClarifyingStep == null
+            ? string.Empty
+            : BuildStepText(latestClarifyingStep);
+
+        var title = !string.IsNullOrWhiteSpace(pendingQuestion)
+            ? $"Waiting for answer: {pendingQuestion}"
+            : openPlanItems.Count > 0
             ? $"Continue: {openPlanItems[0]}"
             : statusText;
 
@@ -52,7 +60,9 @@ public static class DesktopSessionSummaryBuilder
             ? "No assistant response has been captured yet."
             : DesktopPromptBuilder.Truncate(lastAssistantMessage.Content.ReplaceLineEndings(" "), 600);
 
-        var nextSteps = openPlanItems.Count > 0
+        var nextSteps = !string.IsNullOrWhiteSpace(pendingQuestion)
+            ? [$"Answer AgentQ's pending question: {pendingQuestion}"]
+            : openPlanItems.Count > 0
             ? openPlanItems.Take(3).Select(item => $"Continue {item}").ToList()
             : ["Review the latest workspace state and choose the next concrete task."];
 
@@ -67,5 +77,13 @@ public static class DesktopSessionSummaryBuilder
             OpenPlanItems = openPlanItems,
             NextSteps = nextSteps
         };
+    }
+
+    private static string BuildStepText(AgentRunStep step)
+    {
+        var text = string.IsNullOrWhiteSpace(step.Detail)
+            ? step.Title
+            : $"{step.Title}: {step.Detail}";
+        return DesktopPromptBuilder.Truncate(text, 160);
     }
 }

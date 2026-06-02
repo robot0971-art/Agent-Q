@@ -6698,6 +6698,39 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal("\uAC80\uC99D \uC548 \uB428", summary.VerificationStatus);
     }
 
+    [Fact]
+    public void DesktopSessionSummaryBuilder_PreservesPendingClarificationAsNextStep()
+    {
+        var summary = DesktopSessionSummaryBuilder.Build(
+            "C:\\work",
+            "Waiting for answer",
+            [
+                new AgentRunStep
+                {
+                    State = AgentRunState.Clarifying,
+                    Title = "Waiting for user answer",
+                    Detail = "What type of project do you want to create?"
+                }
+            ],
+            [],
+            [],
+            [],
+            [
+                new ChatMessageViewModel
+                {
+                    Role = "AgentQ",
+                    Content = "What type of project do you want to create?",
+                    CreatedAt = DateTime.Now
+                }
+            ]);
+
+        Assert.StartsWith("Waiting for answer:", summary.Title, StringComparison.Ordinal);
+        var nextStep = Assert.Single(summary.NextSteps);
+        Assert.Contains("Answer AgentQ's pending question", nextStep, StringComparison.Ordinal);
+        Assert.Contains("What type of project", nextStep, StringComparison.Ordinal);
+        Assert.Contains("Answer AgentQ's pending question", summary.DisplayText, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("npm run build")]
     [InlineData("cmd /c cd frontend && npm test")]
