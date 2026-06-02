@@ -323,6 +323,7 @@ public sealed class DesktopServiceTests
 
         Assert.Contains("Scaffold decision rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("optional accelerators", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plan_project_scaffold", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("workspace tools", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bare request for a 'new project'", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("before picking React", prompt, StringComparison.OrdinalIgnoreCase);
@@ -730,6 +731,7 @@ public sealed class DesktopServiceTests
     {
         var registry = new ToolRegistry();
         registry.Register(new ListDirectoryTool());
+        registry.Register(new DesktopProjectScaffoldPlanTool(Path.GetTempPath()));
         registry.Register(new ReadFileTool());
         registry.Register(new EditFileTool());
         registry.Register(new BashTool());
@@ -741,6 +743,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plan_project_scaffold", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("requires approval:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("edit_file", prompt, StringComparison.OrdinalIgnoreCase);
@@ -1855,6 +1858,49 @@ public sealed class DesktopServiceTests
         Assert.Contains("projectType: portfolio", context, StringComparison.Ordinal);
         Assert.Contains("language: javascript", context, StringComparison.Ordinal);
         Assert.Contains("src/main.jsx", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldPlanTool_ReturnsProceedingPlan()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldPlanTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "\uADF8\uB7FC Python \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB85C \uD558\uC790"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
+        Assert.True(rootElement.GetProperty("canProceed").GetBoolean());
+        Assert.Equal("python", rootElement.GetProperty("intent").GetProperty("language").GetString());
+        var files = rootElement.GetProperty("plan").GetProperty("files").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("src/main.py", files);
+        Assert.Contains("Project scaffold preflight plan", rootElement.GetProperty("planContext").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldPlanTool_ReturnsClarifyingQuestion()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldPlanTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC790"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
+        Assert.False(rootElement.GetProperty("canProceed").GetBoolean());
+        Assert.Contains("\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8", rootElement.GetProperty("clarifyingQuestion").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]

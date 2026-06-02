@@ -227,7 +227,7 @@ public sealed class ProjectScaffoldPlanner
     private static bool ContainsCreate(string normalized)
     {
         return ContainsAny(normalized, "create", "make", "build", "generate", "scaffold",
-            "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC9DC");
+            "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC9DC", "\uD558\uC790");
     }
 
     private static DesktopWorkspaceScaffoldState ClassifyWorkspace(string workspaceRoot)

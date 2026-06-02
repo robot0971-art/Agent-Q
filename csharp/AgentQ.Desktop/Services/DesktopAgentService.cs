@@ -1780,6 +1780,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
+        registry.Register(new DesktopProjectScaffoldPlanTool(workspaceRoot, _projectScaffoldPlanner));
         registry.Register(new DesktopSymbolSearchTool(workspaceRoot, _symbolIndexService));
         var embeddingClient = DesktopEmbeddingClientFactory.SupportsProvider(config.EmbeddingProvider)
             ? _embeddingClientFactory.Create(config)

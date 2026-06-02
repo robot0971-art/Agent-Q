@@ -16,6 +16,9 @@ public static class DesktopEvidenceFormatter
             "list_directory" => TryGetString(input, "path", out var dir)
                 ? $"Listed directory: {dir}{DescribePathReason(dir, workspaceRoot)}"
                 : "Listed workspace directory. Reason: directory structure evidence before file reads or shell commands.",
+            "plan_project_scaffold" => TryGetString(input, "request", out var request)
+                ? $"Planned project scaffold for: {request}. Reason: deterministic greenfield project intent and scaffold planning."
+                : "Planned project scaffold. Reason: deterministic greenfield project intent and scaffold planning.",
             "read_file" => TryGetString(input, "path", out var path)
                 ? $"Read file: {path}{DescribePathReason(path, workspaceRoot)}"
                 : "Read file evidence requested.",
