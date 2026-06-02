@@ -5081,6 +5081,35 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopPlanParser_ParsesNamedTodoStatuses()
+    {
+        var items = DesktopPlanParser.Parse(
+            """
+            - [completed] Inspect workspace.
+            - [in_progress] Patch fallback flow.
+            - [pending] Run tests.
+            - [cancelled] Remove obsolete branch.
+            """);
+
+        Assert.Equal(4, items.Count);
+        Assert.Equal(AgentPlanItemStatus.Done, items[0].Status);
+        Assert.Equal(AgentPlanItemStatus.InProgress, items[1].Status);
+        Assert.Equal(AgentPlanItemStatus.Pending, items[2].Status);
+        Assert.Equal(AgentPlanItemStatus.Blocked, items[3].Status);
+    }
+
+    [Fact]
+    public void DesktopPromptAssembly_IncludesTaskTrackingRulesForCodingTasks()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("Add oauth support and then database integration finally test it");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base", profile);
+
+        Assert.Contains("Task tracking rules:", prompt, StringComparison.Ordinal);
+        Assert.Contains("exactly one item in progress", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("waiting-for-answer state", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WorkerPlanApprovalSummaryBuilder_SummarizesFilesRiskAndVerification()
     {
         var plan = new WorkerPlan

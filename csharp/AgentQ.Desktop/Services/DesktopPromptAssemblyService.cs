@@ -11,6 +11,7 @@ public static class DesktopPromptAssemblyService
         new UserIntentPrecedencePromptRule(),
         new ScaffoldDecisionPromptRule(),
         new ExecutionStrategyPromptRule(),
+        new TaskTrackingPromptRule(),
         new MultiAgentRolePromptRule(),
         new LinkHandlingPromptRule(),
         new VerificationFailurePromptRule(),
@@ -219,6 +220,24 @@ public sealed class VerificationFailurePromptRule : IDesktopPromptRule
         builder.AppendLine("- Prefer fixing one failure class at a time.");
         builder.AppendLine("- Treat compiler, linter, and test output as primary evidence.");
         builder.AppendLine("- Rerun the narrowest useful verification command before broad checks.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class TaskTrackingPromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) =>
+        profile.Kind is DesktopTaskKind.Feature or DesktopTaskKind.BugFix or DesktopTaskKind.Refactor or DesktopTaskKind.VerificationFailure;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Task tracking rules:");
+        builder.AppendLine("- For work with 3+ distinct steps, maintain a concise checklist in the response or plan panel rather than keeping progress implicit.");
+        builder.AppendLine("- Keep exactly one item in progress while work remains; mark items complete only after the required action and useful verification are actually done.");
+        builder.AppendLine("- If requirements are ambiguous, ask a focused question and leave the task in a waiting-for-answer state instead of claiming completion.");
+        builder.AppendLine("- Preserve user-provided commands, flags, file names, stack choices, and order exactly when turning them into plan items.");
+        builder.AppendLine("- If blocked or partially complete, say what remains and the concrete next action; do not summarize partial work as finished.");
         return builder.ToString().TrimEnd();
     }
 }

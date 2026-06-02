@@ -5,7 +5,7 @@ namespace AgentQ.Desktop.Services;
 public static class DesktopPlanParser
 {
     private static readonly Regex CheckboxPattern = new(
-        @"^\s*[-*]\s+\[(?<mark>[ xX!-])\]\s+(?<title>.+)$",
+        @"^\s*[-*]\s+\[(?<mark>[^\]]*)\]\s+(?<title>.+)$",
         RegexOptions.Compiled);
 
     private static readonly Regex NumberedPattern = new(
@@ -80,6 +80,22 @@ public static class DesktopPlanParser
             "x" or "X" => AgentPlanItemStatus.Done,
             "!" => AgentPlanItemStatus.Blocked,
             "-" => AgentPlanItemStatus.InProgress,
+            _ => AgentPlanItemStatus.Pending
+        } switch
+        {
+            var status when status != AgentPlanItemStatus.Pending => status,
+            _ => ParseNamedStatus(mark)
+        };
+    }
+
+    private static AgentPlanItemStatus ParseNamedStatus(string mark)
+    {
+        var normalized = mark.Trim().Replace("-", "_", StringComparison.Ordinal).ToLowerInvariant();
+        return normalized switch
+        {
+            "done" or "complete" or "completed" => AgentPlanItemStatus.Done,
+            "in_progress" or "progress" or "active" => AgentPlanItemStatus.InProgress,
+            "blocked" or "cancelled" or "canceled" => AgentPlanItemStatus.Blocked,
             _ => AgentPlanItemStatus.Pending
         };
     }
