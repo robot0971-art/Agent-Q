@@ -73,6 +73,32 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void ToolRegistry_RegisterRejectsDuplicateToolNames()
+    {
+        var registry = new ToolRegistry();
+        registry.Register(new NamedTestTool("same_tool", "first"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            registry.Register(new NamedTestTool("same_tool", "second")));
+
+        Assert.Contains("same_tool", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("first", registry.Get("same_tool")?.Description);
+    }
+
+    [Fact]
+    public void ToolRegistry_TryRegisterRecordsDuplicateWithoutReplacing()
+    {
+        var registry = new ToolRegistry();
+        registry.Register(new NamedTestTool("same_tool", "first"));
+
+        var registered = registry.TryRegister(new NamedTestTool("same_tool", "second"));
+
+        Assert.False(registered);
+        Assert.Equal("first", registry.Get("same_tool")?.Description);
+        Assert.Contains("same_tool", registry.DuplicateRegistrations);
+    }
+
+    [Fact]
     public async Task ConfigStore_SaveAndLoad_RoundTripsProviderConfiguration()
     {
         var config = new ProviderConfiguration
@@ -1249,5 +1275,23 @@ public sealed class ToolAndConfigurationTests : IDisposable
                 Directory.Delete(RootPath, recursive: true);
             }
         }
+    }
+
+    private sealed class NamedTestTool(string name, string description) : ITool
+    {
+        public string Name => name;
+
+        public string Description => description;
+
+        public object InputSchema => new
+        {
+            type = "object",
+            properties = new Dictionary<string, object?>()
+        };
+
+        public bool RequiresPermission => false;
+
+        public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default) =>
+            Task.FromResult(ToolResult.Success("{}"));
     }
 }

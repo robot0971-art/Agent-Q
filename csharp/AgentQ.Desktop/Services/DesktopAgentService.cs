@@ -1729,7 +1729,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
             foreach (var tool in tools.Take(16))
             {
-                registry.Register(new McpBridgeTool(
+                registry.TryRegister(new McpBridgeTool(
                     McpToolName.Build(server.Name, tool.Name),
                     server,
                     tool,

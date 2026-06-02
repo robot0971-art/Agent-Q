@@ -6,14 +6,32 @@ namespace AgentQ.Tools;
 public class ToolRegistry
 {
     private readonly Dictionary<string, ITool> _tools = new();
+    private readonly List<string> _duplicateRegistrations = [];
 
     /// <summary>
     /// 도구 등록
     /// </summary>
     /// <param name="tool">등록할 도구</param>
-    public void Register(ITool tool)
+    public void Register(ITool tool, bool replace = false)
     {
+        if (_tools.ContainsKey(tool.Name) && !replace)
+        {
+            throw new InvalidOperationException($"Tool already registered: {tool.Name}");
+        }
+
         _tools[tool.Name] = tool;
+    }
+
+    public bool TryRegister(ITool tool)
+    {
+        if (_tools.ContainsKey(tool.Name))
+        {
+            _duplicateRegistrations.Add(tool.Name);
+            return false;
+        }
+
+        _tools[tool.Name] = tool;
+        return true;
     }
 
     /// <summary>
@@ -31,6 +49,8 @@ public class ToolRegistry
     /// 모든 등록된 도구 목록
     /// </summary>
     public IReadOnlyCollection<ITool> All => _tools.Values;
+
+    public IReadOnlyList<string> DuplicateRegistrations => _duplicateRegistrations;
 
     /// <summary>
     /// 도구 정의 목록 생성
@@ -67,4 +87,3 @@ public class ToolDefinitionEntry
     /// </summary>
     public object InputSchema { get; init; } = new();
 }
-
