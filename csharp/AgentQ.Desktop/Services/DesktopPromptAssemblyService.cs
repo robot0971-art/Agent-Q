@@ -150,12 +150,14 @@ public sealed class ToolRoutingPromptRule : IDesktopPromptRule
         var builder = new StringBuilder();
         builder.AppendLine("Tool routing rules:");
         builder.AppendLine("- Use project map, memory, and existing evidence first when they already identify the relevant files.");
+        builder.AppendLine("- Use list_directory to inspect folder structure, confirm an empty workspace, or discover top-level files before using shell directory commands.");
         builder.AppendLine("- Use symbol_search for known class, method, function, component, or type names.");
         builder.AppendLine("- Use grep_search for exact strings, errors, UI labels, config keys, commands, and log fragments.");
         builder.AppendLine("- Use hybrid_search when the request is conceptual, cross-file, or the exact identifier is unknown.");
         builder.AppendLine("- Use semantic_search only when an embedding index is available and keyword/symbol search is likely too narrow.");
         builder.AppendLine("- Use MCP bridge tools only for project-configured external systems that native AgentQ tools cannot inspect directly.");
         builder.AppendLine("- Prefer read_file after search identifies a small candidate set; avoid broad file reads when a narrower search can locate the owner.");
+        builder.AppendLine("- Use bash for build/test, Git, or commands that native read/search tools cannot cover; do not use bash just to list files.");
         return builder.ToString().TrimEnd();
     }
 }

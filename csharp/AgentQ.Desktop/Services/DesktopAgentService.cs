@@ -27,7 +27,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         Prefer inspecting files before editing. After making code changes, run focused build or test commands when useful.
         Prefer hybrid_search for codebase discovery because it combines symbol, semantic, keyword, and project-map evidence.
         For code navigation, prefer symbol_search first when the user mentions a function, class, component, method, or likely identifier.
-        Use semantic_search when embeddings are available and the request is meaning-based; use grep_search/glob_search for broad text or file pattern fallback.
+        Use list_directory for folder structure and empty-folder checks, read_file for known files, semantic_search when embeddings are available and the request is meaning-based, and grep_search/glob_search for broad text or file pattern fallback.
         After symbol_search or search results identify candidate files, read the most relevant files before editing.
         For coding tasks, work in a loop: plan briefly, gather context, act with tools, observe results, repair failures, then verify.
         For large refactors and high-risk files, use patch-sized edits instead of whole-file rewrites unless the user explicitly approves the risk.
@@ -117,13 +117,25 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         bool enableTaskDecomposition = false)
     {
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Run started", "Preparing provider and workspace context.");
-        var provider = CreateProvider(config, toolCallbacks);
         var effectiveWorkspaceRoot = ResolveWorkspaceRoot(workspaceRoot);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
+        if (TryBuildPreflightClarification(userText, workMode, taskProfile.Kind, out var clarification))
+        {
+            _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
+            _messages.Add(ChatMessage.AssistantText(clarification));
+            onDelta?.Invoke(clarification);
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Clarifying,
+                "Waiting for user answer",
+                "The project request is underspecified, so AgentQ asked a focused project-type question before calling a provider.");
+            return clarification;
+        }
+
+        var provider = CreateProvider(config, toolCallbacks);
         var rolePlan = MultiAgentRolePlanner.Build(taskProfile);
         toolCallbacks?.OnRunStep?.Invoke(
             AgentRunState.Planning,
@@ -524,6 +536,26 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return manualInstruction && codeHeavy;
     }
 
+    public static bool TryBuildPreflightClarification(
+        string userText,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind,
+        out string message)
+    {
+        message = string.Empty;
+        if (workMode == AgentWorkMode.Readonly ||
+            taskKind != DesktopTaskKind.Feature ||
+            !IsBareNewProjectRequest(userText))
+        {
+            return false;
+        }
+
+        message =
+            "새 프로젝트를 만들 수 있습니다. 다만 아직 어떤 프로젝트인지 정해지지 않았기 때문에 바로 스택이나 파일을 고르지는 않겠습니다.\n\n" +
+            "어떤 종류의 프로젝트를 원하시나요? 예: 포트폴리오 홈페이지, Python 데이터 분석 도구, 게임, API 서버, 단어장 웹앱.";
+        return true;
+    }
+
     public static bool ShouldRetryGenericGreetingFallback(
         string userText,
         string assistantText,
@@ -561,7 +593,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "\uC6D0\uD558\uC2DC\uB294 \uC791\uC5C5\uC744 \uC54C\uB824",
                    "\uC694\uCCAD\uD558\uC2E0 \uB0B4\uC6A9\uC774 \uC5C6\uC5B4",
                    "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uB3C4\uC640",
-                   "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558") &&
+                   "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558",
+                   "\uC800\uB294 kimi",
+                   "\uC800\uB294 moonshot",
+                   "\uC800\uB294 openai",
+                   "\uD2B9\uC815 \uBAA8\uB378 \uC81C\uACF5\uC790\uAC00 \uC544\uB2C8\uB77C",
+                   "\uC81C\uAC00 \uAC00\uC9C4 \uD234 \uBAA9\uB85D",
+                   "\uD234 \uBAA9\uB85D",
+                   "\uD30C\uC77C \uC77D\uAE30",
+                   "\uD30C\uC77C \uC4F0\uAE30",
+                   "\uD30C\uC77C \uD3B8\uC9D1",
+                   "i am not kimi",
+                   "i am not openai",
+                   "tool list",
+                   "available tools",
+                   "read_file",
+                   "write_file",
+                   "grep_search") &&
             !LooksLikeWorkspaceActionSummary(assistantLower);
     }
 
@@ -808,7 +856,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine(DesktopExecutionStrategyCatalog.ForProfile(taskProfile).FormatForPrompt());
         builder.AppendLine("Codebase discovery hint: use hybrid_search first when you need ranked candidate files with reasons.");
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
-        builder.AppendLine("Search fallback order: symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
+        builder.AppendLine("Search fallback order: list_directory for folder structure and empty-workspace checks, symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
         builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
 
@@ -1673,6 +1721,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         var registry = new ToolRegistry();
         registry.Register(new BashTool());
+        registry.Register(new ListDirectoryTool());
         registry.Register(new ReadFileTool());
         registry.Register(new WriteFileTool());
         registry.Register(new EditFileTool());

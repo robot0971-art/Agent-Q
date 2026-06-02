@@ -99,6 +99,47 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task ListDirectoryTool_ListsWorkspaceEntries()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src"));
+        await File.WriteAllTextAsync(Path.Combine(workspace.RootPath, "README.md"), "hello");
+
+        var result = await new ListDirectoryTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = "."
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var root = document.RootElement;
+        Assert.False(root.GetProperty("isEmpty").GetBoolean());
+        var entries = root.GetProperty("entries").EnumerateArray().ToList();
+        Assert.Contains(entries, entry =>
+            entry.GetProperty("name").GetString() == "src" &&
+            entry.GetProperty("type").GetString() == "directory");
+        Assert.Contains(entries, entry =>
+            entry.GetProperty("name").GetString() == "README.md" &&
+            entry.GetProperty("type").GetString() == "file");
+    }
+
+    [Fact]
+    public async Task ListDirectoryTool_BlocksPathsOutsideWorkspace()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var result = await new ListDirectoryTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = ".."
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ConfigStore_SaveAndLoad_RoundTripsProviderConfiguration()
     {
         var config = new ProviderConfiguration

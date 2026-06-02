@@ -158,7 +158,8 @@ public static class DesktopConfidenceAssessor
                toolName.Equals("symbol_search", StringComparison.OrdinalIgnoreCase) ||
                toolName.Equals("semantic_search", StringComparison.OrdinalIgnoreCase) ||
                toolName.Equals("grep_search", StringComparison.OrdinalIgnoreCase) ||
-               toolName.Equals("glob_search", StringComparison.OrdinalIgnoreCase);
+               toolName.Equals("glob_search", StringComparison.OrdinalIgnoreCase) ||
+               toolName.Equals("list_directory", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasGraphSignal(ToolReplayEntry entry)

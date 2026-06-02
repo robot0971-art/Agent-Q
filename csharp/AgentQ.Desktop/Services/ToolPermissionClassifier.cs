@@ -99,6 +99,17 @@ public static class ToolPermissionClassifier
             };
         }
 
+        if (IsSafeReadShellCommand(command))
+        {
+            return new ToolPermissionAssessment
+            {
+                RiskLevel = PermissionRiskLevel.SafeRead,
+                Operation = "Read-only shell command",
+                Target = target,
+                Reason = "This command only inspects files, directories, or repository state."
+            };
+        }
+
         if (IsNetworkCommand(lowered))
         {
             return new ToolPermissionAssessment
@@ -207,6 +218,31 @@ public static class ToolPermissionClassifier
                command.Contains("docker compose config", StringComparison.Ordinal);
     }
 
+    private static bool IsSafeReadShellCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command) ||
+            Regex.IsMatch(command, @"(?:&&|\|\||[;|<>])"))
+        {
+            return false;
+        }
+
+        var tokens = TokenizeCommand(NormalizeShellCommand(command));
+        if (tokens.Count == 0)
+        {
+            return false;
+        }
+
+        var executable = tokens[0].ToLowerInvariant();
+        if (SafeReadCommands.Contains(executable))
+        {
+            return true;
+        }
+
+        return executable == "git" &&
+               tokens.Count >= 2 &&
+               SafeReadGitSubcommands.Contains(tokens[1].ToLowerInvariant());
+    }
+
     private static bool IsNetworkCommand(string command)
     {
         return command.Contains("git fetch", StringComparison.Ordinal) ||
@@ -280,5 +316,30 @@ public static class ToolPermissionClassifier
         ["npx"] = 2,
         ["pytest"] = 1,
         ["rg"] = 1
+    };
+
+    private static readonly HashSet<string> SafeReadCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "get-childitem",
+        "gci",
+        "ls",
+        "dir",
+        "get-content",
+        "gc",
+        "type",
+        "pwd",
+        "get-location",
+        "rg",
+        "findstr"
+    };
+
+    private static readonly HashSet<string> SafeReadGitSubcommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "status",
+        "log",
+        "show",
+        "diff",
+        "branch",
+        "remote"
     };
 }

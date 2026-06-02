@@ -196,6 +196,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("hybrid_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("semantic_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("grep_search", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confirmed facts", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("can attempt to read HTTP/HTTPS links", prompt, StringComparison.OrdinalIgnoreCase);
@@ -291,6 +292,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("Context prioritization", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(profile.ContextHint, prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tool routing rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not use bash just to list files", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Execution strategy", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("verification failure", prompt, StringComparison.OrdinalIgnoreCase);
@@ -377,6 +380,34 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_PreflightsBareNewProjectClarification()
+    {
+        var shouldClarify = DesktopAgentService.TryBuildPreflightClarification(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature,
+            out var message);
+
+        Assert.True(shouldClarify);
+        Assert.Contains("\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8", message, StringComparison.Ordinal);
+        Assert.Contains("Python", message, StringComparison.Ordinal);
+        Assert.Contains("\uD3EC\uD2B8\uD3F4\uB9AC\uC624", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopAgentService_DoesNotPreflightConcreteProjectDirection()
+    {
+        var shouldClarify = DesktopAgentService.TryBuildPreflightClarification(
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature,
+            out var message);
+
+        Assert.False(shouldClarify);
+        Assert.Equal(string.Empty, message);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesGenericGreetingAfterCodingTask()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
@@ -410,6 +441,20 @@ public sealed class DesktopServiceTests
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
             "\uC1FC\uD551\uBAB0 \uC7A5\uBC14\uAD6C\uB2C8 \uAE30\uB2A5 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8\uB85C \uC218\uC815\uD574\uC918",
             "\uC694\uCCAD\uD558\uC2E0 \uB0B4\uC6A9\uC774 \uC5C6\uC5B4\uC11C \uAD6C\uD604 \uAC00\uB2A5\uD55C \uC8FC\uC694 \uAE30\uB2A5\uB4E4\uC744 \uC548\uB0B4\uD574 \uB4DC\uB9BD\uB2C8\uB2E4.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesIdentityAndToolInventoryAfterCodingTask()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "AgentQ\uB294 robot0971-art\uAC00 \uAC1C\uBC1C\uD55C Windows \uB370\uC2A4\uD06C\uD1B1 \uCF54\uB529 \uC5B4\uC2DC\uC2A4\uD134\uD2B8\uC785\uB2C8\uB2E4.\n\n### \uC81C\uAC00 \uAC00\uC9C4 \uD234 \uBAA9\uB85D\n- read_file\n- write_file\n- grep_search",
             executedToolCount: 0,
             fileChanges: [],
             AgentWorkMode.Coding,
@@ -670,6 +715,7 @@ public sealed class DesktopServiceTests
     public void DesktopToolCapabilitySnapshot_DescribesCurrentWorkModePermissions()
     {
         var registry = new ToolRegistry();
+        registry.Register(new ListDirectoryTool());
         registry.Register(new ReadFileTool());
         registry.Register(new EditFileTool());
         registry.Register(new BashTool());
@@ -680,6 +726,7 @@ public sealed class DesktopServiceTests
 
         Assert.Contains("Tool Permission State:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("requires approval:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("edit_file", prompt, StringComparison.OrdinalIgnoreCase);
@@ -6505,6 +6552,40 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
         Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
         Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingAllowsReadOnlyShellInspection()
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "bash",
+            new Dictionary<string, object?>
+            {
+                ["command"] = "Get-ChildItem -Path \"C:\\Users\\admin\\Desktop\\test\" -Force"
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.SafeRead, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingBlocksChainedReadOnlyShellInspection()
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "bash",
+            new Dictionary<string, object?>
+            {
+                ["command"] = "Get-ChildItem -Force; npm install"
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.Network, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Block, result.Decision);
+        Assert.True(result.IsBlocked);
     }
 
     [Fact]

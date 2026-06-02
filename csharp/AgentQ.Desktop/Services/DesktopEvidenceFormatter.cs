@@ -13,6 +13,9 @@ public static class DesktopEvidenceFormatter
     {
         return toolName switch
         {
+            "list_directory" => TryGetString(input, "path", out var dir)
+                ? $"Listed directory: {dir}{DescribePathReason(dir, workspaceRoot)}"
+                : "Listed workspace directory. Reason: directory structure evidence before file reads or shell commands.",
             "read_file" => TryGetString(input, "path", out var path)
                 ? $"Read file: {path}{DescribePathReason(path, workspaceRoot)}"
                 : "Read file evidence requested.",
