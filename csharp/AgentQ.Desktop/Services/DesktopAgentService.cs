@@ -623,6 +623,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
             "\uD648\uD398\uC774\uC9C0",
             "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uB2E8\uC5B4\uC7A5",
             "\uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8",
             "\uD30C\uC774\uC36C",
             "\uB370\uC774\uD130 \uBD84\uC11D",
@@ -631,6 +632,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     private static bool LooksLikeWorkspaceActionSummary(string assistantLower)
     {
+        if (LooksLikeFutureWorkPromise(assistantLower))
+        {
+            return false;
+        }
+
         return ContainsAny(
             assistantLower,
             "changed",
@@ -642,12 +648,34 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "ran ",
             "test passed",
             "build passed",
-            "\uBCC0\uACBD",
-            "\uC0DD\uC131",
+            "\uBCC0\uACBD\uD588",
+            "\uBCC0\uACBD\uB428",
+            "\uBCC0\uACBD \uC644\uB8CC",
+            "\uC0DD\uC131\uD588",
+            "\uC0DD\uC131\uB428",
+            "\uC0DD\uC131 \uC644\uB8CC",
+            "\uC0DD\uC131\uB41C \uD30C\uC77C",
             "\uC218\uC815\uD588",
             "\uAD6C\uD604\uD588",
             "\uD14C\uC2A4\uD2B8 \uD1B5\uACFC",
             "\uBE4C\uB4DC \uD1B5\uACFC");
+    }
+
+    private static bool LooksLikeFutureWorkPromise(string assistantLower)
+    {
+        return ContainsAny(
+            assistantLower,
+            "i will",
+            "i can create",
+            "i can build",
+            "i'll",
+            "will create",
+            "will build",
+            "\uC0DD\uC131\uD558\uACA0\uC2B5\uB2C8\uB2E4",
+            "\uB9CC\uB4E4\uACA0\uC2B5\uB2C8\uB2E4",
+            "\uB9CC\uB4E4\uC5B4 \uB4DC\uB9AC\uACA0\uC2B5\uB2C8\uB2E4",
+            "\uAD6C\uD604\uD558\uACA0\uC2B5\uB2C8\uB2E4",
+            "\uC9C4\uD589\uD558\uACA0\uC2B5\uB2C8\uB2E4");
     }
 
     public static bool ShouldRetryEmptyResponse(string assistantText, int toolUseCount) =>

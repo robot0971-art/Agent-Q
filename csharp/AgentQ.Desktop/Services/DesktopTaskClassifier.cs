@@ -46,7 +46,7 @@ public static class DesktopTaskClassifier
             "\uC9C4\uD589");
 
         if (!asksToCreate &&
-            ContainsAny(text, "analyze", "\uBD84\uC11D", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
+            ContainsAny(text, "analyze", "search", "\uBD84\uC11D", "\uAC80\uC0C9", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
         {
             return DesktopTaskKind.Analysis;
         }
@@ -67,6 +67,7 @@ public static class DesktopTaskClassifier
                 "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
                 "\uC6F9\uC0AC\uC774\uD2B8",
                 "\uC6F9 \uC0AC\uC774\uD2B8",
+                "\uB2E8\uC5B4\uC7A5",
                 "\uD648\uD398\uC774\uC9C0",
                 "\uB79C\uB529",
                 "\uC0AC\uC774\uD2B8",

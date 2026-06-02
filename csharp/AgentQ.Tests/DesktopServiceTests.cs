@@ -269,10 +269,12 @@ public sealed class DesktopServiceTests
     [InlineData("\uC774 \uBCC0\uACBD\uC0AC\uD56D \uCF54\uB4DC \uB9AC\uBDF0\uD574\uC918", DesktopTaskKind.CodeReview)]
     [InlineData("README \uBB38\uC11C \uACE0\uCCD0\uC918", DesktopTaskKind.Documentation)]
     [InlineData("\uAD6C\uC870\uB97C \uBD84\uC11D\uD574\uC918", DesktopTaskKind.Analysis)]
+    [InlineData("\uC6F9\uC5D0\uC11C \uAC80\uC0C9\uD574\uC918", DesktopTaskKind.Analysis)]
     [InlineData("\uD504\uB85C\uC81D\uD2B8 \uAD6C\uC870 \uB9AC\uD329\uD130\uB9C1\uD574\uC918", DesktopTaskKind.Refactor)]
     [InlineData("Build a portfolio website", DesktopTaskKind.Feature)]
     [InlineData("Create a landing page", DesktopTaskKind.Feature)]
     [InlineData("\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC5B4 \uBCF4\uC790", DesktopTaskKind.Feature)]
+    [InlineData("\uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9", DesktopTaskKind.Feature)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -445,6 +447,34 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesFuturePromiseWithKoreanCreateWord()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uD604\uC7AC \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uAC00 \uBE44\uC5B4 \uC788\uC73C\uBBC0\uB85C Vite + React + JavaScript \uC2A4\uD0C0\uD130 \uD504\uB85C\uC81D\uD2B8\uB97C \uC0DD\uC131\uD558\uACA0\uC2B5\uB2C8\uB2E4.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RejectsFuturePromiseAfterRetry()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "\uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9",
+            "\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uC778\uC9C0 \uBA85\uD655\uD574\uC84C\uB124\uC694. \uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9\uC744 Vite + React + JavaScript\uB85C \uB9CC\uB4E4\uC5B4 \uB4DC\uB9AC\uACA0\uC2B5\uB2C8\uB2E4.",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesGenericGreetingAfterReadOnlyToolUse()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
@@ -478,6 +508,20 @@ public sealed class DesktopServiceTests
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
             "\uC5EC\uAE30\uC5D0 \uB0B4 \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
             "\uBA3C\uC800 \uC791\uC5C5 \uACF5\uAC04\uC744 \uC0B4\uD3B4\uBCF4\uACA0\uC2B5\uB2C8\uB2E4.\uB124, \uB9DE\uC2B5\uB2C8\uB2E4! \uC800\uB294 AgentQ Desktop\uC785\uB2C8\uB2E4. robot0971-art \uB2D8\uC774 \uAC1C\uBC1C\uD55C Windows \uB370\uC2A4\uD06C\uD1B1 \uCF54\uB529 \uC5B4\uC2DC\uC2A4\uD134\uD2B8\uC785\uB2C8\uB2E4.\n\n\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesGreetingForTerseKoreanProjectDirection()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "\uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9",
+            "\uC548\uB155\uD558\uC138\uC694! AgentQ Desktop\uC785\uB2C8\uB2E4. \uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?",
             executedToolCount: 1,
             fileChanges: [],
             AgentWorkMode.Coding,
