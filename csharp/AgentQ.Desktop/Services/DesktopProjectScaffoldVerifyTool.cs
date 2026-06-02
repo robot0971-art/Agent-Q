@@ -5,9 +5,11 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopProjectScaffoldVerifyTool(
     string workspaceRoot,
-    DesktopVerificationRunner? runner = null) : ITool
+    DesktopVerificationRunner? runner = null,
+    VerificationFailureClassifier? failureClassifier = null) : ITool
 {
     private readonly DesktopVerificationRunner _runner = runner ?? new DesktopVerificationRunner([]);
+    private readonly VerificationFailureClassifier _failureClassifier = failureClassifier ?? new VerificationFailureClassifier();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -91,6 +93,9 @@ public sealed class DesktopProjectScaffoldVerifyTool(
         try
         {
             var result = await _runner.RunAsync(verificationPlan, workspaceRoot, timeout, commands, ct);
+            var failureAnalysis = result.Succeeded
+                ? null
+                : _failureClassifier.Analyze(verificationPlan, result, workspaceRoot);
             return ToolResult.Success(JsonSerializer.Serialize(new
             {
                 succeeded = result.Succeeded,
@@ -99,6 +104,11 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 standardOutput = Truncate(result.StandardOutput),
                 standardError = Truncate(result.StandardError),
                 combinedOutput = Truncate(result.CombinedOutput),
+                failureAnalysis = failureAnalysis == null ? null : ToFailureAnalysisDto(failureAnalysis),
+                repairPrompt = failureAnalysis == null
+                    ? null
+                    : DesktopPromptBuilder.BuildVerificationFixPrompt(verificationPlan, result, failureAnalysis),
+                repairPlan = failureAnalysis == null ? null : BuildRepairPlan(plan, command, failureAnalysis),
                 artifacts = result.Artifacts.Select(artifact => new
                 {
                     artifact.Kind,
@@ -108,6 +118,7 @@ public sealed class DesktopProjectScaffoldVerifyTool(
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or OperationCanceledException)
         {
+            var failureAnalysis = _failureClassifier.AnalyzeException(ex);
             return ToolResult.Success(JsonSerializer.Serialize(new
             {
                 succeeded = false,
@@ -116,10 +127,45 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 standardOutput = string.Empty,
                 standardError = string.Empty,
                 combinedOutput = ex.Message,
+                failureAnalysis = ToFailureAnalysisDto(failureAnalysis),
+                repairPrompt = DesktopPromptBuilder.BuildVerificationFixPrompt(verificationPlan, null, failureAnalysis),
+                repairPlan = BuildRepairPlan(plan, command, failureAnalysis),
                 artifacts = Array.Empty<object>()
             }));
         }
     }
+
+    private static object ToFailureAnalysisDto(VerificationFailureAnalysis analysis) => new
+    {
+        kind = analysis.Kind.ToString(),
+        title = analysis.Title,
+        summary = analysis.Summary,
+        suggestedNextStep = analysis.SuggestedNextStep,
+        evidence = analysis.Evidence,
+        errorLocations = analysis.ErrorLocations.Select(location => new
+        {
+            location.FilePath,
+            location.Line,
+            location.Column,
+            location.ErrorCode,
+            location.Message
+        }).ToList()
+    };
+
+    private static object BuildRepairPlan(
+        ProjectScaffoldPlanModel plan,
+        string command,
+        VerificationFailureAnalysis analysis) => new
+    {
+        goal = $"Repair failed project scaffold verification: {plan.Name}",
+        summary = analysis.Summary,
+        failureKind = analysis.Kind.ToString(),
+        suggestedNextStep = analysis.SuggestedNextStep,
+        evidence = analysis.Evidence,
+        verificationCommands = plan.VerificationCommands,
+        failedCommand = command,
+        risks = new[] { "Keep repairs scoped to files created by the approved project scaffold plan." }
+    };
 
     private static bool TryGetObject<T>(Dictionary<string, object?> input, string key, out T value)
         where T : class

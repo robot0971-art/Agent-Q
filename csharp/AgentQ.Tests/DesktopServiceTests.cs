@@ -2177,6 +2177,34 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_ReturnsRepairContextForFailedVerification()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold failed\r\nexit /b 1\r\n");
+        var tool = new DesktopProjectScaffoldVerifyTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["plan"] = new
+            {
+                name = "test scaffold",
+                files = new[] { "test.cmd" },
+                verificationCommands = new[] { "cmd /c test.cmd" }
+            }
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.False(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.Equal(1, rootElement.GetProperty("exitCode").GetInt32());
+        Assert.Contains("scaffold failed", rootElement.GetProperty("combinedOutput").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Tests failed", rootElement.GetProperty("failureAnalysis").GetProperty("title").GetString());
+        Assert.Contains("The last verification command failed", rootElement.GetProperty("repairPrompt").GetString(), StringComparison.Ordinal);
+        Assert.Contains("Repair failed project scaffold verification", rootElement.GetProperty("repairPlan").GetProperty("goal").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ToolPermissionClassifier_ClassifiesProjectScaffoldVerificationAsVerificationCommand()
     {
         var assessment = ToolPermissionClassifier.Assess(
