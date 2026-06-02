@@ -1911,7 +1911,19 @@ public sealed class DesktopServiceTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["request"] = "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4"
+            ["intent"] = new
+            {
+                projectType = "portfolio",
+                language = "javascript",
+                framework = "vite-react",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "portfolio vite-react scaffold",
+                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
+                verificationCommands = new[] { "npm install", "npm run build" }
+            }
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -1943,7 +1955,19 @@ public sealed class DesktopServiceTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["request"] = "Create a Python data analysis tool"
+            ["intent"] = new
+            {
+                projectType = "data-analysis-tool",
+                language = "python",
+                framework = "python-cli",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "Python data analysis CLI scaffold",
+                files = new[] { "README.md", "requirements.txt", "src/main.py", "src/analyzer.py", "data/.gitkeep", "tests/test_analyzer.py" },
+                verificationCommands = new[] { "python -m pytest" }
+            }
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -1966,7 +1990,19 @@ public sealed class DesktopServiceTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["request"] = "Create a FastAPI server"
+            ["intent"] = new
+            {
+                projectType = "api-server",
+                language = "python",
+                framework = "fastapi",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "FastAPI service scaffold",
+                files = new[] { "README.md", "requirements.txt", "app/main.py", "app/routes.py", "tests/test_app.py" },
+                verificationCommands = new[] { "python -m pytest" }
+            }
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -1991,7 +2027,19 @@ public sealed class DesktopServiceTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["request"] = "Create a portfolio website"
+            ["intent"] = new
+            {
+                projectType = "portfolio",
+                language = "javascript",
+                framework = "vite-react",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "portfolio vite-react scaffold",
+                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
+                verificationCommands = new[] { "npm install", "npm run build" }
+            }
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2007,18 +2055,76 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsRequestWithoutApprovedPlan()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "Create a portfolio website"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("Call plan_project_scaffold first", result.ErrorMessage, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsPlanThatEscapesWorkspace()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["intent"] = new
+            {
+                projectType = "portfolio",
+                language = "javascript",
+                framework = "vite-react",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "unsafe scaffold",
+                files = new[] { "../outside.txt" },
+                verificationCommands = Array.Empty<string>()
+            }
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("escapes the workspace", result.ErrorMessage, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(Directory.GetParent(root)!.FullName, "outside.txt")));
+    }
+
+    [Fact]
     public void ToolPermissionClassifier_ClassifiesProjectScaffoldCreationAsProjectWrite()
     {
         var assessment = ToolPermissionClassifier.Assess(
             "create_project_scaffold",
             new Dictionary<string, object?>
             {
-                ["request"] = "Create a portfolio website"
+                ["intent"] = new
+                {
+                    projectType = "portfolio",
+                    language = "javascript",
+                    framework = "vite-react",
+                    style = "unspecified"
+                },
+                ["plan"] = new
+                {
+                    name = "portfolio vite-react scaffold",
+                    files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
+                    verificationCommands = new[] { "npm install", "npm run build" }
+                }
             });
 
         var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
 
         Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Contains("package.json", assessment.Target, StringComparison.Ordinal);
+        Assert.Contains("npm run build", assessment.Reason, StringComparison.Ordinal);
         Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
         Assert.False(result.IsBlocked);
     }

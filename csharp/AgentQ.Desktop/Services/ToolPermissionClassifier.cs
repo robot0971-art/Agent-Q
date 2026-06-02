@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace AgentQ.Desktop.Services;
@@ -42,13 +43,95 @@ public static class ToolPermissionClassifier
 
     private static ToolPermissionAssessment AssessProjectScaffoldCreation(IReadOnlyDictionary<string, object?> input)
     {
+        var files = TryGetPlanStrings(input, "files");
+        var commands = TryGetPlanStrings(input, "verificationCommands");
+        var overwrite = TryGetBool(input, "overwriteExistingFiles");
         var request = input.TryGetValue("request", out var rawRequest) ? rawRequest as string : null;
+        var target = files.Count == 0
+            ? string.IsNullOrWhiteSpace(request) ? "(missing approved plan)" : request
+            : string.Join(", ", files.Take(8)) + (files.Count > 8 ? $", +{files.Count - 8} more" : string.Empty);
+        var commandSummary = commands.Count == 0
+            ? "no verification commands"
+            : "verification: " + string.Join(", ", commands.Take(3)) + (commands.Count > 3 ? $", +{commands.Count - 3} more" : string.Empty);
+        var overwriteSummary = overwrite ? "existing files may be overwritten" : "existing files are not overwritten by default";
         return new ToolPermissionAssessment
         {
             RiskLevel = PermissionRiskLevel.ProjectWrite,
             Operation = "Create project scaffold",
-            Target = string.IsNullOrWhiteSpace(request) ? "(missing request)" : request,
-            Reason = "This will create project files inside the selected workspace."
+            Target = target,
+            Reason = $"This will create approved scaffold files inside the selected workspace; {commandSummary}; {overwriteSummary}."
+        };
+    }
+
+    private static List<string> TryGetPlanStrings(IReadOnlyDictionary<string, object?> input, string propertyName)
+    {
+        if (!input.TryGetValue("plan", out var rawPlan) || rawPlan == null)
+        {
+            return [];
+        }
+
+        if (rawPlan is JsonElement element &&
+            element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var jsonArray) &&
+            jsonArray.ValueKind == JsonValueKind.Array)
+        {
+            return jsonArray.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToList();
+        }
+
+        if (rawPlan is IReadOnlyDictionary<string, object?> dictionary &&
+            dictionary.TryGetValue(propertyName, out var rawValues))
+        {
+            return ExtractStringList(rawValues);
+        }
+
+        if (rawPlan is IDictionary<string, object?> mutableDictionary &&
+            mutableDictionary.TryGetValue(propertyName, out var rawMutableValues))
+        {
+            return ExtractStringList(rawMutableValues);
+        }
+
+        var property = rawPlan.GetType().GetProperty(propertyName);
+        return property == null ? [] : ExtractStringList(property.GetValue(rawPlan));
+    }
+
+    private static List<string> ExtractStringList(object? rawValues)
+    {
+        if (rawValues is IEnumerable<string> strings)
+        {
+            return strings.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+        }
+
+        if (rawValues is IEnumerable<object?> objects)
+        {
+            return objects
+                .Select(value => value?.ToString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToList();
+        }
+
+        return [];
+    }
+
+    private static bool TryGetBool(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var raw) || raw == null)
+        {
+            return false;
+        }
+
+        return raw switch
+        {
+            bool value => value,
+            JsonElement { ValueKind: JsonValueKind.True } => true,
+            JsonElement { ValueKind: JsonValueKind.False } => false,
+            string text when bool.TryParse(text, out var parsed) => parsed,
+            _ => false
         };
     }
 

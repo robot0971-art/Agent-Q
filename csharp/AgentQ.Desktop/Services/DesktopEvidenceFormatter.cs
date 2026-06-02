@@ -19,9 +19,11 @@ public static class DesktopEvidenceFormatter
             "plan_project_scaffold" => TryGetString(input, "request", out var request)
                 ? $"Planned project scaffold for: {request}. Reason: deterministic greenfield project intent and scaffold planning."
                 : "Planned project scaffold. Reason: deterministic greenfield project intent and scaffold planning.",
-            "create_project_scaffold" => TryGetString(input, "request", out var createRequest)
-                ? $"Created project scaffold for: {createRequest}. Reason: approved deterministic greenfield project plan execution."
-                : "Created project scaffold. Reason: approved deterministic greenfield project plan execution.",
+            "create_project_scaffold" => TryGetPlanFiles(input, out var scaffoldFiles)
+                ? $"Created project scaffold files: {scaffoldFiles}. Reason: approved deterministic greenfield project plan execution."
+                : TryGetString(input, "request", out var createRequest)
+                    ? $"Created project scaffold for: {createRequest}. Reason: approved deterministic greenfield project plan execution."
+                    : "Created project scaffold. Reason: approved deterministic greenfield project plan execution.",
             "read_file" => TryGetString(input, "path", out var path)
                 ? $"Read file: {path}{DescribePathReason(path, workspaceRoot)}"
                 : "Read file evidence requested.",
@@ -379,6 +381,46 @@ public static class DesktopEvidenceFormatter
 
         value = string.Empty;
         return false;
+    }
+
+    private static bool TryGetPlanFiles(IReadOnlyDictionary<string, object?> input, out string value)
+    {
+        if (!input.TryGetValue("plan", out var rawPlan) || rawPlan == null)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var files = new List<string>();
+        if (rawPlan is System.Text.Json.JsonElement element &&
+            element.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            element.TryGetProperty("files", out var filesElement) &&
+            filesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            files.AddRange(filesElement.EnumerateArray()
+                .Where(item => item.ValueKind == System.Text.Json.JsonValueKind.String)
+                .Select(item => item.GetString())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text!));
+        }
+        else if (rawPlan is IReadOnlyDictionary<string, object?> dictionary &&
+                 dictionary.TryGetValue("files", out var rawFiles) &&
+                 rawFiles is IEnumerable<object?> objects)
+        {
+            files.AddRange(objects
+                .Select(item => item?.ToString())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text!));
+        }
+
+        if (files.Count == 0)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        value = string.Join(", ", files.Take(8)) + (files.Count > 8 ? $", +{files.Count - 8} more" : string.Empty);
+        return true;
     }
 
     private static string TrimEvidence(string value)

@@ -192,7 +192,7 @@ public sealed class ScaffoldDecisionPromptRule : IDesktopPromptRule
         builder.AppendLine("- A bare request for a 'new project' does not contain enough product intent. Ask what kind of project the user wants before picking React, Python, API, game, or any other stack.");
         builder.AppendLine("- Desktop preflight may attach a deterministic project scaffold plan. Follow that plan unless the user changes project type, language, framework, or style.");
         builder.AppendLine("- Use plan_project_scaffold to re-plan after the user clarifies or changes greenfield project direction; it does not create files.");
-        builder.AppendLine("- Use create_project_scaffold only after the latest request is concrete enough to produce a deterministic plan; it creates only planner-approved files and requires user approval.");
+        builder.AppendLine("- Use create_project_scaffold only with the intent and plan returned by plan_project_scaffold or attached by preflight; do not create from a request string alone.");
         builder.AppendLine("- First decide whether the user's latest request has enough product intent to act. Ask a focused question only when missing choices would materially change the result.");
         builder.AppendLine("- If the request names a concrete stack or artifact, create the smallest useful project/files with workspace tools even when no scaffold recommendation exactly matches.");
         builder.AppendLine("- If a scaffold recommendation matches the request and workspace state, you may mirror its file structure, but adapt stack, language, sections, and copy to the user's latest wording.");
