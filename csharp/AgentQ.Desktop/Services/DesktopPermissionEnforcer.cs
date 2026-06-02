@@ -3,7 +3,11 @@ using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMode, bool useKoreanUi = false) : IPermissionEnforcer
+public sealed class DesktopPermissionEnforcer(
+    Window owner,
+    AgentWorkMode workMode,
+    bool useKoreanUi = false,
+    string workspaceRoot = "") : IPermissionEnforcer
 {
     private readonly HashSet<PermissionRiskLevel> _approvedForRun = [];
 
@@ -17,7 +21,7 @@ public sealed class DesktopPermissionEnforcer(Window owner, AgentWorkMode workMo
     {
         return await owner.Dispatcher.InvokeAsync(() =>
         {
-            var policy = ToolPermissionPolicy.Evaluate(toolName, inputJson, workMode);
+            var policy = ToolPermissionPolicy.Evaluate(toolName, inputJson, workspaceRoot, workMode);
             var assessment = policy.Assessment;
             if (policy.IsBlocked)
             {

@@ -1269,7 +1269,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 if (tool.RequiresPermission &&
-                    !await RequestToolPermissionAsync(tool, inputJson, workMode, enforcer, callbacks))
+                    !await RequestToolPermissionAsync(tool, inputJson, workMode, workspaceRoot, enforcer, callbacks))
                 {
                     callbacks?.OnPermissionDenied?.Invoke(tool.Name);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, "Permission denied by user", isError: true, DateTime.UtcNow));
@@ -1572,10 +1572,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         ITool tool,
         string inputJson,
         AgentWorkMode workMode,
+        string workspaceRoot,
         IPermissionEnforcer enforcer,
         DesktopToolCallbacks? callbacks)
     {
-        var policy = ToolPermissionPolicy.Evaluate(tool.Name, inputJson, workMode);
+        var policy = ToolPermissionPolicy.Evaluate(tool.Name, inputJson, workspaceRoot, workMode);
         var assessment = policy.Assessment;
         if (policy.IsBlocked)
         {

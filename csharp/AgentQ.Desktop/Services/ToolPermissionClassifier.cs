@@ -25,12 +25,26 @@ public static class ToolPermissionClassifier
         return Assess(toolName, input);
     }
 
+    public static ToolPermissionAssessment Assess(string toolName, string inputJson, string workspaceRoot)
+    {
+        var input = DesktopToolInputParser.Parse(inputJson);
+        return Assess(toolName, input, workspaceRoot);
+    }
+
     public static ToolPermissionAssessment Assess(string toolName, IReadOnlyDictionary<string, object?> input)
+    {
+        return Assess(toolName, input, workspaceRoot: string.Empty);
+    }
+
+    public static ToolPermissionAssessment Assess(
+        string toolName,
+        IReadOnlyDictionary<string, object?> input,
+        string workspaceRoot)
     {
         return toolName switch
         {
             "write_file" or "edit_file" => AssessFileMutation(toolName, input),
-            "create_project_scaffold" => AssessProjectScaffoldCreation(input),
+            "create_project_scaffold" => AssessProjectScaffoldCreation(input, workspaceRoot),
             "verify_project_scaffold" => AssessProjectScaffoldVerification(input),
             "bash" => AssessShell(input),
             _ => new ToolPermissionAssessment
@@ -42,10 +56,13 @@ public static class ToolPermissionClassifier
         };
     }
 
-    private static ToolPermissionAssessment AssessProjectScaffoldCreation(IReadOnlyDictionary<string, object?> input)
+    private static ToolPermissionAssessment AssessProjectScaffoldCreation(
+        IReadOnlyDictionary<string, object?> input,
+        string workspaceRoot)
     {
         var files = TryGetPlanStrings(input, "files");
         var commands = TryGetPlanStrings(input, "verificationCommands");
+        var collisions = FindExistingPlanFiles(files, workspaceRoot);
         var overwrite = TryGetBool(input, "overwriteExistingFiles");
         var request = input.TryGetValue("request", out var rawRequest) ? rawRequest as string : null;
         var target = files.Count == 0
@@ -55,13 +72,57 @@ public static class ToolPermissionClassifier
             ? "no verification commands"
             : "verification: " + string.Join(", ", commands.Take(3)) + (commands.Count > 3 ? $", +{commands.Count - 3} more" : string.Empty);
         var overwriteSummary = overwrite ? "existing files may be overwritten" : "existing files are not overwritten by default";
+        var collisionSummary = collisions.Count == 0
+            ? "no existing target-file collisions detected"
+            : "existing target-file collisions: " + string.Join(", ", collisions.Take(8)) + (collisions.Count > 8 ? $", +{collisions.Count - 8} more" : string.Empty);
         return new ToolPermissionAssessment
         {
             RiskLevel = PermissionRiskLevel.ProjectWrite,
             Operation = "Create project scaffold",
             Target = target,
-            Reason = $"This will create approved scaffold files inside the selected workspace; {commandSummary}; {overwriteSummary}."
+            Reason = $"This will create approved scaffold files inside the selected workspace; {commandSummary}; {overwriteSummary}; {collisionSummary}."
         };
+    }
+
+    private static List<string> FindExistingPlanFiles(IReadOnlyList<string> files, string workspaceRoot)
+    {
+        if (files.Count == 0 || string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            return [];
+        }
+
+        var collisions = new List<string>();
+        try
+        {
+            var root = Path.GetFullPath(workspaceRoot);
+            var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
+                ? root
+                : root + Path.DirectorySeparatorChar;
+            foreach (var file in files)
+            {
+                if (string.IsNullOrWhiteSpace(file) || Path.IsPathRooted(file))
+                {
+                    continue;
+                }
+
+                var fullPath = Path.GetFullPath(Path.Combine(root, file));
+                if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (File.Exists(fullPath))
+                {
+                    collisions.Add(file.Replace('\\', '/'));
+                }
+            }
+        }
+        catch
+        {
+            return collisions;
+        }
+
+        return collisions;
     }
 
     private static ToolPermissionAssessment AssessProjectScaffoldVerification(IReadOnlyDictionary<string, object?> input)

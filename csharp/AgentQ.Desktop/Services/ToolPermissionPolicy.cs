@@ -11,6 +11,15 @@ public static class ToolPermissionPolicy
     }
 
     public static ToolPermissionPolicyResult Evaluate(
+        string toolName,
+        string inputJson,
+        string workspaceRoot,
+        AgentWorkMode workMode = AgentWorkMode.FullAgent)
+    {
+        return Evaluate(ToolPermissionClassifier.Assess(toolName, inputJson, workspaceRoot), workMode);
+    }
+
+    public static ToolPermissionPolicyResult Evaluate(
         ToolPermissionAssessment assessment,
         AgentWorkMode workMode = AgentWorkMode.FullAgent)
     {

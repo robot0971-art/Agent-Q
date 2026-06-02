@@ -2130,6 +2130,36 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ToolPermissionClassifier_IncludesProjectScaffoldExistingFileCollisions()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "package.json"), "{}");
+
+        var assessment = ToolPermissionClassifier.Assess(
+            "create_project_scaffold",
+            new Dictionary<string, object?>
+            {
+                ["intent"] = new
+                {
+                    projectType = "portfolio",
+                    language = "javascript",
+                    framework = "vite-react",
+                    style = "unspecified"
+                },
+                ["plan"] = new
+                {
+                    name = "portfolio vite-react scaffold",
+                    files = new[] { "package.json", "index.html", "vite.config.js" },
+                    verificationCommands = new[] { "npm install", "npm run build" }
+                }
+            },
+            root);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Contains("existing target-file collisions: package.json", assessment.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DesktopProjectScaffoldVerifyTool_RunsApprovedPlanCommand()
     {
         var root = CreateTempDirectory();

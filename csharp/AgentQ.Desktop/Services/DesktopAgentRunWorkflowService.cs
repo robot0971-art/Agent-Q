@@ -153,7 +153,7 @@ public sealed class DesktopAgentRunWorkflowService(
                 config.Model,
                 succeeded: true,
                 detail: workMode.ToString());
-            permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode, viewModel.IsKoreanUi);
+            permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode, viewModel.IsKoreanUi, workspaceRoot);
             _activePermissionEnforcer = permissionEnforcer;
             viewModel.ClearRunPermissionStatus();
             permissionEnforcer.ApprovedForRunChanged += approved =>
