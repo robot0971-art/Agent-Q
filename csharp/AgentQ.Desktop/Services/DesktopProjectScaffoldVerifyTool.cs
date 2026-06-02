@@ -77,7 +77,7 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             return ToolResult.Error("Verification command is not part of the approved project scaffold plan.");
         }
 
-        if (!VerificationCommandPolicy.IsAllowed(command, commands))
+        if (!VerificationCommandPolicy.IsAllowed(command))
         {
             return ToolResult.Error("Verification command is not allowed by the verification command policy.");
         }
@@ -92,7 +92,7 @@ public sealed class DesktopProjectScaffoldVerifyTool(
 
         try
         {
-            var result = await _runner.RunAsync(verificationPlan, workspaceRoot, timeout, commands, ct);
+            var result = await _runner.RunAsync(verificationPlan, workspaceRoot, timeout, projectAllowedCommands: null, ct);
             var failureAnalysis = result.Succeeded
                 ? null
                 : _failureClassifier.Analyze(verificationPlan, result, workspaceRoot);

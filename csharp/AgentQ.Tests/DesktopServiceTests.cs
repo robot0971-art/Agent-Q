@@ -2177,6 +2177,26 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsUnsafeCommandEvenWhenListedInPlan()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldVerifyTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["plan"] = new
+            {
+                name = "unsafe scaffold",
+                files = Array.Empty<string>(),
+                verificationCommands = new[] { "Remove-Item -Recurse . -Force" }
+            }
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("not allowed by the verification command policy", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DesktopProjectScaffoldVerifyTool_ReturnsRepairContextForFailedVerification()
     {
         var root = CreateTempDirectory();
