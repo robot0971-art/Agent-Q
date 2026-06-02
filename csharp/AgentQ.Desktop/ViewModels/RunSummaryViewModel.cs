@@ -203,6 +203,11 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
             return DesktopLocalizer.NextActionInspectFailure(useKoreanUi);
         }
 
+        if (state == AgentRunState.Clarifying)
+        {
+            return DesktopLocalizer.NextActionAnswerQuestion(useKoreanUi);
+        }
+
         if (fileChanges.Any(change => change.ReviewStatus == FileChangeReviewStatus.NeedsEdit))
         {
             return DesktopLocalizer.NextActionFixNeedsEdit(useKoreanUi);
@@ -242,7 +247,7 @@ public sealed class RunSummaryViewModel : INotifyPropertyChanged
             return "#37D67A";
         }
 
-        if (state is AgentRunState.WaitingForApproval or AgentRunState.Cancelled)
+        if (state is AgentRunState.WaitingForApproval or AgentRunState.Clarifying or AgentRunState.Cancelled)
         {
             return "#FBBF24";
         }

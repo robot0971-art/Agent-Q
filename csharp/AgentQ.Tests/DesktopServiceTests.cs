@@ -5852,6 +5852,36 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public async Task WorkerScaffoldExecutor_FailsWhenOnlySkippedFilesRemain()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "Existing.ts"), "keep");
+        var plan = new WorkerPlan
+        {
+            Language = "typescript",
+            Framework = "React",
+            Steps =
+            [
+                new WorkerPlanStep { Kind = WorkerPlanStepKind.CreateFile, Path = "src/Existing.ts" }
+            ]
+        };
+
+        var result = await new WorkerScaffoldExecutor().ExecuteAsync(
+            new WorkerScaffoldExecutionRequest
+            {
+                WorkspaceRoot = root,
+                Plan = plan,
+                FeatureName = "Existing"
+            });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("src/Existing.ts", result.SkippedFiles);
+        Assert.Contains(result.Issues, issue => issue.Contains("No scaffold changes were applied", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(root, "src", "Existing.ts")));
+    }
+
+    [Fact]
     public async Task WorkerScaffoldExecutor_UsesDetectedReactLayoutAndTestRunner()
     {
         var root = CreateTempDirectory();
@@ -6585,6 +6615,22 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void AgentRunStep_LocalizesClarifyingState()
+    {
+        var step = new AgentRunStep
+        {
+            State = AgentRunState.Clarifying,
+            Title = "Waiting for user answer",
+            Detail = "",
+            UseKoreanUi = true
+        };
+
+        Assert.Equal("\uC9C8\uBB38", step.TimelineLabel);
+        Assert.Equal("\uC0AC\uC6A9\uC790 \uB2F5\uBCC0 \uB300\uAE30", step.DisplayTitle);
+        Assert.Equal("\uC9C8\uBB38 \uB300\uAE30", step.StateText);
+    }
+
+    [Fact]
     public void RunSummaryViewModel_LocalizesBusyApprovalState()
     {
         var summary = new RunSummaryViewModel();
@@ -6602,6 +6648,25 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal("\uC694\uCCAD\uB41C \uB3C4\uAD6C \uC791\uC5C5\uC744 \uAC80\uD1A0\uD558\uC138\uC694.", summary.NextAction);
         Assert.Equal("\uAC80\uC99D \uC548 \uB428", summary.VerificationStatus);
         Assert.Equal("\uBCC0\uACBD 0\uAC1C", summary.ChangedFilesText);
+    }
+
+    [Fact]
+    public void RunSummaryViewModel_ShowsClarifyingNextAction()
+    {
+        var summary = new RunSummaryViewModel();
+
+        summary.Update(
+            AgentRunState.Clarifying,
+            "Waiting for user answer",
+            [],
+            [],
+            [],
+            isBusy: false,
+            useKoreanUi: true);
+
+        Assert.Equal("\uB2F5\uBCC0 \uB300\uAE30", summary.Phase);
+        Assert.Equal("AgentQ\uC758 \uC9C8\uBB38\uC5D0 \uB2F5\uD558\uBA74 \uC774\uC5B4\uC11C \uC9C4\uD589\uD569\uB2C8\uB2E4.", summary.NextAction);
+        Assert.Equal("\uAC80\uC99D \uC548 \uB428", summary.VerificationStatus);
     }
 
     [Theory]

@@ -335,6 +335,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     return builder.ToString();
                 }
 
+                if (IsAllowedClarification(userText, builder.ToString().ToLowerInvariant()))
+                {
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Clarifying,
+                        "Waiting for user answer",
+                        "The project request is underspecified, so AgentQ asked a focused project-type question.");
+                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                    return builder.ToString();
+                }
+
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
                 ReportConfidence(
                     builder.ToString(),

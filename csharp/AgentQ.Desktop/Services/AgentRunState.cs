@@ -6,6 +6,7 @@ public enum AgentRunState
     Planning,
     GatheringContext,
     Generating,
+    Clarifying,
     RunningTool,
     WaitingForApproval,
     RecordingChanges,

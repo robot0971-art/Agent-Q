@@ -78,6 +78,15 @@ public sealed class WorkerScaffoldExecutor
             result.WiredFiles.AddRange(result.WiringChanges.Select(change => change.Path));
         }
 
+        if (result.Issues.Count == 0 &&
+            result.CreatedFiles.Count == 0 &&
+            result.WiringChanges.Count == 0)
+        {
+            result.Issues.Add(result.SkippedFiles.Count > 0
+                ? "No scaffold changes were applied because every target file already exists."
+                : "No scaffold changes were applied because the worker plan did not include creatable files.");
+        }
+
         result.Succeeded = result.Issues.Count == 0;
         return result;
     }

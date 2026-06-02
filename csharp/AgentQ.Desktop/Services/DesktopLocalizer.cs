@@ -159,6 +159,7 @@ public static class DesktopLocalizer
                 AgentRunState.Planning => "\uACC4\uD68D",
                 AgentRunState.GatheringContext => "\uCEE8\uD14D\uC2A4\uD2B8",
                 AgentRunState.Generating => "\uBAA8\uB378",
+                AgentRunState.Clarifying => "\uC9C8\uBB38",
                 AgentRunState.RunningTool => "\uB3C4\uAD6C",
                 AgentRunState.WaitingForApproval => "\uC2B9\uC778",
                 AgentRunState.RecordingChanges => "\uBCC0\uACBD",
@@ -175,6 +176,7 @@ public static class DesktopLocalizer
             AgentRunState.Planning => "PLAN",
             AgentRunState.GatheringContext => "CONTEXT",
             AgentRunState.Generating => "MODEL",
+            AgentRunState.Clarifying => "QUESTION",
             AgentRunState.RunningTool => "TOOL",
             AgentRunState.WaitingForApproval => "APPROVAL",
             AgentRunState.RecordingChanges => "CHANGE",
@@ -198,6 +200,7 @@ public static class DesktopLocalizer
             AgentRunState.Planning => "\uACC4\uD68D",
             AgentRunState.GatheringContext => "\uCEE8\uD14D\uC2A4\uD2B8 \uC218\uC9D1",
             AgentRunState.Generating => "\uC751\uB2F5 \uC0DD\uC131",
+            AgentRunState.Clarifying => "\uC9C8\uBB38 \uB300\uAE30",
             AgentRunState.RunningTool => "\uB3C4\uAD6C \uC2E4\uD589",
             AgentRunState.WaitingForApproval => "\uC2B9\uC778 \uB300\uAE30",
             AgentRunState.RecordingChanges => "\uBCC0\uACBD \uAE30\uB85D",
@@ -244,6 +247,7 @@ public static class DesktopLocalizer
             "Verification cancelled" => "\uAC80\uC99D \uCDE8\uC18C\uB428",
             "Run complete" => "\uC2E4\uD589 \uC644\uB8CC",
             "Run started" => "\uC2E4\uD589 \uC2DC\uC791",
+            "Waiting for user answer" => "\uC0AC\uC6A9\uC790 \uB2F5\uBCC0 \uB300\uAE30",
             _ => title
         };
     }
@@ -264,6 +268,7 @@ public static class DesktopLocalizer
             {
                 AgentRunState.GatheringContext => "\uCEE8\uD14D\uC2A4\uD2B8 \uC218\uC9D1",
                 AgentRunState.Generating => "\uC751\uB2F5 \uC0DD\uC131",
+                AgentRunState.Clarifying => "\uC9C8\uBB38 \uC900\uBE44",
                 AgentRunState.RunningTool => "\uB3C4\uAD6C \uC2E4\uD589",
                 AgentRunState.WaitingForApproval => "\uC2B9\uC778 \uB300\uAE30",
                 AgentRunState.RecordingChanges => "\uBCC0\uACBD \uAE30\uB85D",
@@ -281,6 +286,7 @@ public static class DesktopLocalizer
         return state switch
         {
             AgentRunState.Done => "\uC644\uB8CC",
+            AgentRunState.Clarifying => "\uB2F5\uBCC0 \uB300\uAE30",
             AgentRunState.Failed => "\uC2E4\uD328",
             AgentRunState.Cancelled => "\uCDE8\uC18C\uB428",
             AgentRunState.Idle => "\uB300\uAE30",
@@ -313,6 +319,8 @@ public static class DesktopLocalizer
     public static string CommitReadinessVerify(bool useKoreanUi) => useKoreanUi ? "\uCEE4\uBC0B \uC804 \uAC80\uC99D \uD544\uC694" : "Verify before commit";
 
     public static string NextActionReviewTool(bool useKoreanUi) => useKoreanUi ? "\uC694\uCCAD\uB41C \uB3C4\uAD6C \uC791\uC5C5\uC744 \uAC80\uD1A0\uD558\uC138\uC694." : "Review the requested tool action.";
+
+    public static string NextActionAnswerQuestion(bool useKoreanUi) => useKoreanUi ? "AgentQ\uC758 \uC9C8\uBB38\uC5D0 \uB2F5\uD558\uBA74 \uC774\uC5B4\uC11C \uC9C4\uD589\uD569\uB2C8\uB2E4." : "Answer AgentQ's question to continue.";
 
     public static string NextActionWait(bool useKoreanUi) => useKoreanUi ? "\uD604\uC7AC \uC2E4\uD589\uC774 \uB05D\uB0A0 \uB54C\uAE4C\uC9C0 \uAE30\uB2E4\uB9AC\uC138\uC694." : "Wait for the current run to finish.";
 
@@ -400,6 +408,7 @@ public static class DesktopLocalizer
             {
                 AgentRunState.GatheringContext => "Gathering context",
                 AgentRunState.Generating => "Generating",
+                AgentRunState.Clarifying => "Preparing question",
                 AgentRunState.RunningTool => "Running tool",
                 AgentRunState.WaitingForApproval => "Waiting for approval",
                 AgentRunState.RecordingChanges => "Recording changes",
@@ -417,6 +426,7 @@ public static class DesktopLocalizer
         return state switch
         {
             AgentRunState.Done => "Completed",
+            AgentRunState.Clarifying => "Waiting for answer",
             AgentRunState.Failed => "Failed",
             AgentRunState.Cancelled => "Cancelled",
             AgentRunState.Idle => "Idle",

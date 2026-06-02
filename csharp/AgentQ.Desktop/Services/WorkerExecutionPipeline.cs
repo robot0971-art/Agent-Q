@@ -73,7 +73,7 @@ public sealed class WorkerExecutionPipeline(
             ? WorkerExecutionState.ScaffoldExecuted
             : WorkerExecutionState.ScaffoldFailed;
         context.StatusMessage = result.Succeeded
-            ? $"Worker scaffold created {result.CreatedFiles.Count:0} file(s)."
+            ? $"Worker scaffold applied {result.CreatedFiles.Count + result.WiringChanges.Count:0} change(s)."
             : $"Worker scaffold failed: {string.Join("; ", result.Issues.Take(3))}";
         return result;
     }
