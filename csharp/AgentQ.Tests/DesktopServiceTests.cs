@@ -319,6 +319,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("Scaffold decision rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("optional accelerators", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("workspace tools", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bare request for a 'new project'", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("before picking React", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1932,6 +1934,21 @@ public sealed class DesktopServiceTests
         Assert.Contains("JavaScript is requested after TypeScript was recommended", context);
         Assert.Contains("Use TypeScript", context);
         Assert.DoesNotContain(".agentq", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexer_AsksDirectionForBareNewProjectRequest()
+    {
+        var root = CreateTempDirectory();
+
+        var context = await new WorkspaceIndexer().BuildContextAsync(
+            root,
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            CancellationToken.None);
+
+        Assert.Contains("ask what kind of project", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("before choosing a stack", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not say you will create a specific starter", context, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

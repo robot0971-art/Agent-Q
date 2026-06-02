@@ -186,6 +186,7 @@ public sealed class ScaffoldDecisionPromptRule : IDesktopPromptRule
         var builder = new StringBuilder();
         builder.AppendLine("Scaffold decision rules:");
         builder.AppendLine("- Treat scaffold recommendations as optional accelerators, not as automatic instructions.");
+        builder.AppendLine("- A bare request for a 'new project' does not contain enough product intent. Ask what kind of project the user wants before picking React, Python, API, game, or any other stack.");
         builder.AppendLine("- First decide whether the user's latest request has enough product intent to act. Ask a focused question only when missing choices would materially change the result.");
         builder.AppendLine("- If the request names a concrete stack or artifact, create the smallest useful project/files with workspace tools even when no scaffold recommendation exactly matches.");
         builder.AppendLine("- If a scaffold recommendation matches the request and workspace state, you may mirror its file structure, but adapt stack, language, sections, and copy to the user's latest wording.");
