@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Net;
 using AgentQ.Core.Models;
 
 namespace AgentQ.Core.Providers;
@@ -123,7 +124,15 @@ public class ResilientLlmProvider : ILlmProvider
     /// </summary>
     private bool IsRetryable(Exception ex)
     {
-        return ex is HttpRequestException || ex is TaskCanceledException || ex is TimeoutException;
+        if (ex is HttpRequestException http)
+        {
+            return http.StatusCode is null ||
+                   http.StatusCode == HttpStatusCode.RequestTimeout ||
+                   http.StatusCode == HttpStatusCode.TooManyRequests ||
+                   (int)http.StatusCode >= 500;
+        }
+
+        return ex is TaskCanceledException or TimeoutException;
     }
 
     /// <summary>

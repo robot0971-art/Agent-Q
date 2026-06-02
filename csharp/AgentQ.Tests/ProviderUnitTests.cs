@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using AgentQ.Core.Models;
+using AgentQ.Core.Providers;
 using AgentQ.Providers.Anthropic;
 using AgentQ.Providers.OpenAi;
 using Xunit;
@@ -13,6 +14,32 @@ namespace AgentQ.Tests;
 /// </summary>
 public sealed class ProviderUnitTests
 {
+    [Fact]
+    public async Task ResilientProvider_DoesNotRetryClientHttpErrors()
+    {
+        var inner = new FailingProvider(new HttpRequestException("bad request", null, HttpStatusCode.BadRequest));
+        var provider = new ResilientLlmProvider(inner, maxRetries: 3, initialDelay: TimeSpan.Zero);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file")));
+
+        Assert.Equal(1, inner.ResponseAttempts);
+    }
+
+    [Fact]
+    public async Task ResilientProvider_RetriesRateLimitHttpErrors()
+    {
+        var inner = new EventuallySuccessfulProvider(
+            failuresBeforeSuccess: 2,
+            new HttpRequestException("rate limited", null, HttpStatusCode.TooManyRequests));
+        var provider = new ResilientLlmProvider(inner, maxRetries: 3, initialDelay: TimeSpan.Zero);
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        Assert.Equal("ok", response.Id);
+        Assert.Equal(3, inner.ResponseAttempts);
+    }
+
     [Fact]
     public async Task OpenAiStream_IgnoresMalformedChunks_AndCompletesBufferedToolCalls()
     {
@@ -266,6 +293,74 @@ public sealed class ProviderUnitTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(_responseFactory(request));
+        }
+    }
+
+    private sealed class FailingProvider(Exception error) : ILlmProvider
+    {
+        public int ResponseAttempts { get; private set; }
+
+        public string Name => "failing";
+
+        public string DefaultModel => "test";
+
+        public Task<ChatResponse> GenerateResponseAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            CancellationToken ct = default)
+        {
+            ResponseAttempts++;
+            throw error;
+        }
+
+        public async IAsyncEnumerable<StreamChunk> GenerateStreamAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            throw error;
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+    }
+
+    private sealed class EventuallySuccessfulProvider(int failuresBeforeSuccess, Exception error) : ILlmProvider
+    {
+        public int ResponseAttempts { get; private set; }
+
+        public string Name => "eventual";
+
+        public string DefaultModel => "test";
+
+        public Task<ChatResponse> GenerateResponseAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            CancellationToken ct = default)
+        {
+            ResponseAttempts++;
+            if (ResponseAttempts <= failuresBeforeSuccess)
+            {
+                throw error;
+            }
+
+            return Task.FromResult(new ChatResponse
+            {
+                Id = "ok",
+                Model = "test",
+                Content = [ChatContent.CreateText("ok")]
+            });
+        }
+
+        public async IAsyncEnumerable<StreamChunk> GenerateStreamAsync(
+            ChatContext context,
+            IEnumerable<ToolDefinition> tools,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            yield return new StreamChunk { TextDelta = "ok" };
+            yield return new StreamChunk { IsComplete = true };
         }
     }
 }
