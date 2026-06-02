@@ -3,6 +3,7 @@ using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 using AgentQ.Tools;
+using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
@@ -2016,6 +2017,75 @@ public sealed class DesktopServiceTests
         Assert.Contains("fastapi", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
         Assert.Contains("httpx", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
         Assert.Contains("pytest", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProjectScaffoldIntegration_JavaScriptPortfolioBuildsWithNpm()
+    {
+        if (!ProjectScaffoldIntegrationEnabled())
+        {
+            return;
+        }
+
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["intent"] = new
+            {
+                projectType = "portfolio",
+                language = "javascript",
+                framework = "vite-react",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "portfolio vite-react scaffold",
+                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
+                verificationCommands = new[] { "npm install", "npm run build" }
+            }
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        var install = await RunCommandAsync(root, "cmd.exe", "/c npm install", timeoutSeconds: 180);
+        Assert.True(install.ExitCode == 0, install.CombinedOutput);
+        var build = await RunCommandAsync(root, "cmd.exe", "/c npm run build", timeoutSeconds: 120);
+        Assert.True(build.ExitCode == 0, build.CombinedOutput);
+        Assert.True(Directory.Exists(Path.Combine(root, "dist")));
+    }
+
+    [Fact]
+    public async Task ProjectScaffoldIntegration_PythonDataAnalysisPassesPytest()
+    {
+        if (!ProjectScaffoldIntegrationEnabled())
+        {
+            return;
+        }
+
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["intent"] = new
+            {
+                projectType = "data-analysis-tool",
+                language = "python",
+                framework = "python-cli",
+                style = "unspecified"
+            },
+            ["plan"] = new
+            {
+                name = "Python data analysis CLI scaffold",
+                files = new[] { "README.md", "requirements.txt", "src/main.py", "src/analyzer.py", "data/.gitkeep", "tests/test_analyzer.py" },
+                verificationCommands = new[] { "python -m pytest" }
+            }
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        var pytest = await RunCommandAsync(root, "python", "-m pytest", timeoutSeconds: 120);
+        Assert.True(pytest.ExitCode == 0, pytest.CombinedOutput);
     }
 
     [Fact]
@@ -7576,6 +7646,59 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         var path = Path.Combine(Path.GetTempPath(), "agentq-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static bool ProjectScaffoldIntegrationEnabled() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("AGENTQ_RUN_SCAFFOLD_INTEGRATION"),
+            "1",
+            StringComparison.Ordinal);
+
+    private static async Task<CommandResult> RunCommandAsync(
+        string workingDirectory,
+        string fileName,
+        string arguments,
+        int timeoutSeconds)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new Process { StartInfo = startInfo };
+        process.Start();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+
+            throw new TimeoutException($"{fileName} {arguments} timed out after {timeoutSeconds} seconds.");
+        }
+
+        return new CommandResult(
+            process.ExitCode,
+            await stdoutTask,
+            await stderrTask);
+    }
+
+    private sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError)
+    {
+        public string CombinedOutput => string.Join(Environment.NewLine, StandardOutput, StandardError).Trim();
     }
 
     private static void SaveTestPng(
