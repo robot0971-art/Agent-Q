@@ -285,13 +285,20 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 if (!genericGreetingRetryUsed &&
-                    ShouldRetryNoToolCodingFallback(
-                        userText,
-                        builder.ToString(),
-                        executedToolCount,
-                        fileChanges,
-                        workMode,
-                        taskProfile.Kind))
+                    (ShouldRetryNoToolCodingFallback(
+                         userText,
+                         builder.ToString(),
+                         executedToolCount,
+                         fileChanges,
+                         workMode,
+                         taskProfile.Kind) ||
+                     ShouldRetryGenericGreetingFallback(
+                         userText,
+                         builder.ToString(),
+                         executedToolCount,
+                         fileChanges,
+                         workMode,
+                         taskProfile.Kind)))
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
