@@ -634,6 +634,28 @@ public sealed class DesktopServiceTests
         Assert.False(shouldRetry);
     }
 
+    [Fact]
+    public void DesktopAgentService_TruncatedToolResultSavesFullOutputForInspection()
+    {
+        var root = CreateTempDirectory();
+        var fullOutput = new string('x', 25000);
+
+        var preview = DesktopAgentService.TruncateToolResult(
+            fullOutput,
+            root,
+            out var wasTruncated,
+            out var savedPath);
+
+        Assert.True(wasTruncated);
+        Assert.NotNull(savedPath);
+        Assert.True(File.Exists(savedPath));
+        Assert.StartsWith(Path.Combine(root, ".agentq", "tool-output"), savedPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(fullOutput, File.ReadAllText(savedPath));
+        Assert.Contains("[tool result truncated]", preview, StringComparison.Ordinal);
+        Assert.Contains("Full output saved to:", preview, StringComparison.Ordinal);
+        Assert.Contains("read_file with offset/limit", preview, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("", 0, true)]
     [InlineData("   ", 0, true)]

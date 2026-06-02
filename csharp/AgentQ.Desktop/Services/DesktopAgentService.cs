@@ -51,6 +51,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private const int MaxConfiguredToolSteps = 100;
     private const int MaxToolResultChars = 24000;
     private const int MaxChangeSnapshotChars = 160000;
+    private const string ToolOutputDirectoryName = "tool-output";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly LinkContentFetcher _linkContentFetcher;
@@ -1225,12 +1226,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                     results.Add(ChatContent.CreateToolResult(
                         toolId,
-                        TruncateToolResult(result.Content, out var wasTruncated),
+                        TruncateToolResult(result.Content, workspaceRoot, out var wasTruncated, out var savedToolOutputPath),
                         result.IsError));
 
                     if (wasTruncated)
                     {
-                        callbacks?.OnToolOutput?.Invoke(tool.Name, $"Tool result was truncated to {MaxToolResultChars} chars before being sent back to the model.");
+                        var savedMessage = string.IsNullOrWhiteSpace(savedToolOutputPath)
+                            ? "Full output could not be saved."
+                            : $"Full output saved to {savedToolOutputPath}.";
+                        callbacks?.OnToolOutput?.Invoke(tool.Name, $"Tool result was truncated to {MaxToolResultChars} chars before being sent back to the model. {savedMessage}");
                     }
 
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, result.Content, result.IsError, startedAt));
@@ -1626,8 +1630,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             : Path.GetFullPath(workspaceRoot);
     }
 
-    private static string TruncateToolResult(string value, out bool wasTruncated)
+    public static string TruncateToolResult(string value, string workspaceRoot, out bool wasTruncated, out string? savedPath)
     {
+        savedPath = null;
         if (value.Length <= MaxToolResultChars)
         {
             wasTruncated = false;
@@ -1635,7 +1640,33 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         wasTruncated = true;
-        return value[..MaxToolResultChars] + Environment.NewLine + "[tool result truncated]";
+        savedPath = TrySaveFullToolOutput(value, workspaceRoot);
+        var hint = string.IsNullOrWhiteSpace(savedPath)
+            ? "Full output could not be saved."
+            : $"Full output saved to: {savedPath}{Environment.NewLine}Use grep_search or read_file with offset/limit to inspect the saved output instead of rerunning the command blindly.";
+        return value[..MaxToolResultChars] +
+               Environment.NewLine +
+               "[tool result truncated]" +
+               Environment.NewLine +
+               hint;
+    }
+
+    private static string? TrySaveFullToolOutput(string value, string workspaceRoot)
+    {
+        try
+        {
+            var root = string.IsNullOrWhiteSpace(workspaceRoot) ? Environment.CurrentDirectory : workspaceRoot;
+            var directory = Path.Combine(root, ".agentq", ToolOutputDirectoryName);
+            Directory.CreateDirectory(directory);
+            var fileName = $"tool_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.txt";
+            var path = Path.Combine(directory, fileName);
+            File.WriteAllText(path, value, Encoding.UTF8);
+            return path;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private ToolRegistry CreateToolRegistry(ProviderConfiguration config, string workspaceRoot)
