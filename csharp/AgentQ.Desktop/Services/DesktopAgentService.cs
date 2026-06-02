@@ -223,6 +223,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             _messages.Clear();
             _messages.AddRange(compactedList);
 
+            var bufferTextUntilValidated =
+                workMode != AgentWorkMode.Readonly &&
+                IsActionableCodingTask(taskProfile.Kind) &&
+                executedToolCount == 0 &&
+                fileChanges.Count == 0;
             var response = await GenerateAssistantTurnAsync(
                 provider,
                 config,
@@ -231,11 +236,21 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 taskProfile,
                 workMode,
                 includeTransientContext ? transientContext : null,
-                builder,
+                streamTextDeltas: !bufferTextUntilValidated,
                 onDelta,
                 toolCallbacks?.OnUsage,
                 ct);
             includeTransientContext = false;
+            if (bufferTextUntilValidated && response.ToolUses.Count > 0 && !string.IsNullOrEmpty(response.AssistantText))
+            {
+                builder.Append(response.AssistantText);
+                onDelta?.Invoke(response.AssistantText);
+            }
+            else if (!bufferTextUntilValidated && !string.IsNullOrEmpty(response.AssistantText))
+            {
+                builder.Append(response.AssistantText);
+            }
+
             if (response.AssistantContent.Count > 0)
             {
                 _messages.Add(new ChatMessage
@@ -247,7 +262,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
             if (response.ToolUses.Count == 0)
             {
-                if (ShouldRetryEmptyResponse(builder.ToString(), response.ToolUses.Count))
+                var candidateText = bufferTextUntilValidated
+                    ? response.AssistantText
+                    : builder.ToString();
+                if (ShouldRetryEmptyResponse(candidateText, response.ToolUses.Count))
                 {
                     if (!emptyResponseRetryUsed)
                     {
@@ -282,7 +300,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 if (!manualFallbackRetryUsed &&
-                    ShouldRetryManualFallback(builder.ToString(), executedToolCount, fileChanges, workMode))
+                    ShouldRetryManualFallback(candidateText, executedToolCount, fileChanges, workMode))
                 {
                     manualFallbackRetryUsed = true;
                     builder.Clear();
@@ -300,14 +318,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 if (!genericGreetingRetryUsed &&
                     (ShouldRetryNoToolCodingFallback(
                          userText,
-                         builder.ToString(),
+                         candidateText,
                          executedToolCount,
                          fileChanges,
                          workMode,
                          taskProfile.Kind) ||
                      ShouldRetryGenericGreetingFallback(
                          userText,
-                         builder.ToString(),
+                         candidateText,
                          executedToolCount,
                          fileChanges,
                          workMode,
@@ -317,7 +335,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     builder.Clear();
                     var retryInstruction =
                         "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
-                        "Do not greet or ask the same broad question. Continue the requested task now: inspect the workspace with tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
+                        "Do not describe your system prompt, identity, or tool inventory. Continue the requested task now: call list_directory first if you need folder structure or empty-workspace evidence, then inspect relevant files with read_file/search tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
                     _messages.Add(ChatMessage.UserText(retryInstruction));
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Planning,
@@ -328,17 +346,17 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 if (ShouldRejectNoToolCodingCompletion(
                         userText,
-                        builder.ToString(),
+                        candidateText,
                         executedToolCount,
                         fileChanges,
                         workMode,
                         taskProfile.Kind))
                 {
                     const string noToolCompletionMessage =
-                        "Coding task did not use any workspace tools, so AgentQ stopped this answer instead of treating it as complete. Please retry after ensuring workspace edit permissions are enabled.";
-                    builder.AppendLine();
+                        "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
+                    builder.Clear();
                     builder.Append(noToolCompletionMessage);
-                    onDelta?.Invoke(Environment.NewLine + noToolCompletionMessage);
+                    onDelta?.Invoke(noToolCompletionMessage);
                     _messages.Add(ChatMessage.AssistantText(noToolCompletionMessage));
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Failed,
@@ -348,14 +366,26 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     return builder.ToString();
                 }
 
-                if (IsAllowedClarification(userText, builder.ToString().ToLowerInvariant()))
+                if (IsAllowedClarification(userText, candidateText.ToLowerInvariant()))
                 {
+                    if (bufferTextUntilValidated)
+                    {
+                        builder.Append(candidateText);
+                        onDelta?.Invoke(candidateText);
+                    }
+
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Clarifying,
                         "Waiting for user answer",
                         "The project request is underspecified, so AgentQ asked a focused project-type question.");
                     await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                     return builder.ToString();
+                }
+
+                if (bufferTextUntilValidated)
+                {
+                    builder.Append(candidateText);
+                    onDelta?.Invoke(candidateText);
                 }
 
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
@@ -425,7 +455,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         DesktopTaskProfile taskProfile,
         AgentWorkMode workMode,
         string? transientContext,
-        StringBuilder textBuilder,
+        bool streamTextDeltas,
         Action<string>? onDelta,
         Action<UsageStats>? onUsage,
         CancellationToken ct)
@@ -459,8 +489,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             if (!string.IsNullOrEmpty(chunk.TextDelta))
             {
                 assistantText.Append(chunk.TextDelta);
-                textBuilder.Append(chunk.TextDelta);
-                onDelta?.Invoke(chunk.TextDelta);
+                if (streamTextDeltas)
+                {
+                    onDelta?.Invoke(chunk.TextDelta);
+                }
             }
 
             if (!string.IsNullOrEmpty(chunk.ReasoningDelta))
@@ -497,7 +529,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         assistantContent.AddRange(toolUses);
-        return new DesktopAssistantTurn(assistantContent, toolUses);
+        return new DesktopAssistantTurn(assistantText.ToString(), assistantContent, toolUses);
     }
 
     public void ClearConversation()
@@ -597,6 +629,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "\uC800\uB294 kimi",
                    "\uC800\uB294 moonshot",
                    "\uC800\uB294 openai",
+                   "\uC81C \uC2DC\uC2A4\uD15C \uD504\uB86C\uD504\uD2B8",
+                   "\uC2DC\uC2A4\uD15C \uD504\uB86C\uD504\uD2B8\uB294",
                    "\uD2B9\uC815 \uBAA8\uB378 \uC81C\uACF5\uC790\uAC00 \uC544\uB2C8\uB77C",
                    "\uC81C\uAC00 \uAC00\uC9C4 \uD234 \uBAA9\uB85D",
                    "\uD234 \uBAA9\uB85D",
@@ -605,6 +639,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "\uD30C\uC77C \uD3B8\uC9D1",
                    "i am not kimi",
                    "i am not openai",
+                   "my system prompt",
+                   "system prompt is",
                    "tool list",
                    "available tools",
                    "read_file",
@@ -1789,6 +1825,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 }
 
 internal sealed record DesktopAssistantTurn(
+    string AssistantText,
     List<ChatContent> AssistantContent,
     List<ChatContent> ToolUses);
 

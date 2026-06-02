@@ -464,6 +464,20 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesSystemPromptSummaryAfterCodingTask()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uC81C \uC2DC\uC2A4\uD15C \uD504\uB86C\uD504\uD2B8\uB294 \uB2E4\uC74C\uACFC \uAC19\uC740 \uB0B4\uC6A9\uC73C\uB85C \uAD6C\uC131\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.\n\n**\uAE30\uBCF8 \uC815\uCCB4\uC131**\n- \uC800\uB294 AgentQ Desktop\uC785\uB2C8\uB2E4.\n\n**\uC0AC\uC6A9 \uAC00\uB2A5\uD55C \uB3C4\uAD6C**\n- list_directory\n- bash",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesAnyNoToolFeatureAnswerBeforeWorkspaceAction()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
