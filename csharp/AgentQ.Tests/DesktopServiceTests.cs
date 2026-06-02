@@ -497,7 +497,7 @@ public sealed class DesktopServiceTests
     public void DesktopAgentService_BuildsScaffoldAwareNoToolRetryInstruction()
     {
         var root = CreateTempDirectory();
-        var plan = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
+        var plan = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root), root);
 
         var retryInstruction = DesktopAgentService.BuildNoToolRetryInstruction(plan);
         var rejectMessage = DesktopAgentService.BuildNoToolCompletionMessage(plan);
@@ -615,7 +615,7 @@ public sealed class DesktopServiceTests
     public void ProjectScaffoldPlanner_BuildPlanContext_IncludesExactToolInputs()
     {
         var root = CreateTempDirectory();
-        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
+        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root), root);
 
         var context = ProjectScaffoldPlanner.BuildPlanContext(result);
 
@@ -1934,7 +1934,7 @@ public sealed class DesktopServiceTests
     public void ProjectScaffoldPlanner_BuildsPlanContext()
     {
         var root = CreateTempDirectory();
-        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
+        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root), root);
 
         var context = ProjectScaffoldPlanner.BuildPlanContext(result);
 
@@ -2000,7 +2000,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2033,7 +2033,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PythonDataAnalysisIntent();
         var plan = PythonDataAnalysisPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2057,7 +2057,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = FastApiIntent();
         var plan = FastApiPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2087,7 +2087,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2112,7 +2112,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PythonDataAnalysisIntent();
         var plan = PythonDataAnalysisPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2130,7 +2130,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2175,7 +2175,7 @@ public sealed class DesktopServiceTests
             Files = ["../outside.txt"],
             VerificationCommands = []
         };
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2192,7 +2192,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
         var input = ScaffoldToolInput(record);
@@ -2222,11 +2222,27 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsPlanIdFromDifferentWorkspace()
+    {
+        var originalRoot = CreateTempDirectory();
+        var selectedRoot = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = RegisterScaffoldPlan(registry, PortfolioIntent(), PortfolioPlan(), originalRoot);
+        var tool = new DesktopProjectScaffoldCreateTool(selectedRoot, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.True(result.IsError);
+        Assert.Contains("different workspace", result.ErrorMessage, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(selectedRoot, "package.json")));
+    }
+
+    [Fact]
     public async Task DesktopProjectScaffoldCreateTool_RejectsSnapshotThatDoesNotMatchPlanId()
     {
         var root = CreateTempDirectory();
         var registry = new ProjectScaffoldPlanRegistry();
-        var record = RegisterScaffoldPlan(registry, PortfolioIntent(), PortfolioPlan());
+        var record = RegisterScaffoldPlan(registry, PortfolioIntent(), PortfolioPlan(), root);
         var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
         var input = ScaffoldToolInput(record);
         input["plan"] = PythonDataAnalysisPlan();
@@ -2307,7 +2323,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2328,7 +2344,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
         var input = ScaffoldToolInput(record);
@@ -2351,7 +2367,7 @@ public sealed class DesktopServiceTests
             Files = [],
             VerificationCommands = ["Remove-Item -Recurse . -Force"]
         };
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -2367,7 +2383,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
         var input = ScaffoldToolInput(record);
@@ -2395,6 +2411,21 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsPlanIdFromDifferentWorkspace()
+    {
+        var originalRoot = CreateTempDirectory();
+        var selectedRoot = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = RegisterScaffoldPlan(registry, TestScaffoldIntent(), TestCommandPlan(), originalRoot);
+        var tool = new DesktopProjectScaffoldVerifyTool(selectedRoot, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.True(result.IsError);
+        Assert.Contains("different workspace", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DesktopProjectScaffoldVerifyTool_ReturnsRepairContextForFailedVerification()
     {
         var root = CreateTempDirectory();
@@ -2402,7 +2433,7 @@ public sealed class DesktopServiceTests
         var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
-        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
         var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
         var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
@@ -7811,8 +7842,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     private static ProjectScaffoldPlanRecord RegisterScaffoldPlan(
         ProjectScaffoldPlanRegistry registry,
         ProjectScaffoldIntentModel intent,
-        ProjectScaffoldPlanModel plan) =>
-        registry.Register(intent, plan);
+        ProjectScaffoldPlanModel plan,
+        string? workspaceRoot = null) =>
+        registry.Register(intent, plan, workspaceRoot ?? CreateTempDirectory());
 
     private static Dictionary<string, object?> ScaffoldToolInput(
         ProjectScaffoldPlanRecord record,
@@ -8496,3 +8528,4 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         }
     }
 }
+

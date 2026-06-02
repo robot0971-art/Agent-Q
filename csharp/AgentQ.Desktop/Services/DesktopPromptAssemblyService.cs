@@ -193,7 +193,7 @@ public sealed class ScaffoldDecisionPromptRule : IDesktopPromptRule
         builder.AppendLine("- Desktop preflight may attach a deterministic project scaffold plan. Follow that plan unless the user changes project type, language, framework, or style.");
         builder.AppendLine("- Use plan_project_scaffold to re-plan after the user clarifies or changes greenfield project direction; it does not create files.");
         builder.AppendLine("- Use create_project_scaffold only with the planId and planHash returned by plan_project_scaffold or attached by preflight; do not create from a request string alone.");
-        builder.AppendLine("- After create_project_scaffold succeeds, use verify_project_scaffold with the same approved plan to run only plan-listed verification commands.");
+        builder.AppendLine("- After create_project_scaffold succeeds, use verify_project_scaffold with the same approved planId and planHash to run only plan-listed verification commands.");
         builder.AppendLine("- If verify_project_scaffold returns succeeded=false, use its failureAnalysis and repairPrompt to inspect and repair the scaffold before rerunning verification.");
         builder.AppendLine("- First decide whether the user's latest request has enough product intent to act. Ask a focused question only when missing choices would materially change the result.");
         builder.AppendLine("- If the request names a concrete stack or artifact, create the smallest useful project/files with workspace tools even when no scaffold recommendation exactly matches.");

@@ -42,7 +42,7 @@ public sealed class DesktopProjectScaffoldPlanTool(
 
         try
         {
-            var result = _planRegistry.Register(_planner.Plan(request, root));
+            var result = _planRegistry.Register(_planner.Plan(request, root), root);
             return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(new
             {
                 isGreenfieldRequest = result.IsGreenfieldRequest,

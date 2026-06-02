@@ -76,6 +76,11 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             return ToolResult.Error("Project scaffold planId is missing or unknown. Call plan_project_scaffold first, then pass its planId and planHash unchanged.");
         }
 
+        if (!ProjectScaffoldPlanRegistry.MatchesWorkspace(record.WorkspaceRoot, workspaceRoot))
+        {
+            return ToolResult.Error("Project scaffold planId belongs to a different workspace. Call plan_project_scaffold again for the selected workspace.");
+        }
+
         if (!TryGetString(input, "planHash", out var planHash) ||
             !string.Equals(record.PlanHash, planHash.Trim(), StringComparison.OrdinalIgnoreCase))
         {

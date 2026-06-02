@@ -125,7 +125,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
-        var projectScaffoldPlan = _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot));
+        var projectScaffoldPlan = _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot), effectiveWorkspaceRoot);
         if (workMode != AgentWorkMode.Readonly &&
             taskProfile.Kind == DesktopTaskKind.Feature &&
             projectScaffoldPlan.IsGreenfieldRequest &&
