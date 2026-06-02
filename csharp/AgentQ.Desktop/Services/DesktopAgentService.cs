@@ -578,6 +578,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return false;
         }
 
+        if (IsAllowedClarification(userText, assistantLower))
+        {
+            return false;
+        }
+
         return !LooksLikeWorkspaceActionSummary(assistantLower);
     }
 
@@ -594,6 +599,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         !string.IsNullOrWhiteSpace(assistantText) &&
         IsActionableCodingTask(taskKind) &&
         UserAskedForWorkspaceWork(userText) &&
+        !IsAllowedClarification(userText, assistantText.ToLowerInvariant()) &&
         !LooksLikeWorkspaceActionSummary(assistantText.ToLowerInvariant());
 
     private static bool IsActionableCodingTask(DesktopTaskKind taskKind) =>
@@ -628,6 +634,60 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uD30C\uC774\uC36C",
             "\uB370\uC774\uD130 \uBD84\uC11D",
             "\uBD84\uC11D \uB3C4\uAD6C");
+    }
+
+    private static bool IsAllowedClarification(string userText, string assistantLower)
+    {
+        return IsBareNewProjectRequest(userText) && LooksLikeFocusedProjectClarification(assistantLower);
+    }
+
+    private static bool IsBareNewProjectRequest(string userText)
+    {
+        var userLower = userText.ToLowerInvariant();
+        var asksForProject = ContainsAny(
+            userLower,
+            "new project",
+            "project",
+            "\uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8",
+            "\uC0C8 \uD504\uB85C\uC81D\uD2B8",
+            "\uD504\uB85C\uC81D\uD2B8");
+        if (!asksForProject)
+        {
+            return false;
+        }
+
+        return !ContainsAny(
+            userLower,
+            "portfolio",
+            "website",
+            "homepage",
+            "python",
+            "fastapi",
+            "api",
+            "game",
+            "cli",
+            "data",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+            "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uD648\uD398\uC774\uC9C0",
+            "\uD30C\uC774\uC36C",
+            "\uAC8C\uC784",
+            "\uB370\uC774\uD130",
+            "\uB2E8\uC5B4\uC7A5");
+    }
+
+    private static bool LooksLikeFocusedProjectClarification(string assistantLower)
+    {
+        return ContainsAny(
+            assistantLower,
+            "what kind of project",
+            "what type of project",
+            "which kind of project",
+            "which type of project",
+            "\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8",
+            "\uC5B4\uB5A4 \uD504\uB85C\uC81D\uD2B8",
+            "\uC6D0\uD558\uC2DC\uB294 \uD504\uB85C\uC81D\uD2B8 \uC885\uB958",
+            "\uD504\uB85C\uC81D\uD2B8 \uC885\uB958");
     }
 
     private static bool LooksLikeWorkspaceActionSummary(string assistantLower)

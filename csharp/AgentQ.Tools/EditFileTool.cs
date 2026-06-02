@@ -15,7 +15,8 @@ public class EditFileTool : ITool
     /// <summary>
     /// 도구 설명
     /// </summary>
-    public string Description => "Edit a file by replacing a specific string with a new string";
+    public string Description =>
+        "Edit an existing file with an exact old_string/new_string replacement. Read the file first, preserve exact indentation and surrounding text, prefer this over write_file for existing files, and use replace_all only for intentional file-wide replacements.";
 
     /// <summary>
     /// 권한 확인 필요 여부

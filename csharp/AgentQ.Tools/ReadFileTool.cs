@@ -19,7 +19,8 @@ public class ReadFileTool : ITool
     /// <summary>
     /// 도구 설명
     /// </summary>
-    public string Description => "Read the contents of a file at the specified path";
+    public string Description =>
+        "Read file contents before analyzing or editing. Use offset/limit for large files, grep_search/glob_search when the path or target text is unclear, and parallel reads when multiple known files are needed.";
 
     /// <summary>
     /// 권한 확인 필요 여부

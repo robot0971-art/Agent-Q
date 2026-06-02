@@ -461,6 +461,29 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_AllowsFocusedQuestionForBareNewProject()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uC88B\uC2B5\uB2C8\uB2E4. \uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694? \uC608: \uC6F9\uC0AC\uC774\uD2B8, Python \uB370\uC774\uD130 \uB3C4\uAD6C, API, \uAC8C\uC784, CLI \uB3C4\uAD6C",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uC88B\uC2B5\uB2C8\uB2E4. \uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694? \uC608: \uC6F9\uC0AC\uC774\uD2B8, Python \uB370\uC774\uD130 \uB3C4\uAD6C, API, \uAC8C\uC784, CLI \uB3C4\uAD6C",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldRetry);
+        Assert.False(shouldReject);
+    }
+
+    [Fact]
     public void DesktopAgentService_RejectsFuturePromiseAfterRetry()
     {
         var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(

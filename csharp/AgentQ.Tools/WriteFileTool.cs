@@ -16,7 +16,8 @@ public class WriteFileTool : ITool
     /// <summary>
     /// 도구 설명
     /// </summary>
-    public string Description => "Write content to a file, creating it if it doesn't exist";
+    public string Description =>
+        "Create a new file or overwrite a file only when explicitly needed. For existing files, read the file first and prefer edit_file for small changes; do not create documentation files unless the user asked for them.";
 
     /// <summary>
     /// 권한 확인 필요 여부
