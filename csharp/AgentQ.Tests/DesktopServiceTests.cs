@@ -6801,6 +6801,19 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
     }
 
+    [Theory]
+    [InlineData("cmd /c cd frontend && npm run build -- --watch", "npm run build")]
+    [InlineData("powershell -Command cd app; dotnet test csharp\\AgentQ.Tests\\AgentQ.Tests.csproj --filter Smoke", "dotnet test")]
+    [InlineData("git push origin main", "git push")]
+    [InlineData("docker compose config --quiet", "docker compose config")]
+    public void ToolPermissionClassifier_AddsHumanCommandLabelToShellTargets(string command, string expectedLabel)
+    {
+        var target = ToolPermissionClassifier.BuildShellCommandTarget(command);
+
+        Assert.StartsWith(expectedLabel, target, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(command, target, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ToolPermissionPolicy_BlocksDestructiveCommandsInFullAgentMode()
     {

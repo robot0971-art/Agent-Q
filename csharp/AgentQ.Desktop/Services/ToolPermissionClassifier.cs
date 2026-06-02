@@ -62,6 +62,7 @@ public static class ToolPermissionClassifier
         var command = input.TryGetValue("command", out var rawCommand) ? rawCommand as string : null;
         command = command?.Trim() ?? string.Empty;
         var lowered = command.ToLowerInvariant();
+        var target = BuildShellCommandTarget(command);
 
         if (DestructiveCommandPatterns.Any(pattern => pattern.IsMatch(command)))
         {
@@ -69,7 +70,7 @@ public static class ToolPermissionClassifier
             {
                 RiskLevel = PermissionRiskLevel.Destructive,
                 Operation = "Destructive shell command",
-                Target = command,
+                Target = target,
                 Reason = "This command matches a destructive shell, Git restore, or system modification pattern and is blocked by default."
             };
         }
@@ -82,7 +83,7 @@ public static class ToolPermissionClassifier
             {
                 RiskLevel = PermissionRiskLevel.GitWrite,
                 Operation = "Git write command",
-                Target = command,
+                Target = target,
                 Reason = "This command can change local or remote Git history/state."
             };
         }
@@ -93,7 +94,7 @@ public static class ToolPermissionClassifier
             {
                 RiskLevel = PermissionRiskLevel.VerificationCommand,
                 Operation = "Verification command",
-                Target = command,
+                Target = target,
                 Reason = "This appears to build or test the selected project."
             };
         }
@@ -104,7 +105,7 @@ public static class ToolPermissionClassifier
             {
                 RiskLevel = PermissionRiskLevel.Network,
                 Operation = "Network command",
-                Target = command,
+                Target = target,
                 Reason = "This command may access the network or install dependencies."
             };
         }
@@ -113,9 +114,47 @@ public static class ToolPermissionClassifier
         {
             RiskLevel = PermissionRiskLevel.ShellCommand,
             Operation = "Shell command",
-            Target = command,
+            Target = target,
             Reason = "This command will run in a local shell."
         };
+    }
+
+    public static string BuildShellCommandTarget(string command)
+    {
+        command = command.Trim();
+        var label = ExtractHumanCommandLabel(command);
+        if (string.IsNullOrWhiteSpace(label) || string.Equals(label, command, StringComparison.Ordinal))
+        {
+            return command;
+        }
+
+        return $"{label} \u2014 {command}";
+    }
+
+    public static string ExtractHumanCommandLabel(string command)
+    {
+        var normalized = NormalizeShellCommand(command);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return string.Empty;
+        }
+
+        var tokens = TokenizeCommand(normalized);
+        if (tokens.Count == 0)
+        {
+            return normalized;
+        }
+
+        for (var length = tokens.Count; length > 0; length--)
+        {
+            var prefix = string.Join(' ', tokens.Take(length)).ToLowerInvariant();
+            if (CommandArities.TryGetValue(prefix, out var arity))
+            {
+                return string.Join(' ', tokens.Take(Math.Min(arity, tokens.Count)));
+            }
+        }
+
+        return tokens[0];
     }
 
     private static bool IsWorkspacePath(string? path)
@@ -178,4 +217,68 @@ public static class ToolPermissionClassifier
                command.Contains("npm install", StringComparison.Ordinal) ||
                command.Contains("dotnet restore", StringComparison.Ordinal);
     }
+
+    private static string NormalizeShellCommand(string command)
+    {
+        var normalized = command.Trim();
+        normalized = Regex.Replace(normalized, @"^(cmd(\.exe)?\s+/c|powershell(\.exe)?\s+-command)\s+", string.Empty, RegexOptions.IgnoreCase);
+
+        var segments = Regex.Split(normalized, @"\s*(?:&&|;|\|\|)\s+")
+            .Select(segment => segment.Trim())
+            .Where(segment => !string.IsNullOrWhiteSpace(segment))
+            .ToList();
+        if (segments.Count == 0)
+        {
+            return normalized;
+        }
+
+        return segments.FirstOrDefault(segment =>
+            !segment.StartsWith("cd ", StringComparison.OrdinalIgnoreCase) &&
+            !segment.Equals("cd", StringComparison.OrdinalIgnoreCase)) ?? segments[0];
+    }
+
+    private static IReadOnlyList<string> TokenizeCommand(string command)
+    {
+        var matches = Regex.Matches(command, @"[^\s""']+|""([^""]*)""|'([^']*)'");
+        return matches
+            .Select(match =>
+                match.Groups[1].Success ? match.Groups[1].Value :
+                match.Groups[2].Success ? match.Groups[2].Value :
+                match.Value)
+            .Where(token => !string.IsNullOrWhiteSpace(token) && !token.StartsWith("-", StringComparison.Ordinal))
+            .ToList();
+    }
+
+    private static readonly IReadOnlyDictionary<string, int> CommandArities = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["dotnet"] = 2,
+        ["npm"] = 2,
+        ["npm run"] = 3,
+        ["pnpm"] = 2,
+        ["pnpm run"] = 3,
+        ["yarn"] = 2,
+        ["yarn run"] = 3,
+        ["bun"] = 2,
+        ["bun run"] = 3,
+        ["python"] = 2,
+        ["docker"] = 2,
+        ["docker compose"] = 3,
+        ["git"] = 2,
+        ["git config"] = 3,
+        ["git remote"] = 3,
+        ["git stash"] = 3,
+        ["cargo"] = 2,
+        ["cargo run"] = 3,
+        ["go"] = 2,
+        ["mvn"] = 2,
+        ["gradle"] = 2,
+        ["make"] = 2,
+        ["cmake"] = 2,
+        ["kubectl"] = 2,
+        ["gh"] = 3,
+        ["vercel"] = 2,
+        ["npx"] = 2,
+        ["pytest"] = 1,
+        ["rg"] = 1
+    };
 }
