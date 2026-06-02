@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Text;
 using AgentQ.Core.Models;
 
@@ -8,6 +9,10 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class ConversationCompactor
 {
+    private static readonly Regex ImportantToolLinePattern = new(
+        @"(error|failed|failure|exception|timeout|denied|blocked|not found|exit code|status\s+\d{3}|http\s+\d{3}|[A-Za-z]:\\|/[^ \t\r\n]+|\\[^ \t\r\n]+|\b(?:npm|dotnet|python|git|node|pnpm|yarn)\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public List<ChatMessage> Compact(
         List<ChatMessage> messages,
         int maxEstimatedTokens = 80_000,
@@ -161,12 +166,38 @@ public sealed class ConversationCompactor
                     }
                 }
                 sb.AppendLine($"{status} toolUseId: {content.ToolUseId}. Output length: {resultLength} chars. Preview:\n{snippet}");
+                var importantContext = ExtractImportantToolContext(content.ToolResult);
+                if (importantContext.Count > 0)
+                {
+                    sb.AppendLine("Important context:");
+                    foreach (var line in importantContext)
+                    {
+                        sb.AppendLine($"- {line}");
+                    }
+                }
             }
         }
 
         newMsg.Content.Add(ChatContent.CreateText(sb.ToString()));
         newMsg.CompactionSummary = sb.ToString();
         return newMsg;
+    }
+
+    private static IReadOnlyList<string> ExtractImportantToolContext(string? toolResult)
+    {
+        if (string.IsNullOrWhiteSpace(toolResult))
+        {
+            return [];
+        }
+
+        return toolResult
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && ImportantToolLinePattern.IsMatch(line))
+            .Select(line => line.Length <= 240 ? line : line[..240] + "...")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
     }
 
     public static int EstimateTokens(IReadOnlyList<ChatMessage> messages)

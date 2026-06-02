@@ -97,4 +97,40 @@ public sealed class DesktopConversationCompactorTests
         Assert.Contains("[Tool Result Summary]", compactedToolResult.Content[0].Text);
         Assert.Contains("✅ Success toolUseId: id-1", compactedToolResult.Content[0].Text);
     }
+
+    [Fact]
+    public void Compact_ShouldPreserveImportantToolContextBeyondPreview()
+    {
+        var compactor = new ConversationCompactor();
+        var toolUseMsg = ChatMessage.AssistantToolUse("id-1", "bash", new { command = "npm run build" });
+        var longToolResult = string.Join(
+            "\n",
+            Enumerable.Range(1, 20).Select(index => $"ordinary output line {index}")
+                .Concat(
+                [
+                    "Error: build failed in C:\\Users\\admin\\Desktop\\Agent-Q\\src\\App.tsx",
+                    "Exit code: 1",
+                    "npm run build"
+                ]));
+        var toolResultMsg = ChatMessage.UserToolResult("id-1", longToolResult, true);
+
+        var messages = new List<ChatMessage>
+        {
+            ChatMessage.SystemText("System message"),
+            toolUseMsg,
+            toolResultMsg,
+            ChatMessage.UserText("User message 2"),
+            ChatMessage.AssistantText("Assistant response 2"),
+            ChatMessage.UserText("User message 3"),
+            ChatMessage.AssistantText("Assistant response 3")
+        };
+
+        var result = compactor.Compact(messages, maxEstimatedTokens: 5, keepRecentTurns: 4);
+        var compactedToolResult = result[2].Content[0].Text!;
+
+        Assert.Contains("Important context:", compactedToolResult);
+        Assert.Contains("Error: build failed", compactedToolResult);
+        Assert.Contains("Exit code: 1", compactedToolResult);
+        Assert.Contains("npm run build", compactedToolResult);
+    }
 }
