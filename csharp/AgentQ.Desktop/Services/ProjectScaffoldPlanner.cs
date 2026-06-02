@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace AgentQ.Desktop.Services;
@@ -62,6 +63,7 @@ public sealed class ProjectScaffoldPlanner
             CanProceed = true,
             Intent = intent,
             Plan = plan,
+            PlanHash = ComputePlanHash(intent, plan),
             Reasons = [$"{intent.ProjectType} scaffold plan matched deterministic rules."]
         };
     }
@@ -92,16 +94,25 @@ public sealed class ProjectScaffoldPlanner
                 files = result.Plan.Files,
                 verificationCommands = result.Plan.VerificationCommands
             },
+            planHash = result.PlanHash,
             overwriteExistingFiles = false
         }, new JsonSerializerOptions { WriteIndented = true });
         var verifyInput = JsonSerializer.Serialize(new
         {
+            intent = new
+            {
+                projectType = result.Intent.ProjectType,
+                language = result.Intent.Language,
+                framework = result.Intent.Framework,
+                style = result.Intent.Style
+            },
             plan = new
             {
                 name = result.Plan.Name,
                 files = result.Plan.Files,
                 verificationCommands = result.Plan.VerificationCommands
-            }
+            },
+            planHash = result.PlanHash
         }, new JsonSerializerOptions { WriteIndented = true });
         return
             "Project scaffold preflight plan:\n" +
@@ -111,6 +122,7 @@ public sealed class ProjectScaffoldPlanner
             $"- style: {result.Intent.Style}\n" +
             $"- files: {files}\n" +
             $"- verificationCommands: {commands}\n" +
+            $"- planHash: {result.PlanHash}\n" +
             "- Treat this plan as the deterministic scaffold direction. User-stated language/framework choices override worker recommendations.\n" +
             "Use this exact tool sequence:\n" +
             "1. Call create_project_scaffold with:\n" +
@@ -119,6 +131,39 @@ public sealed class ProjectScaffoldPlanner
             verifyInput + "\n" +
             "If create_project_scaffold reports existing file collisions, report the collision and ask before overwrite.";
     }
+
+    public static string ComputePlanHash(ProjectScaffoldIntentModel intent, ProjectScaffoldPlanModel plan)
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            intent = new
+            {
+                projectType = NormalizeHashValue(intent.ProjectType),
+                language = NormalizeHashValue(intent.Language),
+                framework = NormalizeHashValue(intent.Framework),
+                style = NormalizeHashValue(intent.Style)
+            },
+            plan = new
+            {
+                name = NormalizeHashValue(plan.Name),
+                files = plan.Files.Select(NormalizePathValue).ToArray(),
+                verificationCommands = plan.VerificationCommands.Select(command => command.Trim()).ToArray()
+            }
+        });
+        var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    public static bool VerifyPlanHash(
+        ProjectScaffoldIntentModel intent,
+        ProjectScaffoldPlanModel plan,
+        string planHash) =>
+        !string.IsNullOrWhiteSpace(planHash) &&
+        string.Equals(ComputePlanHash(intent, plan), planHash.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeHashValue(string value) => value.Trim().ToLowerInvariant();
+
+    private static string NormalizePathValue(string value) => value.Trim().Replace('\\', '/');
 
     private static ProjectScaffoldIntentModel BuildIntent(string normalized)
     {
@@ -324,6 +369,8 @@ public sealed class ProjectScaffoldPlanningResult
     public ProjectScaffoldIntentModel? Intent { get; init; }
 
     public ProjectScaffoldPlanModel? Plan { get; init; }
+
+    public string PlanHash { get; init; } = string.Empty;
 
     public IReadOnlyList<string> Reasons { get; init; } = [];
 }

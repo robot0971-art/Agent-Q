@@ -38,6 +38,19 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                     verificationCommands = new { type = "array", items = new { type = "string" } }
                 }
             },
+            intent = new
+            {
+                type = "object",
+                description = "The approved project scaffold intent returned by plan_project_scaffold.",
+                properties = new
+                {
+                    projectType = new { type = "string" },
+                    language = new { type = "string" },
+                    framework = new { type = "string" },
+                    style = new { type = "string" }
+                }
+            },
+            planHash = new { type = "string", description = "The approved SHA-256 plan hash returned by plan_project_scaffold or preflight." },
             command = new
             {
                 type = "string",
@@ -49,14 +62,21 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 description = "Optional timeout in seconds. Defaults to 120 and is capped at 600."
             }
         },
-        required = new[] { "plan" }
+        required = new[] { "intent", "plan", "planHash" }
     };
 
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan))
+        if (!TryGetObject<ProjectScaffoldIntentModel>(input, "intent", out var intent) ||
+            !TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan))
         {
-            return ToolResult.Error("Missing required parameter: plan. Pass the approved plan returned by plan_project_scaffold.");
+            return ToolResult.Error("Missing required parameters: intent and plan. Pass the approved intent and plan returned by plan_project_scaffold.");
+        }
+
+        if (!TryGetString(input, "planHash", out var planHash) ||
+            !ProjectScaffoldPlanner.VerifyPlanHash(intent, plan, planHash))
+        {
+            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved intent and plan. Call plan_project_scaffold first, then pass its intent, plan, and planHash unchanged.");
         }
 
         var commands = plan.VerificationCommands

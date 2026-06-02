@@ -63,6 +63,7 @@ public sealed class DesktopProjectScaffoldPlanTool(
                         files = result.Plan.Files,
                         verificationCommands = result.Plan.VerificationCommands
                     },
+                planHash = string.IsNullOrWhiteSpace(result.PlanHash) ? null : result.PlanHash,
                 reasons = result.Reasons,
                 planContext = ProjectScaffoldPlanner.BuildPlanContext(result)
             })));

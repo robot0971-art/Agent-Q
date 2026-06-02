@@ -50,9 +50,10 @@ public sealed class DesktopProjectScaffoldCreateTool(
                 }
             },
             request = new { type = "string", description = "Legacy fallback only. If intent or plan is missing, call plan_project_scaffold first instead of creating files from request alone." },
+            planHash = new { type = "string", description = "The approved SHA-256 plan hash returned by plan_project_scaffold or preflight." },
             overwriteExistingFiles = new { type = "boolean", description = "Whether existing files may be overwritten. Defaults to false." }
         },
-        required = new[] { "intent", "plan" }
+        required = new[] { "intent", "plan", "planHash" }
     };
 
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
@@ -61,6 +62,12 @@ public sealed class DesktopProjectScaffoldCreateTool(
             !TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan))
         {
             return ToolResult.Error("Missing required parameters: intent and plan. Call plan_project_scaffold first, then pass its intent and plan to create_project_scaffold.");
+        }
+
+        if (!TryGetString(input, "planHash", out var planHash) ||
+            !ProjectScaffoldPlanner.VerifyPlanHash(intent, plan, planHash))
+        {
+            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved intent and plan. Call plan_project_scaffold first, then pass its intent, plan, and planHash unchanged.");
         }
 
         var overwrite = TryGetBool(input, "overwriteExistingFiles", fallback: false);
@@ -89,6 +96,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
                     files = plan.Files,
                     verificationCommands = plan.VerificationCommands
                 },
+                planHash,
                 createdFiles = Array.Empty<string>(),
                 skippedFiles = existingFiles,
                 issues = new[] { "Project scaffold was not created because target files already exist. Re-run with overwriteExistingFiles=true only if overwriting is intended." },
@@ -110,23 +118,24 @@ public sealed class DesktopProjectScaffoldCreateTool(
             ct);
 
         return ToolResult.Success(JsonSerializer.Serialize(new
+        {
+            succeeded = result.Succeeded,
+            intent = new
             {
-                succeeded = result.Succeeded,
-                intent = new
-                {
-                    projectType = intent.ProjectType,
-                    language = intent.Language,
-                    framework = intent.Framework,
-                    style = intent.Style
-                },
-                plan = new
-                {
-                    name = plan.Name,
-                    files = plan.Files,
-                    verificationCommands = plan.VerificationCommands
-                },
-                createdFiles = result.CreatedFiles,
-                skippedFiles = result.SkippedFiles,
+                projectType = intent.ProjectType,
+                language = intent.Language,
+                framework = intent.Framework,
+                style = intent.Style
+            },
+            plan = new
+            {
+                name = plan.Name,
+                files = plan.Files,
+                verificationCommands = plan.VerificationCommands
+            },
+            planHash,
+            createdFiles = result.CreatedFiles,
+            skippedFiles = result.SkippedFiles,
             issues = result.Issues,
             verificationCommands = result.VerificationCommands,
             overwriteExistingFiles = overwrite

@@ -625,6 +625,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("\"overwriteExistingFiles\": false", context, StringComparison.Ordinal);
         Assert.Contains("verify_project_scaffold", context, StringComparison.Ordinal);
         Assert.Contains("\"verificationCommands\"", context, StringComparison.Ordinal);
+        Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1942,6 +1943,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("projectType: portfolio", context, StringComparison.Ordinal);
         Assert.Contains("language: javascript", context, StringComparison.Ordinal);
         Assert.Contains("src/main.jsx", context, StringComparison.Ordinal);
+        Assert.Contains("planHash:", context, StringComparison.Ordinal);
+        Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1961,6 +1964,7 @@ public sealed class DesktopServiceTests
         Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
         Assert.True(rootElement.GetProperty("canProceed").GetBoolean());
         Assert.Equal("python", rootElement.GetProperty("intent").GetProperty("language").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(rootElement.GetProperty("planHash").GetString()));
         var files = rootElement.GetProperty("plan").GetProperty("files").EnumerateArray()
             .Select(file => file.GetString())
             .ToList();
@@ -1992,22 +1996,14 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "portfolio",
-                language = "javascript",
-                framework = "vite-react",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "portfolio vite-react scaffold",
-                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
-                verificationCommands = new[] { "npm install", "npm run build" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2036,22 +2032,14 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PythonDataAnalysisIntent();
+        var plan = PythonDataAnalysisPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "data-analysis-tool",
-                language = "python",
-                framework = "python-cli",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "Python data analysis CLI scaffold",
-                files = new[] { "README.md", "requirements.txt", "src/main.py", "src/analyzer.py", "data/.gitkeep", "tests/test_analyzer.py" },
-                verificationCommands = new[] { "python -m pytest" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2071,22 +2059,14 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = FastApiIntent();
+        var plan = FastApiPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "api-server",
-                language = "python",
-                framework = "fastapi",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "FastAPI service scaffold",
-                files = new[] { "README.md", "requirements.txt", "app/main.py", "app/routes.py", "tests/test_app.py" },
-                verificationCommands = new[] { "python -m pytest" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2112,22 +2092,14 @@ public sealed class DesktopServiceTests
 
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "portfolio",
-                language = "javascript",
-                framework = "vite-react",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "portfolio vite-react scaffold",
-                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
-                verificationCommands = new[] { "npm install", "npm run build" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2148,22 +2120,14 @@ public sealed class DesktopServiceTests
 
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PythonDataAnalysisIntent();
+        var plan = PythonDataAnalysisPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "data-analysis-tool",
-                language = "python",
-                framework = "python-cli",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "Python data analysis CLI scaffold",
-                files = new[] { "README.md", "requirements.txt", "src/main.py", "src/analyzer.py", "data/.gitkeep", "tests/test_analyzer.py" },
-                verificationCommands = new[] { "python -m pytest" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2177,22 +2141,14 @@ public sealed class DesktopServiceTests
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "package.json"), "{}");
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "portfolio",
-                language = "javascript",
-                framework = "vite-react",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "portfolio vite-react scaffold",
-                files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css" },
-                verificationCommands = new[] { "npm install", "npm run build" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2228,27 +2184,44 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PortfolioIntent();
+        var plan = new ProjectScaffoldPlanModel
+        {
+            Name = "unsafe scaffold",
+            Files = ["../outside.txt"],
+            VerificationCommands = []
+        };
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["intent"] = new
-            {
-                projectType = "portfolio",
-                language = "javascript",
-                framework = "vite-react",
-                style = "unspecified"
-            },
-            ["plan"] = new
-            {
-                name = "unsafe scaffold",
-                files = new[] { "../outside.txt" },
-                verificationCommands = Array.Empty<string>()
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.True(result.IsError);
         Assert.Contains("escapes the workspace", result.ErrorMessage, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(Directory.GetParent(root)!.FullName, "outside.txt")));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsMismatchedPlanHash()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = "bad-hash"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("plan hash", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
     }
 
     [Fact]
@@ -2318,15 +2291,14 @@ public sealed class DesktopServiceTests
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold ok\r\nexit /b 0\r\n");
         var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var intent = TestScaffoldIntent();
+        var plan = TestCommandPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["plan"] = new
-            {
-                name = "test scaffold",
-                files = new[] { "test.cmd" },
-                verificationCommands = new[] { "cmd /c test.cmd" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -2343,15 +2315,14 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["plan"] = new
-            {
-                name = "test scaffold",
-                files = Array.Empty<string>(),
-                verificationCommands = new[] { "npm run build" }
-            },
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan),
             ["command"] = "npm test"
         });
 
@@ -2364,19 +2335,42 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var intent = TestScaffoldIntent();
+        var plan = new ProjectScaffoldPlanModel
+        {
+            Name = "unsafe scaffold",
+            Files = [],
+            VerificationCommands = ["Remove-Item -Recurse . -Force"]
+        };
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["plan"] = new
-            {
-                name = "unsafe scaffold",
-                files = Array.Empty<string>(),
-                verificationCommands = new[] { "Remove-Item -Recurse . -Force" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.True(result.IsError);
         Assert.Contains("not allowed by the verification command policy", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsMismatchedPlanHash()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var intent = TestScaffoldIntent();
+        var plan = TestCommandPlan();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = "bad-hash"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("plan hash", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2385,15 +2379,14 @@ public sealed class DesktopServiceTests
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold failed\r\nexit /b 1\r\n");
         var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var intent = TestScaffoldIntent();
+        var plan = TestCommandPlan();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, object?>
         {
-            ["plan"] = new
-            {
-                name = "test scaffold",
-                files = new[] { "test.cmd" },
-                verificationCommands = new[] { "cmd /c test.cmd" }
-            }
+            ["intent"] = intent,
+            ["plan"] = plan,
+            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
         });
 
         Assert.False(result.IsError, result.ErrorMessage);
@@ -7736,6 +7729,66 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             Environment.GetEnvironmentVariable("AGENTQ_RUN_SCAFFOLD_INTEGRATION"),
             "1",
             StringComparison.Ordinal);
+
+    private static ProjectScaffoldIntentModel PortfolioIntent() => new()
+    {
+        ProjectType = "portfolio",
+        Language = "javascript",
+        Framework = "vite-react",
+        Style = "unspecified"
+    };
+
+    private static ProjectScaffoldPlanModel PortfolioPlan() => new()
+    {
+        Name = "portfolio vite-react scaffold",
+        Files = ["package.json", "index.html", "vite.config.js", "src/main.jsx", "src/App.jsx", "src/styles.css"],
+        VerificationCommands = ["npm install", "npm run build"]
+    };
+
+    private static ProjectScaffoldIntentModel PythonDataAnalysisIntent() => new()
+    {
+        ProjectType = "data-analysis-tool",
+        Language = "python",
+        Framework = "python-cli",
+        Style = "unspecified"
+    };
+
+    private static ProjectScaffoldPlanModel PythonDataAnalysisPlan() => new()
+    {
+        Name = "Python data analysis CLI scaffold",
+        Files = ["README.md", "requirements.txt", "src/main.py", "src/analyzer.py", "data/.gitkeep", "tests/test_analyzer.py"],
+        VerificationCommands = ["python -m pytest"]
+    };
+
+    private static ProjectScaffoldIntentModel FastApiIntent() => new()
+    {
+        ProjectType = "api-server",
+        Language = "python",
+        Framework = "fastapi",
+        Style = "unspecified"
+    };
+
+    private static ProjectScaffoldPlanModel FastApiPlan() => new()
+    {
+        Name = "FastAPI service scaffold",
+        Files = ["README.md", "requirements.txt", "app/main.py", "app/routes.py", "tests/test_app.py"],
+        VerificationCommands = ["python -m pytest"]
+    };
+
+    private static ProjectScaffoldIntentModel TestScaffoldIntent() => new()
+    {
+        ProjectType = "test-scaffold",
+        Language = "batch",
+        Framework = "cmd",
+        Style = "unspecified"
+    };
+
+    private static ProjectScaffoldPlanModel TestCommandPlan() => new()
+    {
+        Name = "test scaffold",
+        Files = ["test.cmd"],
+        VerificationCommands = ["cmd /c test.cmd"]
+    };
 
     private static async Task<CommandResult> RunCommandAsync(
         string workingDirectory,
