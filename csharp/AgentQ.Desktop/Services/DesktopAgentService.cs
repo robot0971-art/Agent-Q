@@ -66,6 +66,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly List<ChatMessage> _messages = [];
     private readonly ConversationCompactor _compactor = new();
     private readonly TaskDecomposer _taskDecomposer = new();
+    private readonly ProjectScaffoldPlanner _projectScaffoldPlanner = new();
     private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
@@ -123,15 +124,22 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
-        if (TryBuildPreflightClarification(userText, workMode, taskProfile.Kind, out var clarification))
+        var projectScaffoldPlan = _projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot);
+        if (workMode != AgentWorkMode.Readonly &&
+            taskProfile.Kind == DesktopTaskKind.Feature &&
+            projectScaffoldPlan.IsGreenfieldRequest &&
+            !projectScaffoldPlan.CanProceed)
         {
+            var clarification = string.IsNullOrWhiteSpace(projectScaffoldPlan.ClarifyingQuestion)
+                ? "어떤 종류의 프로젝트를 원하시나요? 예: 포트폴리오 홈페이지, Python 데이터 분석 도구, 게임, API 서버, 단어장 웹앱."
+                : projectScaffoldPlan.ClarifyingQuestion;
             _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
             _messages.Add(ChatMessage.AssistantText(clarification));
             onDelta?.Invoke(clarification);
             toolCallbacks?.OnRunStep?.Invoke(
                 AgentRunState.Clarifying,
                 "Waiting for user answer",
-                "The project request is underspecified, so AgentQ asked a focused project-type question before calling a provider.");
+                string.Join(" ", projectScaffoldPlan.Reasons.DefaultIfEmpty("The project request is underspecified, so AgentQ asked a focused project-type question before calling a provider.")));
             return clarification;
         }
 
@@ -148,7 +156,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             routingRecommendation.CurrentModelMatches
                 ? $"Current model matches route. {routingRecommendation.DisplayText}"
                 : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
-        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, ct);
+        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, ct);
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
@@ -856,6 +864,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         ProjectMemory projectMemory,
         ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
         CancellationToken ct)
     {
         var workspaceContext = config.DesktopAutoAttachWorkspaceContext
@@ -870,6 +879,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
         var scaffoldDecisionContext = await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct);
+        var projectScaffoldPlanContext = ProjectScaffoldPlanner.BuildPlanContext(projectScaffoldPlan);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
@@ -877,6 +887,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             string.IsNullOrWhiteSpace(mcpContext) &&
             string.IsNullOrWhiteSpace(linkStatusContext) &&
             string.IsNullOrWhiteSpace(explicitStackContext) &&
+            string.IsNullOrWhiteSpace(projectScaffoldPlanContext) &&
             string.IsNullOrWhiteSpace(scaffoldDecisionContext))
         {
             return string.Empty;
@@ -899,6 +910,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (!string.IsNullOrWhiteSpace(explicitStackContext))
         {
             builder.AppendLine(explicitStackContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(projectScaffoldPlanContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(projectScaffoldPlanContext);
         }
 
         if (!string.IsNullOrWhiteSpace(linkStatusContext))

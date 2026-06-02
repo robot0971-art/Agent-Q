@@ -1764,6 +1764,100 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ProjectScaffoldPlanner_AsksForBareNewProject()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.False(result.CanProceed);
+        Assert.Contains("\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8", result.ClarifyingQuestion, StringComparison.Ordinal);
+        Assert.Null(result.Plan);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_PlansPortfolioAsJavaScriptByDefault()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan(
+            "\uC5EC\uAE30\uC5D0 \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.True(result.CanProceed);
+        Assert.Equal("portfolio", result.Intent?.ProjectType);
+        Assert.Equal("javascript", result.Intent?.Language);
+        Assert.Equal("vite-react", result.Intent?.Framework);
+        Assert.Contains("src/main.jsx", result.Plan!.Files);
+        Assert.DoesNotContain("src/main.tsx", result.Plan.Files);
+        Assert.Contains("npm run build", result.Plan.VerificationCommands);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_HonorsExplicitTypeScriptPortfolio()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan("Create a TypeScript portfolio website", root);
+
+        Assert.True(result.CanProceed);
+        Assert.Equal("typescript", result.Intent?.Language);
+        Assert.Contains("src/main.tsx", result.Plan!.Files);
+        Assert.DoesNotContain("src/main.jsx", result.Plan.Files);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_PlansPythonDataAnalysisTool()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan(
+            "\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC790",
+            root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.True(result.CanProceed);
+        Assert.Equal("data-analysis-tool", result.Intent?.ProjectType);
+        Assert.Equal("python", result.Intent?.Language);
+        Assert.Contains("src/main.py", result.Plan!.Files);
+        Assert.Contains("python -m pytest", result.Plan.VerificationCommands);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_AsksBeforeOverwritingExistingProject()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        File.WriteAllText(Path.Combine(root, "README.md"), "existing");
+
+        var result = new ProjectScaffoldPlanner().Plan(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.False(result.CanProceed);
+        Assert.Contains("\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C", result.ClarifyingQuestion, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_BuildsPlanContext()
+    {
+        var root = CreateTempDirectory();
+        var result = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+
+        var context = ProjectScaffoldPlanner.BuildPlanContext(result);
+
+        Assert.Contains("Project scaffold preflight plan", context, StringComparison.Ordinal);
+        Assert.Contains("projectType: portfolio", context, StringComparison.Ordinal);
+        Assert.Contains("language: javascript", context, StringComparison.Ordinal);
+        Assert.Contains("src/main.jsx", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_UsesTypeScriptWorkerResults()
     {
         var root = CreateTempDirectory();
