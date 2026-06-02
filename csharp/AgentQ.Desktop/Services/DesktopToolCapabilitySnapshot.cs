@@ -84,6 +84,7 @@ public sealed class DesktopToolCapabilitySnapshot
         return tool.Name switch
         {
             "edit_file" or "write_file" => "workspace edits require approval; external writes are blocked",
+            "create_project_scaffold" => "project scaffold file creation requires approval; existing files are not overwritten by default",
             "bash" => "verification commands require approval; destructive commands are blocked",
             _ when tool.Name.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase) => "external MCP action requires approval",
             _ => "requires user approval"

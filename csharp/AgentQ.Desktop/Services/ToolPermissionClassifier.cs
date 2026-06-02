@@ -29,6 +29,7 @@ public static class ToolPermissionClassifier
         return toolName switch
         {
             "write_file" or "edit_file" => AssessFileMutation(toolName, input),
+            "create_project_scaffold" => AssessProjectScaffoldCreation(input),
             "bash" => AssessShell(input),
             _ => new ToolPermissionAssessment
             {
@@ -36,6 +37,18 @@ public static class ToolPermissionClassifier
                 Operation = toolName,
                 Reason = "This tool can affect the local workspace."
             }
+        };
+    }
+
+    private static ToolPermissionAssessment AssessProjectScaffoldCreation(IReadOnlyDictionary<string, object?> input)
+    {
+        var request = input.TryGetValue("request", out var rawRequest) ? rawRequest as string : null;
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.ProjectWrite,
+            Operation = "Create project scaffold",
+            Target = string.IsNullOrWhiteSpace(request) ? "(missing request)" : request,
+            Reason = "This will create project files inside the selected workspace."
         };
     }
 

@@ -19,6 +19,9 @@ public static class DesktopEvidenceFormatter
             "plan_project_scaffold" => TryGetString(input, "request", out var request)
                 ? $"Planned project scaffold for: {request}. Reason: deterministic greenfield project intent and scaffold planning."
                 : "Planned project scaffold. Reason: deterministic greenfield project intent and scaffold planning.",
+            "create_project_scaffold" => TryGetString(input, "request", out var createRequest)
+                ? $"Created project scaffold for: {createRequest}. Reason: approved deterministic greenfield project plan execution."
+                : "Created project scaffold. Reason: approved deterministic greenfield project plan execution.",
             "read_file" => TryGetString(input, "path", out var path)
                 ? $"Read file: {path}{DescribePathReason(path, workspaceRoot)}"
                 : "Read file evidence requested.",

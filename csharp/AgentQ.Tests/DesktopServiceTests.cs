@@ -1904,6 +1904,75 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_CreatesJavaScriptPortfolioFiles()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        var created = rootElement.GetProperty("createdFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("package.json", created);
+        Assert.Contains("src/main.jsx", created);
+        Assert.Contains("src/App.jsx", created);
+        Assert.True(File.Exists(Path.Combine(root, "package.json")));
+        Assert.True(File.Exists(Path.Combine(root, "src", "main.jsx")));
+        Assert.Contains("/src/main.jsx", File.ReadAllText(Path.Combine(root, "index.html")), StringComparison.Ordinal);
+        Assert.Contains("\"build\": \"vite build\"", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.Ordinal);
+        Assert.DoesNotContain("typescript", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_DoesNotOverwriteExistingFilesByDefault()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "package.json"), "{}");
+        var tool = new DesktopProjectScaffoldCreateTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["request"] = "Create a portfolio website"
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.False(rootElement.GetProperty("succeeded").GetBoolean());
+        var skipped = rootElement.GetProperty("skippedFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("package.json", skipped);
+        Assert.Equal("{}", File.ReadAllText(Path.Combine(root, "package.json")));
+        Assert.Contains("target files already exist", string.Join(" ", rootElement.GetProperty("issues").EnumerateArray().Select(issue => issue.GetString())), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToolPermissionClassifier_ClassifiesProjectScaffoldCreationAsProjectWrite()
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "create_project_scaffold",
+            new Dictionary<string, object?>
+            {
+                ["request"] = "Create a portfolio website"
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_UsesTypeScriptWorkerResults()
     {
         var root = CreateTempDirectory();

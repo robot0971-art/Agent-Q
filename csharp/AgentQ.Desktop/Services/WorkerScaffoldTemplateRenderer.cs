@@ -17,12 +17,12 @@ public static class WorkerScaffoldTemplateRenderer
 
         if (path.Equals("package.json", StringComparison.OrdinalIgnoreCase))
         {
-            return RenderPackageJson(feature, framework);
+            return RenderPackageJson(feature, framework, language);
         }
 
         if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase))
         {
-            return RenderIndexHtml(feature);
+            return RenderIndexHtml(feature, language);
         }
 
         if (path.Equals("vite.config.ts", StringComparison.OrdinalIgnoreCase))
@@ -43,6 +43,16 @@ public static class WorkerScaffoldTemplateRenderer
         if (path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase))
         {
+            if (path.Equals("src/App.jsx", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderReactJavaScriptApp(feature);
+            }
+
+            if (path.Equals("src/main.jsx", StringComparison.OrdinalIgnoreCase))
+            {
+                return RenderReactJavaScriptMain();
+            }
+
             return path.Contains(".test.", StringComparison.OrdinalIgnoreCase) ||
                    path.Contains(".spec.", StringComparison.OrdinalIgnoreCase)
                 ? RenderJavaScriptTest(feature, context)
@@ -135,12 +145,28 @@ public static class WorkerScaffoldTemplateRenderer
         return $"# {Path.GetFileName(relativePath)}{Environment.NewLine}{Environment.NewLine}Scaffold for {feature.Pascal}.{Environment.NewLine}";
     }
 
-    private static string RenderPackageJson(WorkerScaffoldName feature, string framework)
+    private static string RenderPackageJson(WorkerScaffoldName feature, string framework, string language)
     {
         var devScript = framework.Contains("vite", StringComparison.OrdinalIgnoreCase) ||
                         framework.Contains("react", StringComparison.OrdinalIgnoreCase)
             ? "vite --host 127.0.0.1"
             : "vite";
+        var isTypeScript = language.Contains("typescript", StringComparison.OrdinalIgnoreCase);
+        var buildScript = isTypeScript ? "tsc -b && vite build" : "vite build";
+        var devDependencies = isTypeScript
+            ? """
+                "@types/react": "latest",
+                "@types/react-dom": "latest",
+                "@vitejs/plugin-react": "latest",
+                "typescript": "latest",
+                "vite": "latest",
+                "vitest": "latest"
+            """
+            : """
+                "@vitejs/plugin-react": "latest",
+                "vite": "latest",
+                "vitest": "latest"
+            """;
         return
         $$"""
         {
@@ -150,7 +176,7 @@ public static class WorkerScaffoldTemplateRenderer
           "type": "module",
           "scripts": {
             "dev": "{{devScript}}",
-            "build": "tsc -b && vite build",
+            "build": "{{buildScript}}",
             "preview": "vite preview",
             "test": "vitest run"
           },
@@ -159,18 +185,18 @@ public static class WorkerScaffoldTemplateRenderer
             "react-dom": "latest"
           },
           "devDependencies": {
-            "@types/react": "latest",
-            "@types/react-dom": "latest",
-            "@vitejs/plugin-react": "latest",
-            "typescript": "latest",
-            "vite": "latest",
-            "vitest": "latest"
+        {{devDependencies}}
           }
         }
         """;
     }
 
-    private static string RenderIndexHtml(WorkerScaffoldName feature) =>
+    private static string RenderIndexHtml(WorkerScaffoldName feature, string language)
+    {
+        var entry = language.Contains("typescript", StringComparison.OrdinalIgnoreCase)
+            ? "/src/main.tsx"
+            : "/src/main.jsx";
+        return
         $$"""
         <!doctype html>
         <html lang="en">
@@ -181,10 +207,11 @@ public static class WorkerScaffoldTemplateRenderer
           </head>
           <body>
             <div id="root"></div>
-            <script type="module" src="/src/main.tsx"></script>
+            <script type="module" src="{{entry}}"></script>
           </body>
         </html>
         """;
+    }
 
     private static string RenderViteConfig() =>
         """
@@ -335,6 +362,37 @@ public static class WorkerScaffoldTemplateRenderer
             </section>
           );
         }
+        """;
+
+    private static string RenderReactJavaScriptApp(WorkerScaffoldName feature) =>
+        $$"""
+        import "./styles.css";
+
+        export function App() {
+          return (
+            <main className="app-shell">
+              <section className="app-panel" aria-labelledby="app-title">
+                <h1 id="app-title">{{feature.Pascal}}</h1>
+                <p>{{feature.Pascal}} is ready.</p>
+              </section>
+            </main>
+          );
+        }
+
+        export default App;
+        """;
+
+    private static string RenderReactJavaScriptMain() =>
+        """
+        import { StrictMode } from "react";
+        import { createRoot } from "react-dom/client";
+        import App from "./App.jsx";
+
+        createRoot(document.getElementById("root")).render(
+          <StrictMode>
+            <App />
+          </StrictMode>
+        );
         """;
 
     private static string RenderJavaScriptModule(WorkerScaffoldName feature) =>
