@@ -2130,6 +2130,78 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RunsApprovedPlanCommand()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold ok\r\nexit /b 0\r\n");
+        var tool = new DesktopProjectScaffoldVerifyTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["plan"] = new
+            {
+                name = "test scaffold",
+                files = new[] { "test.cmd" },
+                verificationCommands = new[] { "cmd /c test.cmd" }
+            }
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.Equal("cmd /c test.cmd", rootElement.GetProperty("command").GetString());
+        Assert.Equal(0, rootElement.GetProperty("exitCode").GetInt32());
+        Assert.Contains("scaffold ok", rootElement.GetProperty("combinedOutput").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsCommandOutsideApprovedPlan()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldVerifyTool(root);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["plan"] = new
+            {
+                name = "test scaffold",
+                files = Array.Empty<string>(),
+                verificationCommands = new[] { "npm run build" }
+            },
+            ["command"] = "npm test"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("not part of the approved", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToolPermissionClassifier_ClassifiesProjectScaffoldVerificationAsVerificationCommand()
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "verify_project_scaffold",
+            new Dictionary<string, object?>
+            {
+                ["plan"] = new
+                {
+                    name = "portfolio vite-react scaffold",
+                    files = new[] { "package.json" },
+                    verificationCommands = new[] { "npm install", "npm run build" }
+                },
+                ["command"] = "npm run build"
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
+        Assert.Equal("npm run build", assessment.Target);
+        Assert.Contains("plan allows", assessment.Reason, StringComparison.Ordinal);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_UsesTypeScriptWorkerResults()
     {
         var root = CreateTempDirectory();

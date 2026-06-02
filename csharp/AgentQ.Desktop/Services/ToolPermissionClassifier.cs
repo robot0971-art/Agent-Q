@@ -31,6 +31,7 @@ public static class ToolPermissionClassifier
         {
             "write_file" or "edit_file" => AssessFileMutation(toolName, input),
             "create_project_scaffold" => AssessProjectScaffoldCreation(input),
+            "verify_project_scaffold" => AssessProjectScaffoldVerification(input),
             "bash" => AssessShell(input),
             _ => new ToolPermissionAssessment
             {
@@ -60,6 +61,26 @@ public static class ToolPermissionClassifier
             Operation = "Create project scaffold",
             Target = target,
             Reason = $"This will create approved scaffold files inside the selected workspace; {commandSummary}; {overwriteSummary}."
+        };
+    }
+
+    private static ToolPermissionAssessment AssessProjectScaffoldVerification(IReadOnlyDictionary<string, object?> input)
+    {
+        var commands = TryGetPlanStrings(input, "verificationCommands");
+        var command = input.TryGetValue("command", out var rawCommand) ? rawCommand as string : null;
+        var selectedCommand = string.IsNullOrWhiteSpace(command) ? commands.FirstOrDefault() : command;
+        var target = string.IsNullOrWhiteSpace(selectedCommand)
+            ? "(missing plan verification command)"
+            : selectedCommand;
+        var allowedSummary = commands.Count == 0
+            ? "plan contains no verification commands"
+            : "plan allows: " + string.Join(", ", commands.Take(3)) + (commands.Count > 3 ? $", +{commands.Count - 3} more" : string.Empty);
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.VerificationCommand,
+            Operation = "Verify project scaffold",
+            Target = target,
+            Reason = $"This will run a scaffold verification command in the selected workspace; {allowedSummary}."
         };
     }
 

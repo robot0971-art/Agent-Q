@@ -7,6 +7,7 @@ public static class VerificationCommandPolicy
         "cmd /c build.cmd",
         "cmd /c test.cmd",
         "docker compose config",
+        "npm install",
         "npm run build",
         "npm run test:e2e",
         "npm test",

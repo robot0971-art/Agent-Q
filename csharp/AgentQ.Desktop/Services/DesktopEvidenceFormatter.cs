@@ -24,6 +24,11 @@ public static class DesktopEvidenceFormatter
                 : TryGetString(input, "request", out var createRequest)
                     ? $"Created project scaffold for: {createRequest}. Reason: approved deterministic greenfield project plan execution."
                     : "Created project scaffold. Reason: approved deterministic greenfield project plan execution.",
+            "verify_project_scaffold" => TryGetString(input, "command", out var verifyCommand)
+                ? $"Verified project scaffold with command: {verifyCommand}. Reason: approved scaffold verification command."
+                : TryGetPlanVerificationCommands(input, out var verifyCommands)
+                    ? $"Verified project scaffold with plan commands: {verifyCommands}. Reason: approved scaffold verification command."
+                    : "Verified project scaffold. Reason: approved scaffold verification command.",
             "read_file" => TryGetString(input, "path", out var path)
                 ? $"Read file: {path}{DescribePathReason(path, workspaceRoot)}"
                 : "Read file evidence requested.",
@@ -420,6 +425,46 @@ public static class DesktopEvidenceFormatter
         }
 
         value = string.Join(", ", files.Take(8)) + (files.Count > 8 ? $", +{files.Count - 8} more" : string.Empty);
+        return true;
+    }
+
+    private static bool TryGetPlanVerificationCommands(IReadOnlyDictionary<string, object?> input, out string value)
+    {
+        if (!input.TryGetValue("plan", out var rawPlan) || rawPlan == null)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var commands = new List<string>();
+        if (rawPlan is System.Text.Json.JsonElement element &&
+            element.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            element.TryGetProperty("verificationCommands", out var commandsElement) &&
+            commandsElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            commands.AddRange(commandsElement.EnumerateArray()
+                .Where(item => item.ValueKind == System.Text.Json.JsonValueKind.String)
+                .Select(item => item.GetString())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text!));
+        }
+        else if (rawPlan is IReadOnlyDictionary<string, object?> dictionary &&
+                 dictionary.TryGetValue("verificationCommands", out var rawCommands) &&
+                 rawCommands is IEnumerable<object?> objects)
+        {
+            commands.AddRange(objects
+                .Select(item => item?.ToString())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text!));
+        }
+
+        if (commands.Count == 0)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        value = string.Join(", ", commands.Take(3)) + (commands.Count > 3 ? $", +{commands.Count - 3} more" : string.Empty);
         return true;
     }
 
