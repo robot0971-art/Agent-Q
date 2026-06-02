@@ -676,7 +676,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         var assistantLower = assistantText.ToLowerInvariant();
-        if (!UserAskedForWorkspaceWork(userText))
+        if (!UserAskedForMutationWork(userText))
         {
             return false;
         }
@@ -701,7 +701,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         !string.IsNullOrWhiteSpace(userText) &&
         !string.IsNullOrWhiteSpace(assistantText) &&
         IsActionableCodingTask(taskKind) &&
-        UserAskedForWorkspaceWork(userText) &&
+        UserAskedForMutationWork(userText) &&
         !IsAllowedClarification(userText, assistantText.ToLowerInvariant()) &&
         !LooksLikeWorkspaceActionSummary(assistantText.ToLowerInvariant());
 
@@ -737,6 +737,62 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uD30C\uC774\uC36C",
             "\uB370\uC774\uD130 \uBD84\uC11D",
             "\uBD84\uC11D \uB3C4\uAD6C");
+    }
+
+    private static bool UserAskedForMutationWork(string userText)
+    {
+        var userLower = userText.ToLowerInvariant();
+        if (ContainsAny(
+                userLower,
+                "why",
+                "why is",
+                "what is",
+                "what do you think",
+                "how does",
+                "analyze this",
+                "review this",
+                "is it done",
+                "is this done",
+                "done?",
+                "\uC65C",
+                "\uBB50\uAC00 \uBB38\uC81C",
+                "\uC5B4\uB5BB\uAC8C \uC0DD\uAC01",
+                "\uC774 \uBD84\uC11D",
+                "\uC5B4\uB5BB\uB098",
+                "\uB2E4 \uB41C",
+                "\uB05D\uB09C",
+                "\uBB50\uD558\uBA74",
+                "\uC774\uC81C"))
+        {
+            return false;
+        }
+
+        return ContainsAny(
+            userLower,
+            "make",
+            "build",
+            "create",
+            "implement",
+            "fix",
+            "modify",
+            "update",
+            "add ",
+            "scaffold",
+            "generate",
+            "proceed",
+            "continue",
+            "next task",
+            "\uB9CC\uB4E4",
+            "\uC0DD\uC131",
+            "\uAD6C\uD604",
+            "\uACE0\uCCD0",
+            "\uC218\uC815",
+            "\uCD94\uAC00",
+            "\uC9C4\uD589",
+            "\uB2E4\uC74C \uC791\uC5C5",
+            "\uD574\uBCF4\uC790",
+            "\uD558\uC790") ||
+            UserAskedForWorkspaceWork(userText);
     }
 
     private static bool IsAllowedClarification(string userText, string assistantLower)

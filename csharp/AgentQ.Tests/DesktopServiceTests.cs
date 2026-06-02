@@ -508,6 +508,57 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_AllowsNoToolAnswerForGuardExplanationQuestion()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. 이렇게 나오는데",
+            "이 메시지는 workspace task guard가 질문성 대화까지 코딩 작업으로 오판해서 나온 것입니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. 이렇게 나오는데",
+            "이 메시지는 workspace task guard가 질문성 대화까지 코딩 작업으로 오판해서 나온 것입니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldRetry);
+        Assert.False(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_AllowsNoToolAnswerForAnalysisOpinionQuestion()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "이 분석에 대해 어떻게 생각함",
+            "분석 방향은 맞지만 plan provenance와 통합 검증은 아직 보강이 필요합니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_AllowsNoToolAnswerForDoneStatusQuestion()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "이제 다 된건가",
+            "핵심 scaffold 루프는 완료됐고 남은 것은 수동 UX 검증과 정리입니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldReject);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesFuturePromiseWithKoreanCreateWord()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
