@@ -81,6 +81,8 @@ public sealed class ProjectScaffoldPlanner
             : string.Join(", ", result.Plan.VerificationCommands);
         var createInput = JsonSerializer.Serialize(new
         {
+            planId = result.PlanId,
+            planHash = result.PlanHash,
             intent = new
             {
                 projectType = result.Intent.ProjectType,
@@ -94,28 +96,22 @@ public sealed class ProjectScaffoldPlanner
                 files = result.Plan.Files,
                 verificationCommands = result.Plan.VerificationCommands
             },
-            planHash = result.PlanHash,
             overwriteExistingFiles = false
         }, new JsonSerializerOptions { WriteIndented = true });
         var verifyInput = JsonSerializer.Serialize(new
         {
-            intent = new
-            {
-                projectType = result.Intent.ProjectType,
-                language = result.Intent.Language,
-                framework = result.Intent.Framework,
-                style = result.Intent.Style
-            },
+            planId = result.PlanId,
+            planHash = result.PlanHash,
             plan = new
             {
                 name = result.Plan.Name,
                 files = result.Plan.Files,
                 verificationCommands = result.Plan.VerificationCommands
-            },
-            planHash = result.PlanHash
+            }
         }, new JsonSerializerOptions { WriteIndented = true });
         return
             "Project scaffold preflight plan:\n" +
+            $"- planId: {result.PlanId}\n" +
             $"- projectType: {result.Intent.ProjectType}\n" +
             $"- language: {result.Intent.Language}\n" +
             $"- framework: {result.Intent.Framework}\n" +
@@ -371,6 +367,8 @@ public sealed class ProjectScaffoldPlanningResult
     public ProjectScaffoldPlanModel? Plan { get; init; }
 
     public string PlanHash { get; init; } = string.Empty;
+
+    public string PlanId { get; init; } = string.Empty;
 
     public IReadOnlyList<string> Reasons { get; init; } = [];
 }

@@ -497,7 +497,7 @@ public sealed class DesktopServiceTests
     public void DesktopAgentService_BuildsScaffoldAwareNoToolRetryInstruction()
     {
         var root = CreateTempDirectory();
-        var plan = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+        var plan = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
 
         var retryInstruction = DesktopAgentService.BuildNoToolRetryInstruction(plan);
         var rejectMessage = DesktopAgentService.BuildNoToolCompletionMessage(plan);
@@ -506,6 +506,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("verify_project_scaffold", retryInstruction, StringComparison.Ordinal);
         Assert.DoesNotContain("list_directory first", retryInstruction, StringComparison.Ordinal);
         Assert.Contains("model did not call create_project_scaffold", rejectMessage, StringComparison.Ordinal);
+        Assert.Contains("planId", retryInstruction, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -614,17 +615,15 @@ public sealed class DesktopServiceTests
     public void ProjectScaffoldPlanner_BuildPlanContext_IncludesExactToolInputs()
     {
         var root = CreateTempDirectory();
-        var result = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
 
         var context = ProjectScaffoldPlanner.BuildPlanContext(result);
 
         Assert.Contains("Use this exact tool sequence", context, StringComparison.Ordinal);
         Assert.Contains("create_project_scaffold", context, StringComparison.Ordinal);
-        Assert.Contains("\"intent\"", context, StringComparison.Ordinal);
-        Assert.Contains("\"plan\"", context, StringComparison.Ordinal);
+        Assert.Contains("\"planId\"", context, StringComparison.Ordinal);
         Assert.Contains("\"overwriteExistingFiles\": false", context, StringComparison.Ordinal);
         Assert.Contains("verify_project_scaffold", context, StringComparison.Ordinal);
-        Assert.Contains("\"verificationCommands\"", context, StringComparison.Ordinal);
         Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
     }
 
@@ -1935,7 +1934,7 @@ public sealed class DesktopServiceTests
     public void ProjectScaffoldPlanner_BuildsPlanContext()
     {
         var root = CreateTempDirectory();
-        var result = new ProjectScaffoldPlanner().Plan("Create a portfolio website", root);
+        var result = new ProjectScaffoldPlanRegistry().Register(new ProjectScaffoldPlanner().Plan("Create a portfolio website", root));
 
         var context = ProjectScaffoldPlanner.BuildPlanContext(result);
 
@@ -1943,6 +1942,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("projectType: portfolio", context, StringComparison.Ordinal);
         Assert.Contains("language: javascript", context, StringComparison.Ordinal);
         Assert.Contains("src/main.jsx", context, StringComparison.Ordinal);
+        Assert.Contains("planId:", context, StringComparison.Ordinal);
+        Assert.Contains("\"planId\"", context, StringComparison.Ordinal);
         Assert.Contains("planHash:", context, StringComparison.Ordinal);
         Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
     }
@@ -1964,6 +1965,7 @@ public sealed class DesktopServiceTests
         Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
         Assert.True(rootElement.GetProperty("canProceed").GetBoolean());
         Assert.Equal("python", rootElement.GetProperty("intent").GetProperty("language").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(rootElement.GetProperty("planId").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(rootElement.GetProperty("planHash").GetString()));
         var files = rootElement.GetProperty("plan").GetProperty("files").EnumerateArray()
             .Select(file => file.GetString())
@@ -1995,16 +1997,13 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldCreateTool_CreatesJavaScriptPortfolioFiles()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -2031,16 +2030,13 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldCreateTool_CreatesPythonDataAnalysisFilesWithMatchingImports()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PythonDataAnalysisIntent();
         var plan = PythonDataAnalysisPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -2058,16 +2054,13 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldCreateTool_CreatesFastApiFilesWithMatchingImports()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = FastApiIntent();
         var plan = FastApiPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -2091,16 +2084,13 @@ public sealed class DesktopServiceTests
         }
 
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         var install = await RunCommandAsync(root, "cmd.exe", "/c npm install", timeoutSeconds: 180);
@@ -2119,16 +2109,13 @@ public sealed class DesktopServiceTests
         }
 
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PythonDataAnalysisIntent();
         var plan = PythonDataAnalysisPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         var pytest = await RunCommandAsync(root, "python", "-m pytest", timeoutSeconds: 120);
@@ -2140,16 +2127,13 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "package.json"), "{}");
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -2183,7 +2167,7 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldCreateTool_RejectsPlanThatEscapesWorkspace()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = new ProjectScaffoldPlanModel
         {
@@ -2191,13 +2175,10 @@ public sealed class DesktopServiceTests
             Files = ["../outside.txt"],
             VerificationCommands = []
         };
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.True(result.IsError);
         Assert.Contains("escapes the workspace", result.ErrorMessage, StringComparison.Ordinal);
@@ -2208,19 +2189,52 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldCreateTool_RejectsMismatchedPlanHash()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldCreateTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = "bad-hash"
-        });
+        var input = ScaffoldToolInput(record);
+        input["planHash"] = "bad-hash";
+        var result = await tool.ExecuteAsync(input);
 
         Assert.True(result.IsError);
         Assert.Contains("plan hash", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsUnknownPlanId()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: new ProjectScaffoldPlanRegistry());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["planId"] = "psc_missing",
+            ["planHash"] = "unused"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("planId", result.ErrorMessage, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_RejectsSnapshotThatDoesNotMatchPlanId()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = RegisterScaffoldPlan(registry, PortfolioIntent(), PortfolioPlan());
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
+        var input = ScaffoldToolInput(record);
+        input["plan"] = PythonDataAnalysisPlan();
+
+        var result = await tool.ExecuteAsync(input);
+
+        Assert.True(result.IsError);
+        Assert.Contains("snapshot does not match", result.ErrorMessage, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(root, "package.json")));
     }
 
@@ -2290,16 +2304,13 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold ok\r\nexit /b 0\r\n");
-        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -2314,17 +2325,15 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldVerifyTool_RejectsCommandOutsideApprovedPlan()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = PortfolioIntent();
         var plan = PortfolioPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan),
-            ["command"] = "npm test"
-        });
+        var input = ScaffoldToolInput(record);
+        input["command"] = "npm test";
+        var result = await tool.ExecuteAsync(input);
 
         Assert.True(result.IsError);
         Assert.Contains("not part of the approved", result.ErrorMessage, StringComparison.Ordinal);
@@ -2334,7 +2343,7 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldVerifyTool_RejectsUnsafeCommandEvenWhenListedInPlan()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = new ProjectScaffoldPlanModel
         {
@@ -2342,13 +2351,10 @@ public sealed class DesktopServiceTests
             Files = [],
             VerificationCommands = ["Remove-Item -Recurse . -Force"]
         };
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.True(result.IsError);
         Assert.Contains("not allowed by the verification command policy", result.ErrorMessage, StringComparison.Ordinal);
@@ -2358,19 +2364,34 @@ public sealed class DesktopServiceTests
     public async Task DesktopProjectScaffoldVerifyTool_RejectsMismatchedPlanHash()
     {
         var root = CreateTempDirectory();
-        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = "bad-hash"
-        });
+        var input = ScaffoldToolInput(record);
+        input["planHash"] = "bad-hash";
+        var result = await tool.ExecuteAsync(input);
 
         Assert.True(result.IsError);
         Assert.Contains("plan hash", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsUnknownPlanId()
+    {
+        var root = CreateTempDirectory();
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: new ProjectScaffoldPlanRegistry());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["planId"] = "psc_missing",
+            ["planHash"] = "unused"
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("planId", result.ErrorMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2378,16 +2399,13 @@ public sealed class DesktopServiceTests
     {
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "test.cmd"), "@echo off\r\necho scaffold failed\r\nexit /b 1\r\n");
-        var tool = new DesktopProjectScaffoldVerifyTool(root);
+        var registry = new ProjectScaffoldPlanRegistry();
         var intent = TestScaffoldIntent();
         var plan = TestCommandPlan();
+        var record = RegisterScaffoldPlan(registry, intent, plan);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
-        {
-            ["intent"] = intent,
-            ["plan"] = plan,
-            ["planHash"] = ProjectScaffoldPlanner.ComputePlanHash(intent, plan)
-        });
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
 
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
@@ -7789,6 +7807,31 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Files = ["test.cmd"],
         VerificationCommands = ["cmd /c test.cmd"]
     };
+
+    private static ProjectScaffoldPlanRecord RegisterScaffoldPlan(
+        ProjectScaffoldPlanRegistry registry,
+        ProjectScaffoldIntentModel intent,
+        ProjectScaffoldPlanModel plan) =>
+        registry.Register(intent, plan);
+
+    private static Dictionary<string, object?> ScaffoldToolInput(
+        ProjectScaffoldPlanRecord record,
+        bool includeSnapshot = true)
+    {
+        var input = new Dictionary<string, object?>
+        {
+            ["planId"] = record.PlanId,
+            ["planHash"] = record.PlanHash
+        };
+
+        if (includeSnapshot)
+        {
+            input["intent"] = record.Intent;
+            input["plan"] = record.Plan;
+        }
+
+        return input;
+    }
 
     private static async Task<CommandResult> RunCommandAsync(
         string workingDirectory,

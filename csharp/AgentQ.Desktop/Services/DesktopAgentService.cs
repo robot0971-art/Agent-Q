@@ -67,6 +67,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ConversationCompactor _compactor = new();
     private readonly TaskDecomposer _taskDecomposer = new();
     private readonly ProjectScaffoldPlanner _projectScaffoldPlanner = new();
+    private readonly ProjectScaffoldPlanRegistry _projectScaffoldPlanRegistry = new();
     private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
@@ -124,7 +125,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
-        var projectScaffoldPlan = _projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot);
+        var projectScaffoldPlan = _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot));
         if (workMode != AgentWorkMode.Readonly &&
             taskProfile.Kind == DesktopTaskKind.Feature &&
             projectScaffoldPlan.IsGreenfieldRequest &&
@@ -670,8 +671,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         {
             return
                 "The desktop preflight already produced a project scaffold plan. Do not answer in prose. " +
-                "Call create_project_scaffold now with the attached intent and plan. " +
-                "After it succeeds, call verify_project_scaffold with the same plan. " +
+                "Call create_project_scaffold now with the attached planId and planHash. " +
+                "After it succeeds, call verify_project_scaffold with the same planId and planHash. " +
                 "If create_project_scaffold reports existing file collisions, report the collision and ask before overwrite.";
         }
 
@@ -683,7 +684,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     public static string BuildNoToolCompletionMessage(ProjectScaffoldPlanningResult projectScaffoldPlan)
     {
         return HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
-            ? "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved intent and plan, then verify_project_scaffold."
+            ? "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved planId and planHash, then verify_project_scaffold."
             : "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
     }
 
@@ -1867,9 +1868,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
-        registry.Register(new DesktopProjectScaffoldPlanTool(workspaceRoot, _projectScaffoldPlanner));
-        registry.Register(new DesktopProjectScaffoldCreateTool(workspaceRoot));
-        registry.Register(new DesktopProjectScaffoldVerifyTool(workspaceRoot));
+        registry.Register(new DesktopProjectScaffoldPlanTool(workspaceRoot, _projectScaffoldPlanner, _projectScaffoldPlanRegistry));
+        registry.Register(new DesktopProjectScaffoldCreateTool(workspaceRoot, planRegistry: _projectScaffoldPlanRegistry));
+        registry.Register(new DesktopProjectScaffoldVerifyTool(workspaceRoot, planRegistry: _projectScaffoldPlanRegistry));
         registry.Register(new DesktopSymbolSearchTool(workspaceRoot, _symbolIndexService));
         var embeddingClient = DesktopEmbeddingClientFactory.SupportsProvider(config.EmbeddingProvider)
             ? _embeddingClientFactory.Create(config)

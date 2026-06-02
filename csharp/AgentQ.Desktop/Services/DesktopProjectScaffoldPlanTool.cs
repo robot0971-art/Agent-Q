@@ -5,9 +5,11 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopProjectScaffoldPlanTool(
     string workspaceRoot,
-    ProjectScaffoldPlanner? planner = null) : ITool
+    ProjectScaffoldPlanner? planner = null,
+    ProjectScaffoldPlanRegistry? planRegistry = null) : ITool
 {
     private readonly ProjectScaffoldPlanner _planner = planner ?? new ProjectScaffoldPlanner();
+    private readonly ProjectScaffoldPlanRegistry _planRegistry = planRegistry ?? new ProjectScaffoldPlanRegistry();
 
     public string Name => "plan_project_scaffold";
 
@@ -40,7 +42,7 @@ public sealed class DesktopProjectScaffoldPlanTool(
 
         try
         {
-            var result = _planner.Plan(request, root);
+            var result = _planRegistry.Register(_planner.Plan(request, root));
             return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(new
             {
                 isGreenfieldRequest = result.IsGreenfieldRequest,
@@ -63,6 +65,7 @@ public sealed class DesktopProjectScaffoldPlanTool(
                         files = result.Plan.Files,
                         verificationCommands = result.Plan.VerificationCommands
                     },
+                planId = string.IsNullOrWhiteSpace(result.PlanId) ? null : result.PlanId,
                 planHash = string.IsNullOrWhiteSpace(result.PlanHash) ? null : result.PlanHash,
                 reasons = result.Reasons,
                 planContext = ProjectScaffoldPlanner.BuildPlanContext(result)

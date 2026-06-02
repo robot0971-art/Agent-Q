@@ -6,10 +6,12 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopProjectScaffoldVerifyTool(
     string workspaceRoot,
     DesktopVerificationRunner? runner = null,
-    VerificationFailureClassifier? failureClassifier = null) : ITool
+    VerificationFailureClassifier? failureClassifier = null,
+    ProjectScaffoldPlanRegistry? planRegistry = null) : ITool
 {
     private readonly DesktopVerificationRunner _runner = runner ?? new DesktopVerificationRunner([]);
     private readonly VerificationFailureClassifier _failureClassifier = failureClassifier ?? new VerificationFailureClassifier();
+    private readonly ProjectScaffoldPlanRegistry _planRegistry = planRegistry ?? new ProjectScaffoldPlanRegistry();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -27,10 +29,11 @@ public sealed class DesktopProjectScaffoldVerifyTool(
         type = "object",
         properties = new
         {
+            planId = new { type = "string", description = "The approved plan id returned by plan_project_scaffold or preflight." },
             plan = new
             {
                 type = "object",
-                description = "The approved project scaffold plan containing verificationCommands.",
+                description = "Optional display snapshot of the approved project scaffold plan containing verificationCommands.",
                 properties = new
                 {
                     name = new { type = "string" },
@@ -41,7 +44,7 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             intent = new
             {
                 type = "object",
-                description = "The approved project scaffold intent returned by plan_project_scaffold.",
+                description = "Optional display snapshot of the approved project scaffold intent returned by plan_project_scaffold.",
                 properties = new
                 {
                     projectType = new { type = "string" },
@@ -62,23 +65,29 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 description = "Optional timeout in seconds. Defaults to 120 and is capped at 600."
             }
         },
-        required = new[] { "intent", "plan", "planHash" }
+        required = new[] { "planId", "planHash" }
     };
 
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!TryGetObject<ProjectScaffoldIntentModel>(input, "intent", out var intent) ||
-            !TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan))
+        if (!TryGetString(input, "planId", out var planId) ||
+            !_planRegistry.TryGet(planId, out var record))
         {
-            return ToolResult.Error("Missing required parameters: intent and plan. Pass the approved intent and plan returned by plan_project_scaffold.");
+            return ToolResult.Error("Project scaffold planId is missing or unknown. Call plan_project_scaffold first, then pass its planId and planHash unchanged.");
         }
 
         if (!TryGetString(input, "planHash", out var planHash) ||
-            !ProjectScaffoldPlanner.VerifyPlanHash(intent, plan, planHash))
+            !string.Equals(record.PlanHash, planHash.Trim(), StringComparison.OrdinalIgnoreCase))
         {
-            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved intent and plan. Call plan_project_scaffold first, then pass its intent, plan, and planHash unchanged.");
+            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved planId. Call plan_project_scaffold first, then pass its planId and planHash unchanged.");
         }
 
+        if (!InputSnapshotMatchesRegistry(input, record, out var mismatch))
+        {
+            return ToolResult.Error(mismatch);
+        }
+
+        var plan = record.Plan;
         var commands = plan.VerificationCommands
             .Where(command => !string.IsNullOrWhiteSpace(command))
             .Select(command => command.Trim())
@@ -153,6 +162,29 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 artifacts = Array.Empty<object>()
             }));
         }
+    }
+
+    private static bool InputSnapshotMatchesRegistry(
+        Dictionary<string, object?> input,
+        ProjectScaffoldPlanRecord record,
+        out string mismatch)
+    {
+        if (TryGetObject<ProjectScaffoldIntentModel>(input, "intent", out var intent) &&
+            !ProjectScaffoldPlanner.VerifyPlanHash(intent, record.Plan, record.PlanHash))
+        {
+            mismatch = "Project scaffold intent snapshot does not match the approved planId.";
+            return false;
+        }
+
+        if (TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan) &&
+            !ProjectScaffoldPlanner.VerifyPlanHash(record.Intent, plan, record.PlanHash))
+        {
+            mismatch = "Project scaffold plan snapshot does not match the approved planId.";
+            return false;
+        }
+
+        mismatch = string.Empty;
+        return true;
     }
 
     private static object ToFailureAnalysisDto(VerificationFailureAnalysis analysis) => new

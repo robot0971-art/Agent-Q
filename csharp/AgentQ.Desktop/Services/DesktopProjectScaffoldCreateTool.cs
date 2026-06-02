@@ -6,9 +6,11 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopProjectScaffoldCreateTool(
     string workspaceRoot,
-    WorkerScaffoldExecutor? executor = null) : ITool
+    WorkerScaffoldExecutor? executor = null,
+    ProjectScaffoldPlanRegistry? planRegistry = null) : ITool
 {
     private readonly WorkerScaffoldExecutor _executor = executor ?? new WorkerScaffoldExecutor();
+    private readonly ProjectScaffoldPlanRegistry _planRegistry = planRegistry ?? new ProjectScaffoldPlanRegistry();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -17,7 +19,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
     public string Name => "create_project_scaffold";
 
     public string Description =>
-        "Create files for an approved deterministic greenfield project scaffold plan. Requires intent and plan from plan_project_scaffold, writes only plan-approved files, and does not overwrite existing files unless explicitly allowed.";
+        "Create files for an approved deterministic greenfield project scaffold plan. Requires planId and planHash from plan_project_scaffold, writes only registry-approved files, and does not overwrite existing files unless explicitly allowed.";
 
     public bool RequiresPermission => true;
 
@@ -29,7 +31,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
             intent = new
             {
                 type = "object",
-                description = "The approved project scaffold intent returned by plan_project_scaffold.",
+                description = "Optional display snapshot of the approved project scaffold intent returned by plan_project_scaffold.",
                 properties = new
                 {
                     projectType = new { type = "string" },
@@ -41,7 +43,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
             plan = new
             {
                 type = "object",
-                description = "The approved project scaffold plan returned by plan_project_scaffold.",
+                description = "Optional display snapshot of the approved project scaffold plan returned by plan_project_scaffold.",
                 properties = new
                 {
                     name = new { type = "string" },
@@ -49,27 +51,34 @@ public sealed class DesktopProjectScaffoldCreateTool(
                     verificationCommands = new { type = "array", items = new { type = "string" } }
                 }
             },
-            request = new { type = "string", description = "Legacy fallback only. If intent or plan is missing, call plan_project_scaffold first instead of creating files from request alone." },
+            planId = new { type = "string", description = "The approved plan id returned by plan_project_scaffold or preflight." },
             planHash = new { type = "string", description = "The approved SHA-256 plan hash returned by plan_project_scaffold or preflight." },
             overwriteExistingFiles = new { type = "boolean", description = "Whether existing files may be overwritten. Defaults to false." }
         },
-        required = new[] { "intent", "plan", "planHash" }
+        required = new[] { "planId", "planHash" }
     };
 
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!TryGetObject<ProjectScaffoldIntentModel>(input, "intent", out var intent) ||
-            !TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan))
+        if (!TryGetString(input, "planId", out var planId) ||
+            !_planRegistry.TryGet(planId, out var record))
         {
-            return ToolResult.Error("Missing required parameters: intent and plan. Call plan_project_scaffold first, then pass its intent and plan to create_project_scaffold.");
+            return ToolResult.Error("Project scaffold planId is missing or unknown. Call plan_project_scaffold first, then pass its planId and planHash unchanged.");
         }
 
         if (!TryGetString(input, "planHash", out var planHash) ||
-            !ProjectScaffoldPlanner.VerifyPlanHash(intent, plan, planHash))
+            !string.Equals(record.PlanHash, planHash.Trim(), StringComparison.OrdinalIgnoreCase))
         {
-            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved intent and plan. Call plan_project_scaffold first, then pass its intent, plan, and planHash unchanged.");
+            return ToolResult.Error("Project scaffold plan hash is missing or does not match the approved planId. Call plan_project_scaffold first, then pass its planId and planHash unchanged.");
         }
 
+        if (!InputSnapshotMatchesRegistry(input, record, out var mismatch))
+        {
+            return ToolResult.Error(mismatch);
+        }
+
+        var intent = record.Intent;
+        var plan = record.Plan;
         var overwrite = TryGetBool(input, "overwriteExistingFiles", fallback: false);
         var validationIssues = ValidatePlanFiles(plan, workspaceRoot);
         if (validationIssues.Count > 0)
@@ -96,6 +105,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
                     files = plan.Files,
                     verificationCommands = plan.VerificationCommands
                 },
+                planId = record.PlanId,
                 planHash,
                 createdFiles = Array.Empty<string>(),
                 skippedFiles = existingFiles,
@@ -133,6 +143,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
                 files = plan.Files,
                 verificationCommands = plan.VerificationCommands
             },
+            planId = record.PlanId,
             planHash,
             createdFiles = result.CreatedFiles,
             skippedFiles = result.SkippedFiles,
@@ -140,6 +151,29 @@ public sealed class DesktopProjectScaffoldCreateTool(
             verificationCommands = result.VerificationCommands,
             overwriteExistingFiles = overwrite
         }));
+    }
+
+    private static bool InputSnapshotMatchesRegistry(
+        Dictionary<string, object?> input,
+        ProjectScaffoldPlanRecord record,
+        out string mismatch)
+    {
+        if (TryGetObject<ProjectScaffoldIntentModel>(input, "intent", out var intent) &&
+            !ProjectScaffoldPlanner.VerifyPlanHash(intent, record.Plan, record.PlanHash))
+        {
+            mismatch = "Project scaffold intent snapshot does not match the approved planId.";
+            return false;
+        }
+
+        if (TryGetObject<ProjectScaffoldPlanModel>(input, "plan", out var plan) &&
+            !ProjectScaffoldPlanner.VerifyPlanHash(record.Intent, plan, record.PlanHash))
+        {
+            mismatch = "Project scaffold plan snapshot does not match the approved planId.";
+            return false;
+        }
+
+        mismatch = string.Empty;
+        return true;
     }
 
     private static List<string> ValidatePlanFiles(ProjectScaffoldPlanModel plan, string workspaceRoot)
