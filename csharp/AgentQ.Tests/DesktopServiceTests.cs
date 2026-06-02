@@ -674,6 +674,7 @@ public sealed class DesktopServiceTests
         registry.Register(new EditFileTool());
         registry.Register(new BashTool());
         registry.Register(new DesktopSymbolSearchTool(Path.GetTempPath()));
+        registry.TryRegister(new DesktopSymbolSearchTool(Path.GetTempPath()));
 
         var prompt = DesktopToolCapabilitySnapshot.Create(registry, AgentWorkMode.Coding).ToPromptBlock();
 
@@ -683,6 +684,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("requires approval:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("edit_file", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("bash", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skipped duplicate tool registrations: symbol_search", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("PowerShell", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("&&", prompt, StringComparison.Ordinal);
     }

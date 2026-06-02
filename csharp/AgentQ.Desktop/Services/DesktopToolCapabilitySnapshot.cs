@@ -6,10 +6,12 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopToolCapabilitySnapshot
 {
     private readonly List<DesktopToolCapabilityEntry> _entries = [];
+    private readonly List<string> _duplicateRegistrations = [];
 
     public static DesktopToolCapabilitySnapshot Create(ToolRegistry registry, AgentWorkMode workMode)
     {
         var snapshot = new DesktopToolCapabilitySnapshot();
+        snapshot._duplicateRegistrations.AddRange(registry.DuplicateRegistrations.Distinct(StringComparer.OrdinalIgnoreCase));
         foreach (var tool in registry.All.OrderBy(tool => tool.Name, StringComparer.OrdinalIgnoreCase))
         {
             snapshot._entries.Add(new DesktopToolCapabilityEntry(
@@ -33,6 +35,10 @@ public sealed class DesktopToolCapabilitySnapshot
         AppendGroup(builder, "allowed", "allowed");
         AppendGroup(builder, "requires approval", "requires-approval");
         AppendGroup(builder, "blocked by current mode", "blocked");
+        if (_duplicateRegistrations.Count > 0)
+        {
+            builder.AppendLine($"- skipped duplicate tool registrations: {string.Join(", ", _duplicateRegistrations.Take(12))}");
+        }
         builder.AppendLine("- bash runs PowerShell on Windows from the selected workspace root; avoid Bash-only chaining such as && or ||.");
         return builder.ToString().TrimEnd();
     }

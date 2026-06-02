@@ -6,10 +6,12 @@ namespace AgentQ.Cli;
 internal sealed class ToolCapabilitySnapshot
 {
     public List<ToolCapabilityEntry> Tools { get; } = [];
+    public List<string> DuplicateRegistrations { get; } = [];
 
     public static ToolCapabilitySnapshot Create(ProviderConfiguration config, ToolRegistry registry)
     {
         var snapshot = new ToolCapabilitySnapshot();
+        snapshot.DuplicateRegistrations.AddRange(registry.DuplicateRegistrations.Distinct(StringComparer.OrdinalIgnoreCase));
         foreach (var tool in registry.All.OrderBy(tool => tool.Name, StringComparer.OrdinalIgnoreCase))
         {
             snapshot.Tools.Add(new ToolCapabilityEntry(
@@ -34,9 +36,17 @@ internal sealed class ToolCapabilitySnapshot
             - allowed tools: {allowed}
             - denied tools: {denied}
             - not allowed in this run: {notAllowed}
+            - skipped duplicate tool registrations: {FormatDuplicates()}
             - permission-gated tools are already resolved by this state; if a tool is allowed, call it directly.
             - never say you lack permission for an allowed tool unless an actual tool call returns permission denied.
             """;
+    }
+
+    private string FormatDuplicates()
+    {
+        return DuplicateRegistrations.Count == 0
+            ? "none"
+            : string.Join(", ", DuplicateRegistrations.Take(12));
     }
 
     private string Format(string permission)

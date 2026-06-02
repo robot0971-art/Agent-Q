@@ -227,6 +227,7 @@ public sealed class AutomationSupportTests
         registry.Register(new FakeTool("edit_file", ToolResult.Success("{\"status\":\"success\"}")));
         registry.Register(new FakeTool("bash", ToolResult.Success("{\"exitCode\":0}")));
         registry.Register(new FakeTool("semantic_search", ToolResult.Success("{\"results\":[]}")));
+        registry.TryRegister(new FakeTool("semantic_search", ToolResult.Success("{\"results\":\"duplicate\"}")));
 
         await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
             provider,
@@ -242,6 +243,7 @@ public sealed class AutomationSupportTests
         Assert.Contains("allowed tools: edit_file(permission-gated), read_file(permission-gated)", capturedContext.SystemPrompt);
         Assert.Contains("denied tools: bash(permission-gated)", capturedContext.SystemPrompt);
         Assert.Contains("not allowed in this run: semantic_search(permission-gated)", capturedContext.SystemPrompt);
+        Assert.Contains("skipped duplicate tool registrations: semantic_search", capturedContext.SystemPrompt);
         Assert.Contains("never say you lack permission for an allowed tool", capturedContext.SystemPrompt);
     }
 
