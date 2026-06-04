@@ -363,8 +363,29 @@ public sealed class ProjectScaffoldPlanner
         }
 
         var hasFiles = Directory.EnumerateFileSystemEntries(root)
-            .Any(path => !string.Equals(Path.GetFileName(path), ".git", StringComparison.OrdinalIgnoreCase));
+            .Any(IsUserProjectEntry);
         return hasFiles ? DesktopWorkspaceScaffoldState.ExistingProject : DesktopWorkspaceScaffoldState.Empty;
+    }
+
+    private static bool IsUserProjectEntry(string path)
+    {
+        var name = Path.GetFileName(path);
+        if (string.IsNullOrWhiteSpace(name) ||
+            IgnoredWorkspaceEntryNames.Contains(name))
+        {
+            return false;
+        }
+
+        if (File.Exists(path))
+        {
+            var file = new FileInfo(path);
+            if (file.Length == 0 && IgnoredEmptyWorkspaceFileNames.Contains(name))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string Normalize(string value)
@@ -379,6 +400,22 @@ public sealed class ProjectScaffoldPlanner
     {
         return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
+
+    private static readonly HashSet<string> IgnoredWorkspaceEntryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
+        ".codex-build",
+        ".agentq-verify"
+    };
+
+    private static readonly HashSet<string> IgnoredEmptyWorkspaceFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cd",
+        "dotnet"
+    };
 }
 
 public sealed class ProjectScaffoldPlanningResult

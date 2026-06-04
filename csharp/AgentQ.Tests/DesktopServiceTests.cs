@@ -1931,6 +1931,39 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void ProjectScaffoldPlanner_TreatsOnlyAgentMetadataAndEmptyCommandArtifactsAsEmptyWorkspace()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, ".git"));
+        Directory.CreateDirectory(Path.Combine(root, ".agentq"));
+        Directory.CreateDirectory(Path.Combine(root, ".agents"));
+        Directory.CreateDirectory(Path.Combine(root, ".codex"));
+        Directory.CreateDirectory(Path.Combine(root, ".codex-build"));
+        File.WriteAllText(Path.Combine(root, "cd"), string.Empty);
+        File.WriteAllText(Path.Combine(root, "dotnet"), string.Empty);
+
+        var result = new ProjectScaffoldPlanner().Plan("\uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB85C \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uC5B4\uC918", root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.True(result.CanProceed);
+        Assert.NotNull(result.Plan);
+        Assert.Equal("portfolio", result.Intent?.ProjectType);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_TreatsNonEmptyCommandArtifactAsExistingProject()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "dotnet"), "not an empty shell artifact");
+
+        var result = new ProjectScaffoldPlanner().Plan("\uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB85C \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uC5B4\uC918", root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.False(result.CanProceed);
+        Assert.Contains("\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C", result.ClarifyingQuestion, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProjectScaffoldPlanner_BuildsPlanContext()
     {
         var root = CreateTempDirectory();
