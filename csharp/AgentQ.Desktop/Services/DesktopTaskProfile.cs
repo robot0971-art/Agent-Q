@@ -11,4 +11,6 @@ public sealed class DesktopTaskProfile
     public string ContextHint { get; init; } = string.Empty;
 
     public bool IncludeLinkHandling { get; set; }
+
+    public bool IncludeUnrealHandling { get; set; }
 }

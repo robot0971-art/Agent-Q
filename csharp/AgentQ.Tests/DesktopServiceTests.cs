@@ -202,6 +202,11 @@ public sealed class DesktopServiceTests
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("For URL questions only", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("external URLs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot remember previous conversations", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("thinking blocks", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("feasibility questions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("immediately inspect the workspace", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Text is not a check", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("patch-sized edits", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SerializeField", prompt, StringComparison.Ordinal);
         Assert.Contains("destructive restore", prompt, StringComparison.OrdinalIgnoreCase);
@@ -592,7 +597,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void DesktopAgentService_AllowsNoToolAnswerForConsultativeUnrealScriptQuestion()
+    public void DesktopAgentService_RetriesNoToolAnswerForConsultativeUnrealScriptQuestion()
     {
         var userText = "언리얼 엔진에 사용할 스크립트를 만들어 보고 싶은데 가능한가?";
         var assistantText = "가능합니다. 먼저 C++ 클래스, Blueprint 보조 스크립트, Python Editor Utility 중 어떤 용도인지 정하면 됩니다.";
@@ -612,8 +617,133 @@ public sealed class DesktopServiceTests
             AgentWorkMode.Coding,
             DesktopTaskKind.Feature);
 
-        Assert.False(shouldRetry);
-        Assert.False(shouldReject);
+        Assert.True(shouldRetry);
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesNoToolAnswerForUnrealPlayerControllerFeasibilityQuestion()
+    {
+        var userText = "이 폴더에 언리얼 엔진에서 사용할 플레이어 컨트롤러 C++ 로직을 작성하려 한다 가능한가?";
+        var assistantText = "가능합니다. 다만 Unreal 프로젝트인지 확인한 뒤 APlayerController 기반 .h/.cpp 파일 위치를 정해야 합니다.";
+
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesNoToolAnswerForCanYouWriteUnrealControllerQuestion()
+    {
+        var userText = "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?";
+        var assistantText = "가능합니다. Unreal 프로젝트라면 APlayerController 기반 .h/.cpp로 WASD 입력 바인딩을 작성할 수 있습니다.";
+
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesHalfValidFeasibilityGreetingWithoutTools()
+    {
+        var assistantText = "네, 가능합니다. 이 폴더가 언리얼 엔진 프로젝트인지 먼저 확인해야 정확한 경로에 파일을 작성할 수 있습니다.안녕하세요! 무엇을 도와드릴까요?";
+
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesTextOnlyInspectionClaimWithoutTools()
+    {
+        var assistantText = "가능합니다. 이 폴더가 언리얼 엔진 프로젝트인지 먼저 확인해야 정확한 경로에 파일을 작성할 수 있습니다.";
+
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesWhenNoToolAnswerEndsWithGreeting()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+            "네, 가능합니다. 무엇을 도와드릴까요?",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void SystemSkillService_RequiresToolUseForCanYouWriteQuestion()
+    {
+        var required = SystemSkillService.RequiresToolUseForFileProducingTask(
+            [
+                new AgentQSystemSkill
+                {
+                    Id = "greenfield-project-scaffold",
+                    Title = "Greenfield Project Scaffold"
+                }
+            ],
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+            new DesktopTaskProfile
+            {
+                Kind = DesktopTaskKind.Feature,
+                Label = "feature"
+            });
+
+        Assert.True(required);
     }
 
     [Fact]
@@ -944,6 +1074,54 @@ public sealed class DesktopServiceTests
         Assert.False(profile.IncludeLinkHandling);
         Assert.DoesNotContain("Link handling rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_AddsUnrealRulesForPlayerControllerRequests()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(
+            "이 폴더에 언리얼 엔진에서 사용할 플레이어 컨트롤러 C++ 로직을 작성하려 한다 가능한가?");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.Feature, profile.Kind);
+        Assert.True(profile.IncludeUnrealHandling);
+        Assert.Contains("Unreal Engine C++ rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not answer with generic C", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("APlayerController", prompt, StringComparison.Ordinal);
+        Assert.Contains("SetupInputComponent", prompt, StringComparison.Ordinal);
+        Assert.Contains("feasibility questions", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_ContextForUnrealFeasibilityQuestionAvoidsSessionAndLinkDrift()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "이 폴더에 언리얼 엔진에서 사용할 플레이어 컨트롤러 C++ 로직을 작성하려 한다 가능한가?";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            userText,
+            root,
+            new ProjectMemory { WorkspaceRoot = root },
+            new ProjectAgentConfig(),
+            profile,
+            projectScaffoldPlan,
+            []);
+
+        Assert.Equal(DesktopTaskKind.Feature, profile.Kind);
+        Assert.Contains("do not tell the user you lack previous conversation memory", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Answer the latest user request directly", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Link capability rule", context, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -2685,7 +2863,7 @@ public sealed class DesktopServiceTests
             projectScaffoldPlan,
             selectedSkills);
 
-        Assert.Contains("This context is not part of the saved conversation history.", context, StringComparison.Ordinal);
+        Assert.Contains("Use this as supplemental runtime context", context, StringComparison.Ordinal);
         Assert.Contains("Skill active: tool use required for file-producing tasks.", context, StringComparison.Ordinal);
         Assert.Contains("Relevant AgentQ system skills:", context, StringComparison.Ordinal);
         Assert.Contains("[greenfield-project-scaffold] Greenfield Project Scaffold", context, StringComparison.Ordinal);
@@ -2742,21 +2920,26 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void SystemSkillService_DoesNotRequireToolUseForConsultativeSkillQuestion()
+    public void SystemSkillService_RequiresToolUseForConsultativeSkillQuestion()
     {
-        var root = CreateTempDirectory();
-        var service = new SystemSkillService();
         var userText = "포트폴리오 홈페이지를 만들어 볼 수 있는지 가능한가?";
         var profile = new DesktopTaskProfile
         {
             Kind = DesktopTaskKind.Feature,
             Label = "feature"
         };
-        var skills = service.SelectRelevantSkills("포트폴리오 홈페이지 만들어줘", root, profile);
+        var skills = new[]
+        {
+            new AgentQSystemSkill
+            {
+                Id = "greenfield-project-scaffold",
+                Title = "Greenfield Project Scaffold"
+            }
+        };
 
         var required = SystemSkillService.RequiresToolUseForFileProducingTask(skills, userText, profile);
 
-        Assert.False(required);
+        Assert.True(required);
     }
 
     [Fact]

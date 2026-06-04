@@ -9,6 +9,7 @@ public static class DesktopPromptAssemblyService
         new ContextPrioritizationPromptRule(),
         new ToolRoutingPromptRule(),
         new UserIntentPrecedencePromptRule(),
+        new UnrealEnginePromptRule(),
         new ScaffoldDecisionPromptRule(),
         new ExecutionStrategyPromptRule(),
         new TaskTrackingPromptRule(),
@@ -83,6 +84,7 @@ public static class DesktopPromptAssemblyService
         };
 
         profile.IncludeLinkHandling = IsLinkCapabilityQuestion(userText);
+        profile.IncludeUnrealHandling = IsUnrealRequest(userText);
         return profile;
     }
 
@@ -132,6 +134,23 @@ public static class DesktopPromptAssemblyService
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsUnrealRequest(string userText)
+    {
+        var text = userText.ToLowerInvariant();
+        return ContainsAny(
+            text,
+            "unreal",
+            "ue5",
+            "ue4",
+            "uproject",
+            "playercontroller",
+            "a playercontroller",
+            "aplayercontroller",
+            "\uC5B8\uB9AC\uC5BC",
+            "\uD50C\uB808\uC774\uC5B4 \uCEE8\uD2B8\uB864\uB7EC",
+            "\uD50C\uB808\uC774\uC5B4\uCEE8\uD2B8\uB864\uB7EC");
+    }
 }
 
 public interface IDesktopPromptRule
@@ -204,6 +223,22 @@ public sealed class UserIntentPrecedencePromptRule : IDesktopPromptRule
         builder.AppendLine("- If the user corrects stack, framework, language, style, or scope, acknowledge internally and update the plan before touching files.");
         builder.AppendLine("- Use defaults only for details the user has not specified. Never replace a specified choice with a default because it seems more modern or safer.");
         builder.AppendLine("- When a user says 'not that', 'instead', 'use X', or similar correction, treat it as a hard constraint for the current task.");
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class UnrealEnginePromptRule : IDesktopPromptRule
+{
+    public bool Applies(DesktopTaskProfile profile) => profile.IncludeUnrealHandling;
+
+    public string Build(DesktopTaskProfile profile)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Unreal Engine C++ rules:");
+        builder.AppendLine("- For Unreal Engine PlayerController requests, do not answer with generic C or standalone C++ examples such as printf loops.");
+        builder.AppendLine("- Ground code and explanations in Unreal conventions: .h/.cpp pairs, UCLASS/GENERATED_BODY, APlayerController subclasses, input binding such as SetupInputComponent or Enhanced Input, and project Source/<Module> layout.");
+        builder.AppendLine("- For feasibility questions, answer that it is possible first, then explain that this folder must be an Unreal project or receive the intended module/class location before writing files.");
+        builder.AppendLine("- If asked to create or edit the controller, inspect for a .uproject file and Source/<Module> before choosing file paths.");
         return builder.ToString().TrimEnd();
     }
 }

@@ -81,7 +81,7 @@ public sealed class SystemSkillService
             return false;
         }
 
-        if (ContainsAnyNormalized(
+        if (false && ContainsAnyNormalized(
                 normalized,
                 "isitpossible",
                 "woulditbepossible",
@@ -124,8 +124,12 @@ public sealed class SystemSkillService
             "create",
             "make",
             "build",
+            "write",
             "generate",
             "scaffold",
+            "unreal",
+            "playercontroller",
+            "c++",
             "project",
             "app",
             "portfolio",
@@ -135,6 +139,9 @@ public sealed class SystemSkillService
             "blog",
             "wordbook",
             "shopping",
+            "\uB9CC\uB4E4",
+            "\uD648\uD398\uC774\uC9C0",
+            "\uC791\uC131",
             "만들",
             "생성",
             "구현",

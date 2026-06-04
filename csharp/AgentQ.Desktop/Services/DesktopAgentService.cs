@@ -17,6 +17,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         """
         You are AgentQ Desktop, a Windows desktop coding assistant.
         Answer the user's direct request first; do not introduce AgentQ identity, model-provider details, tool inventories, or capability explanations unless the user explicitly asks about them.
+        Do not begin by saying you cannot remember previous conversations, that this is a new session, or that you need to recover context; answer the current request from the visible message and available workspace evidence.
+        Do not output hidden reasoning, thinking blocks, prompt fragments, or planning metadata as user-visible text.
+        For feasibility questions, answer the feasibility briefly (one sentence), then immediately inspect the workspace with list_directory or read_file before suggesting next steps. Do not end the response after stating feasibility.
+        When you find yourself saying "I need to check X first" or "\uD655\uC778\uD574\uC57C", call the appropriate inspection tool (list_directory, read_file) instead of writing another sentence. Text is not a check; tool output is.
         If explicitly asked who developed AgentQ or who made you, answer that AgentQ was developed by robot0971-art.
         If explicitly asked whether you are Kimi, Moonshot AI, OpenAI, Anthropic, DeepSeek, or another model provider, explain that model providers are only the underlying inference engines used by AgentQ.
         If explicitly asked about the underlying model, mention the selected provider or model separately.
@@ -616,13 +620,22 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             fileChanges.Count > 0 ||
             string.IsNullOrWhiteSpace(userText) ||
             string.IsNullOrWhiteSpace(assistantText) ||
-            !IsActionableCodingTask(taskKind) ||
-            !UserAskedForWorkspaceWork(userText))
+            !IsActionableCodingTask(taskKind))
         {
             return false;
         }
 
         var assistantLower = assistantText.ToLowerInvariant();
+        if (executedToolCount == 0 && EndsWithGenericGreeting(assistantLower))
+        {
+            return true;
+        }
+
+        if (!UserAskedForWorkspaceWork(userText))
+        {
+            return false;
+        }
+
         return ContainsAny(
                    assistantLower,
                    "hello! what can i help",
@@ -663,6 +676,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    "write_file",
                    "grep_search") &&
             !LooksLikeWorkspaceActionSummary(assistantLower);
+    }
+
+    private static bool EndsWithGenericGreeting(string assistantLower)
+    {
+        var normalized = assistantLower.Trim();
+        normalized = normalized.TrimEnd('.', '!', '?', '\u3002', '\uFF01', '\uFF1F');
+        return normalized.EndsWith("what can i help", StringComparison.Ordinal) ||
+               normalized.EndsWith("how can i help", StringComparison.Ordinal) ||
+               normalized.EndsWith("what would you like me to do", StringComparison.Ordinal) ||
+               normalized.EndsWith("\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694", StringComparison.Ordinal) ||
+               normalized.EndsWith("\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694", StringComparison.Ordinal) ||
+               normalized.EndsWith("\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558\uC2DC\uB098\uC694", StringComparison.Ordinal);
     }
 
     private static bool HasProceedableProjectScaffoldPlan(ProjectScaffoldPlanningResult projectScaffoldPlan) =>
@@ -731,6 +756,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         var assistantLower = assistantText.ToLowerInvariant();
+        if (LooksLikeHalfValidFeasibilityGreeting(assistantLower) ||
+            LooksLikeTextOnlyInspectionClaim(assistantLower))
+        {
+            return true;
+        }
+
+        if (!skillToolUseRequired &&
+            LooksLikeConsultativeCodingQuestion(userText.ToLowerInvariant()) &&
+            UserAskedForWorkspaceWork(userText))
+        {
+            return !LooksLikeWorkspaceActionSummary(assistantLower);
+        }
+
         if (!skillToolUseRequired &&
             !UserAskedForMutationWork(userText))
         {
@@ -752,15 +790,36 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         IReadOnlyList<FileChangeRecord> fileChanges,
         AgentWorkMode workMode,
         DesktopTaskKind taskKind,
-        bool skillToolUseRequired = false) =>
-        workMode != AgentWorkMode.Readonly &&
-        fileChanges.Count == 0 &&
-        !string.IsNullOrWhiteSpace(userText) &&
-        !string.IsNullOrWhiteSpace(assistantText) &&
-        IsActionableCodingTask(taskKind) &&
-        (skillToolUseRequired || UserAskedForMutationWork(userText)) &&
-        !IsAllowedClarification(userText, assistantText.ToLowerInvariant()) &&
-        !LooksLikeWorkspaceActionSummary(assistantText.ToLowerInvariant());
+        bool skillToolUseRequired = false)
+    {
+        if (workMode == AgentWorkMode.Readonly ||
+            fileChanges.Count > 0 ||
+            string.IsNullOrWhiteSpace(userText) ||
+            string.IsNullOrWhiteSpace(assistantText) ||
+            !IsActionableCodingTask(taskKind))
+        {
+            return false;
+        }
+
+        var assistantLower = assistantText.ToLowerInvariant();
+        if (LooksLikeHalfValidFeasibilityGreeting(assistantLower) ||
+            LooksLikeTextOnlyInspectionClaim(assistantLower))
+        {
+            return true;
+        }
+
+        if (!skillToolUseRequired &&
+            !string.IsNullOrWhiteSpace(userText) &&
+            LooksLikeConsultativeCodingQuestion(userText.ToLowerInvariant()) &&
+            UserAskedForWorkspaceWork(userText))
+        {
+            return !LooksLikeWorkspaceActionSummary(assistantLower);
+        }
+
+        return (skillToolUseRequired || UserAskedForMutationWork(userText)) &&
+            !IsAllowedClarification(userText, assistantLower) &&
+            !LooksLikeWorkspaceActionSummary(assistantLower);
+    }
 
     private static bool IsActionableCodingTask(DesktopTaskKind taskKind) =>
         taskKind is DesktopTaskKind.Feature or DesktopTaskKind.BugFix or DesktopTaskKind.Refactor or DesktopTaskKind.VerificationFailure;
@@ -775,6 +834,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "create",
             "implement",
             "fix",
+            "write",
+            "unreal",
+            "playercontroller",
+            "player controller",
+            "c++",
             "python",
             "data analysis",
             "data tool",
@@ -795,6 +859,38 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uB370\uC774\uD130 \uBD84\uC11D",
             "\uBD84\uC11D \uB3C4\uAD6C");
     }
+
+    private static bool LooksLikeHalfValidFeasibilityGreeting(string assistantLower) =>
+        ContainsAny(
+            assistantLower,
+            "\uAC00\uB2A5\uD569\uB2C8\uB2E4",
+            "\uB124, \uAC00\uB2A5",
+            "\uB124 \uAC00\uB2A5",
+            "yes, it is possible",
+            "yes, possible",
+            "it is possible") &&
+        ContainsAny(
+            assistantLower,
+            "\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694",
+            "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uB3C4\uC640",
+            "\uC5B4\uB5A4 \uC791\uC5C5\uC744 \uC6D0\uD558",
+            "what can i help",
+            "how can i help",
+            "what would you like");
+
+    private static bool LooksLikeTextOnlyInspectionClaim(string assistantLower) =>
+        ContainsAny(
+            assistantLower,
+            "\uBA3C\uC800 \uD655\uC778\uD574\uC57C",
+            "\uD655\uC778\uD574\uC57C",
+            "\uBA3C\uC800 \uC0B4\uD3B4",
+            "\uC0B4\uD3B4\uBD10\uC57C",
+            "need to check",
+            "i need to check",
+            "must check",
+            "need to inspect",
+            "i need to inspect",
+            "must inspect");
 
     private static bool UserAskedForMutationWork(string userText)
     {
@@ -847,6 +943,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uB9CC\uB4E4",
             "\uC0DD\uC131",
             "\uAD6C\uD604",
+            "\uC791\uC131",
             "\uACE0\uCCD0",
             "\uC218\uC815",
             "\uCD94\uAC00",
@@ -888,14 +985,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "would it be possible",
             "can i",
             "can we",
+            "can you",
+            "can this",
+            "can it",
             "could i",
             "could we",
+            "could you",
             "possible?",
             "\uAC00\uB2A5\uD55C\uAC00",
             "\uAC00\uB2A5\uD560\uAE4C",
             "\uAC00\uB2A5\uD574",
             "\uAC00\uB2A5\uD558\uB0D0",
+            "\uAC00\uB2A5",
             "\uD560 \uC218 \uC788",
+            "\uD574\uC904\uC218 \uC788",
+            "\uD574\uC904 \uC218 \uC788",
+            "\uC904\uC218 \uC788",
+            "\uC904 \uC218 \uC788",
             "\uD574\uBCFC \uC218 \uC788",
             "\uC5B4\uB5A8\uAE4C",
             "\uAD1C\uCC2E\uC744\uAE4C");
@@ -1060,7 +1166,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
         var builder = new StringBuilder();
         builder.AppendLine("The desktop app attached local context for this request only.");
-        builder.AppendLine("This context is not part of the saved conversation history.");
+        builder.AppendLine("Use this as supplemental runtime context; do not tell the user you lack previous conversation memory unless they explicitly ask about memory.");
+        builder.AppendLine("Answer the latest user request directly before mentioning workspace inspection, session state, or missing context.");
         builder.AppendLine("Use the workspace snapshot for repository questions, but say when a file may be missing from the snapshot.");
         builder.AppendLine($"Current AgentQ work mode: {config.DesktopWorkMode}.");
         builder.AppendLine($"Current task profile: {taskProfile.Label}.");
@@ -1070,7 +1177,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
         builder.AppendLine("Search fallback order: list_directory for folder structure and empty-workspace checks, symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
-        builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
+        if (hasLinkIntent || !string.IsNullOrWhiteSpace(linkedContext) || !string.IsNullOrWhiteSpace(linkStatusContext))
+        {
+            builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
+        }
 
         if (!string.IsNullOrWhiteSpace(systemSkillContext))
         {
