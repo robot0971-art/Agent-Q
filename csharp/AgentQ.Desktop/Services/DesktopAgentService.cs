@@ -1410,6 +1410,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                                 $"{change.RelativePath} ({change.Summary})");
                             callbacks?.OnFileChanged?.Invoke(change);
                         }
+
+                        await RecordProjectScaffoldFileChangesAsync(
+                            tool.Name,
+                            result.Content,
+                            workspaceRoot,
+                            fileChanges,
+                            callbacks,
+                            ct);
                     }
 
                     results.Add(ChatContent.CreateToolResult(
@@ -1759,6 +1767,72 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             SnapshotPath = snapshotPath,
             DiffLines = LineDiffBuilder.Build(snapshot.Before, after)
         };
+    }
+
+    private async Task RecordProjectScaffoldFileChangesAsync(
+        string toolName,
+        string toolResult,
+        string workspaceRoot,
+        List<FileChangeRecord> fileChanges,
+        DesktopToolCallbacks? callbacks,
+        CancellationToken ct)
+    {
+        if (!string.Equals(toolName, "create_project_scaffold", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        foreach (var relativePath in ExtractProjectScaffoldCreatedFiles(toolResult))
+        {
+            if (!TryResolveWorkspaceFile(relativePath, workspaceRoot, out var fullPath) ||
+                !File.Exists(fullPath) ||
+                Directory.Exists(fullPath))
+            {
+                continue;
+            }
+
+            var change = await BuildFileChangeRecordAsync(new FileSnapshot(fullPath, false, string.Empty), workspaceRoot, ct);
+            if (change == null)
+            {
+                continue;
+            }
+
+            fileChanges.Add(change);
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.RecordingChanges,
+                "Evidence: file changed",
+                $"{change.RelativePath} ({change.Summary})");
+            callbacks?.OnFileChanged?.Invoke(change);
+        }
+    }
+
+    private static IReadOnlyList<string> ExtractProjectScaffoldCreatedFiles(string toolResult)
+    {
+        if (string.IsNullOrWhiteSpace(toolResult))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(toolResult);
+            if (!document.RootElement.TryGetProperty("createdFiles", out var createdFiles) ||
+                createdFiles.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            return createdFiles.EnumerateArray()
+                .Where(file => file.ValueKind == JsonValueKind.String)
+                .Select(file => file.GetString())
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .Select(file => file!)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static bool IsFileMutationTool(string toolName)

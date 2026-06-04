@@ -169,7 +169,34 @@ public sealed class ProjectScaffoldPlanner
             Style = DetectStyle(normalized)
         };
 
-        if (ContainsAny(normalized, "portfolio", "homepage", "website", "landingpage", "webpage",
+        if (ContainsAny(normalized, "wordbook", "vocabulary", "flashcard", "\uB2E8\uC5B4\uC7A5"))
+        {
+            intent.ProjectType = "wordbook";
+            intent.Framework = "vite-react";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+        }
+        else if (ContainsAny(normalized, "shopping", "shop", "store", "cart", "mall", "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810"))
+        {
+            intent.ProjectType = "shopping-cart";
+            intent.Framework = "vite-react";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+        }
+        else if (ContainsAny(normalized, "blog", "\uBE14\uB85C\uADF8"))
+        {
+            intent.ProjectType = "blog";
+            intent.Framework = "vite-react";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+        }
+        else if (ContainsAny(normalized, "portfolio", "homepage", "website", "landingpage", "webpage",
                 "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uB79C\uB529"))
         {
             intent.ProjectType = ContainsAny(normalized, "landingpage", "\uB79C\uB529") ? "landing-page" : "portfolio";

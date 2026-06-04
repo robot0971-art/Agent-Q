@@ -1948,6 +1948,36 @@ public sealed class DesktopServiceTests
         Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("개발자 기본 단어장 웹앱 만들어줘", "wordbook")]
+    [InlineData("쇼핑몰 장바구니 앱 생성", "shopping-cart")]
+    [InlineData("블로그 웹사이트 만들자", "blog")]
+    public void ProjectScaffoldPlanner_BuildsViteReactPlanForCommonKoreanWebApps(string request, string expectedProjectType)
+    {
+        var root = CreateTempDirectory();
+        var result = new ProjectScaffoldPlanner().Plan(request, root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.True(result.CanProceed);
+        Assert.NotNull(result.Intent);
+        Assert.NotNull(result.Plan);
+        Assert.Equal(expectedProjectType, result.Intent.ProjectType);
+        Assert.Equal("javascript", result.Intent.Language);
+        Assert.Equal("vite-react", result.Intent.Framework);
+        Assert.Contains("src/App.jsx", result.Plan.Files);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_DoesNotTreatBareWordQuestionAsWordbookProject()
+    {
+        var root = CreateTempDirectory();
+        var result = new ProjectScaffoldPlanner().Plan("단어 몇 개 설명해줘", root);
+
+        Assert.False(result.CanProceed);
+        Assert.Null(result.Intent);
+        Assert.Null(result.Plan);
+    }
+
     [Fact]
     public async Task DesktopProjectScaffoldPlanTool_ReturnsProceedingPlan()
     {
@@ -2024,6 +2054,38 @@ public sealed class DesktopServiceTests
         Assert.Contains("import App from \"./App.jsx\"", File.ReadAllText(Path.Combine(root, "src", "main.jsx")), StringComparison.Ordinal);
         Assert.Contains("\"build\": \"vite build\"", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.Ordinal);
         Assert.DoesNotContain("typescript", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_RecordsProjectScaffoldCreatedFilesAsFileChanges()
+    {
+        var root = CreateTempDirectory();
+        var planRegistry = new ProjectScaffoldPlanRegistry();
+        var record = RegisterScaffoldPlan(planRegistry, PortfolioIntent(), PortfolioPlan(), root);
+        var toolRegistry = new ToolRegistry();
+        toolRegistry.Register(new DesktopProjectScaffoldCreateTool(root, planRegistry: planRegistry));
+        var changedFiles = new List<FileChangeRecord>();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var toolUse = ChatContent.CreateToolUse(
+            "tool-scaffold",
+            "create_project_scaffold",
+            JsonSerializer.Serialize(ScaffoldToolInput(record)));
+
+        await InvokeExecuteToolsAsync(
+            service,
+            [toolUse],
+            toolRegistry,
+            new AllowAllPermissionEnforcer(),
+            new DesktopToolCallbacks
+            {
+                OnFileChanged = changedFiles.Add
+            },
+            root);
+
+        Assert.Contains(changedFiles, change => change.RelativePath == "package.json");
+        Assert.Contains(changedFiles, change => change.RelativePath == "src/main.jsx");
+        Assert.All(changedFiles, change => Assert.False(string.IsNullOrWhiteSpace(change.SnapshotPath)));
     }
 
     [Fact]
@@ -7863,6 +7925,57 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         }
 
         return input;
+    }
+
+    private static DesktopAgentService CreateDesktopAgentService(IHttpClientFactory httpClientFactory)
+    {
+        var workspaceAnalysisService = new WorkspaceAnalysisService();
+        return new DesktopAgentService(
+            httpClientFactory,
+            new LinkContentFetcher(httpClientFactory),
+            new ProjectMemoryService(workspaceAnalysisService),
+            new WorkspaceIndexer(),
+            new EmbeddingIndexStore(),
+            new DesktopEmbeddingClientFactory(),
+            new FileMutationSnapshotService(),
+            new ToolReplayService(),
+            new WorkspaceSymbolIndexService(),
+            workspaceAnalysisService);
+    }
+
+    private static async Task InvokeExecuteToolsAsync(
+        DesktopAgentService service,
+        IReadOnlyList<ChatContent> toolUses,
+        ToolRegistry toolRegistry,
+        IPermissionEnforcer permissionEnforcer,
+        DesktopToolCallbacks callbacks,
+        string workspaceRoot)
+    {
+        var method = typeof(DesktopAgentService).GetMethod(
+            "ExecuteToolsAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var task = (Task<List<ChatContent>>)method.Invoke(service, [
+            toolUses,
+            toolRegistry,
+            permissionEnforcer,
+            callbacks,
+            workspaceRoot,
+            AgentWorkMode.Coding,
+            new List<FileChangeRecord>(),
+            new List<string>(),
+            new List<ToolReplayEntry>(),
+            new Dictionary<string, int>(StringComparer.Ordinal),
+            CancellationToken.None
+        ])!;
+        await task;
+    }
+
+    private sealed class AllowAllPermissionEnforcer : IPermissionEnforcer
+    {
+        public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson) =>
+            Task.FromResult(true);
     }
 
     private static async Task<CommandResult> RunCommandAsync(
