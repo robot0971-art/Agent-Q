@@ -1983,8 +1983,11 @@ public sealed class DesktopServiceTests
 
     [Theory]
     [InlineData("개발자 기본 단어장 웹앱 만들어줘", "wordbook")]
+    [InlineData("단어장 만들어줘", "wordbook")]
     [InlineData("쇼핑몰 장바구니 앱 생성", "shopping-cart")]
+    [InlineData("쇼핑몰 만들어줘", "shopping-cart")]
     [InlineData("블로그 웹사이트 만들자", "blog")]
+    [InlineData("블로그 만들어줘", "blog")]
     public void ProjectScaffoldPlanner_BuildsViteReactPlanForCommonKoreanWebApps(string request, string expectedProjectType)
     {
         var root = CreateTempDirectory();

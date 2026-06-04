@@ -319,10 +319,7 @@ public sealed class ProjectScaffoldPlanner
         }
 
         return ContainsCreate(normalized) &&
-               ContainsAny(normalized,
-                   "project", "app", "portfolio", "homepage", "website", "landingpage", "api", "dataanalysis", "datatool",
-                   "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8",
-                   "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C");
+               ContainsAny(normalized, GreenfieldProjectKeywords);
     }
 
     private static bool ContainsCreate(string normalized)
@@ -416,6 +413,20 @@ public sealed class ProjectScaffoldPlanner
         "cd",
         "dotnet"
     };
+
+    private static readonly string[] GreenfieldProjectKeywords =
+    [
+        "project", "app", "portfolio", "homepage", "website", "landingpage", "webpage",
+        "api", "dataanalysis", "datatool",
+        "wordbook", "vocabulary", "flashcard",
+        "shopping", "shop", "store", "cart", "mall",
+        "blog",
+        "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uB79C\uB529",
+        "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C",
+        "\uB2E8\uC5B4\uC7A5",
+        "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810",
+        "\uBE14\uB85C\uADF8"
+    ];
 }
 
 public sealed class ProjectScaffoldPlanningResult
