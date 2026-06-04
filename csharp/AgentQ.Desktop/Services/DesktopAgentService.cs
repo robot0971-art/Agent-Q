@@ -63,6 +63,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ToolReplayService _toolReplayService;
     private readonly WorkspaceSymbolIndexService _symbolIndexService;
     private readonly WorkspaceAnalysisService _workspaceAnalysisService;
+    private readonly SystemSkillService _systemSkillService;
     private readonly List<ChatMessage> _messages = [];
     private readonly ConversationCompactor _compactor = new();
     private readonly TaskDecomposer _taskDecomposer = new();
@@ -80,7 +81,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         FileMutationSnapshotService fileMutationSnapshotService,
         ToolReplayService toolReplayService,
         WorkspaceSymbolIndexService symbolIndexService,
-        WorkspaceAnalysisService workspaceAnalysisService)
+        WorkspaceAnalysisService workspaceAnalysisService,
+        SystemSkillService? systemSkillService = null)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -92,6 +94,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _toolReplayService = toolReplayService;
         _symbolIndexService = symbolIndexService;
         _workspaceAnalysisService = workspaceAnalysisService;
+        _systemSkillService = systemSkillService ?? new SystemSkillService();
         
         _taskExecutor = new TaskExecutor(
             httpClientFactory,
@@ -967,6 +970,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
         var scaffoldDecisionContext = await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct);
         var projectScaffoldPlanContext = ProjectScaffoldPlanner.BuildPlanContext(projectScaffoldPlan);
+        var systemSkillContext = _systemSkillService.BuildContext(
+            _systemSkillService.SelectRelevantSkills(userText, workspaceRoot, taskProfile, projectConfig));
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
@@ -974,6 +979,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             string.IsNullOrWhiteSpace(mcpContext) &&
             string.IsNullOrWhiteSpace(linkStatusContext) &&
             string.IsNullOrWhiteSpace(explicitStackContext) &&
+            string.IsNullOrWhiteSpace(systemSkillContext) &&
             string.IsNullOrWhiteSpace(projectScaffoldPlanContext) &&
             string.IsNullOrWhiteSpace(scaffoldDecisionContext))
         {
@@ -1003,6 +1009,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         {
             builder.AppendLine();
             builder.AppendLine(projectScaffoldPlanContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(systemSkillContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(systemSkillContext);
         }
 
         if (!string.IsNullOrWhiteSpace(linkStatusContext))

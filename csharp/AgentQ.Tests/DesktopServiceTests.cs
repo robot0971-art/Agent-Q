@@ -2573,6 +2573,215 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void SystemSkillService_IncludesBuiltinGreenfieldSkillForGreenfieldRequest()
+    {
+        var root = CreateTempDirectory();
+        var service = new SystemSkillService();
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("포트폴리오 홈페이지 만들어줘");
+
+        var skills = service.SelectRelevantSkills("포트폴리오 홈페이지 만들어줘", root, profile);
+        var context = service.BuildContext(skills);
+
+        var skill = Assert.Single(skills, item => item.Id == "greenfield-project-scaffold");
+        Assert.Equal(AgentQSystemSkillSource.Builtin, skill.Source);
+        Assert.Contains("Relevant AgentQ system skills:", context, StringComparison.Ordinal);
+        Assert.Contains("[greenfield-project-scaffold] Greenfield Project Scaffold", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_AttachesRelevantSystemSkillContext()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "포트폴리오 홈페이지 만들어줘";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+        var config = new ProviderConfiguration
+        {
+            DesktopAutoAttachWorkspaceContext = false,
+            DesktopAutoFetchLinks = false,
+            DesktopWorkMode = "Coding"
+        };
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            config,
+            userText,
+            root,
+            new ProjectMemory { WorkspaceRoot = root },
+            new ProjectAgentConfig(),
+            profile,
+            projectScaffoldPlan);
+
+        Assert.Contains("This context is not part of the saved conversation history.", context, StringComparison.Ordinal);
+        Assert.Contains("Relevant AgentQ system skills:", context, StringComparison.Ordinal);
+        Assert.Contains("[greenfield-project-scaffold] Greenfield Project Scaffold", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SystemSkillService_ProjectSkillOverridesBuiltinSkillWithSameId()
+    {
+        var root = CreateTempDirectory();
+        var skillDirectory = Path.Combine(root, ".agentq", "skills");
+        Directory.CreateDirectory(skillDirectory);
+        File.WriteAllText(
+            Path.Combine(skillDirectory, "greenfield-project-scaffold.md"),
+            """
+            ---
+            id: greenfield-project-scaffold
+            title: Project Greenfield Override
+            priority: 95
+            taskKinds: feature
+            triggers: 포트폴리오
+            excludes: 수정
+            ---
+            Project override skill content.
+            """);
+
+        var service = new SystemSkillService();
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("포트폴리오 홈페이지 만들어줘");
+
+        var skills = service.SelectRelevantSkills("포트폴리오 홈페이지 만들어줘", root, profile);
+        var context = service.BuildContext(skills);
+
+        var skill = Assert.Single(skills, item => item.Id == "greenfield-project-scaffold");
+        Assert.Equal(AgentQSystemSkillSource.Project, skill.Source);
+        Assert.Equal("Project Greenfield Override", skill.Title);
+        Assert.Contains("Project override skill content.", context, StringComparison.Ordinal);
+        Assert.DoesNotContain("Use this skill only as procedural guidance", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SystemSkillService_ExcludesMatchingSkillWhenExcludeMatches()
+    {
+        var root = CreateTempDirectory();
+        var service = new SystemSkillService();
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+
+        var skills = service.SelectRelevantSkills("기존 포트폴리오 수정해줘", root, profile);
+
+        Assert.DoesNotContain(skills, item => item.Id == "greenfield-project-scaffold");
+    }
+
+    [Fact]
+    public void SystemSkillService_DoesNotInjectSkillForUnrelatedRequest()
+    {
+        var root = CreateTempDirectory();
+        var service = new SystemSkillService();
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("README 분석해줘");
+
+        var skills = service.SelectRelevantSkills("README 분석해줘", root, profile);
+
+        Assert.Empty(skills);
+    }
+
+    [Fact]
+    public void SystemSkillService_OrdersByPriorityAndLimitsSkillCount()
+    {
+        var root = CreateTempDirectory();
+        var skillDirectory = Path.Combine(root, ".agentq", "skills");
+        Directory.CreateDirectory(skillDirectory);
+        WriteProjectSkill(skillDirectory, "skill-a", "Skill A", 100, "customtrigger", "A content.");
+        WriteProjectSkill(skillDirectory, "skill-b", "Skill B", 90, "customtrigger", "B content.");
+        WriteProjectSkill(skillDirectory, "skill-c", "Skill C", 80, "customtrigger", "C content.");
+        WriteProjectSkill(skillDirectory, "skill-d", "Skill D", 70, "customtrigger", "D content.");
+        var service = new SystemSkillService(maxSkills: 3, maxSkillContentChars: 4000);
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+
+        var skills = service.SelectRelevantSkills("customtrigger 만들어줘", root, profile);
+
+        Assert.Equal(["skill-a", "skill-b", "skill-c"], skills.Select(skill => skill.Id).ToArray());
+    }
+
+    [Fact]
+    public void SystemSkillService_TruncatesLongSkillContent()
+    {
+        var root = CreateTempDirectory();
+        var skillDirectory = Path.Combine(root, ".agentq", "skills");
+        Directory.CreateDirectory(skillDirectory);
+        WriteProjectSkill(skillDirectory, "long-skill", "Long Skill", 100, "longtrigger", new string('x', 500));
+        var service = new SystemSkillService(maxSkills: 3, maxSkillContentChars: 220);
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+
+        var skills = service.SelectRelevantSkills("longtrigger 만들어줘", root, profile);
+        var context = service.BuildContext(skills);
+
+        Assert.Contains("... truncated ...", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SystemSkillService_IgnoresMalformedFrontmatterSkill()
+    {
+        var root = CreateTempDirectory();
+        var skillDirectory = Path.Combine(root, ".agentq", "skills");
+        Directory.CreateDirectory(skillDirectory);
+        File.WriteAllText(
+            Path.Combine(skillDirectory, "bad.md"),
+            """
+            ---
+            title: Missing Id
+            - unsupported list item
+            ---
+            Bad content.
+            """);
+        var service = new SystemSkillService();
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+
+        var skills = service.SelectRelevantSkills("missingid 만들어줘", root, profile);
+
+        Assert.Empty(skills);
+    }
+
+    [Fact]
+    public void SystemSkillService_DoesNotChangeToolPermissionClassification()
+    {
+        var root = CreateTempDirectory();
+        var skillDirectory = Path.Combine(root, ".agentq", "skills");
+        Directory.CreateDirectory(skillDirectory);
+        WriteProjectSkill(
+            skillDirectory,
+            "unsafe-example",
+            "Unsafe Example",
+            100,
+            "unsafeexample",
+            "Procedure example: call bash with Remove-Item -Recurse . -Force.");
+        var service = new SystemSkillService();
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+
+        var skills = service.SelectRelevantSkills("unsafeexample 만들어줘", root, profile);
+        var assessment = ToolPermissionClassifier.Assess(
+            "bash",
+            new Dictionary<string, object?>
+            {
+                ["command"] = "Remove-Item -Recurse . -Force"
+            });
+
+        Assert.NotEmpty(skills);
+        Assert.Equal(PermissionRiskLevel.Destructive, assessment.RiskLevel);
+    }
+
+    [Fact]
     public async Task WorkspaceAnalysisService_UsesTypeScriptWorkerResults()
     {
         var root = CreateTempDirectory();
@@ -7871,6 +8080,29 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         return path;
     }
 
+    private static void WriteProjectSkill(
+        string skillDirectory,
+        string id,
+        string title,
+        int priority,
+        string trigger,
+        string content)
+    {
+        File.WriteAllText(
+            Path.Combine(skillDirectory, id + ".md"),
+            $"""
+            ---
+            id: {id}
+            title: {title}
+            priority: {priority}
+            taskKinds: feature
+            triggers: {trigger}
+            excludes: 수정,fix
+            ---
+            {content}
+            """);
+    }
+
     private static bool ProjectScaffoldIntegrationEnabled() =>
         string.Equals(
             Environment.GetEnvironmentVariable("AGENTQ_RUN_SCAFFOLD_INTEGRATION"),
@@ -8006,6 +8238,34 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             CancellationToken.None
         ])!;
         await task;
+    }
+
+    private static async Task<string> InvokeBuildContextOnlyAsync(
+        DesktopAgentService service,
+        ProviderConfiguration config,
+        string userText,
+        string workspaceRoot,
+        ProjectMemory projectMemory,
+        ProjectAgentConfig? projectConfig,
+        DesktopTaskProfile taskProfile,
+        ProjectScaffoldPlanningResult projectScaffoldPlan)
+    {
+        var method = typeof(DesktopAgentService).GetMethod(
+            "BuildContextOnlyAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var task = (Task<string>)method.Invoke(service, [
+            config,
+            userText,
+            workspaceRoot,
+            projectMemory,
+            projectConfig,
+            taskProfile,
+            projectScaffoldPlan,
+            CancellationToken.None
+        ])!;
+        return await task;
     }
 
     private sealed class AllowAllPermissionEnforcer : IPermissionEnforcer

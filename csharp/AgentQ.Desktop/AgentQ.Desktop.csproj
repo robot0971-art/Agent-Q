@@ -13,6 +13,7 @@
   <ItemGroup>
     <Resource Include="Assets\app-icon.ico" />
     <Resource Include="Assets\app-icon.png" />
+    <EmbeddedResource Include="SystemSkills\*.md" />
   </ItemGroup>
 
   <ItemGroup>
