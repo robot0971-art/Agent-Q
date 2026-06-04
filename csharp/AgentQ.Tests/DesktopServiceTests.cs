@@ -200,8 +200,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confirmed facts", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supporting files", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("can attempt to read HTTP/HTTPS links", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("For URL questions only", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("external URLs", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("patch-sized edits", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SerializeField", prompt, StringComparison.Ordinal);
         Assert.Contains("destructive restore", prompt, StringComparison.OrdinalIgnoreCase);
@@ -277,6 +277,8 @@ public sealed class DesktopServiceTests
     [InlineData("Create a landing page", DesktopTaskKind.Feature)]
     [InlineData("\uD30C\uC774\uC36C\uC73C\uB85C \uAC04\uB2E8\uD55C \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C\uB97C \uB9CC\uB4E4\uC5B4 \uBCF4\uC790", DesktopTaskKind.Feature)]
     [InlineData("\uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9", DesktopTaskKind.Feature)]
+    [InlineData("\uC5B8\uB9AC\uC5BC\uC5D4\uC9C4 PlayerController \uB85C\uC9C1\uC744 \uC791\uC131\uD574\uC918", DesktopTaskKind.Feature)]
+    [InlineData("Unreal Engine\uC5D0\uC11C \uC0AC\uC6A9\uD560 PlayerController \uB85C\uC9C1\uC744 \uC791\uC131\uD574\uC918", DesktopTaskKind.Feature)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -510,6 +512,21 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_BuildsSkillAwareNoToolRetryAndRejectMessages()
+    {
+        var retryInstruction = DesktopAgentService.BuildNoToolRetryInstruction(
+            new ProjectScaffoldPlanningResult(),
+            skillToolUseRequired: true);
+        var rejectMessage = DesktopAgentService.BuildNoToolCompletionMessage(
+            new ProjectScaffoldPlanningResult(),
+            skillToolUseRequired: true);
+
+        Assert.Contains("active AgentQ system skill requires tool use", retryInstruction, StringComparison.Ordinal);
+        Assert.Contains("workspace/scaffold tools", retryInstruction, StringComparison.Ordinal);
+        Assert.Contains("active AgentQ system skill required workspace/scaffold tool use", rejectMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_RejectsNoToolCodingCompletionAfterRetry()
     {
         var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
@@ -572,6 +589,45 @@ public sealed class DesktopServiceTests
             DesktopTaskKind.Feature);
 
         Assert.False(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_AllowsNoToolAnswerForConsultativeUnrealScriptQuestion()
+    {
+        var userText = "언리얼 엔진에 사용할 스크립트를 만들어 보고 싶은데 가능한가?";
+        var assistantText = "가능합니다. 먼저 C++ 클래스, Blueprint 보조 스크립트, Python Editor Utility 중 어떤 용도인지 정하면 됩니다.";
+
+        var shouldRetry = DesktopAgentService.ShouldRetryNoToolCodingFallback(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            userText,
+            assistantText,
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.False(shouldRetry);
+        Assert.False(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_StillRejectsNoToolAnswerForExplicitUnrealScriptCreation()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "언리얼 엔진에 사용할 스크립트를 바로 만들어줘",
+            "Unreal Engine용 스크립트를 만들어 드리겠습니다.",
+            executedToolCount: 0,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldReject);
     }
 
     [Fact]
@@ -871,10 +927,23 @@ public sealed class DesktopServiceTests
         var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
 
         Assert.Equal(DesktopTaskKind.General, profile.Kind);
+        Assert.True(profile.IncludeLinkHandling);
         Assert.Contains("Link handling rules", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("fetch HTTP/HTTPS URLs", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Never answer that AgentQ categorically cannot access external websites", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("If no URL is present, ask the user to send the URL", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopPromptAssemblyService_OmitsLinkCapabilityRulesForNonLinkFolderQuestions()
+    {
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile("is this folder empty?");
+        var prompt = DesktopPromptAssemblyService.BuildSystemPrompt("Base prompt", profile);
+
+        Assert.Equal(DesktopTaskKind.General, profile.Kind);
+        Assert.False(profile.IncludeLinkHandling);
+        Assert.DoesNotContain("Link handling rules", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("list_directory", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -2597,6 +2666,7 @@ public sealed class DesktopServiceTests
         var userText = "포트폴리오 홈페이지 만들어줘";
         var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+        var selectedSkills = new SystemSkillService().SelectRelevantSkills(userText, root, profile);
         var config = new ProviderConfiguration
         {
             DesktopAutoAttachWorkspaceContext = false,
@@ -2612,11 +2682,16 @@ public sealed class DesktopServiceTests
             new ProjectMemory { WorkspaceRoot = root },
             new ProjectAgentConfig(),
             profile,
-            projectScaffoldPlan);
+            projectScaffoldPlan,
+            selectedSkills);
 
         Assert.Contains("This context is not part of the saved conversation history.", context, StringComparison.Ordinal);
+        Assert.Contains("Skill active: tool use required for file-producing tasks.", context, StringComparison.Ordinal);
         Assert.Contains("Relevant AgentQ system skills:", context, StringComparison.Ordinal);
         Assert.Contains("[greenfield-project-scaffold] Greenfield Project Scaffold", context, StringComparison.Ordinal);
+        Assert.True(
+            context.IndexOf("Relevant AgentQ system skills:", StringComparison.Ordinal) <
+            context.IndexOf("Project scaffold preflight plan:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2650,6 +2725,38 @@ public sealed class DesktopServiceTests
         Assert.Equal("Project Greenfield Override", skill.Title);
         Assert.Contains("Project override skill content.", context, StringComparison.Ordinal);
         Assert.DoesNotContain("Use this skill only as procedural guidance", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SystemSkillService_RequiresToolUseForGreenfieldFileProducingTask()
+    {
+        var root = CreateTempDirectory();
+        var service = new SystemSkillService();
+        var userText = "포트폴리오 홈페이지 만들어줘";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var skills = service.SelectRelevantSkills(userText, root, profile);
+
+        var required = SystemSkillService.RequiresToolUseForFileProducingTask(skills, userText, profile);
+
+        Assert.True(required);
+    }
+
+    [Fact]
+    public void SystemSkillService_DoesNotRequireToolUseForConsultativeSkillQuestion()
+    {
+        var root = CreateTempDirectory();
+        var service = new SystemSkillService();
+        var userText = "포트폴리오 홈페이지를 만들어 볼 수 있는지 가능한가?";
+        var profile = new DesktopTaskProfile
+        {
+            Kind = DesktopTaskKind.Feature,
+            Label = "feature"
+        };
+        var skills = service.SelectRelevantSkills("포트폴리오 홈페이지 만들어줘", root, profile);
+
+        var required = SystemSkillService.RequiresToolUseForFileProducingTask(skills, userText, profile);
+
+        Assert.False(required);
     }
 
     [Fact]
@@ -8248,7 +8355,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         ProjectMemory projectMemory,
         ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
-        ProjectScaffoldPlanningResult projectScaffoldPlan)
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        IReadOnlyList<AgentQSystemSkill> selectedSystemSkills)
     {
         var method = typeof(DesktopAgentService).GetMethod(
             "BuildContextOnlyAsync",
@@ -8263,6 +8371,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             projectConfig,
             taskProfile,
             projectScaffoldPlan,
+            selectedSystemSkills,
             CancellationToken.None
         ])!;
         return await task;

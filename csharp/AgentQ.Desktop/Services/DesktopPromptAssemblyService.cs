@@ -22,7 +22,7 @@ public static class DesktopPromptAssemblyService
     public static DesktopTaskProfile BuildTaskProfile(string userText)
     {
         var kind = DesktopTaskClassifier.Classify(userText);
-        return kind switch
+        var profile = kind switch
         {
             DesktopTaskKind.BugFix => new DesktopTaskProfile
             {
@@ -81,6 +81,9 @@ public static class DesktopPromptAssemblyService
                 ContextHint = "General context: use only relevant workspace, memory, link, and search context for this request."
             }
         };
+
+        profile.IncludeLinkHandling = IsLinkCapabilityQuestion(userText);
+        return profile;
     }
 
     public static string BuildSystemPrompt(string basePrompt, DesktopTaskProfile profile, string? toolPermissionState = null)
@@ -104,6 +107,31 @@ public static class DesktopPromptAssemblyService
 
         return builder.ToString().TrimEnd();
     }
+
+    private static bool IsLinkCapabilityQuestion(string userText)
+    {
+        var text = userText.ToLowerInvariant();
+        return ContainsAny(
+            text,
+            "http://",
+            "https://",
+            "url",
+            "link",
+            "website",
+            "web site",
+            "external site",
+            "\uB9C1\uD06C",
+            "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uC6F9 \uC0AC\uC774\uD2B8",
+            "\uC678\uBD80 \uC0AC\uC774\uD2B8",
+            "\uC678\uBD80 \uC6F9",
+            "\uC811\uC18D",
+            "\uC77D\uC5B4\uC62C",
+            "\uAC00\uC838\uC62C");
+    }
+
+    private static bool ContainsAny(string text, params string[] values) =>
+        values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
 }
 
 public interface IDesktopPromptRule
@@ -128,7 +156,7 @@ public sealed class ContextPrioritizationPromptRule : IDesktopPromptRule
 
 public sealed class LinkHandlingPromptRule : IDesktopPromptRule
 {
-    public bool Applies(DesktopTaskProfile profile) => true;
+    public bool Applies(DesktopTaskProfile profile) => profile.IncludeLinkHandling;
 
     public string Build(DesktopTaskProfile profile)
     {

@@ -38,12 +38,16 @@ public static class DesktopTaskClassifier
             "create",
             "make",
             "build",
+            "write",
             "\uB9CC\uB4E4",
             "\uCD94\uAC00",
             "\uAD6C\uD604",
             "\uC0DD\uC131",
             "\uC9DC",
-            "\uC9C4\uD589");
+            "\uC9C4\uD589",
+            "\uC791\uC131",
+            "\uC4F0",
+            "\uB9CC\uC838");
 
         if (!asksToCreate &&
             ContainsAny(text, "analyze", "search", "\uBD84\uC11D", "\uAC80\uC0C9", "\uD30C\uC545", "\uCC3E\uC544", "\uC5B4\uB514", "\uD655\uC778", "\uC870\uC0AC"))
@@ -56,6 +60,7 @@ public static class DesktopTaskClassifier
                 "add",
                 "implement",
                 "create",
+                "write",
                 "portfolio",
                 "website",
                 "web site",
@@ -78,6 +83,8 @@ public static class DesktopTaskClassifier
                 "\uCD94\uAC00",
                 "\uAD6C\uD604",
                 "\uC9DC",
+                "\uC791\uC131",
+                "\uC4F0",
                 "\uC9C4\uD589"))
         {
             return DesktopTaskKind.Feature;

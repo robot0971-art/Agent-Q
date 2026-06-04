@@ -64,6 +64,91 @@ public sealed class SystemSkillService
         return builder.ToString().TrimEnd();
     }
 
+    public static bool RequiresToolUseForFileProducingTask(
+        IReadOnlyList<AgentQSystemSkill> skills,
+        string userText,
+        DesktopTaskProfile taskProfile)
+    {
+        if (taskProfile.Kind != DesktopTaskKind.Feature ||
+            !skills.Any(skill => string.Equals(skill.Id, "greenfield-project-scaffold", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var normalized = Normalize(userText);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        if (ContainsAnyNormalized(
+                normalized,
+                "isitpossible",
+                "woulditbepossible",
+                "canwe",
+                "cani",
+                "couldwe",
+                "couldi",
+                "가능한가",
+                "가능할까",
+                "가능해",
+                "가능하냐",
+                "할수있",
+                "해볼수있",
+                "어떨까",
+                "괜찮을까") &&
+            !ContainsAnyNormalized(
+                normalized,
+                "makeitnow",
+                "builditnow",
+                "createitnow",
+                "implementitnow",
+                "pleasecreate",
+                "pleaseimplement",
+                "바로만들",
+                "바로생성",
+                "바로구현",
+                "이대로만들",
+                "이대로생성",
+                "이대로구현",
+                "만들어줘",
+                "생성해줘",
+                "구현해줘",
+                "진행해"))
+        {
+            return false;
+        }
+
+        return ContainsAnyNormalized(
+            normalized,
+            "create",
+            "make",
+            "build",
+            "generate",
+            "scaffold",
+            "project",
+            "app",
+            "portfolio",
+            "homepage",
+            "website",
+            "landingpage",
+            "blog",
+            "wordbook",
+            "shopping",
+            "만들",
+            "생성",
+            "구현",
+            "프로젝트",
+            "앱",
+            "포트폴리오",
+            "홈페이지",
+            "웹사이트",
+            "랜딩",
+            "블로그",
+            "단어장",
+            "쇼핑");
+    }
+
     private IReadOnlyList<AgentQSystemSkill> LoadSkills(string workspaceRoot)
     {
         var merged = new Dictionary<string, AgentQSystemSkill>(StringComparer.OrdinalIgnoreCase);
@@ -280,6 +365,9 @@ public sealed class SystemSkillService
         return normalizedCandidate.Length > 0 &&
                normalizedText.Contains(normalizedCandidate, StringComparison.Ordinal);
     }
+
+    private static bool ContainsAnyNormalized(string normalizedText, params string[] candidates) =>
+        candidates.Any(candidate => ContainsNormalized(normalizedText, candidate));
 
     private string Truncate(string content)
     {

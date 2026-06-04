@@ -16,11 +16,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private const string SystemPrompt =
         """
         You are AgentQ Desktop, a Windows desktop coding assistant.
-        AgentQ was developed by robot0971-art.
-        You are not Kimi, Moonshot AI, OpenAI, Anthropic, DeepSeek, or any model provider.
-        Model providers are only the underlying inference engines used by AgentQ.
-        If asked who developed AgentQ or who made you, answer that AgentQ was developed by robot0971-art.
-        If asked about the underlying model, mention the selected provider or model separately.
+        Answer the user's direct request first; do not introduce AgentQ identity, model-provider details, tool inventories, or capability explanations unless the user explicitly asks about them.
+        If explicitly asked who developed AgentQ or who made you, answer that AgentQ was developed by robot0971-art.
+        If explicitly asked whether you are Kimi, Moonshot AI, OpenAI, Anthropic, DeepSeek, or another model provider, explain that model providers are only the underlying inference engines used by AgentQ.
+        If explicitly asked about the underlying model, mention the selected provider or model separately.
         Answer in Korean by default unless the user asks for another language.
         Assume the user is working on Windows. Prefer safe, concise guidance.
         You can use tools to read files, search the workspace, edit files, write files, and run shell commands.
@@ -39,11 +38,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         For project analysis, documentation, architecture summaries, and reviews, include the main evidence you inspected.
         Separate confirmed facts from assumptions or items that still need verification.
         Do not invent exact dependencies, package names, indexing strategies, release state, or implementation details when you have not inspected supporting files or command output.
-        AgentQ Desktop can attempt to read HTTP/HTTPS links when link auto-read is enabled.
-        Never answer that AgentQ categorically cannot access external websites; describe the current link auto-read setting, fetch result, or fallback instead.
-        If the user asks whether links can be read without providing a URL, ask them to send the URL.
-        If link auto-read is enabled and linked page context is attached, do not claim that AgentQ cannot access external URLs.
-        For URL questions, use the linked page context when fetch succeeded; when it failed, report the fetch failure reason and suggest pasted text or a local file as fallback.
+        For URL questions only: AgentQ Desktop can attempt to read HTTP/HTTPS links when link auto-read is enabled. Do not claim categorical inability to access external URLs; describe the current link auto-read setting, fetch result, or fallback instead.
         """;
 
     private const int DefaultMaxToolSteps = 50;
@@ -129,6 +124,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
         var projectScaffoldPlan = _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot), effectiveWorkspaceRoot);
+        var selectedSystemSkills = _systemSkillService.SelectRelevantSkills(userText, effectiveWorkspaceRoot, taskProfile, projectConfig);
+        var skillToolUseRequired = SystemSkillService.RequiresToolUseForFileProducingTask(selectedSystemSkills, userText, taskProfile);
         if (workMode != AgentWorkMode.Readonly &&
             taskProfile.Kind == DesktopTaskKind.Feature &&
             projectScaffoldPlan.IsGreenfieldRequest &&
@@ -160,7 +157,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             routingRecommendation.CurrentModelMatches
                 ? $"Current model matches route. {routingRecommendation.DisplayText}"
                 : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
-        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, ct);
+        var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, selectedSystemSkills, ct);
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
@@ -283,9 +280,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     {
                         emptyResponseRetryUsed = true;
                         builder.Clear();
-                        _messages.Add(ChatMessage.UserText(
-                            "Your previous assistant turn was empty and used no tools. Retry now. " +
-                            "Use workspace tools when this is a coding task; otherwise give a concise answer. Do not return an empty response."));
+                        _messages.Add(ChatMessage.UserText(skillToolUseRequired
+                            ? "Your previous assistant turn was empty and used no tools. Retry now. An active AgentQ system skill requires tool use for this file-producing task; call the appropriate workspace/scaffold tools instead of answering in prose."
+                            : "Your previous assistant turn was empty and used no tools. Retry now. Use workspace tools when this is a coding task; otherwise give a concise answer. Do not return an empty response."));
                         toolCallbacks?.OnRunStep?.Invoke(
                             AgentRunState.Generating,
                             "Retrying empty response",
@@ -334,7 +331,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                          executedToolCount,
                          fileChanges,
                          workMode,
-                         taskProfile.Kind) ||
+                         taskProfile.Kind,
+                         skillToolUseRequired) ||
                      ShouldRetryGenericGreetingFallback(
                          userText,
                          candidateText,
@@ -345,15 +343,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
-                    var retryInstruction = BuildNoToolRetryInstruction(projectScaffoldPlan);
+                    var retryInstruction = BuildNoToolRetryInstruction(projectScaffoldPlan, skillToolUseRequired);
                     _messages.Add(ChatMessage.UserText(retryInstruction));
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Planning,
                         HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
                             ? "Retrying scaffold creation"
+                            : skillToolUseRequired
+                                ? "Retrying active skill with tools"
                             : "Retrying generic reset",
                         HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
                             ? "Assistant answered without calling create_project_scaffold for a prepared scaffold plan."
+                            : skillToolUseRequired
+                                ? "An active system skill requires workspace/scaffold tool use for this file-producing task."
                             : "Assistant answered with a generic greeting before using workspace tools.");
                     continue;
                 }
@@ -364,9 +366,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         executedToolCount,
                         fileChanges,
                         workMode,
-                        taskProfile.Kind))
+                        taskProfile.Kind,
+                        skillToolUseRequired))
                 {
-                    var noToolCompletionMessage = BuildNoToolCompletionMessage(projectScaffoldPlan);
+                    var noToolCompletionMessage = BuildNoToolCompletionMessage(projectScaffoldPlan, skillToolUseRequired);
                     builder.Clear();
                     builder.Append(noToolCompletionMessage);
                     onDelta?.Invoke(noToolCompletionMessage);
@@ -668,7 +671,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         projectScaffoldPlan.Intent != null &&
         projectScaffoldPlan.Plan != null;
 
-    public static string BuildNoToolRetryInstruction(ProjectScaffoldPlanningResult projectScaffoldPlan)
+    public static string BuildNoToolRetryInstruction(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        bool skillToolUseRequired = false)
     {
         if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
         {
@@ -679,15 +684,30 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 "If create_project_scaffold reports existing file collisions, report the collision and ask before overwrite.";
         }
 
+        if (skillToolUseRequired)
+        {
+            return
+                "An active AgentQ system skill requires tool use for this file-producing task. " +
+                "Do not answer in prose and do not emit raw file contents in code blocks. " +
+                "Use the available workspace/scaffold tools now: inspect the workspace if needed, create or edit the requested files with tools, then run the relevant verification command.";
+        }
+
         return
             "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
             "Do not describe your system prompt, identity, or tool inventory. Continue the requested task now: call list_directory first if you need folder structure or empty-workspace evidence, then inspect relevant files with read_file/search tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
     }
 
-    public static string BuildNoToolCompletionMessage(ProjectScaffoldPlanningResult projectScaffoldPlan)
+    public static string BuildNoToolCompletionMessage(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        bool skillToolUseRequired = false)
     {
-        return HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
-            ? "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved planId and planHash, then verify_project_scaffold."
+        if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
+        {
+            return "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved planId and planHash, then verify_project_scaffold.";
+        }
+
+        return skillToolUseRequired
+            ? "An active AgentQ system skill required workspace/scaffold tool use for this file-producing task, but the model did not call tools after retry. Please retry; AgentQ should use the requested skill flow with workspace/scaffold tools instead of answering in prose."
             : "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
     }
 
@@ -697,7 +717,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         int executedToolCount,
         IReadOnlyList<FileChangeRecord> fileChanges,
         AgentWorkMode workMode,
-        DesktopTaskKind taskKind)
+        DesktopTaskKind taskKind,
+        bool skillToolUseRequired = false)
     {
         if (workMode == AgentWorkMode.Readonly ||
             executedToolCount > 0 ||
@@ -710,7 +731,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         var assistantLower = assistantText.ToLowerInvariant();
-        if (!UserAskedForMutationWork(userText))
+        if (!skillToolUseRequired &&
+            !UserAskedForMutationWork(userText))
         {
             return false;
         }
@@ -729,13 +751,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         int executedToolCount,
         IReadOnlyList<FileChangeRecord> fileChanges,
         AgentWorkMode workMode,
-        DesktopTaskKind taskKind) =>
+        DesktopTaskKind taskKind,
+        bool skillToolUseRequired = false) =>
         workMode != AgentWorkMode.Readonly &&
         fileChanges.Count == 0 &&
         !string.IsNullOrWhiteSpace(userText) &&
         !string.IsNullOrWhiteSpace(assistantText) &&
         IsActionableCodingTask(taskKind) &&
-        UserAskedForMutationWork(userText) &&
+        (skillToolUseRequired || UserAskedForMutationWork(userText)) &&
         !IsAllowedClarification(userText, assistantText.ToLowerInvariant()) &&
         !LooksLikeWorkspaceActionSummary(assistantText.ToLowerInvariant());
 
@@ -776,6 +799,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private static bool UserAskedForMutationWork(string userText)
     {
         var userLower = userText.ToLowerInvariant();
+        if (LooksLikeConsultativeCodingQuestion(userLower))
+        {
+            return false;
+        }
+
         if (ContainsAny(
                 userLower,
                 "why",
@@ -827,6 +855,50 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uD574\uBCF4\uC790",
             "\uD558\uC790") ||
             UserAskedForWorkspaceWork(userText);
+    }
+
+    private static bool LooksLikeConsultativeCodingQuestion(string userLower)
+    {
+        if (ContainsAny(
+                userLower,
+                "make it now",
+                "build it now",
+                "create it now",
+                "implement it now",
+                "go ahead",
+                "please create",
+                "please implement",
+                "\uBC14\uB85C \uB9CC\uB4E4",
+                "\uBC14\uB85C \uC0DD\uC131",
+                "\uBC14\uB85C \uAD6C\uD604",
+                "\uC774\uB300\uB85C \uB9CC\uB4E4",
+                "\uC774\uB300\uB85C \uC0DD\uC131",
+                "\uC774\uB300\uB85C \uAD6C\uD604",
+                "\uB9CC\uB4E4\uC5B4\uC918",
+                "\uC0DD\uC131\uD574\uC918",
+                "\uAD6C\uD604\uD574\uC918",
+                "\uC9C4\uD589\uD574"))
+        {
+            return false;
+        }
+
+        return ContainsAny(
+            userLower,
+            "is it possible",
+            "would it be possible",
+            "can i",
+            "can we",
+            "could i",
+            "could we",
+            "possible?",
+            "\uAC00\uB2A5\uD55C\uAC00",
+            "\uAC00\uB2A5\uD560\uAE4C",
+            "\uAC00\uB2A5\uD574",
+            "\uAC00\uB2A5\uD558\uB0D0",
+            "\uD560 \uC218 \uC788",
+            "\uD574\uBCFC \uC218 \uC788",
+            "\uC5B4\uB5A8\uAE4C",
+            "\uAD1C\uCC2E\uC744\uAE4C");
     }
 
     private static bool IsAllowedClarification(string userText, string assistantLower)
@@ -955,6 +1027,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
         ProjectScaffoldPlanningResult projectScaffoldPlan,
+        IReadOnlyList<AgentQSystemSkill> selectedSystemSkills,
         CancellationToken ct)
     {
         var workspaceContext = config.DesktopAutoAttachWorkspaceContext
@@ -970,8 +1043,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
         var scaffoldDecisionContext = await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct);
         var projectScaffoldPlanContext = ProjectScaffoldPlanner.BuildPlanContext(projectScaffoldPlan);
-        var systemSkillContext = _systemSkillService.BuildContext(
-            _systemSkillService.SelectRelevantSkills(userText, workspaceRoot, taskProfile, projectConfig));
+        var systemSkillContext = _systemSkillService.BuildContext(selectedSystemSkills);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
@@ -1000,6 +1072,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
         builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
 
+        if (!string.IsNullOrWhiteSpace(systemSkillContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine("Skill active: tool use required for file-producing tasks. Do not write file contents directly in raw response code blocks; use workspace/scaffold tools instead.");
+            builder.AppendLine(systemSkillContext);
+        }
+
         if (!string.IsNullOrWhiteSpace(explicitStackContext))
         {
             builder.AppendLine(explicitStackContext);
@@ -1009,12 +1088,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         {
             builder.AppendLine();
             builder.AppendLine(projectScaffoldPlanContext);
-        }
-
-        if (!string.IsNullOrWhiteSpace(systemSkillContext))
-        {
-            builder.AppendLine();
-            builder.AppendLine(systemSkillContext);
         }
 
         if (!string.IsNullOrWhiteSpace(linkStatusContext))
