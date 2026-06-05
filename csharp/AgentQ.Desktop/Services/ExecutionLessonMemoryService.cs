@@ -271,6 +271,7 @@ public sealed class ExecutionLessonMemoryService
     private static string FormatIntent(TaskContractIntent intent) => intent switch
     {
         TaskContractIntent.RunLocalServer => "run_local_server",
+        TaskContractIntent.StopLocalServer => "stop_local_server",
         TaskContractIntent.CreateProject => "create_project",
         TaskContractIntent.ModifyCode => "modify_code",
         TaskContractIntent.InspectProject => "inspect_project",

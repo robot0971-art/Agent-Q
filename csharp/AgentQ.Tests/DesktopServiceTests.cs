@@ -1015,6 +1015,16 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesStopLocalServerRequest()
+    {
+        var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uAEBC\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.StopLocalServer, contract.Intent);
+        Assert.Contains("Stop the local development server", contract.Goal, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TaskContractCompletionChecker_RetriesStructureSummaryForRunLocalServer()
     {
         var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918");
@@ -1086,6 +1096,227 @@ public sealed class DesktopServiceTests
         Assert.Contains("verify a localhost URL", context, StringComparison.OrdinalIgnoreCase);
         var document = await service.LoadAsync(root, CancellationToken.None);
         Assert.Equal(1, Assert.Single(document.Lessons).AppliedCount);
+    }
+
+    [Fact]
+    public void DesktopLocalServerService_ResolvesPreferredPackageScript()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "package.json"), """{"scripts":{"start":"node server.js","dev":"vite"}}""");
+        var service = new DesktopLocalServerService(new RealHttpClientFactory());
+
+        var plan = service.ResolveStartPlan(root);
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("dev", plan.ScriptName);
+        Assert.StartsWith("http://127.0.0.1:", plan.Url, StringComparison.Ordinal);
+        Assert.Contains("npm run dev", plan.DisplayCommand, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopLocalServerService_StartsNodeDevServerAndVerifiesUrl()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/plain'});
+              res.end('agentq-local-server-ok');
+            }).listen(port, '127.0.0.1');
+            """);
+        var service = new DesktopLocalServerService(new RealHttpClientFactory());
+        LocalServerStartResult? result = null;
+
+        try
+        {
+            result = await service.StartAsync(
+                root,
+                new AllowAllPermissionEnforcer(),
+                new DesktopToolCallbacks(),
+                CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Message);
+            Assert.StartsWith("http://127.0.0.1:", result.Url, StringComparison.Ordinal);
+            Assert.Contains("npm run dev", result.Command, StringComparison.Ordinal);
+            using var client = new HttpClient();
+            var body = await client.GetStringAsync(result.Url);
+            Assert.Equal("agentq-local-server-ok", body);
+        }
+        finally
+        {
+            if (result?.ProcessId > 0)
+            {
+                try
+                {
+                    Process.GetProcessById(result.ProcessId).Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DesktopLocalServerService_ReusesAndStopsWorkspaceSession()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/plain'});
+              res.end('agentq-reuse-ok');
+            }).listen(port, '127.0.0.1');
+            """);
+        var service = new DesktopLocalServerService(new RealHttpClientFactory());
+        var first = await service.StartAsync(root, new AllowAllPermissionEnforcer(), new DesktopToolCallbacks(), CancellationToken.None);
+
+        try
+        {
+            Assert.True(first.Succeeded, first.Message);
+            var second = await service.StartAsync(root, new AllowAllPermissionEnforcer(), new DesktopToolCallbacks(), CancellationToken.None);
+            Assert.True(second.Succeeded, second.Message);
+            Assert.True(second.ReusedExisting);
+            Assert.Equal(first.ProcessId, second.ProcessId);
+            Assert.Equal(first.Url, second.Url);
+
+            var stopped = await service.StopAsync(root, new AllowAllPermissionEnforcer(), new DesktopToolCallbacks(), CancellationToken.None);
+            Assert.True(stopped.Succeeded, stopped.Message);
+            Assert.Equal(first.ProcessId, stopped.ProcessId);
+            await Task.Delay(250);
+            Assert.Throws<ArgumentException>(() => Process.GetProcessById(first.ProcessId));
+        }
+        finally
+        {
+            if (first.ProcessId > 0)
+            {
+                try
+                {
+                    Process.GetProcessById(first.ProcessId).Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_RunLocalServerContractStartsServerBeforeModelCall()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/plain'});
+              res.end('agentq-service-local-server-ok');
+            }).listen(port, '127.0.0.1');
+            """);
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(new RealHttpClientFactory());
+        var permissionEnforcer = new RecordingPermissionEnforcer(tool => tool == "run_local_server");
+        string result;
+
+        result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        try
+        {
+            Assert.Contains("\uB85C\uCEEC \uAC1C\uBC1C \uC11C\uBC84\uB97C \uB744\uC6E0\uC2B5\uB2C8\uB2E4", result, StringComparison.Ordinal);
+            Assert.Contains("http://127.0.0.1:", result, StringComparison.Ordinal);
+            Assert.Contains("run_local_server", permissionEnforcer.RequestedTools);
+        }
+        finally
+        {
+            var processLine = result.Split(Environment.NewLine)
+                .FirstOrDefault(line => line.StartsWith("Process ID:", StringComparison.Ordinal));
+            if (processLine != null &&
+                int.TryParse(processLine.Replace("Process ID:", string.Empty, StringComparison.Ordinal).Trim(), out var processId))
+            {
+                try
+                {
+                    Process.GetProcessById(processId).Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_StopLocalServerContractStopsExistingSession()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/plain'});
+              res.end('agentq-stop-ok');
+            }).listen(port, '127.0.0.1');
+            """);
+        var service = CreateDesktopAgentService(new RealHttpClientFactory());
+        var permissionEnforcer = new RecordingPermissionEnforcer(tool => tool is "run_local_server" or "stop_local_server");
+        var startResult = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+        var processId = ExtractProcessId(startResult);
+
+        var stopResult = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "\uB85C\uCEEC\uC11C\uBC84 \uB044\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.Contains("\uB85C\uCEEC \uAC1C\uBC1C \uC11C\uBC84\uB97C \uC885\uB8CC\uD588\uC2B5\uB2C8\uB2E4", stopResult, StringComparison.Ordinal);
+        Assert.Contains("run_local_server", permissionEnforcer.RequestedTools);
+        Assert.Contains("stop_local_server", permissionEnforcer.RequestedTools);
+        await Task.Delay(250);
+        Assert.Throws<ArgumentException>(() => Process.GetProcessById(processId));
     }
 
     [Fact]
@@ -9375,6 +9606,15 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         return await task;
     }
 
+    private static int ExtractProcessId(string text)
+    {
+        var line = text.Split(Environment.NewLine)
+            .FirstOrDefault(value => value.StartsWith("Process ID:", StringComparison.Ordinal));
+        Assert.False(string.IsNullOrWhiteSpace(line), "Expected local server result to include a Process ID line.");
+        Assert.True(int.TryParse(line.Replace("Process ID:", string.Empty, StringComparison.Ordinal).Trim(), out var processId));
+        return processId;
+    }
+
     private sealed class AllowAllPermissionEnforcer : IPermissionEnforcer
     {
         public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson) =>
@@ -10070,6 +10310,11 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
                 Content = new StringContent(content, System.Text.Encoding.UTF8, contentType)
             });
         }
+    }
+
+    private sealed class RealHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
     }
 
     private sealed class FakeEmbeddingClient : IEmbeddingClient

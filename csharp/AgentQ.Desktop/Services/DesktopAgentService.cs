@@ -71,6 +71,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ProjectScaffoldPlanner _projectScaffoldPlanner = new();
     private readonly ProjectScaffoldPlanRegistry _projectScaffoldPlanRegistry = new();
     private readonly ExecutionLessonMemoryService _executionLessonMemoryService = new();
+    private readonly DesktopLocalServerService _localServerService;
     private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
@@ -97,6 +98,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _symbolIndexService = symbolIndexService;
         _workspaceAnalysisService = workspaceAnalysisService;
         _systemSkillService = systemSkillService ?? new SystemSkillService();
+        _localServerService = new DesktopLocalServerService(httpClientFactory);
         
         _taskExecutor = new TaskExecutor(
             httpClientFactory,
@@ -227,6 +229,66 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var manualFallbackRetryUsed = false;
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
+
+        if (ShouldExecuteLocalServerDirectly(taskContract, workMode))
+        {
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "Local server mode",
+                "AgentQ Desktop will manage the local development server directly from the task contract.");
+            var localServerSummary = string.Empty;
+            var localServerSucceeded = false;
+            if (taskContract.Intent == TaskContractIntent.StopLocalServer)
+            {
+                var stopResult = await _localServerService.StopAsync(
+                    effectiveWorkspaceRoot,
+                    enforcer,
+                    toolCallbacks,
+                    ct);
+                localServerSucceeded = stopResult.Succeeded;
+                localServerSummary = BuildLocalServerStopSummary(stopResult);
+            }
+            else
+            {
+                var localServerResult = await _localServerService.StartAsync(
+                    effectiveWorkspaceRoot,
+                    enforcer,
+                    toolCallbacks,
+                    ct);
+                if (!string.IsNullOrWhiteSpace(localServerResult.Command))
+                {
+                    executedCommands.Add(localServerResult.Command);
+                }
+
+                localServerSucceeded = localServerResult.Succeeded;
+                localServerSummary = BuildLocalServerSummary(localServerResult);
+            }
+
+            builder.Clear();
+            builder.Append(localServerSummary);
+            onDelta?.Invoke(localServerSummary);
+            _messages.Add(ChatMessage.AssistantText(localServerSummary));
+            if (localServerSucceeded)
+            {
+                await _executionLessonMemoryService.RecordContractSuccessAsync(effectiveWorkspaceRoot, taskContract, ct);
+            }
+            else
+            {
+                await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, localServerSummary, ct);
+            }
+
+            ReportConfidence(
+                builder.ToString(),
+                executedToolCount,
+                fileChanges,
+                executedCommands,
+                [],
+                touchedLessons.Count,
+                replayEntries,
+                toolCallbacks);
+            await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+            return builder.ToString();
+        }
 
         if (ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode))
         {
@@ -1226,6 +1288,53 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                HasProceedableProjectScaffoldPlan(projectScaffoldPlan) &&
                !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanId) &&
                !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanHash);
+    }
+
+    public static bool ShouldExecuteLocalServerDirectly(TaskContract taskContract, AgentWorkMode workMode)
+    {
+        return workMode != AgentWorkMode.Readonly &&
+               taskContract.IsActionable &&
+               taskContract.Intent is TaskContractIntent.RunLocalServer or TaskContractIntent.StopLocalServer;
+    }
+
+    private static string BuildLocalServerSummary(LocalServerStartResult result)
+    {
+        if (result.Succeeded)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("로컬 개발 서버를 띄웠습니다.");
+            builder.AppendLine();
+            builder.AppendLine($"URL: {result.Url}");
+            if (!string.IsNullOrWhiteSpace(result.Command))
+            {
+                builder.AppendLine($"Command: {result.Command}");
+            }
+
+            if (result.ProcessId > 0)
+            {
+                builder.AppendLine($"Process ID: {result.ProcessId}");
+            }
+
+            return builder.ToString().TrimEnd();
+        }
+
+        return string.IsNullOrWhiteSpace(result.Message)
+            ? "로컬 개발 서버를 띄우지 못했습니다."
+            : "로컬 개발 서버를 띄우지 못했습니다. " + result.Message;
+    }
+
+    private static string BuildLocalServerStopSummary(LocalServerStopResult result)
+    {
+        if (result.Succeeded)
+        {
+            return string.IsNullOrWhiteSpace(result.Url)
+                ? result.Message
+                : $"로컬 개발 서버를 종료했습니다.{Environment.NewLine}{Environment.NewLine}URL: {result.Url}";
+        }
+
+        return string.IsNullOrWhiteSpace(result.Message)
+            ? "로컬 개발 서버를 종료하지 못했습니다."
+            : "로컬 개발 서버를 종료하지 못했습니다. " + result.Message;
     }
 
     public static string BuildNoToolRetryInstruction(

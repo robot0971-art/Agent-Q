@@ -23,6 +23,7 @@ public enum TaskContractIntent
 {
     None,
     RunLocalServer,
+    StopLocalServer,
     CreateProject,
     ModifyCode,
     InspectProject,
@@ -34,6 +35,32 @@ public static class UserIntentTranslator
     public static TaskContract Translate(string userText)
     {
         var normalized = Normalize(userText);
+        if (IsStopLocalServerRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.StopLocalServer,
+                Confidence = 0.92,
+                Goal = "Stop the local development server for the selected workspace.",
+                RequiredActions =
+                [
+                    "find the active local server session for this workspace",
+                    "stop the server process",
+                    "report whether the server was stopped or no active server was found"
+                ],
+                DoneWhen =
+                [
+                    "the active local server process is stopped",
+                    "or no active local server session exists"
+                ],
+                InvalidCompletions =
+                [
+                    "only describing project structure",
+                    "asking what to do next without checking the server session"
+                ]
+            };
+        }
+
         if (IsRunLocalServerRequest(normalized))
         {
             return new TaskContract
@@ -78,6 +105,17 @@ public static class UserIntentTranslator
             "run", "start", "serve", "launch", "open", "preview", "npmrundev",
             "\uB744\uC6CC", "\uB744\uC6B0", "\uC2E4\uD589", "\uC5F4\uC5B4", "\uBCF4\uC5EC", "\uCF1C");
         return (hasServer && hasRunVerb) || ContainsAny(normalized, "npmrundev", "npmstart", "yarn dev", "pnpmdev");
+    }
+
+    private static bool IsStopLocalServerRequest(string normalized)
+    {
+        var hasServer = ContainsAny(normalized,
+            "localserver", "devserver", "localhost", "server",
+            "\uB85C\uCEEC\uC11C\uBC84", "\uAC1C\uBC1C\uC11C\uBC84", "\uC11C\uBC84");
+        var hasStopVerb = ContainsAny(normalized,
+            "stop", "kill", "terminate", "shutdown", "close",
+            "\uB044", "\uAEBC", "\uB054", "\uC885\uB8CC", "\uC911\uC9C0", "\uB0B4\uB824", "\uB2EB");
+        return hasServer && hasStopVerb;
     }
 
     private static string Normalize(string text)
@@ -136,6 +174,7 @@ public static class TaskContractPromptBuilder
     private static string FormatIntent(TaskContractIntent intent) => intent switch
     {
         TaskContractIntent.RunLocalServer => "run_local_server",
+        TaskContractIntent.StopLocalServer => "stop_local_server",
         TaskContractIntent.CreateProject => "create_project",
         TaskContractIntent.ModifyCode => "modify_code",
         TaskContractIntent.InspectProject => "inspect_project",
@@ -156,6 +195,7 @@ public static class TaskContractCompletionChecker
         return contract.Intent switch
         {
             TaskContractIntent.RunLocalServer => executedCommands.Count == 0 && LooksLikeInvalidRunServerCompletion(assistantText),
+            TaskContractIntent.StopLocalServer => false,
             _ => false
         };
     }
@@ -170,6 +210,7 @@ public static class TaskContractCompletionChecker
         return contract.Intent switch
         {
             TaskContractIntent.RunLocalServer => executedCommands.Count == 0 && LooksLikeInvalidRunServerCompletion(assistantText),
+            TaskContractIntent.StopLocalServer => false,
             _ => false
         };
     }
@@ -182,6 +223,13 @@ public static class TaskContractCompletionChecker
                 "The current task contract is run_local_server. Do not complete with a project structure summary. " +
                 "Inspect package scripts if needed, start the local development server with the appropriate command, " +
                 "verify the reachable localhost URL, then report that URL. If startup fails, report the concrete command error.";
+        }
+
+        if (contract.Intent == TaskContractIntent.StopLocalServer)
+        {
+            return
+                "The current task contract is stop_local_server. Do not complete with a project structure summary. " +
+                "Find the active local server session for this workspace, stop it if present, then report the result.";
         }
 
         return "The previous answer did not satisfy the current task contract. Re-plan from the contract goal and perform the required actions before answering.";
