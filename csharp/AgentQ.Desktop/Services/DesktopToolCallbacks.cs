@@ -22,5 +22,15 @@ public sealed class DesktopToolCallbacks
 
     public Action<UsageStats>? OnUsage { get; init; }
 
+    public Action<DesktopLocalServerState>? OnLocalServerChanged { get; init; }
+
     public Func<int, bool>? OnRequestExtendSteps { get; init; }
 }
+
+public sealed record DesktopLocalServerState(
+    bool IsRunning,
+    string Url,
+    string Command,
+    int ProcessId,
+    bool ReusedExisting,
+    string Message);

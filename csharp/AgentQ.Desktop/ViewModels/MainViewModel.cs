@@ -48,6 +48,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _planApprovalAccentBrush = "#B7C4D1";
     private string _usageText = "\uC0AC\uC6A9\uB7C9 \uC815\uBCF4 \uC5C6\uC74C";
     private string _runPermissionStatusText = "Run permissions: none";
+    private string _localServerStatusText = "Local server: idle";
+    private string _localServerUrl = string.Empty;
+    private string _localServerCommand = string.Empty;
+    private int _localServerProcessId;
+    private bool _hasRunningLocalServer;
     private bool _canClearRunPermissions;
     private bool _hasProjectConfig;
     private bool _canResumeSessionSummary;
@@ -328,6 +333,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanApprovePlan)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanStopLocalServer)));
                 RefreshRunSummary();
             }
         }
@@ -367,6 +373,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _canClearRunPermissions;
         set => SetField(ref _canClearRunPermissions, value);
     }
+
+    public string LocalServerStatusText
+    {
+        get => _localServerStatusText;
+        private set => SetField(ref _localServerStatusText, value);
+    }
+
+    public string LocalServerUrl
+    {
+        get => _localServerUrl;
+        private set
+        {
+            if (!SetField(ref _localServerUrl, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanOpenLocalServer)));
+        }
+    }
+
+    public string LocalServerCommand
+    {
+        get => _localServerCommand;
+        private set => SetField(ref _localServerCommand, value);
+    }
+
+    public int LocalServerProcessId
+    {
+        get => _localServerProcessId;
+        private set => SetField(ref _localServerProcessId, value);
+    }
+
+    public bool HasRunningLocalServer
+    {
+        get => _hasRunningLocalServer;
+        private set
+        {
+            if (!SetField(ref _hasRunningLocalServer, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanOpenLocalServer)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanStopLocalServer)));
+        }
+    }
+
+    public bool CanOpenLocalServer => HasRunningLocalServer && !string.IsNullOrWhiteSpace(LocalServerUrl);
+
+    public bool CanStopLocalServer => HasRunningLocalServer && !IsBusy;
 
     public double DesktopFontSize
     {
@@ -900,6 +957,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void ClearRunPermissionStatus()
     {
         SetRunPermissionApprovals([]);
+    }
+
+    public void ApplyLocalServerState(DesktopLocalServerState state)
+    {
+        HasRunningLocalServer = state.IsRunning;
+        LocalServerUrl = state.IsRunning ? state.Url : string.Empty;
+        LocalServerCommand = state.IsRunning ? state.Command : string.Empty;
+        LocalServerProcessId = state.IsRunning ? state.ProcessId : 0;
+
+        if (state.IsRunning)
+        {
+            var reused = state.ReusedExisting ? " reused" : string.Empty;
+            LocalServerStatusText = $"Local server:{reused} {state.Url}";
+            AddLog($"Local server ready: {state.Url}");
+            return;
+        }
+
+        LocalServerStatusText = string.IsNullOrWhiteSpace(state.Message)
+            ? "Local server: stopped"
+            : $"Local server: {state.Message}";
+        AddLog(LocalServerStatusText);
+    }
+
+    public void ClearLocalServerState()
+    {
+        HasRunningLocalServer = false;
+        LocalServerUrl = string.Empty;
+        LocalServerCommand = string.Empty;
+        LocalServerProcessId = 0;
+        LocalServerStatusText = "Local server: idle";
     }
 
     public void AddRunStep(AgentRunState state, string title, string? detail = null)

@@ -55,6 +55,10 @@ public static class DesktopToolCallbacksFactory
             {
                 onUsage?.Invoke(usage);
             }),
+            OnLocalServerChanged = state => dispatcher.Invoke(() =>
+            {
+                viewModel.ApplyLocalServerState(state);
+            }),
             OnRequestExtendSteps = currentLimit => dispatcher.Invoke(() =>
             {
                 var result = System.Windows.MessageBox.Show(

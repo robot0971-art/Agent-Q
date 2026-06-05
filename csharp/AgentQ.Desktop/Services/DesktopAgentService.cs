@@ -85,6 +85,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         ToolReplayService toolReplayService,
         WorkspaceSymbolIndexService symbolIndexService,
         WorkspaceAnalysisService workspaceAnalysisService,
+        DesktopLocalServerService? localServerService = null,
         SystemSkillService? systemSkillService = null)
     {
         _httpClientFactory = httpClientFactory;
@@ -98,7 +99,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _symbolIndexService = symbolIndexService;
         _workspaceAnalysisService = workspaceAnalysisService;
         _systemSkillService = systemSkillService ?? new SystemSkillService();
-        _localServerService = new DesktopLocalServerService(httpClientFactory);
+        _localServerService = localServerService ?? new DesktopLocalServerService(httpClientFactory);
         
         _taskExecutor = new TaskExecutor(
             httpClientFactory,
@@ -247,6 +248,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     ct);
                 localServerSucceeded = stopResult.Succeeded;
                 localServerSummary = BuildLocalServerStopSummary(stopResult);
+                toolCallbacks?.OnLocalServerChanged?.Invoke(new DesktopLocalServerState(
+                    IsRunning: false,
+                    Url: stopResult.Url,
+                    Command: string.Empty,
+                    ProcessId: stopResult.ProcessId,
+                    ReusedExisting: false,
+                    Message: stopResult.Message));
             }
             else
             {
@@ -262,6 +270,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 localServerSucceeded = localServerResult.Succeeded;
                 localServerSummary = BuildLocalServerSummary(localServerResult);
+                toolCallbacks?.OnLocalServerChanged?.Invoke(new DesktopLocalServerState(
+                    IsRunning: localServerResult.Succeeded,
+                    Url: localServerResult.Url,
+                    Command: localServerResult.Command,
+                    ProcessId: localServerResult.ProcessId,
+                    ReusedExisting: localServerResult.ReusedExisting,
+                    Message: localServerResult.Message));
             }
 
             builder.Clear();

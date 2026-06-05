@@ -27,9 +27,7 @@ public sealed class DesktopLocalServerService
         CancellationToken ct)
     {
         var workspaceKey = NormalizeWorkspaceRoot(workspaceRoot);
-        if (Sessions.TryGetValue(workspaceKey, out var existing) &&
-            IsProcessAlive(existing.ProcessId) &&
-            await IsReachableAsync(existing.Url, ct))
+        if (await GetActiveSessionAsync(workspaceRoot, ct) is { } existing)
         {
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Done,
@@ -44,11 +42,6 @@ public sealed class DesktopLocalServerService
                 ReusedExisting = true,
                 Message = $"Local server is already running: {existing.Url}"
             };
-        }
-
-        if (existing != null)
-        {
-            Sessions.TryRemove(workspaceKey, out _);
         }
 
         var plan = ResolveStartPlan(workspaceRoot);
@@ -103,6 +96,7 @@ public sealed class DesktopLocalServerService
                 ProcessId: process.Id,
                 StartedAtUtc: DateTimeOffset.UtcNow);
             Sessions[workspaceKey] = session;
+            await SaveSessionAsync(session, ct);
             return new LocalServerStartResult
             {
                 Succeeded = true,
@@ -132,8 +126,10 @@ public sealed class DesktopLocalServerService
         CancellationToken ct)
     {
         var workspaceKey = NormalizeWorkspaceRoot(workspaceRoot);
-        if (!Sessions.TryGetValue(workspaceKey, out var session))
+        var session = await GetActiveSessionAsync(workspaceRoot, ct);
+        if (session == null)
         {
+            DeleteSessionFile(workspaceKey);
             return new LocalServerStopResult
             {
                 Succeeded = true,
@@ -162,6 +158,7 @@ public sealed class DesktopLocalServerService
             session.Url);
 
         Sessions.TryRemove(workspaceKey, out _);
+        DeleteSessionFile(workspaceKey);
         if (IsProcessAlive(session.ProcessId))
         {
             try
@@ -187,6 +184,31 @@ public sealed class DesktopLocalServerService
             ProcessId = session.ProcessId,
             Message = $"Local server stopped: {session.Url}"
         };
+    }
+
+    public async Task<LocalServerSession?> GetActiveSessionAsync(string workspaceRoot, CancellationToken ct)
+    {
+        var workspaceKey = NormalizeWorkspaceRoot(workspaceRoot);
+        if (Sessions.TryGetValue(workspaceKey, out var inMemory) &&
+            IsProcessAlive(inMemory.ProcessId) &&
+            await IsReachableAsync(inMemory.Url, ct))
+        {
+            return inMemory;
+        }
+
+        Sessions.TryRemove(workspaceKey, out _);
+        var persisted = await LoadSessionAsync(workspaceKey, ct);
+        if (persisted != null &&
+            ProjectScaffoldPlanRegistry.MatchesWorkspace(persisted.WorkspaceRoot, workspaceKey) &&
+            IsProcessAlive(persisted.ProcessId) &&
+            await IsReachableAsync(persisted.Url, ct))
+        {
+            Sessions[workspaceKey] = persisted;
+            return persisted;
+        }
+
+        DeleteSessionFile(workspaceKey);
+        return null;
     }
 
     public LocalServerStartPlan ResolveStartPlan(string workspaceRoot)
@@ -391,6 +413,53 @@ public sealed class DesktopLocalServerService
 
     private static string NormalizeWorkspaceRoot(string workspaceRoot) =>
         Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    private static string GetSessionFilePath(string workspaceRoot) =>
+        Path.Combine(workspaceRoot, ".agentq", "local-server", "session.json");
+
+    private static async Task SaveSessionAsync(LocalServerSession session, CancellationToken ct)
+    {
+        var path = GetSessionFilePath(session.WorkspaceRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(
+            path,
+            JsonSerializer.Serialize(session, new JsonSerializerOptions { WriteIndented = true }),
+            ct);
+    }
+
+    private static async Task<LocalServerSession?> LoadSessionAsync(string workspaceRoot, CancellationToken ct)
+    {
+        var path = GetSessionFilePath(workspaceRoot);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await JsonSerializer.DeserializeAsync<LocalServerSession>(stream, cancellationToken: ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void DeleteSessionFile(string workspaceRoot)
+    {
+        var path = GetSessionFilePath(workspaceRoot);
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
 
     private static string QuotePowerShellArg(string value) => "'" + value.Replace("'", "''") + "'";
 

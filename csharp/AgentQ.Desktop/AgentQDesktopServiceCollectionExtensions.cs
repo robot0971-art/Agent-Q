@@ -29,6 +29,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopEmbeddingClientFactory>();
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
+        services.AddSingleton<DesktopLocalServerService>();
         services.AddSingleton<DesktopAgentService>();
         services.AddSingleton<IDesktopLlmProviderFactory>(provider => provider.GetRequiredService<DesktopAgentService>());
         services.AddSingleton<IVerificationArtifactCollector, PlaywrightVerificationArtifactCollector>();

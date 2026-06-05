@@ -610,6 +610,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
                 <Ellipse Width="11" Height="11" Fill="{Binding StatusAccentBrush}" Margin="0,0,9,0" />
@@ -620,7 +621,34 @@
                            TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <TextBlock Grid.Column="1" Text="{Binding UsageText}" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="2"
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Margin="10,0,4,0">
+                <TextBlock Text="{Binding LocalServerStatusText}"
+                           Foreground="{StaticResource Success}"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="230" />
+                <Button Content="Open"
+                        IsEnabled="{Binding CanOpenLocalServer}"
+                        Width="48"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="8,0,0,0"
+                        Click="OpenLocalServer_OnClick" />
+                <Button Content="Stop"
+                        IsEnabled="{Binding CanStopLocalServer}"
+                        Width="48"
+                        Height="24"
+                        Padding="0"
+                        FontSize="11"
+                        Margin="4,0,0,0"
+                        Click="StopLocalServer_OnClick" />
+            </StackPanel>
+            <TextBlock Grid.Column="3"
                        Text="{Binding RunPermissionStatusText}"
                        Foreground="{StaticResource Warning}"
                        VerticalAlignment="Center"
@@ -628,7 +656,7 @@
                        FontSize="12"
                        TextTrimming="CharacterEllipsis"
                        MaxWidth="220" />
-            <Button Grid.Column="3"
+            <Button Grid.Column="4"
                     Content="Reset"
                     IsEnabled="{Binding CanClearRunPermissions}"
                     Width="54"
@@ -637,9 +665,9 @@
                     FontSize="11"
                     Margin="4,0,10,0"
                     Click="ResetRunPermissions_OnClick" />
-            <TextBlock Grid.Column="4" Text="{Binding Model, StringFormat=Model: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
-            <TextBlock Grid.Column="5" Text="{Binding Provider, StringFormat=Provider: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
-            <TextBlock Grid.Column="6" Text="v0.2.0" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
+            <TextBlock Grid.Column="5" Text="{Binding Model, StringFormat=Model: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
+            <TextBlock Grid.Column="6" Text="{Binding Provider, StringFormat=Provider: {0}}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
+            <TextBlock Grid.Column="7" Text="v0.2.0" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="12,0" FontSize="12" />
         </Grid>
     </Grid>
 </Window>

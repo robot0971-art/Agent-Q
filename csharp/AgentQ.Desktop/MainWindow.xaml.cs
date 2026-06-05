@@ -1,5 +1,6 @@
 using System.Linq;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using AgentQ.Desktop.Services;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     private readonly DesktopPanelEventBinder _panelEventBinder;
     private readonly DesktopProviderModelDiscoveryService _modelDiscoveryService;
     private readonly ProjectMemoryService _projectMemoryService;
+    private readonly DesktopLocalServerService _localServerService;
     private readonly List<DesktopAttachment> _attachments = [];
     private CancellationTokenSource? _modelRefreshCts;
 
@@ -44,7 +46,8 @@ public partial class MainWindow : Window
         EvalReplayDashboardService evalReplayDashboardService,
         DesktopPanelEventBinder panelEventBinder,
         DesktopProviderModelDiscoveryService modelDiscoveryService,
-        ProjectMemoryService projectMemoryService)
+        ProjectMemoryService projectMemoryService,
+        DesktopLocalServerService localServerService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -63,6 +66,7 @@ public partial class MainWindow : Window
         _panelEventBinder = panelEventBinder;
         _modelDiscoveryService = modelDiscoveryService;
         _projectMemoryService = projectMemoryService;
+        _localServerService = localServerService;
         DataContext = _viewModel;
         HookPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
@@ -92,7 +96,11 @@ public partial class MainWindow : Window
             SaveSettingsAsync = SaveSettingsAndRefreshModelsAsync,
             UpdateApiKey = apiKey => _viewModel.ApiKey = apiKey,
             UpdateEmbeddingApiKey = apiKey => _viewModel.EmbeddingApiKey = apiKey,
-            BrowseWorkspaceAsync = () => _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog),
+            BrowseWorkspaceAsync = async () =>
+            {
+                await _workspaceCommandService.BrowseWorkspaceAsync(this, _viewModel, TrimForLog);
+                await RefreshLocalServerStateAsync();
+            },
             OpenWorkspace = () => _workspaceCommandService.OpenWorkspace(_viewModel),
             OpenWorkspaceInVSCode = () => _workspaceCommandService.OpenWorkspaceInVSCode(_viewModel),
             RefreshWorkspaceAnalysisAsync = () => _workspaceCommandService.RefreshWorkspaceAnalysisAsync(_viewModel, TrimForLog),
@@ -167,7 +175,34 @@ public partial class MainWindow : Window
         SettingsPanelView.EmbeddingApiKey = _viewModel.EmbeddingApiKey;
         await RefreshSavedMemoryAsync();
         await RefreshEvalDashboardAsync();
+        await RefreshLocalServerStateAsync();
         ScheduleProviderModelRefresh(preserveCurrentModel: true);
+    }
+
+    private async Task RefreshLocalServerStateAsync()
+    {
+        try
+        {
+            var session = await _localServerService.GetActiveSessionAsync(_viewModel.WorkspaceRoot, CancellationToken.None);
+            if (session == null)
+            {
+                _viewModel.ClearLocalServerState();
+                return;
+            }
+
+            _viewModel.ApplyLocalServerState(new DesktopLocalServerState(
+                IsRunning: true,
+                Url: session.Url,
+                Command: session.Command,
+                ProcessId: session.ProcessId,
+                ReusedExisting: true,
+                Message: $"Local server is already running: {session.Url}"));
+        }
+        catch (Exception ex)
+        {
+            _viewModel.ClearLocalServerState();
+            _viewModel.AddLog($"Local server state refresh failed: {TrimForLog(ex.Message)}");
+        }
     }
 
     private async Task RefreshEvalDashboardAsync()
@@ -289,6 +324,34 @@ public partial class MainWindow : Window
     private void StopAgent_OnClick(object sender, RoutedEventArgs e)
     {
         _agentRunWorkflowService.Stop(_viewModel);
+    }
+
+    private void OpenLocalServer_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!Uri.TryCreate(_viewModel.LocalServerUrl, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            _viewModel.StatusText = "No local server URL to open";
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = uri.ToString(),
+            UseShellExecute = true
+        });
+        _viewModel.StatusText = "Local server opened";
+    }
+
+    private async void StopLocalServer_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.CanStopLocalServer)
+        {
+            return;
+        }
+
+        _viewModel.InputText = _viewModel.IsKoreanUi ? "로컬 서버 중지" : "Stop the local server";
+        await SendCurrentMessageAsync();
     }
 
     private void IncreaseFontSize_OnClick(object sender, RoutedEventArgs e)

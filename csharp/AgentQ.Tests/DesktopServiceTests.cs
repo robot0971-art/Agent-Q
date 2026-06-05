@@ -1144,6 +1144,7 @@ public sealed class DesktopServiceTests
             Assert.True(result.Succeeded, result.Message);
             Assert.StartsWith("http://127.0.0.1:", result.Url, StringComparison.Ordinal);
             Assert.Contains("npm run dev", result.Command, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(root, ".agentq", "local-server", "session.json")));
             using var client = new HttpClient();
             var body = await client.GetStringAsync(result.Url);
             Assert.Equal("agentq-local-server-ok", body);
@@ -1186,6 +1187,7 @@ public sealed class DesktopServiceTests
         try
         {
             Assert.True(first.Succeeded, first.Message);
+            Assert.True(File.Exists(Path.Combine(root, ".agentq", "local-server", "session.json")));
             var second = await service.StartAsync(root, new AllowAllPermissionEnforcer(), new DesktopToolCallbacks(), CancellationToken.None);
             Assert.True(second.Succeeded, second.Message);
             Assert.True(second.ReusedExisting);
@@ -1195,6 +1197,7 @@ public sealed class DesktopServiceTests
             var stopped = await service.StopAsync(root, new AllowAllPermissionEnforcer(), new DesktopToolCallbacks(), CancellationToken.None);
             Assert.True(stopped.Succeeded, stopped.Message);
             Assert.Equal(first.ProcessId, stopped.ProcessId);
+            Assert.False(File.Exists(Path.Combine(root, ".agentq", "local-server", "session.json")));
             await Task.Delay(250);
             Assert.Throws<ArgumentException>(() => Process.GetProcessById(first.ProcessId));
         }
@@ -10268,6 +10271,40 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
 
         Assert.Contains("7s elapsed", run.TimingText);
         Assert.Contains("2 step", run.TimingText);
+    }
+
+    [Fact]
+    public void MainViewModel_TracksLocalServerStateForFooterActions()
+    {
+        var viewModel = new MainViewModel();
+
+        viewModel.ApplyLocalServerState(new DesktopLocalServerState(
+            IsRunning: true,
+            Url: "http://127.0.0.1:5173/",
+            Command: "npm run dev -- --host 127.0.0.1 --port 5173",
+            ProcessId: 1234,
+            ReusedExisting: false,
+            Message: "Local server is running."));
+
+        Assert.True(viewModel.HasRunningLocalServer);
+        Assert.True(viewModel.CanOpenLocalServer);
+        Assert.True(viewModel.CanStopLocalServer);
+        Assert.Equal("http://127.0.0.1:5173/", viewModel.LocalServerUrl);
+        Assert.Contains("http://127.0.0.1:5173/", viewModel.LocalServerStatusText);
+
+        viewModel.ApplyLocalServerState(new DesktopLocalServerState(
+            IsRunning: false,
+            Url: "http://127.0.0.1:5173/",
+            Command: string.Empty,
+            ProcessId: 1234,
+            ReusedExisting: false,
+            Message: "Local server stopped."));
+
+        Assert.False(viewModel.HasRunningLocalServer);
+        Assert.False(viewModel.CanOpenLocalServer);
+        Assert.False(viewModel.CanStopLocalServer);
+        Assert.Equal(string.Empty, viewModel.LocalServerUrl);
+        Assert.Contains("stopped", viewModel.LocalServerStatusText, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StubHttpClientFactory(
