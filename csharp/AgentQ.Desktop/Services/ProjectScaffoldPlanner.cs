@@ -27,7 +27,7 @@ public sealed class ProjectScaffoldPlanner
             {
                 IsGreenfieldRequest = true,
                 CanProceed = false,
-                ClarifyingQuestion = "현재 폴더에 이미 프로젝트 파일이 있습니다. 새 프로젝트를 덮어 만들지, 기존 프로젝트에 기능을 추가할지 알려주세요.",
+                ClarifyingQuestion = "This folder already contains project files. Would you like to overwrite with a new project, or add features to the existing one? (\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC0C8 \uD504\uB85C\uC81D\uD2B8\uB85C \uB36E\uC5B4\uC4F8\uC9C0, \uAE30\uC874 \uD504\uB85C\uC81D\uD2B8\uC5D0 \uAE30\uB2A5\uC744 \uCD94\uAC00\uD560\uC9C0 \uC54C\uB824\uC8FC\uC138\uC694.)",
                 Reasons = [$"Workspace state is {workspaceState}, so project scaffold execution needs user direction."]
             };
         }
@@ -39,7 +39,7 @@ public sealed class ProjectScaffoldPlanner
             {
                 IsGreenfieldRequest = true,
                 CanProceed = false,
-                ClarifyingQuestion = "어떤 종류의 프로젝트를 원하시나요? 예: 포트폴리오 홈페이지, Python 데이터 분석 도구, 게임, API 서버, 단어장 웹앱.",
+                ClarifyingQuestion = "What kind of project would you like to create? (\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694?) Examples: portfolio website, Python data analysis tool, game, API server, wordbook web app.",
                 Reasons = ["Project type is missing."]
             };
         }
@@ -51,7 +51,7 @@ public sealed class ProjectScaffoldPlanner
             {
                 IsGreenfieldRequest = true,
                 CanProceed = false,
-                ClarifyingQuestion = $"{intent.ProjectType} 프로젝트로 진행할 수 있습니다. 사용할 프레임워크나 앱 형태를 조금 더 알려주세요.",
+                ClarifyingQuestion = $"A {intent.ProjectType} project is possible. Please tell me more about the framework or app form you'd like. ({intent.ProjectType} \uD504\uB85C\uC81D\uD2B8\uB85C \uC9C4\uD589\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uC0AC\uC6A9\uD560 \uD504\uB808\uC784\uC6CC\uD06C\uB098 \uC571 \uD615\uD0DC\uB97C \uC880 \uB354 \uC54C\uB824\uC8FC\uC138\uC694.)",
                 Intent = intent,
                 Reasons = ["Project type was detected, but no deterministic scaffold plan matched it."]
             };
@@ -120,6 +120,7 @@ public sealed class ProjectScaffoldPlanner
             $"- verificationCommands: {commands}\n" +
             $"- planHash: {result.PlanHash}\n" +
             "- Treat this plan as the deterministic scaffold direction. User-stated language/framework choices override worker recommendations.\n" +
+            "- The JSON below is internal tool input. Do not show it to the user as the answer.\n" +
             "Use this exact tool sequence:\n" +
             "1. Call create_project_scaffold with:\n" +
             createInput + "\n" +
@@ -169,7 +170,19 @@ public sealed class ProjectScaffoldPlanner
             Style = DetectStyle(normalized)
         };
 
-        if (ContainsAny(normalized, "wordbook", "vocabulary", "flashcard", "\uB2E8\uC5B4\uC7A5"))
+        if (ContainsAny(normalized, "glossary", "terminology", "dictionary", "terms",
+                "\uC6A9\uC5B4", "\uC6A9\uC5B4\uC9D1", "\uC0AC\uC804"))
+        {
+            intent.ProjectType = "glossary";
+            intent.Framework = "vite-react";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
+        }
+        else if (ContainsAny(normalized, "wordbook", "vocabulary", "flashcard", "\uB2E8\uC5B4\uC7A5", "\uB2E8\uC5B4"))
         {
             intent.ProjectType = "wordbook";
             intent.Framework = "vite-react";
@@ -177,6 +190,8 @@ public sealed class ProjectScaffoldPlanner
             {
                 intent.Language = "javascript";
             }
+
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
         else if (ContainsAny(normalized, "shopping", "shop", "store", "cart", "mall", "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810"))
         {
@@ -186,6 +201,8 @@ public sealed class ProjectScaffoldPlanner
             {
                 intent.Language = "javascript";
             }
+
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
         else if (ContainsAny(normalized, "blog", "\uBE14\uB85C\uADF8"))
         {
@@ -195,31 +212,73 @@ public sealed class ProjectScaffoldPlanner
             {
                 intent.Language = "javascript";
             }
+
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
-        else if (ContainsAny(normalized, "portfolio", "homepage", "website", "landingpage", "webpage",
+        else if (string.IsNullOrWhiteSpace(intent.Language) &&
+                 ContainsAny(normalized, "portfolio", "homepage", "website", "landingpage", "webpage",
                 "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uB79C\uB529"))
         {
             intent.ProjectType = ContainsAny(normalized, "landingpage", "\uB79C\uB529") ? "landing-page" : "portfolio";
             intent.Framework = "vite-react";
-            if (string.IsNullOrWhiteSpace(intent.Language))
-            {
-                intent.Language = "javascript";
-            }
+            intent.Language = "javascript";
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
         else if (ContainsAny(normalized, "dataanalysis", "datatool", "streamlit", "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C"))
         {
             intent.ProjectType = "data-analysis-tool";
-            intent.Language = "python";
-            intent.Framework = ContainsAny(normalized, "streamlit") ? "streamlit" : "python-cli";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "python";
+            }
+
+            intent.Framework = intent.Language.Equals("python", StringComparison.OrdinalIgnoreCase)
+                ? ContainsAny(normalized, "streamlit") ? "streamlit" : "python-cli"
+                : DefaultFrameworkForLanguage(intent.Language);
         }
         else if (ContainsAny(normalized, "api", "fastapi"))
         {
             intent.ProjectType = "api-server";
-            intent.Language = "python";
-            intent.Framework = "fastapi";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "python";
+            }
+
+            intent.Framework = intent.Language.Equals("python", StringComparison.OrdinalIgnoreCase)
+                ? "fastapi"
+                : DefaultFrameworkForLanguage(intent.Language);
+        }
+        else if (HasExplicitStackOrLanguage(normalized, intent))
+        {
+            // Generic is only safe when the user gave a concrete language or stack signal.
+            // A bare "new project" request should ask for the project kind first.
+            intent.ProjectType = "generic";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+
+            intent.Framework = DefaultFrameworkForLanguage(intent.Language);
         }
 
         return intent;
+    }
+
+    private static bool HasExplicitStackOrLanguage(string normalized, ProjectScaffoldIntentModel intent)
+    {
+        if (!string.IsNullOrWhiteSpace(intent.Language))
+        {
+            return true;
+        }
+
+        return ContainsAny(normalized,
+            "react", "vite", "nextjs", "next", "vue", "svelte", "angular",
+            "django", "flask", "fastapi", "streamlit", "spring", "springboot",
+            "rails", "laravel", "flutter", "electron", "tauri", "unity",
+            "unreal", "godot", "aspnet", "aspnetcore", "dotnet",
+            "\uB9AC\uC561\uD2B8", "\uBE44\uD2B8", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
+            "\uC7A5\uACE0", "\uD50C\uB77C\uC2A4\uD06C", "\uD328\uC2A4\uD2B8api", "\uC2A4\uD2B8\uB9BC\uB9BF",
+            "\uC2A4\uD504\uB9C1", "\uD50C\uB7EC\uD130", "\uC720\uB2C8\uD2F0", "\uB2F7\uB137");
     }
 
     private static ProjectScaffoldPlanModel? BuildPlan(ProjectScaffoldIntentModel intent)
@@ -267,6 +326,116 @@ public sealed class ProjectScaffoldPlanner
             };
         }
 
+        if (intent.Framework == "cpp-cmake")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "C++ CMake scaffold",
+                Files = ["CMakeLists.txt", "include/app/app.hpp", "src/app.cpp", "src/main.cpp", "tests/app_test.cpp"],
+                VerificationCommands = ["cmake -S . -B build", "cmake --build build"]
+            };
+        }
+
+        if (intent.Framework == "go-module")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Go module scaffold",
+                Files = ["go.mod", "cmd/app/main.go", "internal/app/service.go", "internal/app/service_test.go"],
+                VerificationCommands = ["go test ./..."]
+            };
+        }
+
+        if (intent.Framework == "rust-cargo")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Rust Cargo scaffold",
+                Files = ["Cargo.toml", "src/lib.rs", "src/main.rs", "tests/app_integration.rs"],
+                VerificationCommands = ["cargo fmt --check", "cargo test"]
+            };
+        }
+
+        if (intent.Framework == "java-maven")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Java Maven scaffold",
+                Files = ["pom.xml", "src/main/java/app/App.java", "src/test/java/app/AppTest.java"],
+                VerificationCommands = ["mvn test"]
+            };
+        }
+
+        if (intent.Framework == "sql-migrations")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "SQL migration scaffold",
+                Files = ["migrations/001_initial_schema.sql", "README.md"],
+                VerificationCommands = []
+            };
+        }
+
+        if (intent.Framework == "php-composer")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "PHP Composer scaffold",
+                Files = ["composer.json", "src/App.php", "tests/AppTest.php"],
+                VerificationCommands = ["composer test"]
+            };
+        }
+
+        if (intent.Framework == "kotlin-gradle")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Kotlin Gradle scaffold",
+                Files = ["settings.gradle.kts", "build.gradle.kts", "src/main/kotlin/app/App.kt", "src/test/kotlin/app/AppTest.kt"],
+                VerificationCommands = ["gradle test"]
+            };
+        }
+
+        if (intent.Framework == "swift-package")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Swift Package scaffold",
+                Files = ["Package.swift", "Sources/App/App.swift", "Tests/AppTests/AppTests.swift"],
+                VerificationCommands = ["swift test"]
+            };
+        }
+
+        if (intent.Framework == "powershell-script")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "PowerShell automation scaffold",
+                Files = ["scripts/app.ps1", "README.md"],
+                VerificationCommands = ["pwsh -File scripts/app.ps1 -DryRun"]
+            };
+        }
+
+        if (intent.Framework == "shell-script")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "Shell automation scaffold",
+                Files = ["scripts/app.sh", "README.md"],
+                VerificationCommands = ["bash scripts/app.sh"]
+            };
+        }
+
+        if (intent.Framework == "r-analysis")
+        {
+            return new ProjectScaffoldPlanModel
+            {
+                Name = "R analysis scaffold",
+                Files = ["DESCRIPTION", "R/app.R", "tests/testthat/test_app.R"],
+                VerificationCommands = ["Rscript -e \"testthat::test_dir('tests')\""]
+            };
+        }
+
         return null;
     }
 
@@ -287,7 +456,100 @@ public sealed class ProjectScaffoldPlanner
             return "python";
         }
 
+        if (ContainsAny(normalized, "cplusplus", "cpp", "cxx", "ccmake", "c++", "\uC528\uD50C\uD50C", "\uC528\uD50C\uB7EC\uC2A4\uD50C\uB7EC\uC2A4"))
+        {
+            return "cpp";
+        }
+
+        if (ContainsGoLanguage(normalized))
+        {
+            return "go";
+        }
+
+        if (ContainsAny(normalized, "rust", "\uB7EC\uC2A4\uD2B8"))
+        {
+            return "rust";
+        }
+
+        if (ContainsAny(normalized, "java", "\uC790\uBC14"))
+        {
+            return "java";
+        }
+
+        if (ContainsAny(normalized, "sql", "postgres", "postgresql", "mysql", "sqlite", "\uC5D0\uC2A4\uD050\uC5D8", "\uB370\uC774\uD130\uBCA0\uC774\uC2A4"))
+        {
+            return "sql";
+        }
+
+        if (ContainsAny(normalized, "php", "\uD53C\uC5D0\uC774\uCE58\uD53C"))
+        {
+            return "php";
+        }
+
+        if (ContainsAny(normalized, "kotlin", "\uCF54\uD2C0\uB9B0"))
+        {
+            return "kotlin";
+        }
+
+        if (ContainsAny(normalized, "swift", "\uC2A4\uC704\uD504\uD2B8"))
+        {
+            return "swift";
+        }
+
+        if (ContainsAny(normalized, "powershell", "pwsh", "\uD30C\uC6CC\uC258"))
+        {
+            return "powershell";
+        }
+
+        if (ContainsAny(normalized, "shellscript", "bashscript", "bash", "zsh", "\uC258\uC2A4\uD06C\uB9BD\uD2B8", "\uBC30\uC2DC"))
+        {
+            return "shell";
+        }
+
+        if (ContainsAny(normalized, "rlang", "rscript", "rstudio", "rproject", "ranalysis", "\uC54C\uC5B8\uC5B4", "r\uBD84\uC11D"))
+        {
+            return "r";
+        }
+
         return string.Empty;
+    }
+
+    private static string DefaultFrameworkForLanguage(string language)
+    {
+        return language.ToLowerInvariant() switch
+        {
+            "typescript" or "javascript" => "vite-react",
+            "python" => "python-cli",
+            "cpp" => "cpp-cmake",
+            "go" => "go-module",
+            "rust" => "rust-cargo",
+            "java" => "java-maven",
+            "sql" => "sql-migrations",
+            "php" => "php-composer",
+            "kotlin" => "kotlin-gradle",
+            "swift" => "swift-package",
+            "powershell" => "powershell-script",
+            "shell" => "shell-script",
+            "r" => "r-analysis",
+            _ => "vite-react"
+        };
+    }
+
+    private static string DefaultFrameworkForWebProject(string language)
+    {
+        return language.Equals("javascript", StringComparison.OrdinalIgnoreCase) ||
+               language.Equals("typescript", StringComparison.OrdinalIgnoreCase)
+            ? "vite-react"
+            : DefaultFrameworkForLanguage(language);
+    }
+
+    private static bool ContainsGoLanguage(string normalized)
+    {
+        return normalized.Equals("go", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains(" go ", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("go ", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(" go", StringComparison.OrdinalIgnoreCase) ||
+               ContainsAny(normalized, "golang", "goapi", "goservice", "gomodule", "goproject", "gowebsite", "goweb", "withgo", "usinggo", "ingo", "go\uB85C", "\uACE0\uB7AD", "\uACE0\uC5B8\uC5B4");
     }
 
     private static string DetectStyle(string normalized)
@@ -312,14 +574,28 @@ public sealed class ProjectScaffoldPlanner
 
     private static bool IsGreenfieldRequest(string normalized, DesktopWorkspaceScaffoldState workspaceState)
     {
+        if (ContainsAny(normalized,
+                "\uACE0\uBBFC", "\uC0C1\uB2F4", "\uAC71\uC815", "\uD574\uC57C\uD560\uC9C0",
+                "shouldi", "whether") &&
+            !ContainsCreate(normalized))
+        {
+            return false;
+        }
+
         if (workspaceState is DesktopWorkspaceScaffoldState.RunnableApp or DesktopWorkspaceScaffoldState.ExistingProject)
         {
             return ContainsCreate(normalized) &&
                    ContainsAny(normalized, "newproject", "newapp", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uD504\uB85C\uC81D\uD2B8");
         }
 
-        return ContainsCreate(normalized) &&
-               ContainsAny(normalized, GreenfieldProjectKeywords);
+        // Empty workspace: allow both explicit creation verbs and standalone "new project" patterns
+        var hasCreateVerb = ContainsCreate(normalized);
+        var hasGreenfieldKeyword = ContainsAny(normalized, GreenfieldProjectKeywords);
+        var hasStandaloneNewProjectPattern = ContainsAny(normalized,
+            "newproject", "newapp", "newweb", "newwebsite",
+            "\uC0C8\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uC571", "\uC0C8\uC6F9", "\uC0C8\uC6F9\uC0AC\uC774\uD2B8");
+
+        return (hasCreateVerb && hasGreenfieldKeyword) || hasStandaloneNewProjectPattern;
     }
 
     private static bool ContainsCreate(string normalized)
@@ -419,13 +695,27 @@ public sealed class ProjectScaffoldPlanner
         "project", "app", "portfolio", "homepage", "website", "landingpage", "webpage",
         "api", "dataanalysis", "datatool",
         "wordbook", "vocabulary", "flashcard",
+        "glossary", "terminology", "dictionary", "terms",
         "shopping", "shop", "store", "cart", "mall",
         "blog",
-        "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uB79C\uB529",
+        "newproject", "newapp", "newweb", "newwebsite",
+        "react", "nextjs", "next", "angular", "vue", "svelte",
+        "webapp", "mobileapp", "mobile", "desktopapp", "desktop",
+        "game", "unity", "unity3d", "unreal", "godot",
+        "dotnet", "csharp", "c#", "aspnet", "aspnetcore",
+        "spring", "springboot", "rails", "laravel", "django", "flask",
+        "flutter", "ionic", "electron", "tauri", "wasm",
+        "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC6F9", "\uB79C\uB529",
         "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C",
-        "\uB2E8\uC5B4\uC7A5",
+        "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4", "\uC6A9\uC5B4\uC9D1", "\uC0AC\uC804",
         "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810",
-        "\uBE14\uB85C\uADF8"
+        "\uBE14\uB85C\uADF8",
+        "\uC0C8\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uC571", "\uC0C8\uC6F9", "\uC0C8\uC6F9\uC0AC\uC774\uD2B8",
+        "\uB9AC\uC561\uD2B8", "\uB125\uC2A4\uD2B8", "\uC560\uC2F1\uD04C\uB7EC", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
+        "\uAC8C\uC784", "\uC720\uB2C8\uD2F0", "\uC5B4\uB10C\uB9AC\uC5BC", "\uACE0\uB3D7",
+        "\uB2F7\uB128", "\uC528\uC0E4\uD504", "\uC2A4\uD504\uB9C1", "\uD50C\uB7EC\uD130",
+        "\uC804\uC790", "\uD0C0\uC6B0\uB9AC", "\uBAA8\uBC14\uC77C", "\uBAA8\uBC14\uC77C\uC571", "\uBAA8\uBC14\uC77C\uC571",
+        "\uB370\uC2A4\uD06C\uD0D1", "\uC708\uB3C4\uC6B0\uC571", "\uB9E5\uC571", "\uB9AC\uB205\uC2A4\uC571"
     ];
 }
 

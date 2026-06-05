@@ -50,6 +50,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private const int MaxConfiguredToolSteps = 100;
     private const int MaxToolResultChars = 24000;
     private const int MaxChangeSnapshotChars = 160000;
+    private const int MaxTextAttachmentChars = 60000;
+    private const int RepeatedReadOnlyToolLimit = 3;
     private const string ToolOutputDirectoryName = "tool-output";
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -68,6 +70,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly TaskDecomposer _taskDecomposer = new();
     private readonly ProjectScaffoldPlanner _projectScaffoldPlanner = new();
     private readonly ProjectScaffoldPlanRegistry _projectScaffoldPlanRegistry = new();
+    private readonly ExecutionLessonMemoryService _executionLessonMemoryService = new();
     private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
@@ -127,6 +130,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
+        var taskContract = UserIntentTranslator.Translate(userText);
+        if (taskContract.IsActionable)
+        {
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                $"Task contract: {taskContract.Intent}",
+                taskContract.Goal);
+        }
+
         var projectScaffoldPlan = _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot), effectiveWorkspaceRoot);
         var selectedSystemSkills = _systemSkillService.SelectRelevantSkills(userText, effectiveWorkspaceRoot, taskProfile, projectConfig);
         var skillToolUseRequired = SystemSkillService.RequiresToolUseForFileProducingTask(selectedSystemSkills, userText, taskProfile);
@@ -136,7 +148,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             !projectScaffoldPlan.CanProceed)
         {
             var clarification = string.IsNullOrWhiteSpace(projectScaffoldPlan.ClarifyingQuestion)
-                ? "어떤 종류의 프로젝트를 원하시나요? 예: 포트폴리오 홈페이지, Python 데이터 분석 도구, 게임, API 서버, 단어장 웹앱."
+                ? "What kind of project would you like to create? (어떤 종류의 프로젝트를 원하시나요?) Examples: portfolio website, Python data analysis tool, game, API server, wordbook web app."
                 : projectScaffoldPlan.ClarifyingQuestion;
             _messages.Add(await CreateUserMessageAsync(userText, attachments ?? [], ct));
             _messages.Add(ChatMessage.AssistantText(clarification));
@@ -148,7 +160,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return clarification;
         }
 
-        var provider = CreateProvider(config, toolCallbacks);
         var rolePlan = MultiAgentRolePlanner.Build(taskProfile);
         toolCallbacks?.OnRunStep?.Invoke(
             AgentRunState.Planning,
@@ -182,13 +193,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 string.Join(", ", touchedLessons.Select(lesson => string.IsNullOrWhiteSpace(lesson.Title) ? lesson.Id : lesson.Title)));
         }
 
-        if (enableTaskDecomposition && 
+        if (enableTaskDecomposition &&
+            !ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode) &&
             DesktopTaskComplexityEstimator.EstimateComplexity(userText) == TaskComplexity.Complex &&
             (taskProfile.Kind == DesktopTaskKind.Feature || taskProfile.Kind == DesktopTaskKind.Refactor || taskProfile.Kind == DesktopTaskKind.BugFix))
         {
+            var decompositionProvider = CreateProvider(config, toolCallbacks);
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Decomposing task", "Task classified as complex. Splitting into steps...");
             var workspaceAnalysis = await _workspaceAnalysisService.AnalyzeAsync(effectiveWorkspaceRoot, ct);
-            var plan = await _taskDecomposer.DecomposeAsync(userText, workspaceAnalysis, provider, config, ct);
+            var plan = await _taskDecomposer.DecomposeAsync(userText, workspaceAnalysis, decompositionProvider, config, ct);
             
             var runResult = await _taskExecutor.ExecuteAsync(
                 plan,
@@ -215,6 +228,47 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
 
+        if (ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode))
+        {
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "Safe scaffold mode",
+                "Approved scaffold creation will be executed by AgentQ Desktop instead of relying on the model to call scaffold tools.");
+            var scaffoldSummary = await ExecutePreparedProjectScaffoldPrimaryAsync(
+                projectScaffoldPlan,
+                toolRegistry,
+                enforcer,
+                toolCallbacks,
+                effectiveWorkspaceRoot,
+                workMode,
+                fileChanges,
+                executedCommands,
+                replayEntries,
+                editFailureTracker,
+                ct);
+            builder.Clear();
+            builder.Append(scaffoldSummary);
+            onDelta?.Invoke(scaffoldSummary);
+            _messages.Add(ChatMessage.AssistantText(scaffoldSummary));
+            var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+            ReportConfidence(
+                builder.ToString(),
+                executedToolCount,
+                fileChanges,
+                executedCommands,
+                verificationPlans,
+                touchedLessons.Count,
+                replayEntries,
+                toolCallbacks);
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Done,
+                "Run complete",
+                "Safe scaffold mode finished after deterministic project creation.");
+            await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+            return builder.ToString();
+        }
+
+        var provider = CreateProvider(config, toolCallbacks);
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
 
         for (var step = 1; step <= maxToolSteps; step++)
@@ -253,13 +307,20 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 onDelta,
                 toolCallbacks?.OnUsage,
                 ct);
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Generating,
+                "Model turn output",
+                BuildAssistantTurnDiagnostic(
+                    step,
+                    response,
+                    bufferTextUntilValidated,
+                    executedToolCount,
+                    fileChanges,
+                    builder.Length));
             includeTransientContext = false;
-            if (bufferTextUntilValidated && response.ToolUses.Count > 0 && !string.IsNullOrEmpty(response.AssistantText))
-            {
-                builder.Append(response.AssistantText);
-                onDelta?.Invoke(response.AssistantText);
-            }
-            else if (!bufferTextUntilValidated && !string.IsNullOrEmpty(response.AssistantText))
+            if (response.ToolUses.Count == 0 &&
+                !bufferTextUntilValidated &&
+                !string.IsNullOrEmpty(response.AssistantText))
             {
                 builder.Append(response.AssistantText);
             }
@@ -328,39 +389,96 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
+                var shouldRetryNoToolCoding = ShouldRetryNoToolCodingFallback(
+                    userText,
+                    candidateText,
+                    executedToolCount,
+                    fileChanges,
+                    workMode,
+                    taskProfile.Kind,
+                    skillToolUseRequired);
+                var shouldRetryGenericGreeting = ShouldRetryGenericGreetingFallback(
+                    userText,
+                    candidateText,
+                    executedToolCount,
+                    fileChanges,
+                    workMode,
+                    taskProfile.Kind);
+
                 if (!genericGreetingRetryUsed &&
-                    (ShouldRetryNoToolCodingFallback(
-                         userText,
-                         candidateText,
-                         executedToolCount,
-                         fileChanges,
-                         workMode,
-                         taskProfile.Kind,
-                         skillToolUseRequired) ||
-                     ShouldRetryGenericGreetingFallback(
-                         userText,
-                         candidateText,
-                         executedToolCount,
-                         fileChanges,
-                         workMode,
-                         taskProfile.Kind)))
+                    TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode))
+                {
+                    genericGreetingRetryUsed = true;
+                    builder.Clear();
+                    var retryInstruction = TaskContractCompletionChecker.BuildRetryInstruction(taskContract);
+                    await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
+                    _messages.Add(ChatMessage.UserText(retryInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        "Task contract: retry",
+                        BuildNoToolGuardDetail(
+                            "retry",
+                            $"Assistant answer did not satisfy task contract {taskContract.Intent}.",
+                            userText,
+                            candidateText,
+                            executedToolCount,
+                            fileChanges,
+                            workMode,
+                            taskProfile.Kind,
+                            skillToolUseRequired));
+                    continue;
+                }
+
+                if (TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode))
+                {
+                    var message = $"The answer did not satisfy the current task contract ({taskContract.Intent}). Please retry; AgentQ should {taskContract.Goal}";
+                    await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
+                    builder.Clear();
+                    builder.Append(message);
+                    onDelta?.Invoke(message);
+                    _messages.Add(ChatMessage.AssistantText(message));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "Task contract: rejected",
+                        BuildNoToolGuardDetail(
+                            "rejected",
+                            $"Assistant answer did not satisfy task contract {taskContract.Intent}.",
+                            userText,
+                            candidateText,
+                            executedToolCount,
+                            fileChanges,
+                            workMode,
+                            taskProfile.Kind,
+                            skillToolUseRequired));
+                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                    return builder.ToString();
+                }
+
+                if (!genericGreetingRetryUsed &&
+                    (shouldRetryNoToolCoding || shouldRetryGenericGreeting))
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
                     var retryInstruction = BuildNoToolRetryInstruction(projectScaffoldPlan, skillToolUseRequired);
                     _messages.Add(ChatMessage.UserText(retryInstruction));
+                    var retryReason = HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
+                        ? "Assistant answered without calling create_project_scaffold for a prepared scaffold plan."
+                        : skillToolUseRequired
+                            ? "An active system skill requires workspace/scaffold tool use for this file-producing task."
+                            : "Assistant answered with a generic greeting before using workspace tools.";
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Planning,
-                        HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
-                            ? "Retrying scaffold creation"
-                            : skillToolUseRequired
-                                ? "Retrying active skill with tools"
-                            : "Retrying generic reset",
-                        HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
-                            ? "Assistant answered without calling create_project_scaffold for a prepared scaffold plan."
-                            : skillToolUseRequired
-                                ? "An active system skill requires workspace/scaffold tool use for this file-producing task."
-                            : "Assistant answered with a generic greeting before using workspace tools.");
+                        shouldRetryGenericGreeting ? "Greeting guard: retry" : "No-tool guard: retry",
+                        BuildNoToolGuardDetail(
+                            "retry",
+                            $"{retryReason} triggerNoTool={shouldRetryNoToolCoding}; triggerGenericGreeting={shouldRetryGenericGreeting}; retryInstruction=\"{DesktopPromptBuilder.Truncate(retryInstruction.ReplaceLineEndings(" "), 500)}\"",
+                            userText,
+                            candidateText,
+                            executedToolCount,
+                            fileChanges,
+                            workMode,
+                            taskProfile.Kind,
+                            skillToolUseRequired));
                     continue;
                 }
 
@@ -380,8 +498,17 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     _messages.Add(ChatMessage.AssistantText(noToolCompletionMessage));
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Failed,
-                        "No workspace action",
-                        "A coding task ended without tool use after retry.");
+                        "No-tool guard: rejected",
+                        BuildNoToolGuardDetail(
+                            "rejected",
+                            "A coding task ended without tool use after retry.",
+                            userText,
+                            candidateText,
+                            executedToolCount,
+                            fileChanges,
+                            workMode,
+                            taskProfile.Kind,
+                            skillToolUseRequired));
                     await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                     return builder.ToString();
                 }
@@ -402,13 +529,90 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     return builder.ToString();
                 }
 
+                if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan) &&
+                    workMode != AgentWorkMode.Readonly &&
+                    fileChanges.Count == 0)
+                {
+                    var scaffoldText = await ExecutePreparedProjectScaffoldPrimaryAsync(
+                        projectScaffoldPlan,
+                        toolRegistry,
+                        enforcer,
+                        toolCallbacks,
+                        effectiveWorkspaceRoot,
+                        workMode,
+                        fileChanges,
+                        executedCommands,
+                        replayEntries,
+                        editFailureTracker,
+                        ct);
+                    if (!string.IsNullOrWhiteSpace(scaffoldText))
+                    {
+                        builder.Clear();
+                        builder.Append(scaffoldText);
+                        onDelta?.Invoke(scaffoldText);
+                        _messages.Add(ChatMessage.AssistantText(scaffoldText));
+                        await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                        return builder.ToString();
+                    }
+                }
+
+                if (bufferTextUntilValidated)
+                {
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Done,
+                        "No-tool guard: allowed",
+                        BuildNoToolGuardDetail(
+                            "allowed",
+                            "Completion was shown even though no workspace tools or file changes were recorded.",
+                            userText,
+                            candidateText,
+                            executedToolCount,
+                            fileChanges,
+                            workMode,
+                            taskProfile.Kind,
+                            skillToolUseRequired));
+                }
+
                 if (bufferTextUntilValidated)
                 {
                     builder.Append(candidateText);
                     onDelta?.Invoke(candidateText);
                 }
 
+                if (ShouldRunProjectScaffoldVerificationFallback(
+                        projectScaffoldPlan,
+                        fileChanges,
+                        replayEntries,
+                        workMode))
+                {
+                    await ExecutePreparedProjectScaffoldVerificationAsync(
+                        projectScaffoldPlan,
+                        toolRegistry,
+                        enforcer,
+                        toolCallbacks,
+                        effectiveWorkspaceRoot,
+                        workMode,
+                        fileChanges,
+                        executedCommands,
+                        replayEntries,
+                        editFailureTracker,
+                        ct);
+                }
+
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                if (ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
+                {
+                    var replacementText = BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans);
+                    builder.Clear();
+                    builder.Append(replacementText);
+                    onDelta?.Invoke(replacementText);
+                    _messages.Add(ChatMessage.AssistantText(replacementText));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Done,
+                        "Final answer guard: replaced",
+                        "The model's final answer did not match the recorded file changes, so AgentQ replaced it with a deterministic change summary.");
+                }
+
                 ReportConfidence(
                     builder.ToString(),
                     executedToolCount,
@@ -444,6 +648,138 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     Role = ChatRole.User,
                     Content = toolResults
                 });
+            }
+
+            if (TryBuildProjectScaffoldCollisionSummary(toolResults, out var scaffoldCollisionSummary))
+            {
+                builder.Clear();
+                builder.Append(scaffoldCollisionSummary);
+                onDelta?.Invoke(scaffoldCollisionSummary);
+                _messages.Add(ChatMessage.AssistantText(scaffoldCollisionSummary));
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Done,
+                    "Project scaffold collision: stopped",
+                    "create_project_scaffold reported existing target files, so AgentQ stopped the model loop instead of continuing into unrelated work.");
+                ReportConfidence(
+                    builder.ToString(),
+                    executedToolCount,
+                    fileChanges,
+                    executedCommands,
+                    [],
+                    touchedLessons.Count,
+                    replayEntries,
+                    toolCallbacks);
+                toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant stopped after project scaffold file collision.");
+                await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                return builder.ToString();
+            }
+
+            if (ShouldRunProjectScaffoldFallbackAfterPermissionDenied(
+                    toolResults,
+                    replayEntries,
+                    fileChanges,
+                    projectScaffoldPlan))
+            {
+                var scaffoldSummary = await ExecutePreparedProjectScaffoldPrimaryAsync(
+                    projectScaffoldPlan,
+                    toolRegistry,
+                    enforcer,
+                    toolCallbacks,
+                    effectiveWorkspaceRoot,
+                    workMode,
+                    fileChanges,
+                    executedCommands,
+                    replayEntries,
+                    editFailureTracker,
+                    ct);
+                var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                builder.Clear();
+                builder.Append(scaffoldSummary);
+                onDelta?.Invoke(scaffoldSummary);
+                _messages.Add(ChatMessage.AssistantText(scaffoldSummary));
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Done,
+                    "Permission fallback: scaffold executed",
+                    "A non-scaffold tool was blocked, so AgentQ used the prepared scaffold plan instead of continuing unrelated model turns.");
+                ReportConfidence(
+                    builder.ToString(),
+                    executedToolCount,
+                    fileChanges,
+                    executedCommands,
+                    verificationPlans,
+                    touchedLessons.Count,
+                    replayEntries,
+                    toolCallbacks);
+                toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished after permission fallback.");
+                await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                return builder.ToString();
+            }
+
+            if (ShouldStopAfterReadOnlyLoopGuard(toolResults, fileChanges, HasProceedableProjectScaffoldPlan(projectScaffoldPlan)))
+            {
+                if (ShouldRunProjectScaffoldVerificationFallback(
+                        projectScaffoldPlan,
+                        fileChanges,
+                        replayEntries,
+                        workMode))
+                {
+                    await ExecutePreparedProjectScaffoldVerificationAsync(
+                        projectScaffoldPlan,
+                        toolRegistry,
+                        enforcer,
+                        toolCallbacks,
+                        effectiveWorkspaceRoot,
+                        workMode,
+                        fileChanges,
+                        executedCommands,
+                        replayEntries,
+                        editFailureTracker,
+                        ct);
+                }
+
+                var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                var loopSummary = string.Empty;
+                if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan) && fileChanges.Count == 0)
+                {
+                    loopSummary = await ExecutePreparedProjectScaffoldPrimaryAsync(
+                        projectScaffoldPlan,
+                        toolRegistry,
+                        enforcer,
+                        toolCallbacks,
+                        effectiveWorkspaceRoot,
+                        workMode,
+                        fileChanges,
+                        executedCommands,
+                        replayEntries,
+                        editFailureTracker,
+                        ct);
+                }
+
+                if (string.IsNullOrWhiteSpace(loopSummary))
+                {
+                    loopSummary = BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans);
+                }
+
+                builder.Clear();
+                builder.Append(loopSummary);
+                onDelta?.Invoke(loopSummary);
+                _messages.Add(ChatMessage.AssistantText(loopSummary));
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Done,
+                    "Read-only loop guard: stopped",
+                    "A repeated read-only tool loop was detected after file changes, so AgentQ stopped the model loop and summarized recorded changes.");
+                ReportConfidence(
+                    builder.ToString(),
+                    executedToolCount,
+                    fileChanges,
+                    executedCommands,
+                    verificationPlans,
+                    touchedLessons.Count,
+                    replayEntries,
+                    toolCallbacks);
+                toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished after repeated read-only tool loop guard.");
+                await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                return builder.ToString();
             }
         }
 
@@ -588,6 +924,192 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return manualInstruction && codeHeavy;
     }
 
+    public static bool ShouldReplaceIrrelevantFinalAfterChanges(
+        string assistantText,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind)
+    {
+        if (workMode == AgentWorkMode.Readonly ||
+            fileChanges.Count == 0 ||
+            string.IsNullOrWhiteSpace(assistantText) ||
+            !IsActionableCodingTask(taskKind))
+        {
+            return false;
+        }
+
+        var lower = assistantText.ToLowerInvariant();
+        if (LooksLikeWorkspaceActionSummary(lower))
+        {
+            return false;
+        }
+
+        return ContainsAny(
+            lower,
+            "\uBB38\uC11C \uB0B4\uC6A9\uC774 \uBE44\uC5B4",
+            "\uBB38\uC11C\uC758 \uC804\uCCB4 \uB0B4\uC6A9",
+            "# [ ]",
+            "document content is empty",
+            "document is empty",
+            "send the full document",
+            "\uB9CC\uB4E4\uC5B4\uB4DC\uB9AC\uACA0\uC2B5\uB2C8\uB2E4",
+            "\uBA3C\uC800 \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4",
+            "\uBA3C\uC800 \uD604\uC7AC \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4",
+            "\uBA87 \uAC00\uC9C0 \uC9C8\uBB38",
+            "\uD604\uC7AC \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uB97C \uD655\uC778",
+            "\uB2E4\uC774\uC5B4\uD2B8",
+            "\uCE7C\uB85C\uB9AC",
+            "\uCCB4\uC911",
+            "diet",
+            "calorie",
+            "weight tracking",
+            "i will build",
+            "i will create",
+            "first, i will check",
+            "hello! what can i help",
+            "what can i help",
+            "how can i help",
+            "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744",
+            "\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694",
+            "cors(cross-origin",
+            "same-origin policy");
+    }
+
+    public static string BuildFileChangeCompletionSummary(
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        IReadOnlyList<string> executedCommands,
+        IReadOnlyList<AgentVerificationPlan> verificationPlans)
+    {
+        var summary = new StringBuilder();
+        summary.AppendLine("작업은 완료됐지만 최종 모델 응답이 기록된 파일 변경과 맞지 않아 AgentQ가 변경 내역을 대신 요약했습니다.");
+        summary.AppendLine();
+        summary.AppendLine("변경된 파일:");
+        foreach (var change in fileChanges.Take(12))
+        {
+            summary.AppendLine($"- {change.RelativePath} ({change.Summary})");
+        }
+
+        if (fileChanges.Count > 12)
+        {
+            summary.AppendLine($"- ...외 {fileChanges.Count - 12}개");
+        }
+
+        summary.AppendLine();
+        if (executedCommands.Count > 0)
+        {
+            summary.AppendLine("실행된 명령:");
+            foreach (var command in executedCommands.Take(6))
+            {
+                summary.AppendLine($"- {command}");
+            }
+        }
+        else
+        {
+            summary.AppendLine("검증 명령은 기록되지 않았습니다.");
+            if (verificationPlans.Count > 0)
+            {
+                summary.AppendLine("제안된 검증:");
+                foreach (var plan in verificationPlans.Take(6))
+                {
+                    summary.AppendLine(string.IsNullOrWhiteSpace(plan.Command)
+                        ? $"- {plan.Title}"
+                        : $"- {plan.Command}");
+                }
+            }
+        }
+
+        return summary.ToString().TrimEnd();
+    }
+
+    public static bool ShouldStopAfterReadOnlyLoopGuard(
+        IReadOnlyList<ChatContent> toolResults,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        bool hasProceedableProjectScaffoldPlan = false)
+    {
+        return (fileChanges.Count > 0 || hasProceedableProjectScaffoldPlan) &&
+               toolResults.Any(result =>
+                   result.IsToolError == true &&
+                   !string.IsNullOrWhiteSpace(result.ToolResult) &&
+                   result.ToolResult.Contains("Repeated read-only tool call detected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool ShouldRunProjectScaffoldFallbackAfterPermissionDenied(
+        IReadOnlyList<ChatContent> toolResults,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        ProjectScaffoldPlanningResult projectScaffoldPlan)
+    {
+        if (!HasProceedableProjectScaffoldPlan(projectScaffoldPlan) || fileChanges.Count > 0)
+        {
+            return false;
+        }
+
+        if (!toolResults.Any(result =>
+                result.IsToolError == true &&
+                !string.IsNullOrWhiteSpace(result.ToolResult) &&
+                result.ToolResult.Contains("Permission denied", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var deniedTool = replayEntries.LastOrDefault(entry =>
+            entry.IsError &&
+            entry.ResultPreview.Contains("Permission denied", StringComparison.OrdinalIgnoreCase));
+        return deniedTool != null &&
+               !string.Equals(deniedTool.ToolName, "create_project_scaffold", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(deniedTool.ToolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool TryBuildProjectScaffoldCollisionSummary(
+        IReadOnlyList<ChatContent> toolResults,
+        out string summary)
+    {
+        summary = string.Empty;
+        foreach (var result in toolResults)
+        {
+            if (string.IsNullOrWhiteSpace(result.ToolResult))
+            {
+                continue;
+            }
+
+            var scaffold = ProjectScaffoldToolSummary.Parse(result.ToolResult);
+            if (scaffold.Succeeded ||
+                scaffold.SkippedFiles.Count == 0 ||
+                !scaffold.Issues.Any(issue =>
+                    issue.Contains("already exist", StringComparison.OrdinalIgnoreCase) ||
+                    issue.Contains("target files", StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            summary = BuildProjectScaffoldCollisionSummary(scaffold);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string BuildProjectScaffoldCollisionSummary(ProjectScaffoldToolSummary scaffold)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("프로젝트 생성은 진행하지 않았습니다.");
+        builder.AppendLine();
+        builder.AppendLine("대상 파일이 이미 있어서 덮어쓰지 않았습니다:");
+        foreach (var file in scaffold.SkippedFiles.Take(12))
+        {
+            builder.AppendLine($"- {file}");
+        }
+
+        if (scaffold.SkippedFiles.Count > 12)
+        {
+            builder.AppendLine($"- ...외 {scaffold.SkippedFiles.Count - 12}개");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("기존 파일을 보존하려면 빈 폴더를 선택하세요. 같은 폴더에서 다시 만들려면 덮어쓰기 승인이 필요합니다.");
+        return builder.ToString().TrimEnd();
+    }
+
     public static bool TryBuildPreflightClarification(
         string userText,
         AgentWorkMode workMode,
@@ -696,6 +1218,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         projectScaffoldPlan.Intent != null &&
         projectScaffoldPlan.Plan != null;
 
+    public static bool ShouldExecuteSafeScaffoldDirectly(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        AgentWorkMode workMode)
+    {
+        return workMode != AgentWorkMode.Readonly &&
+               HasProceedableProjectScaffoldPlan(projectScaffoldPlan) &&
+               !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanId) &&
+               !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanHash);
+    }
+
     public static string BuildNoToolRetryInstruction(
         ProjectScaffoldPlanningResult projectScaffoldPlan,
         bool skillToolUseRequired = false)
@@ -736,6 +1268,50 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             : "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
     }
 
+    private static string BuildNoToolGuardDetail(
+        string outcome,
+        string reason,
+        string userText,
+        string assistantText,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind,
+        bool skillToolUseRequired)
+    {
+        return
+            $"outcome={outcome}; reason={reason}; workMode={workMode}; taskKind={taskKind}; " +
+            $"tools={executedToolCount}; changes={fileChanges.Count}; skillToolUseRequired={skillToolUseRequired}; " +
+            $"user=\"{DesktopPromptBuilder.Truncate(userText.ReplaceLineEndings(" "), 240)}\"; " +
+            $"assistant=\"{DesktopPromptBuilder.Truncate(assistantText.ReplaceLineEndings(" "), 360)}\"";
+    }
+
+    private static string BuildAssistantTurnDiagnostic(
+        int step,
+        DesktopAssistantTurn response,
+        bool bufferTextUntilValidated,
+        int executedToolCount,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        int accumulatedTextLength)
+    {
+        var assistantText = response.AssistantText ?? string.Empty;
+        var assistantLower = assistantText.ToLowerInvariant();
+        var toolNames = response.ToolUses
+            .Select(tool => tool.ToolName ?? string.Empty)
+            .Where(tool => !string.IsNullOrWhiteSpace(tool))
+            .ToList();
+
+        return
+            $"step={step}; assistantChars={assistantText.Length}; toolUses={response.ToolUses.Count}; " +
+            $"toolNames={string.Join(",", toolNames.DefaultIfEmpty("none"))}; assistantContent={response.AssistantContent.Count}; " +
+            $"bufferTextUntilValidated={bufferTextUntilValidated}; executedToolsBeforeTurn={executedToolCount}; " +
+            $"fileChanges={fileChanges.Count}; accumulatedTextBeforeTurn={accumulatedTextLength}; " +
+            $"endsWithGenericGreeting={EndsWithGenericGreeting(assistantLower)}; " +
+            $"looksLikeHalfValidFeasibilityGreeting={LooksLikeHalfValidFeasibilityGreeting(assistantLower)}; " +
+            $"looksLikeTextOnlyInspectionClaim={LooksLikeTextOnlyInspectionClaim(assistantLower)}; " +
+            $"assistantPreview=\"{DesktopPromptBuilder.Truncate(assistantText.ReplaceLineEndings(" "), 700)}\"";
+    }
+
     public static bool ShouldRetryNoToolCodingFallback(
         string userText,
         string assistantText,
@@ -746,7 +1322,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         bool skillToolUseRequired = false)
     {
         if (workMode == AgentWorkMode.Readonly ||
-            executedToolCount > 0 ||
             fileChanges.Count > 0 ||
             string.IsNullOrWhiteSpace(userText) ||
             string.IsNullOrWhiteSpace(assistantText) ||
@@ -801,24 +1376,28 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return false;
         }
 
+        var userLower = userText.ToLowerInvariant();
         var assistantLower = assistantText.ToLowerInvariant();
-        if (LooksLikeHalfValidFeasibilityGreeting(assistantLower) ||
-            LooksLikeTextOnlyInspectionClaim(assistantLower))
+        if (!skillToolUseRequired &&
+            LooksLikeConsultativeCodingQuestion(userLower) &&
+            !UserAskedForWorkspaceWork(userText))
         {
-            return true;
+            return false;
         }
 
         if (!skillToolUseRequired &&
-            !string.IsNullOrWhiteSpace(userText) &&
-            LooksLikeConsultativeCodingQuestion(userText.ToLowerInvariant()) &&
-            UserAskedForWorkspaceWork(userText))
+            !UserAskedForMutationWork(userText) &&
+            !UserAskedForWorkspaceWork(userText))
         {
-            return !LooksLikeWorkspaceActionSummary(assistantLower);
+            return false;
         }
 
-        return (skillToolUseRequired || UserAskedForMutationWork(userText)) &&
-            !IsAllowedClarification(userText, assistantLower) &&
-            !LooksLikeWorkspaceActionSummary(assistantLower);
+        if (IsAllowedClarification(userText, assistantLower))
+        {
+            return false;
+        }
+
+        return !LooksLikeWorkspaceActionSummary(assistantLower);
     }
 
     private static bool IsActionableCodingTask(DesktopTaskKind taskKind) =>
@@ -1112,6 +1691,243 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     public static bool ShouldRetryEmptyResponse(string assistantText, int toolUseCount) =>
         toolUseCount == 0 && string.IsNullOrWhiteSpace(assistantText);
 
+    private async Task<string> ExecutePreparedProjectScaffoldPrimaryAsync(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        ToolRegistry toolRegistry,
+        IPermissionEnforcer enforcer,
+        DesktopToolCallbacks? callbacks,
+        string workspaceRoot,
+        AgentWorkMode workMode,
+        List<FileChangeRecord> fileChanges,
+        List<string> executedCommands,
+        List<ToolReplayEntry> replayEntries,
+        Dictionary<string, int> editFailureTracker,
+        CancellationToken ct)
+    {
+        if (!HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
+        {
+            return string.Empty;
+        }
+
+        callbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            "Safe scaffold execution",
+            "AgentQ is executing the registered scaffold plan as the primary new-project creation path after permission approval.");
+
+        var createResults = await ExecuteToolsAsync(
+            [
+                ChatContent.CreateToolUse(
+                    "auto_create_project_scaffold_" + Guid.NewGuid().ToString("N"),
+                    "create_project_scaffold",
+                    BuildProjectScaffoldCreateInputJson(projectScaffoldPlan))
+            ],
+            toolRegistry,
+            enforcer,
+            callbacks,
+            workspaceRoot,
+            workMode,
+            fileChanges,
+            executedCommands,
+            replayEntries,
+            editFailureTracker,
+            ct);
+
+        var createSummary = ProjectScaffoldToolSummary.Parse(createResults.FirstOrDefault()?.ToolResult);
+        if (createResults.FirstOrDefault()?.IsToolError == true)
+        {
+            return "Project scaffold creation failed: " + (createResults.FirstOrDefault()?.ToolResult ?? "unknown error");
+        }
+
+        if (!createSummary.Succeeded &&
+            createSummary.CreatedFiles.Count == 0 &&
+            createSummary.SkippedFiles.Count > 0)
+        {
+            return BuildProjectScaffoldCollisionSummary(createSummary);
+        }
+
+        var verifySummaries = new List<ProjectScaffoldToolSummary>();
+        if (createSummary.Succeeded && createSummary.VerificationCommands.Count > 0)
+        {
+            verifySummaries.AddRange(await ExecutePreparedProjectScaffoldVerificationAsync(
+                projectScaffoldPlan,
+                toolRegistry,
+                enforcer,
+                callbacks,
+                workspaceRoot,
+                workMode,
+                fileChanges,
+                executedCommands,
+                replayEntries,
+                editFailureTracker,
+                ct));
+        }
+
+        return BuildProjectScaffoldExecutionSummary(createSummary, verifySummaries);
+    }
+
+    private static bool ShouldRunProjectScaffoldVerificationFallback(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        AgentWorkMode workMode)
+    {
+        return workMode != AgentWorkMode.Readonly &&
+               HasProceedableProjectScaffoldPlan(projectScaffoldPlan) &&
+               projectScaffoldPlan.Plan?.VerificationCommands.Count > 0 &&
+               fileChanges.Count > 0 &&
+               !replayEntries.Any(entry => string.Equals(entry.ToolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IReadOnlyList<ProjectScaffoldToolSummary>> ExecutePreparedProjectScaffoldVerificationAsync(
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        ToolRegistry toolRegistry,
+        IPermissionEnforcer enforcer,
+        DesktopToolCallbacks? callbacks,
+        string workspaceRoot,
+        AgentWorkMode workMode,
+        List<FileChangeRecord> fileChanges,
+        List<string> executedCommands,
+        List<ToolReplayEntry> replayEntries,
+        Dictionary<string, int> editFailureTracker,
+        CancellationToken ct)
+    {
+        if (!HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
+        {
+            return [];
+        }
+
+        var commands = GetApprovedProjectScaffoldVerificationCommands(projectScaffoldPlan);
+        if (commands.Count == 0)
+        {
+            return [];
+        }
+
+        callbacks?.OnRunStep?.Invoke(
+            AgentRunState.Verifying,
+            "Auto scaffold verification",
+            commands.Count == 1
+                ? "AgentQ is running the approved scaffold verification command after deterministic project creation."
+                : $"AgentQ is running {commands.Count} approved scaffold verification commands after deterministic project creation.");
+
+        var summaries = new List<ProjectScaffoldToolSummary>();
+        foreach (var command in commands)
+        {
+            var verifyResults = await ExecuteToolsAsync(
+                [
+                    ChatContent.CreateToolUse(
+                        "auto_verify_project_scaffold_" + Guid.NewGuid().ToString("N"),
+                        "verify_project_scaffold",
+                        BuildProjectScaffoldVerifyInputJson(projectScaffoldPlan, command))
+                ],
+                toolRegistry,
+                enforcer,
+                callbacks,
+                workspaceRoot,
+                workMode,
+                fileChanges,
+                executedCommands,
+                replayEntries,
+                editFailureTracker,
+                ct);
+
+            summaries.Add(ProjectScaffoldToolSummary.Parse(verifyResults.FirstOrDefault()?.ToolResult));
+        }
+
+        return summaries;
+    }
+
+    private static string BuildProjectScaffoldCreateInputJson(ProjectScaffoldPlanningResult projectScaffoldPlan)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            planId = projectScaffoldPlan.PlanId,
+            planHash = projectScaffoldPlan.PlanHash,
+            intent = projectScaffoldPlan.Intent,
+            plan = projectScaffoldPlan.Plan,
+            overwriteExistingFiles = false
+        });
+    }
+
+    private static string BuildProjectScaffoldVerifyInputJson(ProjectScaffoldPlanningResult projectScaffoldPlan, string? command = null)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            planId = projectScaffoldPlan.PlanId,
+            planHash = projectScaffoldPlan.PlanHash,
+            intent = projectScaffoldPlan.Intent,
+            plan = projectScaffoldPlan.Plan,
+            command
+        });
+    }
+
+    private static IReadOnlyList<string> GetApprovedProjectScaffoldVerificationCommands(ProjectScaffoldPlanningResult projectScaffoldPlan) =>
+        projectScaffoldPlan.Plan?.VerificationCommands
+            .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Select(command => command.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+    private static string BuildProjectScaffoldExecutionSummary(
+        ProjectScaffoldToolSummary createSummary,
+        IReadOnlyList<ProjectScaffoldToolSummary> verifySummaries)
+    {
+        var builder = new StringBuilder();
+        if (createSummary.Succeeded)
+        {
+            builder.AppendLine(createSummary.SkippedFiles.Count > 0
+                ? "Prepared project scaffold was partially created."
+                : "Prepared project scaffold was created.");
+        }
+        else
+        {
+            builder.AppendLine("Prepared project scaffold was not created.");
+        }
+
+        if (createSummary.CreatedFiles.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Created files:");
+            foreach (var file in createSummary.CreatedFiles)
+            {
+                builder.AppendLine($"- {file}");
+            }
+        }
+
+        if (createSummary.SkippedFiles.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Skipped files:");
+            foreach (var file in createSummary.SkippedFiles)
+            {
+                builder.AppendLine($"- {file}");
+            }
+        }
+
+        if (createSummary.Issues.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Issues:");
+            foreach (var issue in createSummary.Issues)
+            {
+                builder.AppendLine($"- {issue}");
+            }
+        }
+
+        if (verifySummaries.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Verification:");
+            foreach (var verifySummary in verifySummaries)
+            {
+                builder.AppendLine(verifySummary.Succeeded
+                    ? $"- Passed: {verifySummary.Command}"
+                    : $"- Failed: {verifySummary.Command}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     private List<ChatMessage> BuildRequestMessages(string? transientContext)
     {
         var messages = _messages.ToList();
@@ -1150,6 +1966,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var scaffoldDecisionContext = await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct);
         var projectScaffoldPlanContext = ProjectScaffoldPlanner.BuildPlanContext(projectScaffoldPlan);
         var systemSkillContext = _systemSkillService.BuildContext(selectedSystemSkills);
+        var taskContract = UserIntentTranslator.Translate(userText);
+        var taskContractContext = TaskContractPromptBuilder.BuildContext(taskContract);
+        var executionLessons = await _executionLessonMemoryService.TouchRelevantAsync(workspaceRoot, userText, taskContract, ct);
+        var executionLessonContext = _executionLessonMemoryService.BuildContext(executionLessons);
 
         if (string.IsNullOrWhiteSpace(workspaceContext) &&
             string.IsNullOrWhiteSpace(linkedContext) &&
@@ -1157,6 +1977,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             string.IsNullOrWhiteSpace(mcpContext) &&
             string.IsNullOrWhiteSpace(linkStatusContext) &&
             string.IsNullOrWhiteSpace(explicitStackContext) &&
+            string.IsNullOrWhiteSpace(taskContractContext) &&
+            string.IsNullOrWhiteSpace(executionLessonContext) &&
             string.IsNullOrWhiteSpace(systemSkillContext) &&
             string.IsNullOrWhiteSpace(projectScaffoldPlanContext) &&
             string.IsNullOrWhiteSpace(scaffoldDecisionContext))
@@ -1180,6 +2002,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (hasLinkIntent || !string.IsNullOrWhiteSpace(linkedContext) || !string.IsNullOrWhiteSpace(linkStatusContext))
         {
             builder.AppendLine("Link capability rule: AgentQ Desktop can attempt to fetch HTTP/HTTPS URLs when link auto-read is enabled. Never say AgentQ cannot access URLs categorically.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(taskContractContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(taskContractContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(executionLessonContext))
+        {
+            builder.AppendLine();
+            builder.AppendLine(executionLessonContext);
         }
 
         if (!string.IsNullOrWhiteSpace(systemSkillContext))
@@ -1393,6 +2227,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     TryDeleteFrameDirectory(result.FramePaths);
                 }
             }
+            else if (attachment.IsTextDocument)
+            {
+                content.Add(ChatContent.CreateText(await BuildTextAttachmentContentAsync(attachment, ct)));
+            }
         }
 
         if (videoNotes.Count > 0)
@@ -1405,6 +2243,29 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             Role = ChatRole.User,
             Content = content
         };
+    }
+
+    private static async Task<string> BuildTextAttachmentContentAsync(DesktopAttachment attachment, CancellationToken ct)
+    {
+        try
+        {
+            var text = await File.ReadAllTextAsync(attachment.Path, Encoding.UTF8, ct);
+            var wasTruncated = text.Length > MaxTextAttachmentChars;
+            var preview = wasTruncated ? text[..MaxTextAttachmentChars] : text;
+            var suffix = wasTruncated
+                ? $"{Environment.NewLine}[attachment truncated after {MaxTextAttachmentChars} characters]"
+                : string.Empty;
+            return
+                $"Attached document: {attachment.FileName} ({attachment.MediaType}){Environment.NewLine}" +
+                "```text" + Environment.NewLine +
+                preview +
+                suffix + Environment.NewLine +
+                "```";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        {
+            return $"Attached document could not be read: {attachment.FileName}. Error: {ex.Message}";
+        }
     }
 
     private static void TryDeleteFrameDirectory(IReadOnlyList<string> framePaths)
@@ -1533,6 +2394,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
+                if (ShouldStopRepeatedReadOnlyToolCall(tool.Name, parsedInput, editFailureTracker, out var loopMessage))
+                {
+                    var loopInputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
+                    callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Read-only tool loop guard", loopMessage);
+                    callbacks?.OnToolError?.Invoke(tool.Name, loopMessage);
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, loopInputJson, loopMessage, isError: true, DateTime.UtcNow));
+                    results.Add(ChatContent.CreateToolResult(toolId, loopMessage, true));
+                    continue;
+                }
+
                 if (ShouldStopRepeatedEditStrategy(tool.Name, parsedInput, editFailureTracker, out var recoveryMessage))
                 {
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Edit recovery guard", recoveryMessage);
@@ -1644,6 +2515,31 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return results;
     }
 
+    private static bool ShouldStopRepeatedReadOnlyToolCall(
+        string toolName,
+        Dictionary<string, object?> input,
+        Dictionary<string, int> toolLoopTracker,
+        out string loopMessage)
+    {
+        loopMessage = string.Empty;
+        if (!IsReadOnlyRepeatGuardTool(toolName))
+        {
+            return false;
+        }
+
+        var key = BuildToolRepeatKey(toolName, input);
+        var count = toolLoopTracker.TryGetValue(key, out var existing) ? existing + 1 : 1;
+        toolLoopTracker[key] = count;
+        if (count < RepeatedReadOnlyToolLimit)
+        {
+            return false;
+        }
+
+        loopMessage = $"Repeated read-only tool call detected for {toolName} with the same input {count} times. " +
+                      "Stop repeating this lookup; use the existing result, inspect a different path or query, or move to the next action.";
+        return true;
+    }
+
     private static bool ShouldStopRepeatedEditStrategy(
         string toolName,
         Dictionary<string, object?> input,
@@ -1711,6 +2607,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         return $"{toolName}|{path}|whole-file";
+    }
+
+    private static string BuildToolRepeatKey(string toolName, Dictionary<string, object?> input)
+    {
+        var orderedInput = input
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
+        return $"readonly-repeat|{toolName}|{JsonSerializer.Serialize(orderedInput)}";
     }
 
     private static bool TryGetString(IReadOnlyDictionary<string, object?> input, string key, out string value)
@@ -1800,8 +2704,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             CompletedAt = completedAt.ToLocalTime(),
             ToolName = toolName,
             ToolUseId = toolId,
-            InputJson = TrimReplayText(inputJson, 8000),
-            ResultPreview = TrimReplayText(result, 8000),
+            InputJson = SensitiveTextRedactor.Redact(TrimReplayText(inputJson, 8000)),
+            ResultPreview = SensitiveTextRedactor.Redact(TrimReplayText(result, 8000)),
             IsError = isError,
             DurationMs = Math.Max(0, (int)(completedAt - startedAt).TotalMilliseconds)
         };
@@ -1847,15 +2751,81 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         IReadOnlyDictionary<string, object?> input,
         List<string> executedCommands)
     {
-        if (!string.Equals(toolName, "bash", StringComparison.Ordinal) ||
-            !input.TryGetValue("command", out var commandValue) ||
-            commandValue is not string command ||
-            string.IsNullOrWhiteSpace(command))
+        if (!TryGetTrackedCommand(toolName, input, out var command))
         {
             return;
         }
 
         executedCommands.Add(command);
+    }
+
+    private static bool TryGetTrackedCommand(
+        string toolName,
+        IReadOnlyDictionary<string, object?> input,
+        out string command)
+    {
+        command = string.Empty;
+        if (string.Equals(toolName, "bash", StringComparison.Ordinal))
+        {
+            return TryGetString(input, "command", out command);
+        }
+
+        if (!string.Equals(toolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (TryGetString(input, "command", out command))
+        {
+            return true;
+        }
+
+        if (input.TryGetValue("plan", out var rawPlan) &&
+            TryGetFirstVerificationCommand(rawPlan, out command))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetFirstVerificationCommand(object? rawPlan, out string command)
+    {
+        command = string.Empty;
+        if (rawPlan == null)
+        {
+            return false;
+        }
+
+        if (rawPlan is ProjectScaffoldPlanModel plan)
+        {
+            command = plan.VerificationCommands.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+            return !string.IsNullOrWhiteSpace(command);
+        }
+
+        if (rawPlan is JsonElement element &&
+            element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty("verificationCommands", out var commandsElement) &&
+            commandsElement.ValueKind == JsonValueKind.Array)
+        {
+            command = commandsElement
+                .EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString())
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+            return !string.IsNullOrWhiteSpace(command);
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(rawPlan);
+            using var document = JsonDocument.Parse(json);
+            return TryGetFirstVerificationCommand(document.RootElement, out command);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task<bool> RequestToolPermissionAsync(
@@ -2035,6 +3005,17 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return toolName is "write_file" or "edit_file";
     }
 
+    private static bool IsReadOnlyRepeatGuardTool(string toolName)
+    {
+        return string.Equals(toolName, "list_directory", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "read_file", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "glob_search", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "grep_search", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "symbol_search", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "semantic_search", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(toolName, "hybrid_search", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool TryResolveWorkspaceFile(string path, string workspaceRoot, out string fullPath)
     {
         fullPath = string.Empty;
@@ -2205,6 +3186,79 @@ internal sealed record DesktopAssistantTurn(
     string AssistantText,
     List<ChatContent> AssistantContent,
     List<ChatContent> ToolUses);
+
+internal sealed record ProjectScaffoldToolSummary(
+    bool Succeeded,
+    string Command,
+    IReadOnlyList<string> CreatedFiles,
+    IReadOnlyList<string> SkippedFiles,
+    IReadOnlyList<string> Issues,
+    IReadOnlyList<string> VerificationCommands)
+{
+    public static ProjectScaffoldToolSummary Parse(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return Empty(succeeded: false);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return new ProjectScaffoldToolSummary(
+                Succeeded: TryGetBool(root, "succeeded"),
+                Command: TryGetString(root, "command"),
+                CreatedFiles: TryGetStringArray(root, "createdFiles"),
+                SkippedFiles: TryGetStringArray(root, "skippedFiles"),
+                Issues: TryGetStringArray(root, "issues"),
+                VerificationCommands: TryGetStringArray(root, "verificationCommands"));
+        }
+        catch
+        {
+            return new ProjectScaffoldToolSummary(
+                Succeeded: false,
+                Command: string.Empty,
+                CreatedFiles: [],
+                SkippedFiles: [],
+                Issues: [DesktopPromptBuilder.Truncate(json, 400)],
+                VerificationCommands: []);
+        }
+    }
+
+    private static ProjectScaffoldToolSummary Empty(bool succeeded) =>
+        new(
+            Succeeded: succeeded,
+            Command: string.Empty,
+            CreatedFiles: [],
+            SkippedFiles: [],
+            Issues: [],
+            VerificationCommands: []);
+
+    private static bool TryGetBool(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) &&
+        value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+        value.GetBoolean();
+
+    private static string TryGetString(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static IReadOnlyList<string> TryGetStringArray(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString() ?? string.Empty)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .ToList();
+    }
+}
 
 internal sealed class DenyByDefaultPermissionEnforcer : IPermissionEnforcer
 {

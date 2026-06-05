@@ -3,8 +3,8 @@ id: greenfield-project-scaffold
 title: Greenfield Project Scaffold
 priority: 80
 taskKinds: feature,general
-triggers: 새 프로젝트,프로젝트 생성,scaffold,project,app,portfolio,homepage,website,landingpage,blog,wordbook,vocabulary,flashcard,shopping,shop,cart,포트폴리오,홈페이지,웹사이트,랜딩,단어장,쇼핑,장바구니,블로그
-excludes: 수정,고쳐,고치,fix,bug,오류,에러,review,리뷰,검토,분석
+triggers: 새 프로젝트,프로젝트 생성,프로젝트 만들기,앱 만들기,웹,웹사이트 만들기,홈페이지 만들기,포트폴리오 만들기,랜딩 페이지,블로그 만들기,포트폴리오,홈페이지,웹사이트,랜딩,블로그,단어장,용어집,쇼핑몰,쇼핑,장바구니,scaffold,project,app,portfolio,homepage,website,landingpage,blog,wordbook,vocabulary,flashcard,shopping,shop,cart
+excludes: 수정,고쳐,고치기,fix,bug,오류,에러,review,리뷰,검토,분석
 ---
 Use this skill only as procedural guidance for greenfield project creation. It does not grant tool permissions, approve file writes, bypass workspace checks, bypass plan id or plan hash validation, or expand shell command allowlists.
 
@@ -12,7 +12,7 @@ Use this skill only as procedural guidance for greenfield project creation. It d
 When this skill is active for a file-producing project creation task, you MUST use tools instead of generating raw code blocks.
 Do not write file contents directly in the response; always use workspace file tools or scaffold tools.
 
-For a vague request like "새 프로젝트 만들고 싶다", ask a focused clarification before creating files.
+For a vague request like "새 프로젝트를 만들고 싶다", ask a focused clarification before creating files.
 
 For a concrete greenfield request, follow the project scaffold flow:
 1. Use the preflight project scaffold plan when it is attached.

@@ -333,8 +333,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("optional accelerators", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("plan_project_scaffold", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("workspace tools", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("bare request for a 'new project'", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("before picking React", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("use the attached deterministic scaffold plan", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("only ask for clarification", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -470,6 +470,211 @@ public sealed class DesktopServiceTests
             DesktopTaskKind.Feature);
 
         Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_ReplacesDocumentEmptyFinalAfterFileChanges()
+    {
+        var changes = new[]
+        {
+            new FileChangeRecord
+            {
+                Path = "C:/workspace/package.json",
+                RelativePath = "package.json",
+                Before = string.Empty,
+                After = "{\"name\":\"portfolio\"}",
+                ExistedBefore = false,
+                DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "{\"name\":\"portfolio\"}" }]
+            }
+        };
+        var assistantText = "문서 내용이 비어 있거나 불완전합니다.\n\n`# [ ]` 만 표시되어 있어 질문에 답변할 수 있는 실제 문서 내용이 없습니다.";
+
+        var shouldReplace = DesktopAgentService.ShouldReplaceIrrelevantFinalAfterChanges(
+            assistantText,
+            changes,
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+        var replacement = DesktopAgentService.BuildFileChangeCompletionSummary(
+            changes,
+            [],
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Focused verification",
+                    Command = "npm run build",
+                    Reason = "JavaScript files changed"
+                }
+            ]);
+
+        Assert.True(shouldReplace);
+        Assert.Contains("package.json", replacement, StringComparison.Ordinal);
+        Assert.Contains("검증 명령은 기록되지 않았습니다", replacement, StringComparison.Ordinal);
+        Assert.DoesNotContain("# [ ]", replacement, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopAgentService_ReplacesNewTopicFinalAfterFileChanges()
+    {
+        var changes = new[]
+        {
+            new FileChangeRecord
+            {
+                Path = "C:/workspace/src/App.jsx",
+                RelativePath = "src/App.jsx",
+                Before = string.Empty,
+                After = "export default function App() {}",
+                ExistedBefore = false,
+                DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "export default function App() {}" }]
+            }
+        };
+
+        var shouldReplace = DesktopAgentService.ShouldReplaceIrrelevantFinalAfterChanges(
+            "좋습니다. 데스크톱 다이어트/칼로리/체중 트래킹 앱을 만들어드리겠습니다.\n\n먼저 워크스페이스를 확인하고 몇 가지 질문을 드리겠습니다.",
+            changes,
+            AgentWorkMode.Coding,
+            DesktopTaskKind.Feature);
+
+        Assert.True(shouldReplace);
+    }
+
+    [Fact]
+    public void DesktopAgentService_StopsAfterReadOnlyLoopGuardWhenFilesChanged()
+    {
+        var changes = new[]
+        {
+            new FileChangeRecord
+            {
+                Path = "C:/workspace/src/App.jsx",
+                RelativePath = "src/App.jsx",
+                Before = string.Empty,
+                After = "export default function App() {}",
+                ExistedBefore = false,
+                DiffLines = [new DiffLine { Kind = DiffLineKind.Added, Text = "export default function App() {}" }]
+            }
+        };
+        var toolResults = new[]
+        {
+            ChatContent.CreateToolResult(
+                "tool-list-3",
+                "Repeated read-only tool call detected for list_directory with the same input 3 times.",
+                true)
+        };
+
+        Assert.True(DesktopAgentService.ShouldStopAfterReadOnlyLoopGuard(toolResults, changes));
+        Assert.False(DesktopAgentService.ShouldStopAfterReadOnlyLoopGuard(toolResults, []));
+        Assert.True(DesktopAgentService.ShouldStopAfterReadOnlyLoopGuard(toolResults, [], hasProceedableProjectScaffoldPlan: true));
+    }
+
+    [Fact]
+    public void DesktopAgentService_RunsScaffoldFallbackAfterNonScaffoldPermissionDenied()
+    {
+        var root = CreateTempDirectory();
+        var plan = new ProjectScaffoldPlanner().Plan(
+            "IT개발자들이 알아야 하는 개발자용단어 웹을 만들고 싶다",
+            root);
+        var toolResults = new[]
+        {
+            ChatContent.CreateToolResult("tool-bash", "Permission denied by user", true)
+        };
+        var replayEntries = new[]
+        {
+            new ToolReplayEntry
+            {
+                ToolName = "bash",
+                ResultPreview = "Permission denied by user",
+                IsError = true
+            }
+        };
+
+        Assert.True(DesktopAgentService.ShouldRunProjectScaffoldFallbackAfterPermissionDenied(
+            toolResults,
+            replayEntries,
+            [],
+            plan));
+    }
+
+    [Fact]
+    public void DesktopAgentService_DoesNotRetryScaffoldFallbackWhenScaffoldPermissionDenied()
+    {
+        var root = CreateTempDirectory();
+        var plan = new ProjectScaffoldPlanner().Plan("단어장 웹앱 만들어줘", root);
+        var toolResults = new[]
+        {
+            ChatContent.CreateToolResult("tool-create", "Permission denied by user", true)
+        };
+        var replayEntries = new[]
+        {
+            new ToolReplayEntry
+            {
+                ToolName = "create_project_scaffold",
+                ResultPreview = "Permission denied by user",
+                IsError = true
+            }
+        };
+
+        Assert.False(DesktopAgentService.ShouldRunProjectScaffoldFallbackAfterPermissionDenied(
+            toolResults,
+            replayEntries,
+            [],
+            plan));
+    }
+
+    [Fact]
+    public void DesktopAgentService_SafeScaffoldDirectExecutionRequiresRegisteredPlanAndWritableMode()
+    {
+        var root = CreateTempDirectory();
+        var unregisteredPlan = new ProjectScaffoldPlanner().Plan("포트폴리오 홈페이지 만들어줘", root);
+        var registeredPlan = new ProjectScaffoldPlanRegistry().Register(unregisteredPlan, root);
+
+        Assert.False(DesktopAgentService.ShouldExecuteSafeScaffoldDirectly(
+            unregisteredPlan,
+            AgentWorkMode.Coding));
+        Assert.False(DesktopAgentService.ShouldExecuteSafeScaffoldDirectly(
+            registeredPlan,
+            AgentWorkMode.Readonly));
+        Assert.True(DesktopAgentService.ShouldExecuteSafeScaffoldDirectly(
+            registeredPlan,
+            AgentWorkMode.Coding));
+    }
+
+    [Fact]
+    public void SensitiveTextRedactor_RedactsCommonSecretShapes()
+    {
+        var redacted = SensitiveTextRedactor.Redact(
+            "Authorization: Bearer sk-test-secret api_key=plain-secret " +
+            "\"password\":\"pass-123\" https://example.test/callback?token=url-secret");
+
+        Assert.DoesNotContain("sk-test-secret", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("plain-secret", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("pass-123", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("url-secret", redacted, StringComparison.Ordinal);
+        Assert.Contains("[REDACTED]", redacted, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopAgentService_BuildsCollisionSummaryForExistingProjectScaffoldFiles()
+    {
+        var toolResults = new[]
+        {
+            ChatContent.CreateToolResult(
+                "tool-create",
+                JsonSerializer.Serialize(new
+                {
+                    succeeded = false,
+                    createdFiles = Array.Empty<string>(),
+                    skippedFiles = new[] { "package.json", "index.html", "vite.config.js" },
+                    issues = new[] { "Project scaffold was not created because target files already exist." }
+                }),
+                false)
+        };
+
+        var shouldStop = DesktopAgentService.TryBuildProjectScaffoldCollisionSummary(toolResults, out var summary);
+
+        Assert.True(shouldStop);
+        Assert.Contains("프로젝트 생성은 진행하지 않았습니다", summary, StringComparison.Ordinal);
+        Assert.Contains("package.json", summary, StringComparison.Ordinal);
+        Assert.Contains("덮어쓰기 승인이 필요", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("게임", summary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -798,6 +1003,92 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesRunLocalServerRequest()
+    {
+        var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC904\uC218 \uC788\uB098");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.RunLocalServer, contract.Intent);
+        Assert.True(contract.Confidence >= 0.9);
+        Assert.Contains("Start the local development server", contract.Goal, StringComparison.Ordinal);
+        Assert.Contains(contract.InvalidCompletions, item => item.Contains("project structure", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesStructureSummaryForRunLocalServer()
+    {
+        var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918");
+        var assistantText = "프로젝트 구조를 확인했습니다. src/App.jsx는 메인 컴포넌트이고 vite.config.js를 사용합니다. 어떤 작업을 도와드릴까요?";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding));
+        Assert.True(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_AllowsUrlForRunLocalServer()
+    {
+        var contract = UserIntentTranslator.Translate("please start the local dev server");
+        var assistantText = "Local server is running: http://127.0.0.1:5173";
+
+        Assert.False(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, ["npm run dev"], AgentWorkMode.Coding));
+        Assert.False(TaskContractCompletionChecker.ShouldReject(contract, assistantText, ["npm run dev"], AgentWorkMode.Coding));
+    }
+
+    [Fact]
+    public async Task ExecutionLessonMemoryService_StoresOnlyBehaviorRuleForContractFailure()
+    {
+        var root = CreateTempDirectory();
+        var service = new ExecutionLessonMemoryService();
+        var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918");
+
+        await service.RecordContractFailureAsync(
+            root,
+            contract,
+            "\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918",
+            "프로젝트 구조를 확인했습니다. src/App.jsx는 메인 컴포넌트입니다.",
+            CancellationToken.None);
+
+        var lessonPath = Path.Combine(root, ".agentq", "lessons", "execution-lessons.json");
+        var eventsPath = Path.Combine(root, ".agentq", "lessons", "execution-lesson-events.jsonl");
+        Assert.True(File.Exists(lessonPath));
+        Assert.True(File.Exists(eventsPath));
+
+        var document = await service.LoadAsync(root, CancellationToken.None);
+        var lesson = Assert.Single(document.Lessons);
+        Assert.Equal("run-local-server-no-structure-summary", lesson.Id);
+        Assert.Equal("run_local_server", lesson.Intent);
+        Assert.Contains("Do not stop after describing project structure", lesson.Rule, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, lesson.FailureCount);
+        Assert.DoesNotContain("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918", File.ReadAllText(lessonPath), StringComparison.Ordinal);
+        Assert.DoesNotContain("src/App.jsx는 메인", File.ReadAllText(lessonPath), StringComparison.Ordinal);
+        Assert.Single(File.ReadAllLines(eventsPath));
+    }
+
+    [Fact]
+    public async Task ExecutionLessonMemoryService_SelectsRelevantLessonsAndBuildsContext()
+    {
+        var root = CreateTempDirectory();
+        var service = new ExecutionLessonMemoryService();
+        var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918");
+        await service.RecordContractFailureAsync(
+            root,
+            contract,
+            "\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918",
+            "프로젝트 구조를 확인했습니다.",
+            CancellationToken.None);
+
+        var relevant = await service.TouchRelevantAsync(root, "npm run dev 해줘", UserIntentTranslator.Translate("npm run dev 해줘"), CancellationToken.None);
+        var context = service.BuildContext(relevant);
+
+        Assert.Single(relevant);
+        Assert.Contains("Relevant execution lessons", context, StringComparison.Ordinal);
+        Assert.Contains("run_local_server", context, StringComparison.Ordinal);
+        Assert.Contains("verify a localhost URL", context, StringComparison.OrdinalIgnoreCase);
+        var document = await service.LoadAsync(root, CancellationToken.None);
+        Assert.Equal(1, Assert.Single(document.Lessons).AppliedCount);
+    }
+
+    [Fact]
     public void ProjectScaffoldPlanner_BuildPlanContext_IncludesExactToolInputs()
     {
         var root = CreateTempDirectory();
@@ -1122,6 +1413,48 @@ public sealed class DesktopServiceTests
         Assert.Contains("do not tell the user you lack previous conversation memory", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Answer the latest user request directly", context, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Link capability rule", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_ContextIncludesRunLocalServerTaskContract()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"scripts":{"dev":"vite --host 127.0.0.1"}}""");
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC904\uC218 \uC788\uB098";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+        await new ExecutionLessonMemoryService().RecordContractFailureAsync(
+            root,
+            UserIntentTranslator.Translate(userText),
+            userText,
+            "\uD504\uB85C\uC81D\uD2B8 \uAD6C\uC870\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.",
+            CancellationToken.None);
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            userText,
+            root,
+            new ProjectMemory { WorkspaceRoot = root },
+            new ProjectAgentConfig(),
+            profile,
+            projectScaffoldPlan,
+            []);
+
+        Assert.Contains("Current task contract", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("run_local_server", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Start the local development server", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Invalid completions", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("only describing project structure", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Relevant execution lessons", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not stop after describing project structure", context, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -2020,6 +2353,61 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceAnalysisService_IgnoresAgentQMetadataForEmptyWorkspace()
+    {
+        var root = CreateTempDirectory();
+        var diagnosticsDirectory = Path.Combine(root, ".agentq", "diagnostics");
+        Directory.CreateDirectory(diagnosticsDirectory);
+        await File.WriteAllTextAsync(Path.Combine(diagnosticsDirectory, "events.jsonl"), "{}");
+
+        var analysis = await new WorkspaceAnalysisService().AnalyzeAsync(root, CancellationToken.None);
+
+        Assert.Equal(0, analysis.FileCount);
+        Assert.Equal(0, analysis.DirectoryCount);
+        Assert.Contains(analysis.ScaffoldRecommendations, recommendation =>
+            recommendation.Name == "Vite React TypeScript project");
+    }
+
+    [Fact]
+    public async Task WorkspaceAnalysisService_RecordsWorkerDiagnostics()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"build":"vite build"},"dependencies":{"react":"latest"}}""");
+        var diagnostics = new DesktopDiagnosticsService();
+        diagnostics.SetActiveWorkspace(root);
+
+        await new WorkspaceAnalysisService(diagnosticsService: diagnostics).AnalyzeAsync(root, CancellationToken.None);
+
+        var logPath = DesktopDiagnosticsService.GetWorkspaceDiagnosticsPath(root);
+        var contents = await WaitForFileTextAsync(logPath, "workspace_analysis_completed");
+
+        Assert.Contains("workspace_analysis_started", contents, StringComparison.Ordinal);
+        Assert.Contains("worker_started", contents, StringComparison.Ordinal);
+        Assert.Contains("worker_completed", contents, StringComparison.Ordinal);
+        Assert.Contains("worker=typescript-worker", contents, StringComparison.Ordinal);
+        Assert.Contains("workspace_analysis_completed", contents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopDiagnosticsService_RedactsSecretsInWorkspaceLog()
+    {
+        var root = CreateTempDirectory();
+        var diagnostics = new DesktopDiagnosticsService();
+        diagnostics.RecordSync(
+            "secret_test",
+            "Authorization: Bearer sk-diagnostic-secret api_key=diagnostic-secret",
+            root);
+
+        var log = File.ReadAllText(DesktopDiagnosticsService.GetWorkspaceDiagnosticsPath(root));
+
+        Assert.DoesNotContain("sk-diagnostic-secret", log, StringComparison.Ordinal);
+        Assert.DoesNotContain("diagnostic-secret", log, StringComparison.Ordinal);
+        Assert.Contains("[REDACTED]", log, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DesktopScaffoldIntentRouter_PrefersProjectScaffoldForPackageOnlyPortfolioRequest()
     {
         var root = CreateTempDirectory();
@@ -2098,7 +2486,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void ProjectScaffoldPlanner_AsksForBareNewProject()
+    public void ProjectScaffoldPlanner_AsksForProjectTypeForBareNewProject()
     {
         var root = CreateTempDirectory();
 
@@ -2108,7 +2496,25 @@ public sealed class DesktopServiceTests
 
         Assert.True(result.IsGreenfieldRequest);
         Assert.False(result.CanProceed);
-        Assert.Contains("\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8", result.ClarifyingQuestion, StringComparison.Ordinal);
+        Assert.Null(result.Intent);
+        Assert.Null(result.Plan);
+        Assert.Contains("What kind of project", result.ClarifyingQuestion, StringComparison.Ordinal);
+        Assert.Contains(result.Reasons, reason => reason.Contains("Project type is missing", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("\uC548\uB155")]
+    [InlineData("\uC694\uC998 \uD504\uB85C\uC81D\uD2B8 \uB54C\uBB38\uC5D0 \uACE0\uBBFC\uC774 \uC788\uC5B4")]
+    [InlineData("\uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uD574\uC57C \uD560\uC9C0 \uACE0\uBBFC\uC774\uC57C")]
+    public void ProjectScaffoldPlanner_DoesNotPlanForConversationOnlyPrompts(string request)
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan(request, root);
+
+        Assert.False(result.IsGreenfieldRequest);
+        Assert.False(result.CanProceed);
+        Assert.Null(result.Intent);
         Assert.Null(result.Plan);
     }
 
@@ -2142,6 +2548,61 @@ public sealed class DesktopServiceTests
         Assert.Equal("typescript", result.Intent?.Language);
         Assert.Contains("src/main.tsx", result.Plan!.Files);
         Assert.DoesNotContain("src/main.jsx", result.Plan.Files);
+    }
+
+    [Theory]
+    [InlineData("Create a C++ console app project", "cpp", "cpp-cmake", "CMakeLists.txt")]
+    [InlineData("Create a Go API service project", "go", "go-module", "go.mod")]
+    [InlineData("Create a Rust CLI project", "rust", "rust-cargo", "Cargo.toml")]
+    [InlineData("Create a Java API server project", "java", "java-maven", "pom.xml")]
+    [InlineData("Create a SQL migration project", "sql", "sql-migrations", "migrations/001_initial_schema.sql")]
+    [InlineData("Create a PHP web project", "php", "php-composer", "composer.json")]
+    [InlineData("Create a Kotlin JVM project", "kotlin", "kotlin-gradle", "build.gradle.kts")]
+    [InlineData("Create a Swift package project", "swift", "swift-package", "Package.swift")]
+    [InlineData("Create a PowerShell automation project", "powershell", "powershell-script", "scripts/app.ps1")]
+    [InlineData("Create a Bash shell script project", "shell", "shell-script", "scripts/app.sh")]
+    [InlineData("Create an R analysis project", "r", "r-analysis", "DESCRIPTION")]
+    public void ProjectScaffoldPlanner_RecognizesNativeWorkerLanguagesForGreenfieldProjects(
+        string request,
+        string expectedLanguage,
+        string expectedFramework,
+        string expectedFile)
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan(request, root);
+
+        Assert.True(result.IsGreenfieldRequest);
+        Assert.True(result.CanProceed);
+        Assert.Equal(expectedLanguage, result.Intent?.Language);
+        Assert.Equal(expectedFramework, result.Intent?.Framework);
+        Assert.Contains(expectedFile, result.Plan!.Files);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_DoesNotMisreadDjangoAsGo()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan("Create a Django app project", root);
+
+        Assert.True(result.CanProceed);
+        Assert.Equal("javascript", result.Intent?.Language);
+        Assert.NotEqual("go", result.Intent?.Language);
+    }
+
+    [Fact]
+    public void ProjectScaffoldPlanner_HonorsExplicitNativeLanguageInWebsiteRequest()
+    {
+        var root = CreateTempDirectory();
+
+        var result = new ProjectScaffoldPlanner().Plan("Create a Go website project", root);
+
+        Assert.True(result.CanProceed);
+        Assert.Equal("go", result.Intent?.Language);
+        Assert.Equal("go-module", result.Intent?.Framework);
+        Assert.Contains("go.mod", result.Plan!.Files);
+        Assert.DoesNotContain("package.json", result.Plan.Files);
     }
 
     [Fact]
@@ -2226,9 +2687,14 @@ public sealed class DesktopServiceTests
         Assert.Contains("\"planId\"", context, StringComparison.Ordinal);
         Assert.Contains("planHash:", context, StringComparison.Ordinal);
         Assert.Contains("\"planHash\"", context, StringComparison.Ordinal);
+        Assert.Contains("Do not show it to the user", context, StringComparison.Ordinal);
     }
 
     [Theory]
+    [InlineData("IT \uC6A9\uC5B4 \uBAA8\uC544\uB193\uC740 \uC6F9\uC0AC\uC774\uD2B8 \uB9CC\uB4E4\uC5B4\uC918", "glossary")]
+    [InlineData("\uC6A9\uC5B4\uC9D1 \uB9CC\uB4E4\uC5B4\uC918", "glossary")]
+    [InlineData("Create a terminology glossary website", "glossary")]
+    [InlineData("IT개발자들이 알아야 하는 개발자용단어 웹을 만들고 싶다", "wordbook")]
     [InlineData("개발자 기본 단어장 웹앱 만들어줘", "wordbook")]
     [InlineData("단어장 만들어줘", "wordbook")]
     [InlineData("쇼핑몰 장바구니 앱 생성", "shopping-cart")]
@@ -2288,7 +2754,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public async Task DesktopProjectScaffoldPlanTool_ReturnsClarifyingQuestion()
+    public async Task DesktopProjectScaffoldPlanTool_AsksClarifyingQuestionForVagueRequest()
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldPlanTool(root);
@@ -2303,7 +2769,11 @@ public sealed class DesktopServiceTests
         var rootElement = document.RootElement;
         Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
         Assert.False(rootElement.GetProperty("canProceed").GetBoolean());
-        Assert.Contains("\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8", rootElement.GetProperty("clarifyingQuestion").GetString(), StringComparison.Ordinal);
+        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("intent").ValueKind);
+        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("plan").ValueKind);
+        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("planId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("planHash").ValueKind);
+        Assert.Contains("What kind of project", rootElement.GetProperty("clarifyingQuestion").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2369,6 +2839,116 @@ public sealed class DesktopServiceTests
         Assert.Contains(changedFiles, change => change.RelativePath == "package.json");
         Assert.Contains(changedFiles, change => change.RelativePath == "src/main.jsx");
         Assert.All(changedFiles, change => Assert.False(string.IsNullOrWhiteSpace(change.SnapshotPath)));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
+            string.Equals(toolName, "create_project_scaffold", StringComparison.Ordinal));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "포트폴리오 홈페이지 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.True(File.Exists(Path.Combine(root, "package.json")));
+        Assert.True(File.Exists(Path.Combine(root, "src", "App.jsx")));
+        Assert.Contains("Prepared project scaffold was created", result, StringComparison.Ordinal);
+        Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Contains("verify_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Null(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_SafeScaffoldPrimaryRunsEveryVerificationCommand()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var intent = new ProjectScaffoldIntentModel
+        {
+            ProjectType = "multi-verify",
+            Language = "javascript",
+            Framework = "vite-react"
+        };
+        var plan = new ProjectScaffoldPlanModel
+        {
+            Name = "Multi verification scaffold",
+            Files = ["package.json"],
+            VerificationCommands = ["npm run lint", "npm run build"]
+        };
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
+        var projectScaffoldPlan = new ProjectScaffoldPlanningResult
+        {
+            IsGreenfieldRequest = true,
+            CanProceed = true,
+            Intent = record.Intent,
+            Plan = record.Plan,
+            PlanId = record.PlanId,
+            PlanHash = record.PlanHash
+        };
+        var toolRegistry = new ToolRegistry();
+        var verificationTool = new RecordingProjectScaffoldVerifyTool();
+        toolRegistry.Register(verificationTool);
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var executedCommands = new List<string>();
+
+        await InvokeExecutePreparedProjectScaffoldVerificationAsync(
+            service,
+            projectScaffoldPlan,
+            toolRegistry,
+            new AllowAllPermissionEnforcer(),
+            root,
+            executedCommands);
+
+        Assert.Equal(["npm run lint", "npm run build"], verificationTool.Commands);
+        Assert.Equal(["npm run lint", "npm run build"], executedCommands);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_StopsRepeatedReadOnlyToolCalls()
+    {
+        var root = CreateTempDirectory();
+        var toolRegistry = new ToolRegistry();
+        toolRegistry.Register(new ListDirectoryTool());
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var input = JsonSerializer.Serialize(new Dictionary<string, object?> { ["path"] = "." });
+        var toolUses = new[]
+        {
+            ChatContent.CreateToolUse("tool-list-1", "list_directory", input),
+            ChatContent.CreateToolUse("tool-list-2", "list_directory", input),
+            ChatContent.CreateToolUse("tool-list-3", "list_directory", input)
+        };
+        var errorMessages = new List<string>();
+
+        var results = await InvokeExecuteToolsAsync(
+            service,
+            toolUses,
+            toolRegistry,
+            new AllowAllPermissionEnforcer(),
+            new DesktopToolCallbacks
+            {
+                OnToolError = (_, message) => errorMessages.Add(message)
+            },
+            root);
+
+        Assert.Equal(3, results.Count);
+        Assert.False(results[0].IsToolError);
+        Assert.False(results[1].IsToolError);
+        Assert.True(results[2].IsToolError);
+        Assert.Contains("Repeated read-only tool call detected", results[2].ToolResult, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(errorMessages, message => message.Contains("Repeated read-only tool call detected", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -2468,7 +3048,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public async Task DesktopProjectScaffoldCreateTool_DoesNotOverwriteExistingFilesByDefault()
+    public async Task DesktopProjectScaffoldCreateTool_SkipsExistingFilesAndCreatesMissingFilesByDefault()
     {
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "package.json"), "{}");
@@ -2483,13 +3063,78 @@ public sealed class DesktopServiceTests
         Assert.False(result.IsError, result.ErrorMessage);
         using var document = JsonDocument.Parse(result.Content);
         var rootElement = document.RootElement;
-        Assert.False(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
         var skipped = rootElement.GetProperty("skippedFiles").EnumerateArray()
             .Select(file => file.GetString())
             .ToList();
+        var created = rootElement.GetProperty("createdFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
         Assert.Contains("package.json", skipped);
+        Assert.Contains("src/App.jsx", created);
         Assert.Equal("{}", File.ReadAllText(Path.Combine(root, "package.json")));
-        Assert.Contains("target files already exist", string.Join(" ", rootElement.GetProperty("issues").EnumerateArray().Select(issue => issue.GetString())), StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(root, "src", "App.jsx")));
+        Assert.Empty(rootElement.GetProperty("issues").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_CompletesPartialViteScaffoldWhenTopLevelFilesExist()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "package.json"), "{}");
+        File.WriteAllText(Path.Combine(root, "index.html"), "<div id=\"root\"></div>");
+        File.WriteAllText(Path.Combine(root, "vite.config.js"), "export default {};");
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = RegisterScaffoldPlan(registry, PortfolioIntent(), PortfolioPlan(), root);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        var skipped = rootElement.GetProperty("skippedFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        var created = rootElement.GetProperty("createdFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("package.json", skipped);
+        Assert.Contains("index.html", skipped);
+        Assert.Contains("vite.config.js", skipped);
+        Assert.Contains("src/main.jsx", created);
+        Assert.Contains("src/App.jsx", created);
+        Assert.Contains("src/styles.css", created);
+        Assert.Equal("{}", File.ReadAllText(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_ReportsAllExistingFilesWhenNothingWasCreated()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var intent = PortfolioIntent();
+        var plan = PortfolioPlan();
+        foreach (var file in plan.Files)
+        {
+            var path = Path.Combine(root, file);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, "existing");
+        }
+
+        var record = RegisterScaffoldPlan(registry, intent, plan, root);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.False(rootElement.GetProperty("succeeded").GetBoolean());
+        Assert.Empty(rootElement.GetProperty("createdFiles").EnumerateArray());
+        Assert.Equal(plan.Files.Count, rootElement.GetProperty("skippedFiles").EnumerateArray().Count());
+        Assert.Contains("every target file already exists", string.Join(" ", rootElement.GetProperty("issues").EnumerateArray().Select(issue => issue.GetString())), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3388,8 +4033,13 @@ public sealed class DesktopServiceTests
 
         var context = await new WorkspaceIndexer().BuildContextAsync(root, "Build a portfolio website", CancellationToken.None);
 
+        Assert.Contains("Workspace state: empty greenfield workspace", context);
         Assert.Contains("No user project files were found", context);
+        Assert.Contains("no existing workflow", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not respond with workflow/codebase analysis", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Empty-workspace bootstrap guidance", context);
+        Assert.Contains("Ignore AgentQ metadata folders", context);
+        Assert.Contains("greenfield scaffold planning/creation", context);
         Assert.Contains("Vite + React + JavaScript", context);
         Assert.Contains("JavaScript is requested after TypeScript was recommended", context);
         Assert.Contains("Use TypeScript", context);
@@ -3397,7 +4047,28 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public async Task WorkspaceIndexer_AsksDirectionForBareNewProjectRequest()
+    public async Task WorkspaceIndexer_IgnoresAgentMetadataAndEmptyCommandArtifactsForEmptyWorkspace()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, ".agentq"));
+        Directory.CreateDirectory(Path.Combine(root, ".agents"));
+        Directory.CreateDirectory(Path.Combine(root, ".codex"));
+        Directory.CreateDirectory(Path.Combine(root, ".codex-build"));
+        await File.WriteAllTextAsync(Path.Combine(root, "cd"), string.Empty);
+        await File.WriteAllTextAsync(Path.Combine(root, "dotnet"), string.Empty);
+
+        var context = await new WorkspaceIndexer().BuildContextAsync(root, "Build a portfolio website", CancellationToken.None);
+
+        Assert.Contains("Workspace state: empty greenfield workspace", context);
+        Assert.Contains("No user project files were found", context);
+        Assert.DoesNotContain(".agents", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".codex", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("- cd", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("- dotnet", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexer_FollowsDefaultPlanForBareNewProjectRequest()
     {
         var root = CreateTempDirectory();
 
@@ -3406,9 +4077,43 @@ public sealed class DesktopServiceTests
             "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
             CancellationToken.None);
 
-        Assert.Contains("ask what kind of project", context, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("before choosing a stack", context, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Do not say you will create a specific starter", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("use its defaults", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Vite + React + JavaScript", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not block with broad clarification questions", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_ContextForEmptyGreenfieldProjectBlocksWorkflowAnalysis()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uC5B4\uC918";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+        var selectedSkills = new SystemSkillService().SelectRelevantSkills(userText, root, profile);
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            userText,
+            root,
+            new ProjectMemory { WorkspaceRoot = root },
+            new ProjectAgentConfig(),
+            profile,
+            projectScaffoldPlan,
+            selectedSkills);
+
+        Assert.Equal(DesktopTaskKind.Feature, profile.Kind);
+        Assert.Contains("Workspace state: empty greenfield workspace", context);
+        Assert.Contains("Do not respond with workflow/codebase analysis", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Project scaffold preflight plan", context);
+        Assert.Contains("create_project_scaffold", context);
     }
 
     [Fact]
@@ -4402,6 +5107,34 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_AttachesTextDocumentContent()
+    {
+        var root = CreateTempDirectory();
+        var documentPath = Path.Combine(root, "notes.md");
+        await File.WriteAllTextAsync(documentPath, "# 실제 문서\n\nIT 용어: API, CDN, CORS");
+
+        var message = await InvokeCreateUserMessageAsync(
+            "이 문서 요약해줘",
+            [
+                new DesktopAttachment
+                {
+                    Path = documentPath,
+                    FileName = "notes.md",
+                    MediaType = "text/markdown"
+                }
+            ]);
+
+        var combinedText = string.Join(
+            "\n",
+            message.Content
+                .Where(content => content.Type == ContentType.Text)
+                .Select(content => content.Text));
+
+        Assert.Contains("Attached document: notes.md", combinedText, StringComparison.Ordinal);
+        Assert.Contains("IT 용어: API, CDN, CORS", combinedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ProjectAgentConfigService_RoundTripsMcpServers()
     {
         var root = CreateTempDirectory();
@@ -4722,6 +5455,42 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.NotNull(loaded);
         Assert.Equal("openai", loaded.Provider);
         Assert.Equal("read_file", Assert.Single(loaded.Entries).ToolName);
+    }
+
+    [Fact]
+    public async Task ToolReplayService_RedactsSecretsInSavedReplay()
+    {
+        var root = CreateTempDirectory();
+        var service = new ToolReplayService();
+
+        var path = await service.SaveAsync(
+            new ToolReplaySession
+            {
+                WorkspaceRoot = root,
+                Provider = "openai",
+                Model = "gpt-test",
+                PromptPreview = "secret replay",
+                Entries =
+                [
+                    new ToolReplayEntry
+                    {
+                        ToolName = "bash",
+                        ToolUseId = "tool-1",
+                        InputJson = "{\"command\":\"echo api_key=replay-secret\"}",
+                        ResultPreview = "Authorization: Bearer sk-replay-secret",
+                        IsError = true,
+                        DurationMs = 4
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(path);
+        var json = await File.ReadAllTextAsync(path);
+
+        Assert.DoesNotContain("replay-secret", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-replay-secret", json, StringComparison.Ordinal);
+        Assert.Contains("[REDACTED]", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -8501,7 +9270,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             workspaceAnalysisService);
     }
 
-    private static async Task InvokeExecuteToolsAsync(
+    private static async Task<List<ChatContent>> InvokeExecuteToolsAsync(
         DesktopAgentService service,
         IReadOnlyList<ChatContent> toolUses,
         ToolRegistry toolRegistry,
@@ -8523,6 +9292,52 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             AgentWorkMode.Coding,
             new List<FileChangeRecord>(),
             new List<string>(),
+            new List<ToolReplayEntry>(),
+            new Dictionary<string, int>(StringComparer.Ordinal),
+            CancellationToken.None
+        ])!;
+        return await task;
+    }
+
+    private static async Task<ChatMessage> InvokeCreateUserMessageAsync(
+        string userText,
+        IReadOnlyList<DesktopAttachment> attachments)
+    {
+        var method = typeof(DesktopAgentService).GetMethod(
+            "CreateUserMessageAsync",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var task = (Task<ChatMessage>)method.Invoke(null, [
+            userText,
+            attachments,
+            CancellationToken.None
+        ])!;
+        return await task;
+    }
+
+    private static async Task InvokeExecutePreparedProjectScaffoldVerificationAsync(
+        DesktopAgentService service,
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        ToolRegistry toolRegistry,
+        IPermissionEnforcer permissionEnforcer,
+        string workspaceRoot,
+        List<string> executedCommands)
+    {
+        var method = typeof(DesktopAgentService).GetMethod(
+            "ExecutePreparedProjectScaffoldVerificationAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var task = (Task)method.Invoke(service, [
+            projectScaffoldPlan,
+            toolRegistry,
+            permissionEnforcer,
+            new DesktopToolCallbacks(),
+            workspaceRoot,
+            AgentWorkMode.Coding,
+            new List<FileChangeRecord>(),
+            executedCommands,
             new List<ToolReplayEntry>(),
             new Dictionary<string, int>(StringComparer.Ordinal),
             CancellationToken.None
@@ -8566,6 +9381,62 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             Task.FromResult(true);
     }
 
+    private sealed class RecordingPermissionEnforcer(Func<string, bool> decision) : IPermissionEnforcer
+    {
+        public List<string> RequestedTools { get; } = [];
+
+        public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
+        {
+            RequestedTools.Add(toolName);
+            return Task.FromResult(decision(toolName));
+        }
+    }
+
+    private sealed class RecordingProjectScaffoldVerifyTool : ITool
+    {
+        public List<string> Commands { get; } = [];
+
+        public string Name => "verify_project_scaffold";
+
+        public string Description => "Records project scaffold verification commands for tests.";
+
+        public object InputSchema => new { type = "object" };
+
+        public bool RequiresPermission => false;
+
+        public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
+        {
+            var command = ReadCommand(input);
+            Commands.Add(command);
+            return Task.FromResult(ToolResult.Success(JsonSerializer.Serialize(new
+            {
+                succeeded = true,
+                command,
+                createdFiles = Array.Empty<string>(),
+                skippedFiles = Array.Empty<string>(),
+                issues = Array.Empty<string>(),
+                verificationCommands = Array.Empty<string>()
+            })));
+        }
+
+        private static string ReadCommand(IReadOnlyDictionary<string, object?> input)
+        {
+            if (!input.TryGetValue("command", out var value) || value == null)
+            {
+                return string.Empty;
+            }
+
+            if (value is string text)
+            {
+                return text;
+            }
+
+            return value is JsonElement { ValueKind: JsonValueKind.String } element
+                ? element.GetString() ?? string.Empty
+                : value.ToString() ?? string.Empty;
+        }
+    }
+
     private static async Task<CommandResult> RunCommandAsync(
         string workingDirectory,
         string fileName,
@@ -8606,6 +9477,25 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             process.ExitCode,
             await stdoutTask,
             await stderrTask);
+    }
+
+    private static async Task<string> WaitForFileTextAsync(string path, string expectedText)
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            if (File.Exists(path))
+            {
+                var contents = await File.ReadAllTextAsync(path);
+                if (contents.Contains(expectedText, StringComparison.Ordinal))
+                {
+                    return contents;
+                }
+            }
+
+            await Task.Delay(50);
+        }
+
+        return File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty;
     }
 
     private sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError)
