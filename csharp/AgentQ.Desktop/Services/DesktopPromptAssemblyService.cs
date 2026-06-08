@@ -252,7 +252,7 @@ public sealed class ScaffoldDecisionPromptRule : IDesktopPromptRule
         var builder = new StringBuilder();
         builder.AppendLine("Scaffold decision rules:");
         builder.AppendLine("- Treat scaffold recommendations as optional accelerators, not as automatic instructions.");
-        builder.AppendLine("- A bare request for a 'new project' does not contain enough product intent. Ask what kind of project the user wants before picking React, Python, API, game, or any other stack.");
+        builder.AppendLine("- A bare request for a 'new project' should use the attached deterministic scaffold plan when available, defaulting to Vite + React + JavaScript. Only ask for clarification if the user is not happy with the default and names a different stack, framework, or project type.");
         builder.AppendLine("- Desktop preflight may attach a deterministic project scaffold plan. Follow that plan unless the user changes project type, language, framework, or style.");
         builder.AppendLine("- Use plan_project_scaffold to re-plan after the user clarifies or changes greenfield project direction; it does not create files.");
         builder.AppendLine("- Use create_project_scaffold only with the planId and planHash returned by plan_project_scaffold or attached by preflight; do not create from a request string alone.");

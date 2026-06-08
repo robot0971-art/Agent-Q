@@ -2720,7 +2720,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void ProjectScaffoldPlanner_AsksForProjectTypeForBareNewProject()
+    public void ProjectScaffoldPlanner_DefaultsBareNewProjectToViteReactJavaScript()
     {
         var root = CreateTempDirectory();
 
@@ -2729,11 +2729,13 @@ public sealed class DesktopServiceTests
             root);
 
         Assert.True(result.IsGreenfieldRequest);
-        Assert.False(result.CanProceed);
-        Assert.Null(result.Intent);
-        Assert.Null(result.Plan);
-        Assert.Contains("What kind of project", result.ClarifyingQuestion, StringComparison.Ordinal);
-        Assert.Contains(result.Reasons, reason => reason.Contains("Project type is missing", StringComparison.Ordinal));
+        Assert.True(result.CanProceed);
+        Assert.Equal("generic", result.Intent?.ProjectType);
+        Assert.Equal("javascript", result.Intent?.Language);
+        Assert.Equal("vite-react", result.Intent?.Framework);
+        Assert.Contains("package.json", result.Plan!.Files);
+        Assert.Contains("src/main.jsx", result.Plan.Files);
+        Assert.False(string.IsNullOrWhiteSpace(result.PlanHash));
     }
 
     [Theory]
@@ -2988,7 +2990,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public async Task DesktopProjectScaffoldPlanTool_AsksClarifyingQuestionForVagueRequest()
+    public async Task DesktopProjectScaffoldPlanTool_DefaultsBareNewProjectRequest()
     {
         var root = CreateTempDirectory();
         var tool = new DesktopProjectScaffoldPlanTool(root);
@@ -3002,12 +3004,17 @@ public sealed class DesktopServiceTests
         using var document = JsonDocument.Parse(result.Content);
         var rootElement = document.RootElement;
         Assert.True(rootElement.GetProperty("isGreenfieldRequest").GetBoolean());
-        Assert.False(rootElement.GetProperty("canProceed").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("intent").ValueKind);
-        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("plan").ValueKind);
-        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("planId").ValueKind);
-        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("planHash").ValueKind);
-        Assert.Contains("What kind of project", rootElement.GetProperty("clarifyingQuestion").GetString(), StringComparison.Ordinal);
+        Assert.True(rootElement.GetProperty("canProceed").GetBoolean());
+        Assert.Equal("generic", rootElement.GetProperty("intent").GetProperty("projectType").GetString());
+        Assert.Equal("javascript", rootElement.GetProperty("intent").GetProperty("language").GetString());
+        Assert.Equal("vite-react", rootElement.GetProperty("intent").GetProperty("framework").GetString());
+        Assert.NotEqual(JsonValueKind.Null, rootElement.GetProperty("plan").ValueKind);
+        Assert.False(string.IsNullOrWhiteSpace(rootElement.GetProperty("planId").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(rootElement.GetProperty("planHash").GetString()));
+        var files = rootElement.GetProperty("plan").GetProperty("files").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("src/main.jsx", files);
     }
 
     [Fact]

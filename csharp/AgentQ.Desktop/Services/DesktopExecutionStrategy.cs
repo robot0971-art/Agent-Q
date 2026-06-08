@@ -43,7 +43,7 @@ public static class DesktopExecutionStrategyCatalog
                 Label = "feature",
                 Steps =
                 [
-                    "Inspect the existing pattern and public contracts first.",
+                    "Inspect the existing pattern and public contracts first, unless the workspace snapshot says it is an empty greenfield workspace.",
                     "Draft a small implementation plan before broad edits.",
                     "Implement one cohesive change at a time.",
                     "Run the most relevant build or test command.",

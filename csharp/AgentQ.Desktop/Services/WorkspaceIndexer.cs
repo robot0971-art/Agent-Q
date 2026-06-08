@@ -26,6 +26,12 @@ public sealed partial class WorkspaceIndexer
         ".editorconfig", ".gitignore", ".gitattributes"
     ];
 
+    private static readonly HashSet<string> IgnoredEmptyWorkspaceFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cd",
+        "dotnet"
+    };
+
     public Task<string> BuildContextAsync(string workspaceRoot, CancellationToken ct) =>
         BuildContextAsync(workspaceRoot, query: string.Empty, ct);
 
@@ -226,6 +232,9 @@ public sealed partial class WorkspaceIndexer
         var name = Path.GetFileName(directory);
         return name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
@@ -238,9 +247,19 @@ public sealed partial class WorkspaceIndexer
         var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
         var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
+        if (parts.Length == 1 &&
+            IgnoredEmptyWorkspaceFileNames.Contains(parts[0]) &&
+            new FileInfo(file).Length == 0)
+        {
+            return true;
+        }
+
         return parts.Any(part =>
             part.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
@@ -253,11 +272,16 @@ public sealed partial class WorkspaceIndexer
         var builder = new StringBuilder();
         builder.AppendLine("Workspace context snapshot:");
         builder.AppendLine($"Root: {root}");
+        builder.AppendLine("Workspace state: empty greenfield workspace.");
         builder.AppendLine("No user project files were found after excluding AgentQ metadata and build/tool folders.");
+        builder.AppendLine("There is no existing workflow, architecture, or codebase to analyze in this selected workspace.");
+        builder.AppendLine("Do not respond with workflow/codebase analysis for this empty workspace.");
         builder.AppendLine("Empty-workspace bootstrap guidance:");
+        builder.AppendLine("- Ignore AgentQ metadata folders when deciding whether the selected workspace is empty.");
         builder.AppendLine("- Treat requests to make a website, portfolio, app, game, API, or project as greenfield only when the product type or concrete stack is named.");
-        builder.AppendLine("- If the user only says they want a new project, ask what kind of project they want before choosing a stack or creating files.");
-        builder.AppendLine("- Do not say you will create a specific starter until the product type or stack is clear enough to act.");
+        builder.AppendLine("- If the user only says they want a new project, check for an attached deterministic scaffold plan first and use its defaults (Vite + React + JavaScript) instead of asking. Only ask for clarification if the user explicitly rejects the default or names a different stack.");
+        builder.AppendLine("- If the user names a concrete project type, proceed with greenfield scaffold planning/creation instead of existing-workflow analysis.");
+        builder.AppendLine("- When a deterministic scaffold plan is attached, proceed with it immediately even if the user only says 'new project' - do not block with broad clarification questions.");
         builder.AppendLine("- Choose a common default stack only for implementation details after the user has specified the product direction.");
         builder.AppendLine("- User corrections override defaults: if JavaScript is requested after TypeScript was recommended, scaffold JavaScript files, not TypeScript.");
         builder.AppendLine("- For a portfolio or website request with no language preference, prefer Vite + React + JavaScript with package.json, .jsx/.js src files, CSS, and README, then run npm install/build when available.");

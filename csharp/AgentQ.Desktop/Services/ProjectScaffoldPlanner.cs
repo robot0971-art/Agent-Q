@@ -35,13 +35,9 @@ public sealed class ProjectScaffoldPlanner
         var intent = BuildIntent(normalized);
         if (string.IsNullOrWhiteSpace(intent.ProjectType))
         {
-            return new ProjectScaffoldPlanningResult
-            {
-                IsGreenfieldRequest = true,
-                CanProceed = false,
-                ClarifyingQuestion = "What kind of project would you like to create? (\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694?) Examples: portfolio website, Python data analysis tool, game, API server, wordbook web app.",
-                Reasons = ["Project type is missing."]
-            };
+            intent.ProjectType = "generic";
+            intent.Language = string.IsNullOrWhiteSpace(intent.Language) ? "javascript" : intent.Language;
+            intent.Framework = string.IsNullOrWhiteSpace(intent.Framework) ? DefaultFrameworkForLanguage(intent.Language) : intent.Framework;
         }
 
         var plan = BuildPlan(intent);
@@ -250,8 +246,6 @@ public sealed class ProjectScaffoldPlanner
         }
         else if (HasExplicitStackOrLanguage(normalized, intent))
         {
-            // Generic is only safe when the user gave a concrete language or stack signal.
-            // A bare "new project" request should ask for the project kind first.
             intent.ProjectType = "generic";
             if (string.IsNullOrWhiteSpace(intent.Language))
             {

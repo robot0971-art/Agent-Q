@@ -36,6 +36,51 @@ public static class WorkerScaffoldTemplateRenderer
             return RenderTsConfig();
         }
 
+        if (path.Equals("CMakeLists.txt", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderCMakeLists(feature);
+        }
+
+        if (path.Equals("go.mod", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderGoMod(feature);
+        }
+
+        if (path.Equals("Cargo.toml", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderCargoToml(feature);
+        }
+
+        if (path.Equals("pom.xml", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderPomXml(feature);
+        }
+
+        if (path.Equals("composer.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderComposerJson(feature);
+        }
+
+        if (path.Equals("settings.gradle.kts", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderGradleSettings(feature);
+        }
+
+        if (path.Equals("build.gradle.kts", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderGradleBuild();
+        }
+
+        if (path.Equals("Package.swift", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderSwiftPackage(feature);
+        }
+
+        if (path.Equals("DESCRIPTION", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderRDescription(feature);
+        }
+
         if (path.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
         {
             return RenderCss(feature);
@@ -125,14 +170,29 @@ public static class WorkerScaffoldTemplateRenderer
                     : RenderPythonModule(feature);
         }
 
+        if (path.EndsWith(".cpp", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".cc", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".cxx", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderCppSource(path, feature);
+        }
+
+        if (path.EndsWith(".hpp", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".h", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".hh", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".hxx", StringComparison.OrdinalIgnoreCase))
+        {
+            return RenderCppHeader(feature);
+        }
+
         if (path.EndsWith(".rs", StringComparison.OrdinalIgnoreCase))
         {
-            return RenderRustModule(feature);
+            return RenderRustModule(path, feature);
         }
 
         if (path.EndsWith(".go", StringComparison.OrdinalIgnoreCase))
         {
-            return RenderGoModule(feature);
+            return RenderGoModule(path, feature);
         }
 
         if (path.EndsWith(".java", StringComparison.OrdinalIgnoreCase))
@@ -150,9 +210,10 @@ public static class WorkerScaffoldTemplateRenderer
             return RenderPhpModule(path, feature);
         }
 
-        if (path.EndsWith(".kt", StringComparison.OrdinalIgnoreCase))
+        if (path.EndsWith(".kt", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".kts", StringComparison.OrdinalIgnoreCase))
         {
-            return RenderKotlinModule(feature);
+            return RenderKotlinModule(path, feature);
         }
 
         if (path.EndsWith(".swift", StringComparison.OrdinalIgnoreCase))
@@ -601,45 +662,320 @@ public static class WorkerScaffoldTemplateRenderer
             assert "{{feature.Pascal}}" in create_{{feature.Snake}}_message()
         """;
 
-    private static string RenderRustModule(WorkerScaffoldName feature) =>
+    private static string RenderCMakeLists(WorkerScaffoldName feature) =>
         $$"""
-        pub struct {{feature.Pascal}} {
-            message: String,
+        cmake_minimum_required(VERSION 3.20)
+        project({{feature.Camel}} LANGUAGES CXX)
+
+        set(CMAKE_CXX_STANDARD 20)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+        add_library({{feature.Camel}} src/app.cpp)
+        target_include_directories({{feature.Camel}} PUBLIC include)
+
+        add_executable({{feature.Camel}}_cli src/main.cpp)
+        target_link_libraries({{feature.Camel}}_cli PRIVATE {{feature.Camel}})
+        """;
+
+    private static string RenderCppHeader(WorkerScaffoldName feature) =>
+        $$"""
+        #pragma once
+
+        #include <string>
+
+        namespace app {
+
+        std::string {{feature.Camel}}Message();
+
+        }  // namespace app
+        """;
+
+    private static string RenderCppSource(string path, WorkerScaffoldName feature)
+    {
+        if (path.Equals("src/main.cpp", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            #include <iostream>
+
+            #include "app/app.hpp"
+
+            int main() {
+                std::cout << app::{{feature.Camel}}Message() << '\n';
+                return 0;
+            }
+            """;
         }
 
-        impl {{feature.Pascal}} {
-            pub fn new() -> Self {
-                Self {
-                    message: "{{feature.Pascal}} is ready".to_string(),
-                }
-            }
+        if (path.Contains("test", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            #include "app/app.hpp"
 
-            pub fn message(&self) -> &str {
-                &self.message
+            int main() {
+                return app::{{feature.Camel}}Message().empty() ? 1 : 0;
             }
+            """;
         }
 
-        #[cfg(test)]
-        mod tests {
-            use super::*;
+        return
+        $$"""
+        #include "app/app.hpp"
 
-            #[test]
-            fn creates_message() {
-                assert!({{feature.Pascal}}::new().message().contains("{{feature.Pascal}}"));
+        namespace app {
+
+        std::string {{feature.Camel}}Message() {
+            return "{{feature.Pascal}} is ready";
+        }
+
+        }  // namespace app
+        """;
+    }
+
+    private static string RenderGoMod(WorkerScaffoldName feature) =>
+        $$"""
+        module example.com/{{feature.Kebab}}
+
+        go 1.22
+        """;
+
+    private static string RenderCargoToml(WorkerScaffoldName feature) =>
+        $$"""
+        [package]
+        name = "{{feature.Kebab}}"
+        version = "0.1.0"
+        edition = "2021"
+
+        [dependencies]
+        """;
+
+    private static string RenderPomXml(WorkerScaffoldName feature) =>
+        $$"""
+        <project xmlns="http://maven.apache.org/POM/4.0.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>app</groupId>
+          <artifactId>{{feature.Kebab}}</artifactId>
+          <version>0.1.0</version>
+          <properties>
+            <maven.compiler.release>17</maven.compiler.release>
+            <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+          </properties>
+          <dependencies>
+            <dependency>
+              <groupId>org.junit.jupiter</groupId>
+              <artifactId>junit-jupiter</artifactId>
+              <version>5.10.2</version>
+              <scope>test</scope>
+            </dependency>
+          </dependencies>
+          <build>
+            <plugins>
+              <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """;
+
+    private static string RenderComposerJson(WorkerScaffoldName feature) =>
+        $$"""
+        {
+          "name": "agentq/{{feature.Kebab}}",
+          "type": "project",
+          "autoload": {
+            "psr-4": {
+              "App\\": "src/"
             }
+          },
+          "autoload-dev": {
+            "psr-4": {
+              "Tests\\": "tests/"
+            }
+          },
+          "require-dev": {
+            "phpunit/phpunit": "^11.0"
+          },
+          "scripts": {
+            "test": "phpunit"
+          }
         }
         """;
 
-    private static string RenderGoModule(WorkerScaffoldName feature) =>
+    private static string RenderGradleSettings(WorkerScaffoldName feature) =>
         $$"""
-        package {{feature.Snake}}
+        pluginManagement {
+            repositories {
+                gradlePluginPortal()
+                mavenCentral()
+            }
+        }
+
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                mavenCentral()
+            }
+        }
+
+        rootProject.name = "{{feature.Kebab}}"
+        """;
+
+    private static string RenderGradleBuild() =>
+        """
+        plugins {
+            kotlin("jvm") version "1.9.24"
+        }
+
+        dependencies {
+            testImplementation(kotlin("test"))
+        }
+
+        tasks.test {
+            useJUnitPlatform()
+        }
+        """;
+
+    private static string RenderSwiftPackage(WorkerScaffoldName feature) =>
+        $$"""
+        // swift-tools-version: 5.10
+        import PackageDescription
+
+        let package = Package(
+            name: "{{feature.Pascal}}",
+            products: [
+                .library(name: "{{feature.Pascal}}", targets: ["App"])
+            ],
+            targets: [
+                .target(name: "App"),
+                .testTarget(name: "AppTests", dependencies: ["App"])
+            ]
+        )
+        """;
+
+    private static string RenderRDescription(WorkerScaffoldName feature) =>
+        $$"""
+        Package: {{feature.Camel}}
+        Type: Package
+        Title: {{feature.Pascal}}
+        Version: 0.1.0
+        Encoding: UTF-8
+        Depends:
+            R (>= 4.1)
+        Suggests:
+            testthat
+        """;
+
+    private static string RenderRustModule(string path, WorkerScaffoldName feature)
+    {
+        if (path.Equals("src/main.rs", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            fn main() {
+                println!("{}", {{feature.Snake}}::{{feature.Snake}}_message());
+            }
+            """;
+        }
+
+        if (path.Equals("src/lib.rs", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            pub fn {{feature.Snake}}_message() -> &'static str {
+                "{{feature.Pascal}} is ready"
+            }
+
+            #[cfg(test)]
+            mod tests {
+                use super::*;
+
+                #[test]
+                fn creates_message() {
+                    assert!({{feature.Snake}}_message().contains("{{feature.Pascal}}"));
+                }
+            }
+            """;
+        }
+
+        return
+        $$"""
+        #[test]
+        fn {{feature.Snake}}_integration_smoke() {
+            assert!({{feature.Snake}}::{{feature.Snake}}_message().contains("{{feature.Pascal}}"));
+        }
+        """;
+    }
+
+    private static string RenderGoModule(string path, WorkerScaffoldName feature)
+    {
+        if (path.EndsWith("main.go", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            package main
+
+            import (
+                "fmt"
+
+                "example.com/{{feature.Kebab}}/internal/app"
+            )
+
+            func main() {
+                fmt.Println(app.Message())
+            }
+            """;
+        }
+
+        if (path.EndsWith("_test.go", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            $$"""
+            package app
+
+            import "testing"
+
+            func TestMessage(t *testing.T) {
+                if Message() == "" {
+                    t.Fatal("message should not be empty")
+                }
+            }
+            """;
+        }
+
+        return
+        $$"""
+        package app
 
         func Message() string {
         	return "{{feature.Pascal}} is ready"
         }
         """;
+    }
 
     private static string RenderJavaModule(string path, WorkerScaffoldName feature) =>
+        path.Contains("test", StringComparison.OrdinalIgnoreCase)
+            ?
+        $$"""
+        package app;
+
+        import org.junit.jupiter.api.Test;
+
+        import static org.junit.jupiter.api.Assertions.assertTrue;
+
+        public final class {{Path.GetFileNameWithoutExtension(path)}} {
+            @Test
+            void createsMessage() {
+                assertTrue(new App().message().contains("{{feature.Pascal}}"));
+            }
+        }
+        """
+            :
         $$"""
         package app;
 
@@ -660,8 +996,29 @@ public static class WorkerScaffoldTemplateRenderer
         """;
 
     private static string RenderPhpModule(string path, WorkerScaffoldName feature) =>
+        path.Contains("test", StringComparison.OrdinalIgnoreCase)
+            ?
         $$"""
         <?php
+
+        namespace Tests;
+
+        use App\App;
+        use PHPUnit\Framework\TestCase;
+
+        final class {{Path.GetFileNameWithoutExtension(path)}} extends TestCase
+        {
+            public function testMessage(): void
+            {
+                $this->assertStringContainsString('{{feature.Pascal}}', (new App())->message());
+            }
+        }
+        """
+            :
+        $$"""
+        <?php
+
+        namespace App;
 
         final class {{Path.GetFileNameWithoutExtension(path)}}
         {
@@ -672,7 +1029,23 @@ public static class WorkerScaffoldTemplateRenderer
         }
         """;
 
-    private static string RenderKotlinModule(WorkerScaffoldName feature) =>
+    private static string RenderKotlinModule(string path, WorkerScaffoldName feature) =>
+        path.Contains("test", StringComparison.OrdinalIgnoreCase)
+            ?
+        $$"""
+        package app
+
+        import kotlin.test.Test
+        import kotlin.test.assertTrue
+
+        class {{feature.Pascal}}Test {
+            @Test
+            fun createsMessage() {
+                assertTrue({{feature.Pascal}}().message().contains("{{feature.Pascal}}"))
+            }
+        }
+        """
+            :
         $$"""
         package app
 
@@ -682,10 +1055,25 @@ public static class WorkerScaffoldTemplateRenderer
         """;
 
     private static string RenderSwiftModule(string path, WorkerScaffoldName feature) =>
+        path.Contains("Tests", StringComparison.OrdinalIgnoreCase)
+            ?
+        $$"""
+        import XCTest
+        @testable import App
+
+        final class {{Path.GetFileNameWithoutExtension(path)}}: XCTestCase {
+            func testMessage() {
+                XCTAssertTrue(AppFeature().message.contains("{{feature.Pascal}}"))
+            }
+        }
+        """
+            :
         $$"""
         import Foundation
 
-        struct {{Path.GetFileNameWithoutExtension(path)}} {
+        public struct AppFeature {
+            public init() {}
+
             let message = "{{feature.Pascal}} is ready"
         }
         """;

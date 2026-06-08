@@ -91,35 +91,6 @@ public sealed class DesktopProjectScaffoldCreateTool(
             return ToolResult.Error("Project scaffold plan is not safe to execute: " + string.Join("; ", validationIssues));
         }
 
-        var existingFiles = ExistingPlanFiles(plan, workspaceRoot);
-        if (existingFiles.Count > 0 && !overwrite)
-        {
-            return ToolResult.Success(JsonSerializer.Serialize(new
-            {
-                succeeded = false,
-                intent = new
-                {
-                    projectType = intent.ProjectType,
-                    language = intent.Language,
-                    framework = intent.Framework,
-                    style = intent.Style
-                },
-                plan = new
-                {
-                    name = plan.Name,
-                    files = plan.Files,
-                    verificationCommands = plan.VerificationCommands
-                },
-                planId = record.PlanId,
-                planHash,
-                createdFiles = Array.Empty<string>(),
-                skippedFiles = existingFiles,
-                issues = new[] { "Project scaffold was not created because target files already exist. Re-run with overwriteExistingFiles=true only if overwriting is intended." },
-                verificationCommands = plan.VerificationCommands,
-                overwriteExistingFiles = overwrite
-            }));
-        }
-
         var workerPlan = ToWorkerPlan(plan.Name, intent, plan);
         var result = await _executor.ExecuteAsync(
             new WorkerScaffoldExecutionRequest
@@ -221,35 +192,6 @@ public sealed class DesktopProjectScaffoldCreateTool(
         }
 
         return issues;
-    }
-
-    private static List<string> ExistingPlanFiles(ProjectScaffoldPlanModel plan, string workspaceRoot)
-    {
-        var root = Path.GetFullPath(workspaceRoot);
-        var existing = new List<string>();
-        foreach (var file in plan.Files)
-        {
-            if (string.IsNullOrWhiteSpace(file) || Path.IsPathRooted(file))
-            {
-                continue;
-            }
-
-            var fullPath = Path.GetFullPath(Path.Combine(root, file));
-            var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-                ? root
-                : root + Path.DirectorySeparatorChar;
-            if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (File.Exists(fullPath))
-            {
-                existing.Add(file.Replace('\\', '/'));
-            }
-        }
-
-        return existing;
     }
 
     private static WorkerPlan ToWorkerPlan(
