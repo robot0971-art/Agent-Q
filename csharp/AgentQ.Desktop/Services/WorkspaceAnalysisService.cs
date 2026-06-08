@@ -328,6 +328,21 @@ public sealed class WorkspaceAnalysisService
         {
             frameworks.Add("SQLAlchemy");
         }
+
+        if (content.Contains("pytest", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("pytest");
+        }
+
+        if (content.Contains("celery", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Celery");
+        }
+
+        if (content.Contains("click", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Click");
+        }
     }
 
     private static void DetectNodeScripts(JsonElement root, WorkspaceAnalysis analysis, string projectRelativePath)
@@ -1412,6 +1427,16 @@ public sealed class WorkspaceAnalysisService
         if (joined.Contains("pytest", StringComparison.OrdinalIgnoreCase))
         {
             frameworks.Add("pytest");
+        }
+
+        if (joined.Contains("celery", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Celery");
+        }
+
+        if (joined.Contains("click", StringComparison.OrdinalIgnoreCase))
+        {
+            frameworks.Add("Click");
         }
     }
 

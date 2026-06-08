@@ -13,18 +13,19 @@ namespace AgentQ.Tests;
 public sealed class ToolAndConfigurationTests : IDisposable
 {
     private readonly Dictionary<string, string?> _originalEnvironment = new();
-    private readonly string _configDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".agentq");
+    private readonly string _configHomeRoot;
+    private readonly string _configDirectory;
     private readonly string _configPath;
-    private readonly bool _hadOriginalConfig;
-    private readonly string? _originalConfigContent;
 
     public ToolAndConfigurationTests()
     {
+        _configHomeRoot = Path.Combine(
+            Path.GetTempPath(),
+            "AgentQ.ConfigHome",
+            Guid.NewGuid().ToString("N"));
+        SetEnvironment(ConfigStore.ConfigHomeEnvironmentVariable, _configHomeRoot);
+        _configDirectory = Path.Combine(_configHomeRoot, ".agentq");
         _configPath = Path.Combine(_configDirectory, "config.json");
-        _hadOriginalConfig = File.Exists(_configPath);
-        _originalConfigContent = _hadOriginalConfig ? File.ReadAllText(_configPath) : null;
     }
 
     [Fact]
@@ -1291,20 +1292,23 @@ public sealed class ToolAndConfigurationTests : IDisposable
             Environment.SetEnvironmentVariable(pair.Key, pair.Value);
         }
 
-        if (_hadOriginalConfig)
-        {
-            Directory.CreateDirectory(_configDirectory);
-            File.WriteAllText(_configPath, _originalConfigContent ?? string.Empty);
-        }
-        else if (File.Exists(_configPath))
-        {
-            File.Delete(_configPath);
-        }
+        TryDeleteDirectory(_configHomeRoot);
+    }
 
-        if (Directory.Exists(_configDirectory) &&
-            !Directory.EnumerateFileSystemEntries(_configDirectory).Any())
+    private static void TryDeleteDirectory(string path)
+    {
+        try
         {
-            Directory.Delete(_configDirectory);
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 

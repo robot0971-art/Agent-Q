@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 
@@ -64,7 +65,7 @@ public sealed class PythonWorkerHost
 
             return JsonSerializer.Deserialize<PythonWorkerResult>(stdout, Options);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or TaskCanceledException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or TaskCanceledException or Win32Exception)
         {
             return null;
         }

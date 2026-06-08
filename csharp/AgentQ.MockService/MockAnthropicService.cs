@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using AgentQ.Api;
@@ -10,7 +11,7 @@ namespace AgentQ.MockService;
 /// </summary>
 public class MockAnthropicService
 {
-    private HttpListener? _listener;
+    private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _listenerTask;
     private readonly List<CapturedRequest> _capturedRequests = new();
@@ -32,8 +33,8 @@ public class MockAnthropicService
     /// <param name="prefix">URL 프리픽스</param>
     public async Task StartAsync(string prefix)
     {
-        _listener = new HttpListener();
-        _listener.Prefixes.Add(prefix);
+        var uri = new Uri(prefix);
+        _listener = new TcpListener(IPAddress.Loopback, uri.Port);
         _listener.Start();
 
         BaseUrl = prefix.TrimEnd('/');
@@ -63,7 +64,6 @@ public class MockAnthropicService
             }
         }
 
-        _listener?.Close();
     }
 
     /// <summary>
@@ -83,10 +83,10 @@ public class MockAnthropicService
         {
             try
             {
-                var context = await _listener.GetContextAsync();
-                _ = Task.Run(() => HandleRequest(context), ct);
+                var client = await _listener.AcceptTcpClientAsync(ct);
+                _ = Task.Run(() => HandleRequest(client, ct), ct);
             }
-            catch (HttpListenerException)
+            catch (OperationCanceledException)
             {
                 break;
             }
@@ -102,89 +102,101 @@ public class MockAnthropicService
         PropertyNameCaseInsensitive = true
     };
 
-    private async Task HandleRequest(HttpListenerContext context)
+    private async Task HandleRequest(TcpClient client, CancellationToken ct)
     {
-        var request = context.Request;
-        var response = context.Response;
-
         try
         {
-            string body;
-            using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
+            using (client)
             {
-                body = await reader.ReadToEndAsync();
-            }
+                var stream = client.GetStream();
+                var request = await SimpleHttpRequest.ReadAsync(stream, ct);
+                var body = request.Body;
 
-            var messageRequest = JsonSerializer.Deserialize<MessageRequest>(body, JsonOptions);
-            if (messageRequest == null)
-            {
-                response.StatusCode = 400;
-                await WriteResponse(response, "Invalid request body");
-                return;
-            }
+                var messageRequest = JsonSerializer.Deserialize<MessageRequest>(body, JsonOptions);
+                if (messageRequest == null)
+                {
+                    await WriteResponse(stream, 400, "text/plain", "Invalid request body", EmptyHeaders);
+                    return;
+                }
 
-            var scenario = DetectScenario(messageRequest);
-            if (scenario == null)
-            {
-                response.StatusCode = 400;
-                await WriteResponse(response, "Missing parity scenario");
-                return;
-            }
+                var scenario = DetectScenario(messageRequest);
+                if (scenario == null)
+                {
+                    await WriteResponse(stream, 400, "text/plain", "Missing parity scenario", EmptyHeaders);
+                    return;
+                }
 
-            var capturedRequest = new CapturedRequest
-            {
-                Method = request.HttpMethod,
-                Path = request.Url?.PathAndQuery ?? "/",
-                Headers = request.Headers.AllKeys
-                    .Where(k => k != null)
-                    .ToDictionary(k => k!.ToLowerInvariant(), k => request.Headers[k] ?? string.Empty),
-                Scenario = scenario.Value.GetName(),
-                Stream = messageRequest.Stream,
-                RawBody = body
-            };
+                var capturedRequest = new CapturedRequest
+                {
+                    Method = request.Method,
+                    Path = request.Path,
+                    Headers = request.Headers,
+                    Scenario = scenario.Value.GetName(),
+                    Stream = messageRequest.Stream,
+                    RawBody = body
+                };
 
-            lock (_requestsLock)
-            {
-                _capturedRequests.Add(capturedRequest);
-            }
+                lock (_requestsLock)
+                {
+                    _capturedRequests.Add(capturedRequest);
+                }
 
-            if (messageRequest.Stream)
-            {
-                response.ContentType = "text/event-stream";
-                response.Headers.Add("x-request-id", ScenarioParser.GetRequestId(scenario.Value));
-                response.StatusCode = 200;
+                if (messageRequest.Stream)
+                {
+                    var streamBody = BuildStreamBody(messageRequest, scenario.Value);
+                    await WriteResponse(
+                        stream,
+                        200,
+                        "text/event-stream",
+                        streamBody,
+                        new Dictionary<string, string> { ["x-request-id"] = ScenarioParser.GetRequestId(scenario.Value) });
+                }
+                else
+                {
+                    var messageResponse = BuildMessageResponse(messageRequest, scenario.Value);
+                    var json = JsonSerializer.Serialize(messageResponse);
+                    await WriteResponse(
+                        stream,
+                        200,
+                        "application/json",
+                        json,
+                        new Dictionary<string, string> { ["request-id"] = ScenarioParser.GetRequestId(scenario.Value) });
+                }
 
-                var streamBody = BuildStreamBody(messageRequest, scenario.Value);
-                var bytes = Encoding.UTF8.GetBytes(streamBody);
-                await response.OutputStream.WriteAsync(bytes);
-            }
-            else
-            {
-                response.ContentType = "application/json";
-                response.Headers.Add("request-id", ScenarioParser.GetRequestId(scenario.Value));
-                response.StatusCode = 200;
-
-                var messageResponse = BuildMessageResponse(messageRequest, scenario.Value);
-                var json = JsonSerializer.Serialize(messageResponse);
-                await WriteResponse(response, json);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            response.StatusCode = 500;
-            await WriteResponse(response, "{\"error\": \"" + ex.Message + "\"}");
-        }
-        finally
-        {
-            response.Close();
+            if (client.Connected)
+            {
+                await WriteResponse(client.GetStream(), 500, "application/json", "{\"error\": \"" + ex.Message + "\"}", EmptyHeaders);
+            }
         }
     }
 
-    private static async Task WriteResponse(HttpListenerResponse response, string content)
+    private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>();
+
+    private static async Task WriteResponse(
+        Stream stream,
+        int statusCode,
+        string contentType,
+        string content,
+        IReadOnlyDictionary<string, string> extraHeaders)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
-        response.ContentLength64 = bytes.Length;
-        await response.OutputStream.WriteAsync(bytes);
+        var statusText = statusCode == 200 ? "OK" : statusCode == 400 ? "Bad Request" : "Internal Server Error";
+        var builder = new StringBuilder();
+        builder.Append($"HTTP/1.1 {statusCode:0} {statusText}\r\n");
+        builder.Append($"Content-Type: {contentType}\r\n");
+        builder.Append($"Content-Length: {bytes.Length:0}\r\n");
+        foreach (var header in extraHeaders)
+        {
+            builder.Append($"{header.Key}: {header.Value}\r\n");
+        }
+
+        builder.Append("Connection: close\r\n\r\n");
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(builder.ToString()));
+        await stream.WriteAsync(bytes);
     }
 
     private static Scenario? DetectScenario(MessageRequest request)
@@ -609,3 +621,55 @@ public class MockAnthropicService
     }
 }
 
+internal sealed class SimpleHttpRequest
+{
+    public required string Method { get; init; }
+
+    public required string Path { get; init; }
+
+    public required Dictionary<string, string> Headers { get; init; }
+
+    public required string Body { get; init; }
+
+    public static async Task<SimpleHttpRequest> ReadAsync(Stream stream, CancellationToken ct)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
+        var requestLine = await reader.ReadLineAsync(ct) ?? "POST / HTTP/1.1";
+        var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? line;
+        while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync(ct)))
+        {
+            var separator = line.IndexOf(':');
+            if (separator > 0)
+            {
+                headers[line[..separator].ToLowerInvariant()] = line[(separator + 1)..].Trim();
+            }
+        }
+
+        var contentLength = headers.TryGetValue("content-length", out var rawLength) &&
+                            int.TryParse(rawLength, out var parsedLength)
+            ? parsedLength
+            : 0;
+        var buffer = new char[contentLength];
+        var read = 0;
+        while (read < contentLength)
+        {
+            var count = await reader.ReadAsync(buffer.AsMemory(read, contentLength - read), ct);
+            if (count == 0)
+            {
+                break;
+            }
+
+            read += count;
+        }
+
+        return new SimpleHttpRequest
+        {
+            Method = parts.Length > 0 ? parts[0] : "POST",
+            Path = parts.Length > 1 ? parts[1] : "/",
+            Headers = headers,
+            Body = new string(buffer, 0, read)
+        };
+    }
+}
