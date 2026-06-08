@@ -581,6 +581,9 @@
                         <TabItem Header="{Binding EvidenceTrailText}">
                             <views:RunTimelinePanel />
                         </TabItem>
+                        <TabItem Header="{Binding AgentCouncilText}">
+                            <views:AgentCouncilPanel DataContext="{Binding Council}" />
+                        </TabItem>
                         <TabItem Header="{Binding EvalDashboardText}">
                             <views:EvalReplayDashboardPanel x:Name="EvalReplayDashboardPanelView" />
                         </TabItem>

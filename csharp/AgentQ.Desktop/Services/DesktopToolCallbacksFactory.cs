@@ -21,15 +21,18 @@ public static class DesktopToolCallbacksFactory
             }),
             OnToolExecution = toolName => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordToolStarted(toolName);
                 viewModel.StatusText = $"Tool running: {toolName}";
                 viewModel.AddLog($"Tool running: {toolName}");
             }),
             OnToolOutput = (toolName, output) => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordToolCompleted(toolName, output.Length);
                 viewModel.AddLog($"Tool completed: {toolName} ({output.Length} chars)");
             }),
             OnToolError = (toolName, error) => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordToolError(toolName, error);
                 viewModel.StatusText = $"Tool error: {toolName}";
                 viewModel.AddLog($"Tool error: {toolName} - {trimForLog(error)}");
             }),
@@ -40,15 +43,18 @@ public static class DesktopToolCallbacksFactory
             }),
             OnFileChanged = change => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordFileChanged(change);
                 viewModel.FileChanges.Add(change);
                 viewModel.SelectedFileChange = change;
             }),
             OnVerificationPlan = plan => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordVerificationPlan(plan);
                 viewModel.VerificationPlans.Add(plan);
             }),
             OnVerificationResult = result => dispatcher.Invoke(() =>
             {
+                viewModel.Council.RecordVerificationResult(result);
                 viewModel.AddVerificationResult(result);
             }),
             OnUsage = usage => dispatcher.Invoke(() =>

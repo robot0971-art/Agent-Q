@@ -118,6 +118,8 @@ public sealed class DesktopAgentRunWorkflowService(
         var assistantIndex = viewModel.Messages.Count - 1;
         viewModel.RunSteps.Clear();
         viewModel.VerificationPlans.Clear();
+        var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(prompt);
+        viewModel.Council.StartSession(prompt, taskProfile, MultiAgentRolePlanner.Build(taskProfile), viewModel.IsKoreanUi);
         if (preserveLastVerificationFailure)
         {
             verificationPanelWorkflowService.RestoreRetryPlan(viewModel);

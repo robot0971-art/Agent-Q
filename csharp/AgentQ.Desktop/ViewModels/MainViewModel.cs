@@ -112,6 +112,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
         };
 
+        Council.Reset(IsKoreanUi);
         RefreshRunSummary();
     }
 
@@ -134,6 +135,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ProjectPanelViewModel Project { get; } = new();
 
     public RunSummaryViewModel RunSummary { get; } = new();
+
+    public AgentCouncilPanelViewModel Council { get; } = new();
 
     public ObservableCollection<string> EvalDashboardMetrics => EvalDashboard.Metrics;
 
@@ -463,6 +466,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Git.UseKoreanUi = IsKoreanUi;
             Project.UseKoreanUi = IsKoreanUi;
             EvalDashboard.UseKoreanUi = IsKoreanUi;
+            Council.UseKoreanUi = IsKoreanUi;
         }
     }
 
@@ -517,6 +521,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ChangePreviewText => Ui(DesktopText.ChangePreview);
     public string AllText => Ui(DesktopText.All);
     public string EvidenceTrailText => Ui(DesktopText.EvidenceTrail);
+    public string AgentCouncilText => IsKoreanUi ? "\uD68C\uC758\uC7A5" : "Council";
     public string EvalDashboardText => Ui(DesktopText.EvalDashboard);
     public string EvalDashboardRefreshText => Ui(DesktopText.EvalDashboardRefresh);
     public string EvalDashboardHelpText => Ui(DesktopText.EvalDashboardHelp);
@@ -992,13 +997,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void AddRunStep(AgentRunState state, string title, string? detail = null)
     {
         CurrentRunState = state;
-        RunSteps.Add(new AgentRunStep
+        var step = new AgentRunStep
         {
             State = state,
             Title = title,
             Detail = detail ?? string.Empty,
             UseKoreanUi = IsKoreanUi
-        });
+        };
+        RunSteps.Add(step);
+        Council.RecordRunStep(step);
         RefreshPlanEvidenceSummary();
     }
 
@@ -1018,6 +1025,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RunSteps.Clear();
         Verification.Clear();
         FileChanges.Clear();
+        Council.Reset(IsKoreanUi);
         EvalDashboard.Reset();
         RunSummary.Reset();
         ClearPendingReviewVerification();
@@ -1405,6 +1413,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             nameof(ChangePreviewText),
             nameof(AllText),
             nameof(EvidenceTrailText),
+            nameof(AgentCouncilText),
             nameof(EvalDashboardText),
             nameof(EvalDashboardRefreshText),
             nameof(EvalDashboardHelpText),

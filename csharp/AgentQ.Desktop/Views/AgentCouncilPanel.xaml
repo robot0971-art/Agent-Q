@@ -1,0 +1,214 @@
+<UserControl x:Class="AgentQ.Desktop.Views.AgentCouncilPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="{Binding HeaderText}"
+                       Foreground="{DynamicResource TextMain}"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding HelpText}"
+                       Foreground="{DynamicResource TextMuted}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="0,5,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Background="#0E151E"
+                BorderBrush="#263342"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="9"
+                Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.ColumnSpan="2" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding TopicLabelText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="10" />
+                    <TextBlock Text="{Binding CurrentTopic}"
+                               Foreground="{DynamicResource TextMain}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               MaxHeight="46" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="{Binding PhaseLabelText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="10" />
+                    <TextBlock Text="{Binding PhaseText}"
+                               Foreground="#5BA7FF"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Grid.Column="1">
+                    <TextBlock Text="{Binding ActiveSpeakerLabelText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="10" />
+                    <TextBlock Text="{Binding ActiveSpeakerText}"
+                               Foreground="#37D67A"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding ParticipantsHeaderText}"
+                       Foreground="{DynamicResource TextMain}"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,7" />
+
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding Participants}" Margin="0,0,0,10">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#0D151E"
+                                BorderBrush="{Binding AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="8"
+                                Margin="0,0,7,7">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                                    <Border DockPanel.Dock="Left"
+                                            Width="26"
+                                            Height="26"
+                                            Background="{Binding BadgeBackground}"
+                                            BorderBrush="{Binding AccentBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="13"
+                                            Margin="0,0,7,0">
+                                        <TextBlock Text="{Binding Initial}"
+                                                   Foreground="{Binding AccentBrush}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               Foreground="{DynamicResource TextMain}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               TextWrapping="Wrap" />
+                                </DockPanel>
+                                <TextBlock Grid.Row="1"
+                                           Text="{Binding StatusText}"
+                                           Foreground="{Binding AccentBrush}"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,5"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding Responsibility}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap"
+                                           MaxHeight="44" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Grid.Row="2"
+                       Text="{Binding TranscriptHeaderText}"
+                       Foreground="{DynamicResource TextMain}"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,7" />
+
+            <ListBox Grid.Row="3"
+                     ItemsSource="{Binding Events}"
+                     FontSize="12"
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#0E151E"
+                                BorderBrush="#263342"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                Margin="0,0,0,8">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,5">
+                                    <Border DockPanel.Dock="Right"
+                                            Background="{Binding BadgeBackground}"
+                                            BorderBrush="{Binding AccentBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            Margin="8,0,0,0">
+                                        <TextBlock Text="{Binding BadgeText}"
+                                                   Foreground="{Binding AccentBrush}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Speaker}"
+                                               Foreground="{Binding AccentBrush}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold" />
+                                </DockPanel>
+                                <TextBlock Text="{Binding Title}"
+                                           Foreground="{DynamicResource TextMain}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Detail}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding CreatedAtText}"
+                                           Foreground="#708090"
+                                           FontFamily="Consolas"
+                                           FontSize="10"
+                                           Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</UserControl>
