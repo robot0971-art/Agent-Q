@@ -3089,7 +3089,7 @@ public sealed class DesktopServiceTests
         using var httpClientFactory = new StubHttpClientFactory("{}");
         var service = CreateDesktopAgentService(httpClientFactory);
         var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
-            string.Equals(toolName, "create_project_scaffold", StringComparison.Ordinal));
+            toolName is "create_project_scaffold" or "verify_project_scaffold");
 
         var result = await service.SendAsync(
             new ProviderConfiguration
@@ -3105,8 +3105,36 @@ public sealed class DesktopServiceTests
         Assert.True(File.Exists(Path.Combine(root, "package.json")));
         Assert.True(File.Exists(Path.Combine(root, "src", "App.jsx")));
         Assert.Contains("Prepared project scaffold was created", result, StringComparison.Ordinal);
+        Assert.Contains("Verification:", result, StringComparison.Ordinal);
         Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Contains("verify_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Null(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_SafeScaffoldModeDoesNotCreateWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => false);
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "\uC5EC\uAE30\uC5D0 \uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC790",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+        Assert.False(Directory.Exists(Path.Combine(root, "src")));
+        Assert.Contains("Project scaffold creation failed", result, StringComparison.Ordinal);
+        Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.DoesNotContain("verify_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Null(httpClientFactory.LastRequest);
     }
 
