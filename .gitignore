@@ -65,12 +65,21 @@ artifacts/
 **/.dotnet/
 
 # AgentQ local memory
+.agentq/config.json
+.agentq/desktop-build.log
 .agentq/memory.local.json
+.agentq/diagnostics/
 .agentq/runs/
 .agentq/embeddings/
 .agentq/replay/
 .agentq/reports/
 .agentq/telemetry/
+
+# Local editor/runtime artifacts
+.vscode/
+.pytest_cache/
+/cd
+/dotnet
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
