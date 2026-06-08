@@ -1017,6 +1017,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (!TurnIntentClassifier.ShouldUseModelPrimary(ruleClassification) ||
             !HasConfiguredProviderEndpoint(config))
         {
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                $"Intent classification: {ruleClassification.Type}",
+                FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Provider is not configured, so AgentQ used the rule safety pass as the effective intent."));
             return ruleClassification;
         }
 
@@ -1060,6 +1064,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     AgentRunState.Planning,
                     "LLM intent classifier fallback",
                     "The model did not return valid intent JSON, so AgentQ kept the rule-based classification.");
+                callbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Planning,
+                    $"Intent classification: {ruleClassification.Type}",
+                    FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Model JSON parse failed, so AgentQ used the rule safety pass as the effective intent."));
                 return ruleClassification;
             }
 
@@ -1068,6 +1076,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Planning,
                 $"LLM intent result: {merged.Type}",
                 $"{merged.Rationale} action={merged.ActionKind}; confidence={merged.Confidence:0.00}; concrete={merged.IsConcreteEnough}");
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                $"Intent classification: {merged.Type}",
+                FormatTurnIntentDecisionDetail(ruleClassification, modelClassification, merged, "Effective intent is the LLM primary judgment after rule/policy safety checks."));
             return merged;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1076,8 +1088,36 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Planning,
                 "LLM intent classifier fallback",
                 $"Intent classification model call failed, so AgentQ kept the rule-based classification. {ex.Message}");
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                $"Intent classification: {ruleClassification.Type}",
+                FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Model classification failed, so AgentQ used the rule safety pass as the effective intent."));
             return ruleClassification;
         }
+    }
+
+    public static string FormatTurnIntentDecisionDetail(
+        TurnIntentClassification ruleClassification,
+        TurnIntentClassification? modelClassification,
+        TurnIntentClassification effectiveClassification,
+        string reason)
+    {
+        var modelText = modelClassification == null
+            ? "not available"
+            : FormatIntentForRunStep(modelClassification);
+        return
+            $"Rule safety: {FormatIntentForRunStep(ruleClassification)}; " +
+            $"LLM primary: {modelText}; " +
+            $"Effective: {FormatIntentForRunStep(effectiveClassification)}; " +
+            $"Reason: {reason}";
+    }
+
+    private static string FormatIntentForRunStep(TurnIntentClassification classification)
+    {
+        var action = string.IsNullOrWhiteSpace(classification.ActionKind)
+            ? "none"
+            : classification.ActionKind;
+        return $"{classification.Type} {classification.Confidence:0.00} action={action} concrete={classification.IsConcreteEnough}";
     }
 
     private static bool HasConfiguredProviderEndpoint(ProviderConfiguration config)

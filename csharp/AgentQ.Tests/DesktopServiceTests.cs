@@ -473,6 +473,7 @@ public sealed class DesktopServiceTests
         using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
         var service = CreateDesktopAgentService(httpClientFactory);
         var rule = TurnIntentClassifier.Classify("LOD\uAC00 \uBB50\uC57C?");
+        var runSteps = new List<string>();
 
         var result = await InvokeClassifyTurnIntentWithModelAsync(
             service,
@@ -483,12 +484,20 @@ public sealed class DesktopServiceTests
                 Model = "intent-test"
             },
             "LOD\uAC00 \uBB50\uC57C?",
-            rule);
+            rule,
+            new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
 
         Assert.Equal(TurnIntentType.Conversation, result.Type);
         Assert.Equal(0.94, result.Confidence, precision: 2);
         Assert.NotNull(httpClientFactory.LastRequest);
         Assert.Contains("LLM primary intent classifier", result.Rationale, StringComparison.Ordinal);
+        Assert.Contains(runSteps, step =>
+            step.Contains("Rule safety:", StringComparison.Ordinal) &&
+            step.Contains("LLM primary:", StringComparison.Ordinal) &&
+            step.Contains("Effective:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -9790,7 +9799,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         DesktopAgentService service,
         ProviderConfiguration config,
         string userText,
-        TurnIntentClassification ruleClassification)
+        TurnIntentClassification ruleClassification,
+        DesktopToolCallbacks? callbacks = null)
     {
         var method = typeof(DesktopAgentService).GetMethod(
             "ClassifyTurnIntentWithModelAsync",
@@ -9801,7 +9811,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             config,
             userText,
             ruleClassification,
-            new DesktopToolCallbacks(),
+            callbacks ?? new DesktopToolCallbacks(),
             CancellationToken.None
         ])!;
         return await task;
