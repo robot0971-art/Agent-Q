@@ -172,6 +172,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Clarifying,
                 "Waiting for user answer",
                 turnIntent.Rationale);
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Clarifying,
+                "Ambiguous clarification",
+                $"question=\"{DesktopPromptBuilder.Truncate(clarification.ReplaceLineEndings(" "), 360)}\"; intent={turnIntent.Type}; action={(string.IsNullOrWhiteSpace(turnIntent.ActionKind) ? "none" : turnIntent.ActionKind)}; concrete={turnIntent.IsConcreteEnough}; reason=\"{DesktopPromptBuilder.Truncate(turnIntent.Rationale.ReplaceLineEndings(" "), 360)}\"");
             return clarification;
         }
 
@@ -261,6 +265,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var manualFallbackRetryUsed = false;
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
+        var sessionMemoryDeflectionRetryUsed = false;
 
         if (turnIntent.AllowsDeterministicExecution &&
             ShouldExecuteLocalServerDirectly(taskContract, workMode))
@@ -402,10 +407,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
             var bufferTextUntilValidated =
                 workMode != AgentWorkMode.Readonly &&
-                turnIntent.Type != TurnIntentType.Conversation &&
-                IsActionableCodingTask(taskProfile.Kind) &&
                 executedToolCount == 0 &&
-                fileChanges.Count == 0;
+                fileChanges.Count == 0 &&
+                (turnIntent.Type == TurnIntentType.Conversation ||
+                 IsActionableCodingTask(taskProfile.Kind));
             var response = await GenerateAssistantTurnAsync(
                 provider,
                 config,
@@ -519,6 +524,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         fileChanges,
                         workMode,
                         taskProfile.Kind);
+                var shouldRetryConversationGenericGreeting =
+                    turnIntent.Type == TurnIntentType.Conversation &&
+                    ShouldRetryConversationGenericGreetingFallback(
+                        userText,
+                        candidateText);
 
                 if (!genericGreetingRetryUsed &&
                     turnIntent.Type != TurnIntentType.Conversation &&
@@ -542,6 +552,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workMode,
                             taskProfile.Kind,
                             skillToolUseRequired));
+                    continue;
+                }
+
+                if (!sessionMemoryDeflectionRetryUsed &&
+                    ShouldRetrySessionMemoryDeflection(userText, candidateText, turnIntent.Type))
+                {
+                    sessionMemoryDeflectionRetryUsed = true;
+                    builder.Clear();
+                    const string retryInstruction =
+                        "Your previous answer incorrectly talked about prior conversations, sessions, windows, memory, or missing context. " +
+                        "The user did not ask about memory. Retry now in Korean and answer the latest user question directly. " +
+                        "Do not mention previous conversations, sessions, other windows, memory, or missing context.";
+                    _messages.Add(ChatMessage.UserText(retryInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        "Conversation guard: retry",
+                        "The assistant deflected to session/memory context instead of answering the user's consultation question.");
                     continue;
                 }
 
@@ -572,20 +599,24 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 if (!genericGreetingRetryUsed &&
-                    (shouldRetryNoToolCoding || shouldRetryGenericGreeting))
+                    (shouldRetryNoToolCoding || shouldRetryGenericGreeting || shouldRetryConversationGenericGreeting))
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
-                    var retryInstruction = BuildNoToolRetryInstruction(projectScaffoldPlan, skillToolUseRequired);
+                    var retryInstruction = shouldRetryConversationGenericGreeting
+                        ? BuildConversationRetryInstruction()
+                        : BuildNoToolRetryInstruction(projectScaffoldPlan, skillToolUseRequired);
                     _messages.Add(ChatMessage.UserText(retryInstruction));
                     var retryReason = HasProceedableProjectScaffoldPlan(projectScaffoldPlan)
                         ? "Assistant answered without calling create_project_scaffold for a prepared scaffold plan."
                         : skillToolUseRequired
                             ? "An active system skill requires workspace/scaffold tool use for this file-producing task."
-                            : "Assistant answered with a generic greeting before using workspace tools.";
+                            : shouldRetryConversationGenericGreeting
+                                ? "Assistant reset into a generic greeting instead of answering the consultation turn."
+                                : "Assistant answered with a generic greeting before using workspace tools.";
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Planning,
-                        shouldRetryGenericGreeting ? "Greeting guard: retry" : "No-tool guard: retry",
+                        shouldRetryConversationGenericGreeting || shouldRetryGenericGreeting ? "Greeting guard: retry" : "No-tool guard: retry",
                         BuildNoToolGuardDetail(
                             "retry",
                             $"{retryReason} triggerNoTool={shouldRetryNoToolCoding}; triggerGenericGreeting={shouldRetryGenericGreeting}; retryInstruction=\"{DesktopPromptBuilder.Truncate(retryInstruction.ReplaceLineEndings(" "), 500)}\"",
@@ -674,7 +705,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     }
                 }
 
-                if (bufferTextUntilValidated)
+                if (bufferTextUntilValidated && turnIntent.Type != TurnIntentType.Conversation)
                 {
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Done,
@@ -1030,6 +1061,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Planning,
                 "LLM intent classifier",
                 $"Rule safety pass was {ruleClassification.Type} with confidence {ruleClassification.Confidence:0.00}; asking the model for the primary structured intent judgment.");
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "Rule intent debug",
+                TurnIntentClassifier.BuildRuleDebugDetail(userText, ruleClassification));
 
             var provider = CreateProvider(config, callbacks);
             var context = new ChatContext
@@ -1057,18 +1092,29 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     .Where(content => content.Type == ContentType.Text)
                     .Select(content => content.Text)
                     .Where(text => !string.IsNullOrWhiteSpace(text)));
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "LLM intent raw response",
+                $"contentParts={response.Content.Count}; chars={responseText.Length}; preview=\"{DesktopPromptBuilder.Truncate(responseText.ReplaceLineEndings(" "), 900)}\"");
 
             if (!TurnIntentClassifier.TryParseModelResponse(responseText, ruleClassification, out var modelClassification))
             {
+                var fallback = TurnIntentClassifier.BuildModelUnavailableFallback(
+                    ruleClassification,
+                    "Model JSON parse failed.");
+                callbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Planning,
+                    "LLM intent JSON parse failed",
+                    $"rawPreview=\"{DesktopPromptBuilder.Truncate(responseText.ReplaceLineEndings(" "), 900)}\"; fallback={FormatIntentForRunStep(fallback)}; fallbackQuestion=\"{DesktopPromptBuilder.Truncate(fallback.ClarifyingQuestion.ReplaceLineEndings(" "), 360)}\"");
                 callbacks?.OnRunStep?.Invoke(
                     AgentRunState.Planning,
                     "LLM intent classifier fallback",
-                    "The model did not return valid intent JSON, so AgentQ kept the rule-based classification.");
+                    "The model did not return valid intent JSON, so AgentQ used a non-executing fallback instead of trusting rule-only execution.");
                 callbacks?.OnRunStep?.Invoke(
                     AgentRunState.Planning,
-                    $"Intent classification: {ruleClassification.Type}",
-                    FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Model JSON parse failed, so AgentQ used the rule safety pass as the effective intent."));
-                return ruleClassification;
+                    $"Intent classification: {fallback.Type}",
+                    FormatTurnIntentDecisionDetail(ruleClassification, null, fallback, "Model JSON parse failed, so AgentQ refused to turn a rule-only decision into execution."));
+                return fallback;
             }
 
             var merged = TurnIntentClassifier.ApplySafetyRules(ruleClassification, modelClassification);
@@ -1087,12 +1133,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
                 "LLM intent classifier fallback",
-                $"Intent classification model call failed, so AgentQ kept the rule-based classification. {ex.Message}");
+                $"Intent classification model call failed, so AgentQ used a non-executing fallback instead of trusting rule-only execution. {ex.Message}");
+            var fallback = TurnIntentClassifier.BuildModelUnavailableFallback(
+                ruleClassification,
+                "Model classification call failed.");
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
-                $"Intent classification: {ruleClassification.Type}",
-                FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Model classification failed, so AgentQ used the rule safety pass as the effective intent."));
-            return ruleClassification;
+                "LLM intent call exception",
+                $"exception={ex.GetType().Name}; message=\"{DesktopPromptBuilder.Truncate(ex.Message.ReplaceLineEndings(" "), 500)}\"; fallback={FormatIntentForRunStep(fallback)}; fallbackQuestion=\"{DesktopPromptBuilder.Truncate(fallback.ClarifyingQuestion.ReplaceLineEndings(" "), 360)}\"");
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                $"Intent classification: {fallback.Type}",
+                FormatTurnIntentDecisionDetail(ruleClassification, null, fallback, "Model classification failed, so AgentQ refused to turn a rule-only decision into execution."));
+            return fallback;
         }
     }
 
@@ -1216,6 +1269,66 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             lower.Contains("```cs", StringComparison.Ordinal);
 
         return manualInstruction && codeHeavy;
+    }
+
+    public static bool ShouldRetrySessionMemoryDeflection(
+        string userText,
+        string assistantText,
+        TurnIntentType turnIntentType)
+    {
+        if (turnIntentType != TurnIntentType.Conversation ||
+            string.IsNullOrWhiteSpace(userText) ||
+            string.IsNullOrWhiteSpace(assistantText) ||
+            UserAskedAboutSessionOrMemory(userText))
+        {
+            return false;
+        }
+
+        return LooksLikeSessionMemoryDeflection(assistantText);
+    }
+
+    private static bool UserAskedAboutSessionOrMemory(string userText)
+    {
+        var lower = userText.ToLowerInvariant();
+        return ContainsAny(
+            lower,
+            "memory",
+            "remember",
+            "session",
+            "previous conversation",
+            "chat history",
+            "\uAE30\uC5B5",
+            "\uC138\uC158",
+            "\uC774\uC804 \uB300\uD654",
+            "\uB300\uD654 \uAE30\uB85D",
+            "\uB2E4\uB978 \uCC3D");
+    }
+
+    private static bool LooksLikeSessionMemoryDeflection(string assistantText)
+    {
+        var lower = assistantText.ToLowerInvariant();
+        return ContainsAny(
+            lower,
+            "cannot remember previous",
+            "can't remember previous",
+            "lack previous conversation",
+            "previous conversation",
+            "new session",
+            "other window",
+            "missing context",
+            "recover context",
+            "\uC774\uC804 \uC138\uC158",
+            "\uC774\uC804\uC138\uC158",
+            "\uC774\uC804 \uB300\uD654",
+            "\uC774\uC804\uB300\uD654",
+            "\uC774 \uB300\uD654\uC5D0\uC11C",
+            "\uC774\uB300\uD654\uC5D0\uC11C",
+            "\uB2E4\uB978 \uCC3D",
+            "\uB2E4\uB978\uCC3D",
+            "\uB9D0\uC500\uB4DC\uB9B0 \uB0B4\uC6A9\uC740 \uC5C6",
+            "\uB530\uB85C \uB9D0\uC500\uB4DC\uB9B0 \uB0B4\uC6A9\uC740 \uC5C6",
+            "\uB354 \uB9E5\uB77D",
+            "\uB9E5\uB77D\uC744 \uC54C\uB824");
     }
 
     public static bool ShouldReplaceIrrelevantFinalAfterChanges(
@@ -1494,6 +1607,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             !LooksLikeWorkspaceActionSummary(assistantLower);
     }
 
+    public static bool ShouldRetryConversationGenericGreetingFallback(
+        string userText,
+        string assistantText)
+    {
+        if (string.IsNullOrWhiteSpace(userText) ||
+            string.IsNullOrWhiteSpace(assistantText))
+        {
+            return false;
+        }
+
+        return EndsWithGenericGreeting(assistantText.ToLowerInvariant());
+    }
+
     private static bool EndsWithGenericGreeting(string assistantLower)
     {
         var normalized = assistantLower.Trim();
@@ -1594,6 +1720,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "Your previous answer reset into a generic greeting or asked what to do after the user already gave a coding task. " +
             "Do not describe your system prompt, identity, or tool inventory. Continue the requested task now: call list_directory first if you need folder structure or empty-workspace evidence, then inspect relevant files with read_file/search tools, honor the latest explicit user constraints such as JavaScript over TypeScript, make the smallest useful edit, then verify.";
     }
+
+    public static string BuildConversationRetryInstruction() =>
+        "Your previous answer reset into a generic greeting or tried to use tools during a Conversation turn. " +
+        "Do not call tools. Do not ask what the user wants. Answer the latest Korean user question directly in Korean with practical advice, tradeoffs, and a suggested next step.";
 
     public static string BuildNoToolCompletionMessage(
         ProjectScaffoldPlanningResult projectScaffoldPlan,
@@ -2736,12 +2866,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
-                if (turnIntent?.Type == TurnIntentType.Conversation &&
-                    TurnIntentClassifier.IsStateChangingTool(tool.Name))
+                if (turnIntent?.Type == TurnIntentType.Conversation)
                 {
                     var blockedInputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
                     var blockedMessage =
-                        $"Turn intent is Conversation, so AgentQ blocked state-changing tool '{tool.Name}' before permission. " +
+                        $"Turn intent is Conversation, so AgentQ blocked tool '{tool.Name}' before execution. " +
                         "Answer the user in prose, or ask for explicit execution if the user wants AgentQ to act.";
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Turn intent guard", blockedMessage);
                     callbacks?.OnToolError?.Invoke(tool.Name, blockedMessage);

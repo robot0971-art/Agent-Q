@@ -389,6 +389,28 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesSessionMemoryDeflectionForConsultationQuestion()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetrySessionMemoryDeflection(
+            "\uC7A5\uB974\uB97C \uBD88\uBB38\uD558\uACE0 \uBAA8\uB4E0 IT\uAC1C\uBC1C\uC790\uB4E4\uC774 \uC54C\uC544\uC57C \uD560 \uC6A9\uC5B4\uB97C \uBAA8\uC544\uB193\uC740 \uC6F9\uC740 \uC5B4\uB5E8\uAC00?",
+            "\uBC29\uAE08 \uC804\uAE4C\uC9C0 \uC774 \uB300\uD654\uC5D0\uC11C \uC81C\uAC00 \uB530\uB85C \uB9D0\uC500\uB4DC\uB9B0 \uB0B4\uC6A9\uC740 \uC5C6\uC2B5\uB2C8\uB2E4. \uD639\uC2DC \uC774\uC804 \uC138\uC158\uC774\uB098 \uB2E4\uB978 \uCC3D\uC5D0\uC11C \uC81C\uAC00 \uB4DC\uB838\uB358 \uC751\uB2F5\uC744 \uB9D0\uC500\uD558\uC2DC\uB294 \uAC78\uAE4C\uC694?",
+            TurnIntentType.Conversation);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_AllowsSessionMemoryAnswerWhenUserAskedAboutMemory()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetrySessionMemoryDeflection(
+            "\uC774\uC804 \uB300\uD654 \uAE30\uC5B5\uD574?",
+            "\uC774\uC804 \uC138\uC158\uC758 \uB0B4\uC6A9\uC740 \uC9C0\uAE08 \uBCF4\uC774\uB294 \uB300\uD654\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.",
+            TurnIntentType.Conversation);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
     public void DesktopAgentService_PreflightsBareNewProjectClarification()
     {
         var shouldClarify = DesktopAgentService.TryBuildPreflightClarification(
@@ -542,6 +564,48 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_LlmIntentClassifier_DoesNotExecuteRuleActionWhenModelJsonFails()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent_invalid",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "This looks like a website request, but not JSON."
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "\uC7A5\uB974\uB97C \uBD88\uBB38\uD558\uACE0 \uBAA8\uB4E0 IT \uAC1C\uBC1C\uC790\uB4E4\uC774 \uC54C\uC544\uC57C \uD560 \uC6A9\uC5B4\uB4E4\uC744 \uBAA8\uC544\uB193\uC740 \uAC1C\uBC1C\uC6A9\uC5B4 \uB2E8\uC5B4\uC7A5 \uC6F9\uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4";
+        var rule = TurnIntentClassifier.Classify(userText);
+
+        var result = await InvokeClassifyTurnIntentWithModelAsync(
+            service,
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test"
+            },
+            userText,
+            rule);
+
+        Assert.Equal(TurnIntentType.Action, rule.Type);
+        Assert.Equal(TurnIntentType.Ambiguous, result.Type);
+        Assert.False(result.IsConcreteEnough);
+        Assert.Contains("Model JSON parse failed", result.Rationale, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_RetriesGenericGreetingAfterCodingTask()
     {
         var shouldRetry = DesktopAgentService.ShouldRetryGenericGreetingFallback(
@@ -579,6 +643,16 @@ public sealed class DesktopServiceTests
             fileChanges: [],
             AgentWorkMode.Coding,
             DesktopTaskKind.Feature);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RetriesGenericGreetingForConversationTurn()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetryConversationGenericGreetingFallback(
+            "\uC774 \uD3F4\uB354\uC5D0 \uC7A5\uB974\uB97C \uBD88\uBB38\uD558\uACE0 \uBAA8\uB4E0 IT \uAC1C\uBC1C\uC790\uB4E4\uC774 \uC54C\uC544\uC57C \uD560 \uC6A9\uC5B4\uB4E4\uC744 \uBAA8\uC544\uB193\uC740 \uC6F9\uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4 \uC5B4\uB5BB\uAC8C \uD574\uC57C \uD560\uAE4C",
+            "\uC548\uB155\uD558\uC138\uC694! \uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694?");
 
         Assert.True(shouldRetry);
     }
@@ -3412,6 +3486,34 @@ public sealed class DesktopServiceTests
         Assert.Contains("Turn intent is Conversation", result.ToolResult, StringComparison.Ordinal);
         Assert.Empty(permissionEnforcer.RequestedTools);
         Assert.False(File.Exists(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_BlocksScaffoldPlanningToolForConversationIntent()
+    {
+        var root = CreateTempDirectory();
+        var planRegistry = new ProjectScaffoldPlanRegistry();
+        var toolRegistry = new ToolRegistry();
+        toolRegistry.Register(new DesktopProjectScaffoldPlanTool(root, planRegistry: planRegistry));
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var input = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["request"] = "Vite React JavaScript IT developer glossary website"
+        });
+
+        var results = await InvokeExecuteToolsAsync(
+            service,
+            [ChatContent.CreateToolUse("tool-plan", "plan_project_scaffold", input)],
+            toolRegistry,
+            new AllowAllPermissionEnforcer(),
+            new DesktopToolCallbacks(),
+            root,
+            TurnIntentClassifier.Classify("\uC774 \uD3F4\uB354\uC5D0 IT \uC6A9\uC5B4\uC9D1 \uC6F9\uC740 \uC5B4\uB5BB\uAC8C \uD574\uC57C \uD560\uAE4C?"));
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsToolError);
+        Assert.Contains("blocked tool 'plan_project_scaffold'", result.ToolResult, StringComparison.Ordinal);
     }
 
     [Fact]

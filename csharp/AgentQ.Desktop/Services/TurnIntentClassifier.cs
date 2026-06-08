@@ -115,6 +115,19 @@ public static class TurnIntentClassifier
         };
     }
 
+    public static string BuildRuleDebugDetail(string userText, TurnIntentClassification classification)
+    {
+        var normalized = Normalize(userText);
+        var action = DetectAction(normalized);
+        var hasAction = !string.IsNullOrWhiteSpace(action);
+        return
+            $"normalized=\"{Truncate(normalized, 180)}\"; " +
+            $"signals: info={HasInformationSignal(normalized)}, advice={HasAdviceSignal(normalized)}, howTo={HasHowToSignal(normalized)}, consultativeAction={HasConsultativeActionSignal(normalized)}, hybrid={HasHybridSignal(normalized)}; " +
+            $"detectedAction={(hasAction ? action : "none")}; concrete={IsConcreteEnoughForAction(normalized, action)}; " +
+            $"ruleResult={classification.Type} confidence={classification.Confidence:0.00} action={(string.IsNullOrWhiteSpace(classification.ActionKind) ? "none" : classification.ActionKind)} concrete={classification.IsConcreteEnough}; " +
+            $"clarifyingQuestion=\"{Truncate(classification.ClarifyingQuestion.ReplaceLineEndings(" "), 220)}\"";
+    }
+
     public static bool IsStateChangingTool(string toolName)
     {
         return toolName is
@@ -177,6 +190,34 @@ public static class TurnIntentClassifier
         return modelClassification with
         {
             Rationale = $"LLM primary intent classifier: {modelClassification.Rationale} Rule safety pass was {ruleClassification.Type}: {ruleClassification.Rationale}"
+        };
+    }
+
+    public static TurnIntentClassification BuildModelUnavailableFallback(
+        TurnIntentClassification ruleClassification,
+        string reason)
+    {
+        if (ruleClassification.Type == TurnIntentType.Conversation)
+        {
+            return ruleClassification with
+            {
+                Rationale = $"{ruleClassification.Rationale} {reason}"
+            };
+        }
+
+        return new TurnIntentClassification
+        {
+            Type = TurnIntentType.Ambiguous,
+            Confidence = Math.Min(ruleClassification.Confidence, 0.74),
+            Rationale = $"{reason} Rule safety pass was {ruleClassification.Type}, but AgentQ does not allow a model classification failure to become an execution decision.",
+            ActionKind = ruleClassification.ActionKind,
+            RequiresWrite = ruleClassification.RequiresWrite,
+            RequiresShell = ruleClassification.RequiresShell,
+            RequiresNetwork = ruleClassification.RequiresNetwork,
+            IsConcreteEnough = false,
+            ClarifyingQuestion = string.IsNullOrWhiteSpace(ruleClassification.ClarifyingQuestion)
+                ? BuildClarifyingQuestion(ruleClassification.ActionKind)
+                : ruleClassification.ClarifyingQuestion
         };
     }
 
@@ -397,6 +438,16 @@ public static class TurnIntentClassifier
         }
 
         return builder.ToString();
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength] + "...";
     }
 
     private static bool ContainsAny(string text, params string[] values) =>
