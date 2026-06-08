@@ -127,13 +127,13 @@ public static class TurnIntentClassifier
             "stop_local_server";
     }
 
-    public static bool ShouldAskModel(TurnIntentClassification ruleClassification)
+    public static bool ShouldUseModelPrimary(TurnIntentClassification ruleClassification)
     {
-        return ruleClassification.Type == TurnIntentType.Ambiguous ||
-               ruleClassification.Confidence < 0.85;
+        _ = ruleClassification;
+        return true;
     }
 
-    public static TurnIntentClassification MergeModelClassification(
+    public static TurnIntentClassification ApplySafetyRules(
         TurnIntentClassification ruleClassification,
         TurnIntentClassification modelClassification)
     {
@@ -143,7 +143,7 @@ public static class TurnIntentClassifier
         {
             return ruleClassification with
             {
-                Rationale = ruleClassification.Rationale + " Model classification attempted to promote the turn to Action, but confidence was below the safety threshold."
+                Rationale = ruleClassification.Rationale + " Model-first classification attempted to promote the turn to Action, but confidence was below the safety threshold."
             };
         }
 
@@ -153,13 +153,30 @@ public static class TurnIntentClassifier
         {
             return ruleClassification with
             {
-                Rationale = ruleClassification.Rationale + " Model classification did not provide a high-confidence concrete target."
+                Rationale = ruleClassification.Rationale + " Model-first classification did not provide a high-confidence concrete target."
             };
+        }
+
+        if (modelClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+            !modelClassification.IsConcreteEnough)
+        {
+            return ruleClassification.Type == TurnIntentType.Ambiguous
+                ? ruleClassification
+                : modelClassification with
+                {
+                    Type = TurnIntentType.Ambiguous,
+                    Confidence = Math.Min(modelClassification.Confidence, 0.84),
+                    IsConcreteEnough = false,
+                    ClarifyingQuestion = string.IsNullOrWhiteSpace(modelClassification.ClarifyingQuestion)
+                        ? BuildClarifyingQuestion(modelClassification.ActionKind)
+                        : modelClassification.ClarifyingQuestion,
+                    Rationale = $"Model-first classification requested execution, but the target was not concrete enough. {modelClassification.Rationale}"
+                };
         }
 
         return modelClassification with
         {
-            Rationale = $"LLM intent classifier: {modelClassification.Rationale} Rule fallback was {ruleClassification.Type}: {ruleClassification.Rationale}"
+            Rationale = $"LLM primary intent classifier: {modelClassification.Rationale} Rule safety pass was {ruleClassification.Type}: {ruleClassification.Rationale}"
         };
     }
 

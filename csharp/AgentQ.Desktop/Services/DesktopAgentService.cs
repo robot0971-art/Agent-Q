@@ -1014,7 +1014,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         DesktopToolCallbacks? callbacks,
         CancellationToken ct)
     {
-        if (!TurnIntentClassifier.ShouldAskModel(ruleClassification) ||
+        if (!TurnIntentClassifier.ShouldUseModelPrimary(ruleClassification) ||
             !HasConfiguredProviderEndpoint(config))
         {
             return ruleClassification;
@@ -1025,7 +1025,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
                 "LLM intent classifier",
-                $"Rule classification was {ruleClassification.Type} with confidence {ruleClassification.Confidence:0.00}; asking the model for a structured second opinion.");
+                $"Rule safety pass was {ruleClassification.Type} with confidence {ruleClassification.Confidence:0.00}; asking the model for the primary structured intent judgment.");
 
             var provider = CreateProvider(config, callbacks);
             var context = new ChatContext
@@ -1063,7 +1063,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 return ruleClassification;
             }
 
-            var merged = TurnIntentClassifier.MergeModelClassification(ruleClassification, modelClassification);
+            var merged = TurnIntentClassifier.ApplySafetyRules(ruleClassification, modelClassification);
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
                 $"LLM intent result: {merged.Type}",

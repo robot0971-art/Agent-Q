@@ -93,8 +93,10 @@ Intent types:
 
 Routing rules:
 
-- Use the rule-based classifier as the safety floor, then ask the LLM for a structured second opinion when the rule result is low-confidence or `Ambiguous`.
-- The LLM classifier may refine intent, but it must not bypass safety thresholds, concrete-target checks, approvals, or deterministic executor contracts.
+- Use the LLM classifier as the primary semantic judge when a provider is configured.
+- Use the rule-based classifier as a safety brake and fallback, not as the main semantic judge.
+- The final `effectiveIntent` must be produced by applying rule/policy safety checks to the LLM classification.
+- The LLM classifier may decide the likely intent, but it must not bypass safety thresholds, concrete-target checks, approvals, or deterministic executor contracts.
 - `Conversation` turns should be answered by the LLM. They must not trigger scaffold, file writes, shell commands, installs, commits, or destructive actions.
 - `Action` turns may use deterministic Desktop services or tools, with permission checks and verification.
 - `Hybrid` turns should execute the required safe action path first, then let the LLM summarize results and next steps.

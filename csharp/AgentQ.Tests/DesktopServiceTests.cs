@@ -444,13 +444,13 @@ public sealed class DesktopServiceTests
             rule,
             out var model));
 
-        var merged = TurnIntentClassifier.MergeModelClassification(rule, model);
+        var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
 
         Assert.Equal(TurnIntentType.Conversation, merged.Type);
     }
 
     [Fact]
-    public async Task DesktopAgentService_LlmIntentClassifier_UsesModelForLowConfidenceRule()
+    public async Task DesktopAgentService_LlmIntentClassifier_UsesModelAsPrimaryJudgment()
     {
         const string responseBody =
             """
@@ -488,7 +488,48 @@ public sealed class DesktopServiceTests
         Assert.Equal(TurnIntentType.Conversation, result.Type);
         Assert.Equal(0.94, result.Confidence, precision: 2);
         Assert.NotNull(httpClientFactory.LastRequest);
-        Assert.Contains("LLM intent classifier", result.Rationale, StringComparison.Ordinal);
+        Assert.Contains("LLM primary intent classifier", result.Rationale, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_LlmIntentClassifier_RunsEvenWhenRuleLooksConfident()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent_action",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asks AgentQ to run tests.\",\"actionKind\":\"shell\",\"requiresWrite\":false,\"requiresShell\":true,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var rule = TurnIntentClassifier.Classify("\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918");
+
+        var result = await InvokeClassifyTurnIntentWithModelAsync(
+            service,
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test"
+            },
+            "\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918",
+            rule);
+
+        Assert.Equal(TurnIntentType.Action, result.Type);
+        Assert.Equal("shell", result.ActionKind);
+        Assert.True(result.RequiresShell);
+        Assert.NotNull(httpClientFactory.LastRequest);
     }
 
     [Fact]
