@@ -15,6 +15,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<LinkContentFetcher>();
         services.AddSingleton<DesktopProviderModelDiscoveryService>();
+        services.AddSingleton<DesktopDiagnosticsService>();
         services.AddSingleton<DesktopTelemetryService>();
         services.AddSingleton<ToolReplayService>();
         services.AddSingleton<EvalReplayDashboardService>();

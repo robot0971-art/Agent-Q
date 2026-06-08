@@ -11,10 +11,15 @@ public sealed class WorkspaceAnalysisService
     private readonly WorkspaceSymbolIndexService _symbolIndexService;
     private readonly WorkspaceDependencyGraphService _dependencyGraphService;
     private readonly CSharpRoslynAnalysisService _csharpRoslynAnalysisService;
+    private readonly DesktopDiagnosticsService? _diagnosticsService;
 
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
+        ".agentq-verify",
         ".vs",
         "bin",
         "obj",
@@ -30,11 +35,13 @@ public sealed class WorkspaceAnalysisService
     public WorkspaceAnalysisService(
         WorkspaceSymbolIndexService? symbolIndexService = null,
         WorkspaceDependencyGraphService? dependencyGraphService = null,
-        CSharpRoslynAnalysisService? csharpRoslynAnalysisService = null)
+        CSharpRoslynAnalysisService? csharpRoslynAnalysisService = null,
+        DesktopDiagnosticsService? diagnosticsService = null)
     {
         _symbolIndexService = symbolIndexService ?? new WorkspaceSymbolIndexService();
         _dependencyGraphService = dependencyGraphService ?? new WorkspaceDependencyGraphService();
         _csharpRoslynAnalysisService = csharpRoslynAnalysisService ?? new CSharpRoslynAnalysisService();
+        _diagnosticsService = diagnosticsService;
     }
 
     public async Task<WorkspaceAnalysis> AnalyzeAsync(string workspaceRoot, CancellationToken ct = default)
@@ -51,9 +58,11 @@ public sealed class WorkspaceAnalysisService
             analysis.ProjectType = "Missing folder";
             analysis.Framework = "Unavailable";
             analysis.Hints.Add("Workspace folder does not exist.");
+            RecordAnalysisEvent("workspace_analysis_missing", analysis, "Workspace folder does not exist.");
             return analysis;
         }
 
+        RecordAnalysisEvent("workspace_analysis_started", analysis, "Starting workspace analysis.");
         var detectedTypes = new List<string>();
         var frameworks = new List<string>();
 
@@ -94,8 +103,28 @@ public sealed class WorkspaceAnalysisService
 
         await CheckSystemDependenciesAsync(analysis, ct);
 
+        RecordAnalysisEvent(
+            "workspace_analysis_completed",
+            analysis,
+            $"projectType={analysis.ProjectType}; framework={analysis.Framework}; files={analysis.FileCount:0}; directories={analysis.DirectoryCount:0}; hints={analysis.Hints.Count:0}; scaffoldRecommendations={analysis.ScaffoldRecommendations.Count:0}");
+
         return analysis;
     }
+
+    private void RecordAnalysisEvent(string eventType, WorkspaceAnalysis analysis, string detail) =>
+        _diagnosticsService?.Record(eventType, detail, analysis.WorkspaceRoot);
+
+    private void RecordWorkerEvent(
+        string eventType,
+        WorkspaceAnalysis analysis,
+        string workerName,
+        string detail,
+        Exception? exception = null) =>
+        _diagnosticsService?.Record(
+            eventType,
+            $"worker={workerName}; {detail}",
+            analysis.WorkspaceRoot,
+            exception: exception);
 
     private static void CountWorkspaceItems(WorkspaceAnalysis analysis)
     {
@@ -552,17 +581,36 @@ public sealed class WorkspaceAnalysisService
         analysis.Hints.Add("Cargo.toml detected.");
     }
 
-    private static async Task DetectNativeWorkerAsync(
+    private async Task DetectNativeWorkerAsync(
         WorkspaceAnalysis analysis,
         List<string> detectedTypes,
         List<string> frameworks,
         CancellationToken ct)
     {
-        var result = await new NativeWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
-        if (result == null)
+        RecordWorkerEvent("worker_started", analysis, "native-worker", "Starting native worker analysis.");
+        NativeWorkerResult? result;
+        try
         {
+            result = await new NativeWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException)
+        {
+            RecordWorkerEvent("worker_failed", analysis, "native-worker", ex.Message, ex);
+            analysis.Hints.Add($"Native worker failed: {ex.Message}");
             return;
         }
+
+        if (result == null)
+        {
+            RecordWorkerEvent("worker_skipped", analysis, "native-worker", "Worker returned no result. The script may be missing or the workspace path was unavailable.");
+            return;
+        }
+
+        RecordWorkerEvent(
+            "worker_completed",
+            analysis,
+            "native-worker",
+            $"warnings={result.Warnings.Count:0}; scaffoldRecommendations={result.ScaffoldRecommendations.Count:0}; projectMap={result.ProjectMap.Count:0}");
 
         if (result.Warnings.Count > 0)
         {
@@ -1040,16 +1088,35 @@ public sealed class WorkspaceAnalysisService
         }
     }
 
-    private static async Task DetectTypeScriptWorkerAsync(
+    private async Task DetectTypeScriptWorkerAsync(
         WorkspaceAnalysis analysis,
         List<string> frameworks,
         CancellationToken ct)
     {
-        var result = await new TypeScriptWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
-        if (result == null)
+        RecordWorkerEvent("worker_started", analysis, "typescript-worker", "Starting JavaScript/TypeScript worker analysis.");
+        TypeScriptWorkerResult? result;
+        try
         {
+            result = await new TypeScriptWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException)
+        {
+            RecordWorkerEvent("worker_failed", analysis, "typescript-worker", ex.Message, ex);
+            analysis.Hints.Add($"JavaScript/TypeScript worker failed: {ex.Message}");
             return;
         }
+
+        if (result == null)
+        {
+            RecordWorkerEvent("worker_skipped", analysis, "typescript-worker", "Worker returned no result. The script may be missing, node may be unavailable, or the workspace path was unavailable.");
+            return;
+        }
+
+        RecordWorkerEvent(
+            "worker_completed",
+            analysis,
+            "typescript-worker",
+            $"packages={result.Packages.Count:0}; symbols={result.Symbols.Count:0}; imports={result.Imports.Count:0}; npmScripts={result.NpmScripts.Count:0}; warnings={result.Warnings.Count:0}; scaffoldRecommendations={result.ScaffoldRecommendations.Count:0}");
 
         if (result.Warnings.Count > 0)
         {
@@ -1195,16 +1262,35 @@ public sealed class WorkspaceAnalysisService
         }
     }
 
-    private static async Task DetectPythonWorkerAsync(
+    private async Task DetectPythonWorkerAsync(
         WorkspaceAnalysis analysis,
         List<string> frameworks,
         CancellationToken ct)
     {
-        var result = await new PythonWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
-        if (result == null)
+        RecordWorkerEvent("worker_started", analysis, "python-worker", "Starting Python worker analysis.");
+        PythonWorkerResult? result;
+        try
         {
+            result = await new PythonWorkerHost().AnalyzeAsync(analysis.WorkspaceRoot, ct);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException)
+        {
+            RecordWorkerEvent("worker_failed", analysis, "python-worker", ex.Message, ex);
+            analysis.Hints.Add($"Python worker failed: {ex.Message}");
             return;
         }
+
+        if (result == null)
+        {
+            RecordWorkerEvent("worker_skipped", analysis, "python-worker", "Worker returned no result. The script may be missing, python may be unavailable, or the workspace path was unavailable.");
+            return;
+        }
+
+        RecordWorkerEvent(
+            "worker_completed",
+            analysis,
+            "python-worker",
+            $"pyprojects={result.Pyprojects.Count:0}; requirements={result.Requirements.Count:0}; symbols={result.Symbols.Count:0}; imports={result.Imports.Count:0}; warnings={result.Warnings.Count:0}; failureHints={result.FailureHints.Count:0}; scaffoldRecommendations={result.ScaffoldRecommendations.Count:0}");
 
         if (result.Warnings.Count > 0)
         {

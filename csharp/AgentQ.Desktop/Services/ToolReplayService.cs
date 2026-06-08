@@ -26,6 +26,12 @@ public sealed class ToolReplayService
 
         var path = Path.Combine(directory, $"{session.CreatedAt:yyyyMMdd-HHmmss-fff}-{session.Id}.json");
         var tempPath = Path.Combine(directory, $"{Guid.NewGuid():N}.tmp");
+        foreach (var entry in session.Entries)
+        {
+            entry.InputJson = SensitiveTextRedactor.Redact(entry.InputJson);
+            entry.ResultPreview = SensitiveTextRedactor.Redact(entry.ResultPreview);
+        }
+
         var json = JsonSerializer.Serialize(session, Options);
 
         try

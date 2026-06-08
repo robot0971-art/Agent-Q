@@ -11,7 +11,8 @@ public sealed class DesktopAgentRunWorkflowService(
     DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
     DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
     DesktopLearningSuggestionService learningSuggestionService,
-    DesktopTelemetryService telemetryService)
+    DesktopTelemetryService telemetryService,
+    DesktopDiagnosticsService diagnosticsService)
 {
     private const string ThinkingPlaceholder = "\uC0DD\uAC01\uC911...";
     private const string ContinuationPrompt =
@@ -32,6 +33,12 @@ public sealed class DesktopAgentRunWorkflowService(
         }
 
         _activeOperationCts?.Cancel();
+        diagnosticsService.Record(
+            "stop_requested",
+            "User requested Stop.",
+            _activeWorkspaceRoot,
+            _activeProvider,
+            _activeModel);
         RecordTelemetry(
             "stop_requested",
             _activeWorkspaceRoot,
@@ -123,6 +130,13 @@ public sealed class DesktopAgentRunWorkflowService(
         viewModel.IsBusy = true;
         viewModel.StatusText = "Generating response...";
         viewModel.AddLog("Model call started");
+        diagnosticsService.SetActiveWorkspace(viewModel.WorkspaceRoot);
+        diagnosticsService.Record(
+            "send_requested",
+            $"attachments={attachmentsForRequest.Count}; preserveLastVerificationFailure={preserveLastVerificationFailure}; prompt=\"{trimForLog(prompt)}\"",
+            viewModel.WorkspaceRoot,
+            viewModel.Provider,
+            viewModel.Model);
         foreach (var visualEvidence in VisualEvidenceService.InspectAttachments(attachmentsForRequest))
         {
             viewModel.AddRunStep(
@@ -146,6 +160,13 @@ public sealed class DesktopAgentRunWorkflowService(
             _activeWorkspaceRoot = workspaceRoot;
             _activeProvider = config.Provider;
             _activeModel = config.Model;
+            diagnosticsService.SetActiveWorkspace(workspaceRoot);
+            diagnosticsService.Record(
+                "run_started",
+                $"workMode={workMode}; timeoutSeconds={viewModel.TimeoutSeconds}; provider={config.Provider}; model={config.Model}; baseUrl={config.BaseUrl}",
+                workspaceRoot,
+                config.Provider,
+                config.Model);
             RecordTelemetry(
                 "run_started",
                 workspaceRoot,
@@ -163,6 +184,12 @@ public sealed class DesktopAgentRunWorkflowService(
                 void Record()
                 {
                     viewModel.AddLog($"Permission: {permissionEvent.DisplayText}");
+                    diagnosticsService.Record(
+                        "permission_event",
+                        permissionEvent.DisplayText,
+                        workspaceRoot,
+                        config.Provider,
+                        config.Model);
                     viewModel.AddRunStep(
                         permissionEvent.Outcome.Contains("Denied", StringComparison.OrdinalIgnoreCase) ||
                         permissionEvent.Outcome.Contains("Blocked", StringComparison.OrdinalIgnoreCase)
@@ -254,6 +281,12 @@ public sealed class DesktopAgentRunWorkflowService(
                 operationCts.Token);
             FlushAssistantDelta();
             fullText = ModelReasoningTagFilter.Strip(fullText);
+            diagnosticsService.Record(
+                "model_response_received",
+                $"chars={fullText.Length}; empty={string.IsNullOrWhiteSpace(fullText)}",
+                workspaceRoot,
+                config.Provider,
+                config.Model);
 
             if (assistantIndex >= 0 &&
                 assistantIndex < viewModel.Messages.Count &&
@@ -303,9 +336,21 @@ public sealed class DesktopAgentRunWorkflowService(
                 succeeded: true,
                 durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds,
                 detail: $"files={viewModel.FileChanges.Count}; verificationPlans={viewModel.VerificationPlans.Count}");
+            diagnosticsService.Record(
+                "run_completed",
+                $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}; files={viewModel.FileChanges.Count}; verificationPlans={viewModel.VerificationPlans.Count}; responseChars={fullText.Length}",
+                workspaceRoot,
+                config.Provider,
+                config.Model);
         }
         catch (OperationCanceledException)
         {
+            diagnosticsService.Record(
+                "run_cancelled",
+                $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}",
+                viewModel.WorkspaceRoot,
+                _activeProvider,
+                _activeModel);
             RemoveThinkingPlaceholder(viewModel);
             viewModel.AddRunStep(AgentRunState.Cancelled, "Run cancelled", "The request was cancelled or timed out.");
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
@@ -321,6 +366,13 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         catch (Exception ex)
         {
+            diagnosticsService.Record(
+                "run_exception",
+                $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}",
+                viewModel.WorkspaceRoot,
+                _activeProvider,
+                _activeModel,
+                ex);
             var providerError = DesktopProviderFailureClassifier.Describe(ex);
             viewModel.AddRunStep(AgentRunState.Failed, providerError.Title, providerError.Detail);
             AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
@@ -456,7 +508,13 @@ public sealed class DesktopAgentRunWorkflowService(
         {
             OnRunStep = (state, title, detail) =>
             {
-                callbacks.OnRunStep?.Invoke(state, title, detail);
+                SafeCallback("OnRunStep", () => callbacks.OnRunStep?.Invoke(state, title, detail), detail ?? title);
+                diagnosticsService.Record(
+                    "run_step",
+                    $"state={state}; title={title}; detail={detail ?? string.Empty}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 if (title.Contains("search retry", StringComparison.OrdinalIgnoreCase))
                 {
                     RecordTelemetry("search_retry", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
@@ -465,45 +523,139 @@ public sealed class DesktopAgentRunWorkflowService(
                 {
                     RecordTelemetry("model_route_recommended", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
                 }
+                else if (title.StartsWith("No-tool guard:", StringComparison.OrdinalIgnoreCase))
+                {
+                    RecordTelemetry(ToNoToolGuardTelemetryEventType(title), workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
+                }
+                else if (title.StartsWith("Greeting guard:", StringComparison.OrdinalIgnoreCase))
+                {
+                    RecordTelemetry("greeting_guard_retry", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: detail ?? title);
+                }
             },
             OnToolExecution = toolName =>
             {
-                callbacks.OnToolExecution?.Invoke(toolName);
+                SafeCallback("OnToolExecution", () => callbacks.OnToolExecution?.Invoke(toolName), toolName);
+                diagnosticsService.Record(
+                    "tool_started",
+                    toolName,
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("tool_started", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: true);
             },
             OnToolOutput = (toolName, output) =>
             {
-                callbacks.OnToolOutput?.Invoke(toolName, output);
+                SafeCallback("OnToolOutput", () => callbacks.OnToolOutput?.Invoke(toolName, output), $"{toolName}; chars={output.Length}");
+                diagnosticsService.Record(
+                    "tool_completed",
+                    $"{toolName}; chars={output.Length}; preview={DesktopPromptBuilder.Truncate(output.ReplaceLineEndings(" "), 500)}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("tool_completed", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: true, detail: $"{output.Length} chars");
             },
             OnToolError = (toolName, error) =>
             {
-                callbacks.OnToolError?.Invoke(toolName, error);
+                SafeCallback("OnToolError", () => callbacks.OnToolError?.Invoke(toolName, error), $"{toolName}; {error}");
+                diagnosticsService.Record(
+                    "tool_failed",
+                    $"{toolName}; error={error}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("tool_failed", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: false, isError: true, detail: error);
             },
             OnPermissionDenied = toolName =>
             {
-                callbacks.OnPermissionDenied?.Invoke(toolName);
+                SafeCallback("OnPermissionDenied", () => callbacks.OnPermissionDenied?.Invoke(toolName), toolName);
+                diagnosticsService.Record(
+                    "permission_denied",
+                    toolName,
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("permission_denied", workspaceRoot, config.Provider, config.Model, toolName: toolName, succeeded: false);
             },
             OnFileChanged = change =>
             {
-                callbacks.OnFileChanged?.Invoke(change);
+                SafeCallback("OnFileChanged", () => callbacks.OnFileChanged?.Invoke(change), $"{change.RelativePath} {change.Summary}");
+                diagnosticsService.Record(
+                    "file_changed",
+                    $"{change.RelativePath} {change.Summary}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("file_changed", workspaceRoot, config.Provider, config.Model, succeeded: true, detail: $"{change.RelativePath} {change.Summary}");
             },
             OnVerificationPlan = plan =>
             {
-                callbacks.OnVerificationPlan?.Invoke(plan);
+                SafeCallback("OnVerificationPlan", () => callbacks.OnVerificationPlan?.Invoke(plan), $"{plan.Title}; {plan.Detail}");
+                diagnosticsService.Record(
+                    "verification_plan",
+                    $"{plan.Title}; satisfied={plan.AlreadySatisfied}; {plan.Detail}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("verification_plan", workspaceRoot, config.Provider, config.Model, succeeded: plan.AlreadySatisfied, detail: plan.Detail);
             },
             OnVerificationResult = result =>
             {
-                callbacks.OnVerificationResult?.Invoke(result);
+                SafeCallback("OnVerificationResult", () => callbacks.OnVerificationResult?.Invoke(result), $"{result.Status}; {result.Summary}");
+                diagnosticsService.Record(
+                    "verification_result",
+                    $"{result.Status}; {result.Summary}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
                 RecordTelemetry("verification_result", workspaceRoot, config.Provider, config.Model, succeeded: string.Equals(result.Status, "PASSED", StringComparison.OrdinalIgnoreCase), detail: result.Summary);
             },
-            OnUsage = callbacks.OnUsage,
-            OnRequestExtendSteps = callbacks.OnRequestExtendSteps
+            OnUsage = usage => SafeCallback("OnUsage", () => callbacks.OnUsage?.Invoke(usage), usage.ToString() ?? string.Empty),
+            OnRequestExtendSteps = currentLimit =>
+            {
+                try
+                {
+                    return callbacks.OnRequestExtendSteps?.Invoke(currentLimit) ?? false;
+                }
+                catch (Exception ex)
+                {
+                    diagnosticsService.Record(
+                        "ui_callback_exception",
+                        $"callback=OnRequestExtendSteps; currentLimit={currentLimit}",
+                        workspaceRoot,
+                        config.Provider,
+                        config.Model,
+                        ex);
+                    return false;
+                }
+            }
         };
+
+        void SafeCallback(string callbackName, Action action, string detail)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                diagnosticsService.Record(
+                    "ui_callback_exception",
+                    $"callback={callbackName}; detail={DesktopPromptBuilder.Truncate(detail.ReplaceLineEndings(" "), 500)}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model,
+                    ex);
+            }
+        }
+    }
+
+    private static string ToNoToolGuardTelemetryEventType(string title)
+    {
+        var suffix = title["No-tool guard:".Length..].Trim().ToLowerInvariant();
+        suffix = suffix.Replace(' ', '_').Replace('-', '_');
+        return string.IsNullOrWhiteSpace(suffix)
+            ? "no_tool_guard"
+            : $"no_tool_guard_{suffix}";
     }
 
     private void RecordUsageTelemetry(
