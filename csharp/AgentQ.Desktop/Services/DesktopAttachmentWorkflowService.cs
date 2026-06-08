@@ -10,7 +10,7 @@ public static class DesktopAttachmentWorkflowService
         return new ChatAttachmentViewModel
         {
             FileName = attachment.FileName,
-            Kind = attachment.IsImage ? "Image" : "Video",
+            Kind = attachment.IsImage ? "Image" : attachment.IsVideo ? "Video" : "Document",
             Path = attachment.Path
         };
     }

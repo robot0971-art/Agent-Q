@@ -9,16 +9,20 @@ public sealed class DesktopAttachmentSelectionService
     private static readonly string[] SupportedAttachmentExtensions =
     [
         ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif",
-        ".mp4", ".mov", ".avi", ".mkv", ".webm"
+        ".mp4", ".mov", ".avi", ".mkv", ".webm",
+        ".txt", ".md", ".markdown", ".json", ".jsonl", ".csv", ".tsv",
+        ".xml", ".yaml", ".yml", ".html", ".htm", ".css", ".js", ".jsx",
+        ".ts", ".tsx", ".cs", ".py", ".java", ".kt", ".swift", ".go",
+        ".rs", ".sql", ".log"
     ];
 
     public void SelectAttachments(Window owner, MainViewModel viewModel, ICollection<DesktopAttachment> attachments)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Select images or videos",
+            Title = "Select attachments",
             Multiselect = true,
-            Filter = "Images/Videos|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm|All files|*.*"
+            Filter = "Supported attachments|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm;*.txt;*.md;*.markdown;*.json;*.jsonl;*.csv;*.tsv;*.xml;*.yaml;*.yml;*.html;*.htm;*.css;*.js;*.jsx;*.ts;*.tsx;*.cs;*.py;*.java;*.kt;*.swift;*.go;*.rs;*.sql;*.log|Images/Videos|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.mp4;*.mov;*.avi;*.mkv;*.webm|Text documents|*.txt;*.md;*.markdown;*.json;*.jsonl;*.csv;*.tsv;*.xml;*.yaml;*.yml;*.html;*.htm;*.css;*.js;*.jsx;*.ts;*.tsx;*.cs;*.py;*.java;*.kt;*.swift;*.go;*.rs;*.sql;*.log|All files|*.*"
         };
 
         if (dialog.ShowDialog(owner) != true)
@@ -80,6 +84,25 @@ public sealed class DesktopAttachmentSelectionService
             ".avi" => "video/x-msvideo",
             ".mkv" => "video/x-matroska",
             ".webm" => "video/webm",
+            ".txt" or ".log" => "text/plain",
+            ".md" or ".markdown" => "text/markdown",
+            ".json" or ".jsonl" => "application/json",
+            ".csv" => "text/csv",
+            ".tsv" => "text/tab-separated-values",
+            ".xml" => "application/xml",
+            ".yaml" or ".yml" => "application/x-yaml",
+            ".html" or ".htm" => "text/html",
+            ".css" => "text/css",
+            ".js" or ".jsx" => "text/javascript",
+            ".ts" or ".tsx" => "text/typescript",
+            ".cs" => "text/x-csharp",
+            ".py" => "text/x-python",
+            ".java" => "text/x-java",
+            ".kt" => "text/x-kotlin",
+            ".swift" => "text/x-swift",
+            ".go" => "text/x-go",
+            ".rs" => "text/x-rust",
+            ".sql" => "text/x-sql",
             _ => "application/octet-stream"
         };
     }
