@@ -125,6 +125,47 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task ListDirectoryTool_HidesDotPrefixedEntriesByDefault()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath, ".agentq"));
+        await File.WriteAllTextAsync(Path.Combine(workspace.RootPath, ".env"), "secret");
+
+        var result = await new ListDirectoryTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = "."
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("isEmpty").GetBoolean());
+        var entries = root.GetProperty("entries").EnumerateArray().ToList();
+        Assert.DoesNotContain(entries, entry => entry.GetProperty("name").GetString() == ".agentq");
+        Assert.DoesNotContain(entries, entry => entry.GetProperty("name").GetString() == ".env");
+    }
+
+    [Fact]
+    public async Task ListDirectoryTool_IncludesDotPrefixedEntriesWhenRequested()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath, ".agentq"));
+
+        var result = await new ListDirectoryTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = ".",
+            ["includeHidden"] = true
+        });
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var entries = document.RootElement.GetProperty("entries").EnumerateArray().ToList();
+        Assert.Contains(entries, entry => entry.GetProperty("name").GetString() == ".agentq");
+    }
+
+    [Fact]
     public async Task ListDirectoryTool_BlocksPathsOutsideWorkspace()
     {
         using var workspace = new TemporaryWorkspace();

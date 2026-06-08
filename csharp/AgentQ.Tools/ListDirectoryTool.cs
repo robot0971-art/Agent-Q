@@ -102,7 +102,13 @@ public sealed class ListDirectoryTool : ITool
     {
         try
         {
-            return new FileInfo(path).Attributes.HasFlag(FileAttributes.Hidden);
+            var name = Path.GetFileName(path);
+            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith(".", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return File.GetAttributes(path).HasFlag(FileAttributes.Hidden);
         }
         catch
         {

@@ -146,7 +146,7 @@
                                 </ScrollViewer>
                             </TabItem>
                             <TabItem Header="File">
-                                <TextBox Text="{Binding SelectedFileChange.SourcePreviewText}"
+                                <TextBox Text="{Binding SelectedFileChange.SourcePreviewText, Mode=OneWay}"
                                          IsReadOnly="True"
                                          FontFamily="Consolas"
                                          FontSize="11"

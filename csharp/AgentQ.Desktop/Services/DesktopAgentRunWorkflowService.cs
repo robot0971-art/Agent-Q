@@ -738,8 +738,14 @@ public sealed class DesktopAgentRunWorkflowService(
 
     private static CancellationTokenSource CreateTimeout(int timeoutSeconds)
     {
-        return timeoutSeconds <= 0
+        if (timeoutSeconds <= 0)
+        {
+            return new CancellationTokenSource();
+        }
+
+        var effectiveTimeoutSeconds = Math.Max(timeoutSeconds, 120);
+        return effectiveTimeoutSeconds <= 0
             ? new CancellationTokenSource()
-            : new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            : new CancellationTokenSource(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
     }
 }
