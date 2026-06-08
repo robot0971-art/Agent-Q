@@ -21,23 +21,24 @@ public sealed class ProjectScaffoldPlanner
             };
         }
 
-        if (workspaceState is DesktopWorkspaceScaffoldState.RunnableApp or DesktopWorkspaceScaffoldState.ExistingProject)
-        {
-            return new ProjectScaffoldPlanningResult
-            {
-                IsGreenfieldRequest = true,
-                CanProceed = false,
-                ClarifyingQuestion = "This folder already contains project files. Would you like to overwrite with a new project, or add features to the existing one? (\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC0C8 \uD504\uB85C\uC81D\uD2B8\uB85C \uB36E\uC5B4\uC4F8\uC9C0, \uAE30\uC874 \uD504\uB85C\uC81D\uD2B8\uC5D0 \uAE30\uB2A5\uC744 \uCD94\uAC00\uD560\uC9C0 \uC54C\uB824\uC8FC\uC138\uC694.)",
-                Reasons = [$"Workspace state is {workspaceState}, so project scaffold execution needs user direction."]
-            };
-        }
-
         var intent = BuildIntent(normalized);
         if (string.IsNullOrWhiteSpace(intent.ProjectType))
         {
             intent.ProjectType = "generic";
             intent.Language = string.IsNullOrWhiteSpace(intent.Language) ? "javascript" : intent.Language;
             intent.Framework = string.IsNullOrWhiteSpace(intent.Framework) ? DefaultFrameworkForLanguage(intent.Language) : intent.Framework;
+        }
+
+        if (IsBareNewProjectWish(normalized, intent))
+        {
+            return new ProjectScaffoldPlanningResult
+            {
+                IsGreenfieldRequest = true,
+                CanProceed = false,
+                ClarifyingQuestion = "What kind of project should AgentQ create? Examples: React stock analysis site, portfolio homepage, Python data analysis tool, API server. (어떤 프로젝트를 만들까요? 예: React 주식 분석 사이트, 포트폴리오 홈페이지, Python 데이터 분석 도구, API 서버)",
+                Intent = intent,
+                Reasons = ["The request asks about creating a new project, but does not yet specify a project type, framework, or app form."]
+            };
         }
 
         var plan = BuildPlan(intent);
@@ -50,6 +51,25 @@ public sealed class ProjectScaffoldPlanner
                 ClarifyingQuestion = $"A {intent.ProjectType} project is possible. Please tell me more about the framework or app form you'd like. ({intent.ProjectType} \uD504\uB85C\uC81D\uD2B8\uB85C \uC9C4\uD589\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uC0AC\uC6A9\uD560 \uD504\uB808\uC784\uC6CC\uD06C\uB098 \uC571 \uD615\uD0DC\uB97C \uC880 \uB354 \uC54C\uB824\uC8FC\uC138\uC694.)",
                 Intent = intent,
                 Reasons = ["Project type was detected, but no deterministic scaffold plan matched it."]
+            };
+        }
+
+        if (workspaceState is DesktopWorkspaceScaffoldState.RunnableApp or DesktopWorkspaceScaffoldState.ExistingProject)
+        {
+            var projectDirectory = BuildSafeProjectDirectoryName(intent);
+            plan = PrefixPlan(projectDirectory, plan);
+            return new ProjectScaffoldPlanningResult
+            {
+                IsGreenfieldRequest = true,
+                CanProceed = true,
+                Intent = intent,
+                Plan = plan,
+                PlanHash = ComputePlanHash(intent, plan),
+                Reasons =
+                [
+                    $"{intent.ProjectType} scaffold plan matched deterministic rules.",
+                    $"Workspace state is {workspaceState}, so AgentQ will create the new project under {projectDirectory}/ instead of writing into the existing project root."
+                ]
             };
         }
 
@@ -211,9 +231,22 @@ public sealed class ProjectScaffoldPlanner
 
             intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
+        else if (ContainsAny(normalized, "stock", "stocks", "equity", "trading", "investment",
+                     "\uC8FC\uC2DD", "\uD22C\uC790", "\uC885\uBAA9") &&
+                 ContainsAny(normalized, "analysis", "analyzer", "dashboard", "site", "website", "app",
+                     "\uBD84\uC11D", "\uB300\uC2DC\uBCF4\uB4DC", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uC571"))
+        {
+            intent.ProjectType = "stock-analysis";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+
+            intent.Framework = DefaultFrameworkForWebProject(intent.Language);
+        }
         else if (string.IsNullOrWhiteSpace(intent.Language) &&
-                 ContainsAny(normalized, "portfolio", "homepage", "website", "landingpage", "webpage",
-                "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uB79C\uB529"))
+                 ContainsAny(normalized, "portfolio", "homepage", "website", "site", "landingpage", "webpage",
+                "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uB79C\uB529"))
         {
             intent.ProjectType = ContainsAny(normalized, "landingpage", "\uB79C\uB529") ? "landing-page" : "portfolio";
             intent.Framework = "vite-react";
@@ -433,6 +466,87 @@ public sealed class ProjectScaffoldPlanner
         return null;
     }
 
+    private static ProjectScaffoldPlanModel PrefixPlan(string projectDirectory, ProjectScaffoldPlanModel plan)
+    {
+        var directory = SanitizeProjectDirectoryName(projectDirectory);
+        return new ProjectScaffoldPlanModel
+        {
+            Name = $"{plan.Name} in {directory}",
+            Files = plan.Files
+                .Select(file => $"{directory}/{NormalizePathValue(file)}")
+                .ToList(),
+            VerificationCommands = plan.VerificationCommands
+                .Select(command => command.Trim())
+                .Where(command => !string.IsNullOrWhiteSpace(command))
+                .Select(command => $"cmd /c cd {directory} && {command}")
+                .ToList()
+        };
+    }
+
+    private static string BuildSafeProjectDirectoryName(ProjectScaffoldIntentModel intent)
+    {
+        var baseName = intent.ProjectType.ToLowerInvariant() switch
+        {
+            "portfolio" => "portfolio-site",
+            "landing-page" => "landing-page",
+            "wordbook" => "wordbook-app",
+            "glossary" => "glossary-site",
+            "shopping-cart" => "shopping-cart-app",
+            "blog" => "blog-site",
+            "stock-analysis" => "stock-analysis-site",
+            "data-analysis-tool" => "data-analysis-tool",
+            "api-server" => "api-server",
+            "generic" => intent.Framework.Equals("vite-react", StringComparison.OrdinalIgnoreCase)
+                ? "react-app"
+                : $"{intent.Language}-project",
+            _ => intent.ProjectType
+        };
+
+        return SanitizeProjectDirectoryName(baseName);
+    }
+
+    private static string SanitizeProjectDirectoryName(string value)
+    {
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .ToArray();
+        var sanitized = new string(chars);
+        while (sanitized.Contains("--", StringComparison.Ordinal))
+        {
+            sanitized = sanitized.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        sanitized = sanitized.Trim('-');
+        return string.IsNullOrWhiteSpace(sanitized) ? "new-project" : sanitized;
+    }
+
+    private static bool IsBareNewProjectWish(string normalized, ProjectScaffoldIntentModel intent)
+    {
+        if (!intent.ProjectType.Equals("generic", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!ContainsAny(normalized,
+                "wanttocreate", "wanttomake", "wanttobuild",
+                "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uACE0\uC2F6\uC740\uB370",
+                "\uC0DD\uC131\uD558\uACE0\uC2F6", "\uD558\uACE0\uC2F6"))
+        {
+            return false;
+        }
+
+        return !ContainsAny(normalized,
+            "react", "vite", "nextjs", "next", "vue", "svelte", "angular",
+            "portfolio", "homepage", "website", "site", "landingpage", "webpage", "webapp",
+            "api", "dashboard", "stock", "stocks", "dataanalysis", "datatool", "blog",
+            "\uB9AC\uC561\uD2B8", "\uBE44\uD2B8", "\uB125\uC2A4\uD2B8", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB79C\uB529",
+            "\uC8FC\uC2DD", "\uBD84\uC11D", "\uB300\uC2DC\uBCF4\uB4DC", "\uBE14\uB85C\uADF8",
+            "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C");
+    }
+
     private static string DetectLanguage(string normalized)
     {
         if (ContainsAny(normalized, "typescript", "\uD0C0\uC785\uC2A4\uD06C\uB9BD\uD2B8"))
@@ -579,17 +693,29 @@ public sealed class ProjectScaffoldPlanner
         if (workspaceState is DesktopWorkspaceScaffoldState.RunnableApp or DesktopWorkspaceScaffoldState.ExistingProject)
         {
             return ContainsCreate(normalized) &&
-                   ContainsAny(normalized, "newproject", "newapp", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uD504\uB85C\uC81D\uD2B8");
+                   (HasStandaloneNewProjectPattern(normalized) || HasProjectFormKeyword(normalized));
         }
 
         // Empty workspace: allow both explicit creation verbs and standalone "new project" patterns
         var hasCreateVerb = ContainsCreate(normalized);
         var hasGreenfieldKeyword = ContainsAny(normalized, GreenfieldProjectKeywords);
-        var hasStandaloneNewProjectPattern = ContainsAny(normalized,
-            "newproject", "newapp", "newweb", "newwebsite",
-            "\uC0C8\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uC571", "\uC0C8\uC6F9", "\uC0C8\uC6F9\uC0AC\uC774\uD2B8");
+        var hasStandaloneNewProjectPattern = HasStandaloneNewProjectPattern(normalized);
 
         return (hasCreateVerb && hasGreenfieldKeyword) || hasStandaloneNewProjectPattern;
+    }
+
+    private static bool HasStandaloneNewProjectPattern(string normalized)
+    {
+        return ContainsAny(normalized,
+            "newproject", "newapp", "newweb", "newwebsite",
+            "\uC0C8\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uC571", "\uC0C8\uC6F9", "\uC0C8\uC6F9\uC0AC\uC774\uD2B8");
+    }
+
+    private static bool HasProjectFormKeyword(string normalized)
+    {
+        return ContainsAny(normalized,
+            "project", "app", "website", "site", "homepage", "landingpage", "webpage", "webapp", "api", "dashboard",
+            "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uD648\uD398\uC774\uC9C0", "\uC6F9", "\uB79C\uB529", "\uB300\uC2DC\uBCF4\uB4DC");
     }
 
     private static bool ContainsCreate(string normalized)
@@ -686,8 +812,9 @@ public sealed class ProjectScaffoldPlanner
 
     private static readonly string[] GreenfieldProjectKeywords =
     [
-        "project", "app", "portfolio", "homepage", "website", "landingpage", "webpage",
+        "project", "app", "portfolio", "homepage", "website", "site", "landingpage", "webpage",
         "api", "dataanalysis", "datatool",
+        "stock", "stocks", "equity", "trading", "investment",
         "wordbook", "vocabulary", "flashcard",
         "glossary", "terminology", "dictionary", "terms",
         "shopping", "shop", "store", "cart", "mall",
@@ -699,7 +826,8 @@ public sealed class ProjectScaffoldPlanner
         "dotnet", "csharp", "c#", "aspnet", "aspnetcore",
         "spring", "springboot", "rails", "laravel", "django", "flask",
         "flutter", "ionic", "electron", "tauri", "wasm",
-        "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC6F9", "\uB79C\uB529",
+        "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB79C\uB529",
+        "\uC8FC\uC2DD", "\uD22C\uC790", "\uC885\uBAA9",
         "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C",
         "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4", "\uC6A9\uC5B4\uC9D1", "\uC0AC\uC804",
         "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810",

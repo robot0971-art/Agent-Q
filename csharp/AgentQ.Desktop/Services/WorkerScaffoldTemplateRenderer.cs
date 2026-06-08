@@ -11,7 +11,7 @@ public static class WorkerScaffoldTemplateRenderer
         WorkerScaffoldContext? context = null)
     {
         context ??= new WorkerScaffoldContext();
-        var path = relativePath.Replace('\\', '/');
+        var path = NormalizeTemplatePath(relativePath.Replace('\\', '/'));
         var language = plan.Language.ToLowerInvariant();
         var framework = plan.Framework.ToLowerInvariant();
 
@@ -239,6 +239,40 @@ public static class WorkerScaffoldTemplateRenderer
 
         return $"# {Path.GetFileName(relativePath)}{Environment.NewLine}{Environment.NewLine}Scaffold for {feature.Pascal}.{Environment.NewLine}";
     }
+
+    private static string NormalizeTemplatePath(string path)
+    {
+        var normalized = path.Trim('/');
+        var slashIndex = normalized.IndexOf('/', StringComparison.Ordinal);
+        if (slashIndex < 0)
+        {
+            return normalized;
+        }
+
+        var firstSegment = normalized[..slashIndex];
+        if (KnownTemplateRoots.Contains(firstSegment))
+        {
+            return normalized;
+        }
+
+        return normalized[(slashIndex + 1)..];
+    }
+
+    private static readonly HashSet<string> KnownTemplateRoots = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "app",
+        "cmd",
+        "data",
+        "include",
+        "internal",
+        "migrations",
+        "R",
+        "scripts",
+        "Sources",
+        "src",
+        "Tests",
+        "tests"
+    };
 
     private static string RenderPackageJson(WorkerScaffoldName feature, string framework, string language)
     {

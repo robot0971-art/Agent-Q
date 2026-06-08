@@ -154,7 +154,7 @@ public static class ToolPermissionClassifier
 
         if (rawPlan is JsonElement element &&
             element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty(propertyName, out var jsonArray) &&
+            TryGetJsonProperty(element, propertyName, out var jsonArray) &&
             jsonArray.ValueKind == JsonValueKind.Array)
         {
             return jsonArray.EnumerateArray()
@@ -166,19 +166,57 @@ public static class ToolPermissionClassifier
         }
 
         if (rawPlan is IReadOnlyDictionary<string, object?> dictionary &&
-            dictionary.TryGetValue(propertyName, out var rawValues))
+            TryGetDictionaryValue(dictionary, propertyName, out var rawValues))
         {
             return ExtractStringList(rawValues);
         }
 
         if (rawPlan is IDictionary<string, object?> mutableDictionary &&
-            mutableDictionary.TryGetValue(propertyName, out var rawMutableValues))
+            TryGetDictionaryValue(mutableDictionary, propertyName, out var rawMutableValues))
         {
             return ExtractStringList(rawMutableValues);
         }
 
-        var property = rawPlan.GetType().GetProperty(propertyName);
+        var property = rawPlan.GetType().GetProperties()
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase));
         return property == null ? [] : ExtractStringList(property.GetValue(rawPlan));
+    }
+
+    private static bool TryGetDictionaryValue(
+        IEnumerable<KeyValuePair<string, object?>> dictionary,
+        string key,
+        out object? value)
+    {
+        foreach (var pair in dictionary)
+        {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = pair.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static bool TryGetJsonProperty(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.TryGetProperty(propertyName, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<string> ExtractStringList(object? rawValues)

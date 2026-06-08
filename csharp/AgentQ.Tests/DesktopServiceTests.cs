@@ -2720,7 +2720,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void ProjectScaffoldPlanner_DefaultsBareNewProjectToViteReactJavaScript()
+    public void ProjectScaffoldPlanner_AsksForProjectTypeForBareNewProjectWish()
     {
         var root = CreateTempDirectory();
 
@@ -2729,13 +2729,12 @@ public sealed class DesktopServiceTests
             root);
 
         Assert.True(result.IsGreenfieldRequest);
-        Assert.True(result.CanProceed);
+        Assert.False(result.CanProceed);
         Assert.Equal("generic", result.Intent?.ProjectType);
         Assert.Equal("javascript", result.Intent?.Language);
         Assert.Equal("vite-react", result.Intent?.Framework);
-        Assert.Contains("package.json", result.Plan!.Files);
-        Assert.Contains("src/main.jsx", result.Plan.Files);
-        Assert.False(string.IsNullOrWhiteSpace(result.PlanHash));
+        Assert.Null(result.Plan);
+        Assert.Contains("React", result.ClarifyingQuestion, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -2859,19 +2858,25 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void ProjectScaffoldPlanner_AsksBeforeOverwritingExistingProject()
+    public void ProjectScaffoldPlanner_CreatesSubdirectoryPlanForExistingProject()
     {
         var root = CreateTempDirectory();
         Directory.CreateDirectory(Path.Combine(root, "src"));
         File.WriteAllText(Path.Combine(root, "README.md"), "existing");
 
         var result = new ProjectScaffoldPlanner().Plan(
-            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 React \uC8FC\uC2DD \uBD84\uC11D \uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
             root);
 
         Assert.True(result.IsGreenfieldRequest);
-        Assert.False(result.CanProceed);
-        Assert.Contains("\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C", result.ClarifyingQuestion, StringComparison.Ordinal);
+        Assert.True(result.CanProceed);
+        Assert.Equal("stock-analysis", result.Intent?.ProjectType);
+        Assert.All(result.Plan!.Files, file => Assert.StartsWith("stock-analysis-site/", file, StringComparison.Ordinal));
+        Assert.Contains("stock-analysis-site/package.json", result.Plan.Files);
+        Assert.Contains("stock-analysis-site/src/main.jsx", result.Plan.Files);
+        Assert.Contains("cmd /c cd stock-analysis-site && npm install", result.Plan.VerificationCommands);
+        Assert.Contains("cmd /c cd stock-analysis-site && npm run build", result.Plan.VerificationCommands);
+        Assert.All(result.Plan.VerificationCommands, command => Assert.True(VerificationCommandPolicy.IsAllowed(command)));
     }
 
     [Fact]
@@ -2895,7 +2900,7 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
-    public void ProjectScaffoldPlanner_TreatsNonEmptyCommandArtifactAsExistingProject()
+    public void ProjectScaffoldPlanner_UsesSubdirectoryWhenNonEmptyCommandArtifactExists()
     {
         var root = CreateTempDirectory();
         File.WriteAllText(Path.Combine(root, "dotnet"), "not an empty shell artifact");
@@ -2903,8 +2908,10 @@ public sealed class DesktopServiceTests
         var result = new ProjectScaffoldPlanner().Plan("\uC0C8\uB85C\uC6B4 \uD504\uB85C\uC81D\uD2B8\uB85C \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0 \uB9CC\uB4E4\uC5B4\uC918", root);
 
         Assert.True(result.IsGreenfieldRequest);
-        Assert.False(result.CanProceed);
-        Assert.Contains("\uC774\uBBF8 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C", result.ClarifyingQuestion, StringComparison.Ordinal);
+        Assert.True(result.CanProceed);
+        Assert.All(result.Plan!.Files, file => Assert.StartsWith("portfolio-site/", file, StringComparison.Ordinal));
+        Assert.DoesNotContain("package.json", result.Plan.Files);
+        Assert.Contains("portfolio-site/package.json", result.Plan.Files);
     }
 
     [Fact]
@@ -3048,6 +3055,36 @@ public sealed class DesktopServiceTests
         Assert.Contains("import App from \"./App.jsx\"", File.ReadAllText(Path.Combine(root, "src", "main.jsx")), StringComparison.Ordinal);
         Assert.Contains("\"build\": \"vite build\"", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.Ordinal);
         Assert.DoesNotContain("typescript", File.ReadAllText(Path.Combine(root, "package.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_CreatesSubdirectoryProjectFilesInExistingWorkspace()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        File.WriteAllText(Path.Combine(root, "README.md"), "existing");
+        var registry = new ProjectScaffoldPlanRegistry();
+        var plan = new ProjectScaffoldPlanner().Plan(
+            "\uC5EC\uAE30\uC5D0 \uC0C8\uB85C\uC6B4 React \uC8FC\uC2DD \uBD84\uC11D \uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4",
+            root);
+        var record = RegisterScaffoldPlan(registry, plan.Intent!, plan.Plan!, root);
+        var tool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.False(result.IsError, result.ErrorMessage);
+        using var document = JsonDocument.Parse(result.Content);
+        var rootElement = document.RootElement;
+        Assert.True(rootElement.GetProperty("succeeded").GetBoolean());
+        var created = rootElement.GetProperty("createdFiles").EnumerateArray()
+            .Select(file => file.GetString())
+            .ToList();
+        Assert.Contains("stock-analysis-site/package.json", created);
+        Assert.Contains("stock-analysis-site/src/main.jsx", created);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+        Assert.True(File.Exists(Path.Combine(root, "stock-analysis-site", "package.json")));
+        Assert.Contains("/src/main.jsx", File.ReadAllText(Path.Combine(root, "stock-analysis-site", "index.html")), StringComparison.Ordinal);
+        Assert.Contains("import App from \"./App.jsx\"", File.ReadAllText(Path.Combine(root, "stock-analysis-site", "src", "main.jsx")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3542,6 +3579,37 @@ public sealed class DesktopServiceTests
         Assert.Contains("npm run build", assessment.Reason, StringComparison.Ordinal);
         Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
         Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionClassifier_ReadsPascalCaseProjectScaffoldPlanSnapshot()
+    {
+        var inputJson = JsonSerializer.Serialize(new
+        {
+            planId = "psc_test",
+            planHash = "hash",
+            intent = new
+            {
+                ProjectType = "generic",
+                Language = "javascript",
+                Framework = "vite-react",
+                Style = "unspecified"
+            },
+            plan = new
+            {
+                Name = "generic vite-react scaffold",
+                Files = new[] { "package.json", "index.html", "vite.config.js", "src/main.jsx" },
+                VerificationCommands = new[] { "npm install", "npm run build" }
+            },
+            overwriteExistingFiles = false
+        });
+
+        var assessment = ToolPermissionClassifier.Assess("create_project_scaffold", inputJson);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.DoesNotContain("missing approved plan", assessment.Target, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("package.json", assessment.Target, StringComparison.Ordinal);
+        Assert.Contains("npm run build", assessment.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
