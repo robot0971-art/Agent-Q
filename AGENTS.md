@@ -80,6 +80,45 @@ Do not store:
 
 한국어 요약: Execution Lesson Memory는 긴 대화 저장소가 아니라 반복 실수를 줄이는 행동 규칙 사전이다.
 
+### 5. Turn intent classification before execution
+
+Agent Q must classify each user turn before selecting an execution path.
+
+Intent types:
+
+- `Conversation`: explanation, advice, comparison, review, learning, feasibility, opinion, or design discussion.
+- `Action`: concrete requests to create, edit, delete, run, build, test, install, commit, scaffold, or otherwise mutate local state.
+- `Hybrid`: requests that require action first and then explanation, summarization, or reporting.
+- `Ambiguous`: requests that may imply action but lack a concrete target, stack, workspace, approval, or desired output.
+
+Routing rules:
+
+- Use the rule-based classifier as the safety floor, then ask the LLM for a structured second opinion when the rule result is low-confidence or `Ambiguous`.
+- The LLM classifier may refine intent, but it must not bypass safety thresholds, concrete-target checks, approvals, or deterministic executor contracts.
+- `Conversation` turns should be answered by the LLM. They must not trigger scaffold, file writes, shell commands, installs, commits, or destructive actions.
+- `Action` turns may use deterministic Desktop services or tools, with permission checks and verification.
+- `Hybrid` turns should execute the required safe action path first, then let the LLM summarize results and next steps.
+- `Ambiguous` turns must not execute writes or shell commands. Ask a clarifying question or offer concrete options.
+
+Safety rules:
+
+- When classification is uncertain, prefer `Conversation` or `Ambiguous` over `Action`.
+- Execution should happen only when the user intent and target are concrete enough.
+- File mutation, shell/server actions, installs, deletes, commits, and scaffold execution require approval even after an `Action` classification.
+- If a turn is classified as `Conversation`, any attempted write/scaffold/build/delete/install/commit action should be blocked before the permission dialog.
+
+Examples:
+
+- "새 프로젝트 만들어 보고 싶은데 어떻게 좋을까?" -> `Conversation`
+- "이런 앱 만들 수 있을까?" -> `Conversation`
+- "새 프로젝트 만들어줘" -> `Ambiguous`
+- "React 주식 분석 사이트 만들어줘" -> `Action`
+- "트리노드 후기 찾아서 정리해줘" -> `Hybrid`
+- "테스트 돌리는 방법 알려줘" -> `Conversation`
+- "테스트 돌려줘" -> `Action`
+- "이 코드 수정하고 이유 설명해줘" -> `Hybrid`
+- "아무 말도 안 했는데 왜 권한창이 떠?" -> `Conversation` / meta feedback about Agent Q
+
 ## Current Primary Paths
 
 ### Safe Scaffold Mode
@@ -207,4 +246,3 @@ The repository may contain unrelated dirty files. Treat them as user work.
 - Deterministic Desktop services should own actions that must reliably happen.
 - The LLM should assist, explain, repair, and implement after deterministic setup.
 - Execution lessons should reduce repeated mistakes without storing long conversations.
-

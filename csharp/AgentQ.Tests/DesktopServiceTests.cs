@@ -416,6 +416,81 @@ public sealed class DesktopServiceTests
         Assert.Equal(string.Empty, message);
     }
 
+    [Theory]
+    [InlineData("LOD\uAC00 \uBB50\uC57C?", TurnIntentType.Conversation)]
+    [InlineData("\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC5B4 \uBCF4\uACE0 \uC2F6\uC740\uB370 \uC5B4\uB5BB\uAC8C \uC88B\uC744\uAE4C?", TurnIntentType.Conversation)]
+    [InlineData("\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC5B4\uC918", TurnIntentType.Ambiguous)]
+    [InlineData("React \uC8FC\uC2DD \uBD84\uC11D \uC0AC\uC774\uD2B8 \uB9CC\uB4E4\uC5B4\uC918", TurnIntentType.Action)]
+    [InlineData("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918", TurnIntentType.Hybrid)]
+    [InlineData("\uD14C\uC2A4\uD2B8 \uB3CC\uB9AC\uB294 \uBC29\uBC95 \uC54C\uB824\uC918", TurnIntentType.Conversation)]
+    [InlineData("\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918", TurnIntentType.Action)]
+    public void TurnIntentClassifier_ClassifiesConversationActionHybridAndAmbiguous(
+        string userText,
+        TurnIntentType expected)
+    {
+        var result = TurnIntentClassifier.Classify(userText);
+
+        Assert.Equal(expected, result.Type);
+    }
+
+    [Fact]
+    public void TurnIntentClassifier_DoesNotPromoteConversationToLowConfidenceAction()
+    {
+        var rule = TurnIntentClassifier.Classify("\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC5B4 \uBCF4\uACE0 \uC2F6\uC740\uB370 \uC5B4\uB5BB\uAC8C \uC88B\uC744\uAE4C?");
+        Assert.True(TurnIntentClassifier.TryParseModelResponse(
+            """
+            {"type":"Action","confidence":0.81,"rationale":"contains make","actionKind":"create","requiresWrite":true,"requiresShell":false,"requiresNetwork":false,"isConcreteEnough":true}
+            """,
+            rule,
+            out var model));
+
+        var merged = TurnIntentClassifier.MergeModelClassification(rule, model);
+
+        Assert.Equal(TurnIntentType.Conversation, merged.Type);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_LlmIntentClassifier_UsesModelForLowConfidenceRule()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"type\":\"Conversation\",\"confidence\":0.94,\"rationale\":\"The user asks what LOD means.\",\"actionKind\":\"\",\"requiresWrite\":false,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":false,\"clarifyingQuestion\":\"\"}"
+                  },
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": { "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }
+            }
+            """;
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var rule = TurnIntentClassifier.Classify("LOD\uAC00 \uBB50\uC57C?");
+
+        var result = await InvokeClassifyTurnIntentWithModelAsync(
+            service,
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test"
+            },
+            "LOD\uAC00 \uBB50\uC57C?",
+            rule);
+
+        Assert.Equal(TurnIntentType.Conversation, result.Type);
+        Assert.Equal(0.94, result.Confidence, precision: 2);
+        Assert.NotNull(httpClientFactory.LastRequest);
+        Assert.Contains("LLM intent classifier", result.Rationale, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void DesktopAgentService_RetriesGenericGreetingAfterCodingTask()
     {
@@ -3169,8 +3244,8 @@ public sealed class DesktopServiceTests
 
         Assert.False(File.Exists(Path.Combine(root, "package.json")));
         Assert.False(Directory.Exists(Path.Combine(root, "src")));
-        Assert.Contains("Project scaffold creation failed", result, StringComparison.Ordinal);
-        Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Contains("What exactly should AgentQ create?", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.DoesNotContain("verify_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Null(httpClientFactory.LastRequest);
     }
@@ -3255,6 +3330,38 @@ public sealed class DesktopServiceTests
         Assert.True(results[2].IsToolError);
         Assert.Contains("Repeated read-only tool call detected", results[2].ToolResult, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(errorMessages, message => message.Contains("Repeated read-only tool call detected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_BlocksStateChangingToolForConversationIntentBeforePermission()
+    {
+        var root = CreateTempDirectory();
+        var planRegistry = new ProjectScaffoldPlanRegistry();
+        var toolRegistry = new ToolRegistry();
+        toolRegistry.Register(new DesktopProjectScaffoldCreateTool(root, planRegistry: planRegistry));
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => true);
+        var input = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["planId"] = "psc_missing",
+            ["planHash"] = "hash"
+        });
+
+        var results = await InvokeExecuteToolsAsync(
+            service,
+            [ChatContent.CreateToolUse("tool-scaffold", "create_project_scaffold", input)],
+            toolRegistry,
+            permissionEnforcer,
+            new DesktopToolCallbacks(),
+            root,
+            TurnIntentClassifier.Classify("\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC5B4 \uBCF4\uACE0 \uC2F6\uC740\uB370 \uC5B4\uB5BB\uAC8C \uC88B\uC744\uAE4C?"));
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsToolError);
+        Assert.Contains("Turn intent is Conversation", result.ToolResult, StringComparison.Ordinal);
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
     }
 
     [Fact]
@@ -9613,7 +9720,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         ToolRegistry toolRegistry,
         IPermissionEnforcer permissionEnforcer,
         DesktopToolCallbacks callbacks,
-        string workspaceRoot)
+        string workspaceRoot,
+        TurnIntentClassification? turnIntent = null)
     {
         var method = typeof(DesktopAgentService).GetMethod(
             "ExecuteToolsAsync",
@@ -9631,6 +9739,28 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             new List<string>(),
             new List<ToolReplayEntry>(),
             new Dictionary<string, int>(StringComparer.Ordinal),
+            CancellationToken.None,
+            turnIntent
+        ])!;
+        return await task;
+    }
+
+    private static async Task<TurnIntentClassification> InvokeClassifyTurnIntentWithModelAsync(
+        DesktopAgentService service,
+        ProviderConfiguration config,
+        string userText,
+        TurnIntentClassification ruleClassification)
+    {
+        var method = typeof(DesktopAgentService).GetMethod(
+            "ClassifyTurnIntentWithModelAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var task = (Task<TurnIntentClassification>)method.Invoke(service, [
+            config,
+            userText,
+            ruleClassification,
+            new DesktopToolCallbacks(),
             CancellationToken.None
         ])!;
         return await task;

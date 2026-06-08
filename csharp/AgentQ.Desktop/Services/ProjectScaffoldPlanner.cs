@@ -529,10 +529,7 @@ public sealed class ProjectScaffoldPlanner
             return false;
         }
 
-        if (!ContainsAny(normalized,
-                "wanttocreate", "wanttomake", "wanttobuild",
-                "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uACE0\uC2F6\uC740\uB370",
-                "\uC0DD\uC131\uD558\uACE0\uC2F6", "\uD558\uACE0\uC2F6"))
+        if (!IsConsultativeProjectWish(normalized))
         {
             return false;
         }
@@ -545,6 +542,18 @@ public sealed class ProjectScaffoldPlanner
             "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB79C\uB529",
             "\uC8FC\uC2DD", "\uBD84\uC11D", "\uB300\uC2DC\uBCF4\uB4DC", "\uBE14\uB85C\uADF8",
             "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C");
+    }
+
+    private static bool IsConsultativeProjectWish(string normalized)
+    {
+        return ContainsAny(normalized,
+            "wanttocreate", "wanttomake", "wanttobuild",
+            "thinkingaboutcreating", "howshould", "whatwouldbegood", "possible",
+            "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uACE0\uC2F6\uC740\uB370",
+            "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6\uC740\uB370",
+            "\uC0DD\uC131\uD558\uACE0\uC2F6", "\uD558\uACE0\uC2F6",
+            "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uC5B4\uB5BB\uAC8C\uD558\uBA74",
+            "\uAC00\uB2A5\uD560\uAE4C", "\uB420\uAE4C", "\uD574\uBCF4\uACE0\uC2F6");
     }
 
     private static string DetectLanguage(string normalized)
