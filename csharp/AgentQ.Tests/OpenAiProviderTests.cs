@@ -590,19 +590,19 @@ public sealed class OpenAiProviderTests
     /// </summary>
     private sealed class OpenAiTestServer : IAsyncDisposable
     {
-        private readonly HttpListener _listener = new();
-        private readonly Func<HttpListenerRequest, StaticResponse> _responseFactory;
+        private readonly TcpListener _listener;
+        private readonly Func<OpenAiTestRequest, StaticResponse> _responseFactory;
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _listenerTask;
 
         /// <summary>
         /// 지정된 접두사와 응답 팩토리로 테스트 서버를 생성합니다.
         /// </summary>
-        private OpenAiTestServer(string prefix, Func<HttpListenerRequest, StaticResponse> responseFactory)
+        private OpenAiTestServer(string prefix, int port, Func<OpenAiTestRequest, StaticResponse> responseFactory)
         {
             BaseUrl = prefix.TrimEnd('/');
             _responseFactory = responseFactory;
-            _listener.Prefixes.Add(prefix);
+            _listener = new TcpListener(IPAddress.Loopback, port);
             _listener.Start();
             _listenerTask = Task.Run(ListenLoopAsync);
         }
@@ -615,10 +615,10 @@ public sealed class OpenAiProviderTests
         /// <summary>
         /// 지정된 응답 팩토리로 테스트 서버를 시작합니다.
         /// </summary>
-        public static Task<OpenAiTestServer> StartAsync(Func<HttpListenerRequest, StaticResponse> responseFactory, string? pathPrefix = null)
+        public static Task<OpenAiTestServer> StartAsync(Func<OpenAiTestRequest, StaticResponse> responseFactory, string? pathPrefix = null)
         {
-            var prefix = BuildListenerPrefix(pathPrefix);
-            return Task.FromResult(new OpenAiTestServer(prefix, responseFactory));
+            var (prefix, port) = BuildListenerPrefix(pathPrefix);
+            return Task.FromResult(new OpenAiTestServer(prefix, port, responseFactory));
         }
 
         /// <summary>
@@ -636,11 +636,6 @@ public sealed class OpenAiProviderTests
             catch (OperationCanceledException)
             {
             }
-            catch (HttpListenerException)
-            {
-            }
-
-            _listener.Close();
             _cts.Dispose();
         }
 
@@ -651,12 +646,12 @@ public sealed class OpenAiProviderTests
         {
             while (!_cts.IsCancellationRequested)
             {
-                HttpListenerContext context;
+                TcpClient client;
                 try
                 {
-                    context = await _listener.GetContextAsync();
+                    client = await _listener.AcceptTcpClientAsync(_cts.Token);
                 }
-                catch (HttpListenerException)
+                catch (OperationCanceledException)
                 {
                     break;
                 }
@@ -665,20 +660,27 @@ public sealed class OpenAiProviderTests
                     break;
                 }
 
-                var response = _responseFactory(context.Request);
-                var bytes = Encoding.UTF8.GetBytes(response.Body);
-                context.Response.StatusCode = 200;
-                context.Response.ContentType = response.ContentType;
-                context.Response.ContentLength64 = bytes.Length;
-                await context.Response.OutputStream.WriteAsync(bytes);
-                context.Response.Close();
+                using (client)
+                {
+                    var stream = client.GetStream();
+                    var request = await OpenAiTestRequest.ReadAsync(stream, BaseUrl, _cts.Token);
+                    var response = _responseFactory(request);
+                    var bytes = Encoding.UTF8.GetBytes(response.Body);
+                    var headers =
+                        "HTTP/1.1 200 OK\r\n" +
+                        $"Content-Type: {response.ContentType}\r\n" +
+                        $"Content-Length: {bytes.Length}\r\n" +
+                        "Connection: close\r\n\r\n";
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), _cts.Token);
+                    await stream.WriteAsync(bytes, _cts.Token);
+                }
             }
         }
 
         /// <summary>
         /// 사용 가능한 포트로 리스너 접두사를 생성합니다.
         /// </summary>
-        private static string BuildListenerPrefix(string? pathPrefix = null)
+        private static (string Prefix, int Port) BuildListenerPrefix(string? pathPrefix = null)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -688,7 +690,58 @@ public sealed class OpenAiProviderTests
             var normalizedPath = string.IsNullOrWhiteSpace(pathPrefix)
                 ? string.Empty
                 : $"{pathPrefix.Trim('/')}/";
-            return $"http://127.0.0.1:{port}/{normalizedPath}";
+            return ($"http://127.0.0.1:{port}/{normalizedPath}", port);
+        }
+    }
+
+    private sealed class OpenAiTestRequest
+    {
+        public required Stream InputStream { get; init; }
+
+        public Encoding ContentEncoding { get; init; } = Encoding.UTF8;
+
+        public required WebHeaderCollection Headers { get; init; }
+
+        public required Uri Url { get; init; }
+
+        public static async Task<OpenAiTestRequest> ReadAsync(Stream stream, string baseUrl, CancellationToken ct)
+        {
+            using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
+            var requestLine = await reader.ReadLineAsync(ct) ?? "POST / HTTP/1.1";
+            var parts = requestLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var path = parts.Length > 1 ? parts[1] : "/";
+            var headers = new WebHeaderCollection();
+            string? line;
+            while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync(ct)))
+            {
+                var separator = line.IndexOf(':');
+                if (separator > 0)
+                {
+                    headers[line[..separator]] = line[(separator + 1)..].Trim();
+                }
+            }
+
+            var contentLength = int.TryParse(headers["Content-Length"], out var parsedLength) ? parsedLength : 0;
+            var buffer = new char[contentLength];
+            var read = 0;
+            while (read < contentLength)
+            {
+                var count = await reader.ReadAsync(buffer.AsMemory(read, contentLength - read), ct);
+                if (count == 0)
+                {
+                    break;
+                }
+
+                read += count;
+            }
+
+            var body = Encoding.UTF8.GetBytes(new string(buffer, 0, read));
+            return new OpenAiTestRequest
+            {
+                InputStream = new MemoryStream(body),
+                Headers = headers,
+                Url = new Uri("http://127.0.0.1" + path)
+            };
         }
     }
 
