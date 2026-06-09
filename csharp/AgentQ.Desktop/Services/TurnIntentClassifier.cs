@@ -132,6 +132,8 @@ public static class TurnIntentClassifier
     {
         return toolName is
             "write_file" or
+            "create_directory" or
+            "delete_path" or
             "edit_file" or
             "bash" or
             "create_project_scaffold" or
@@ -150,6 +152,16 @@ public static class TurnIntentClassifier
         TurnIntentClassification ruleClassification,
         TurnIntentClassification modelClassification)
     {
+        if (ruleClassification.Type == TurnIntentType.Conversation &&
+            modelClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+            modelClassification.RequiresWrite)
+        {
+            return ruleClassification with
+            {
+                Rationale = ruleClassification.Rationale + " Model-first classification attempted to promote a conversation turn to a write action, so AgentQ kept the non-executing classification."
+            };
+        }
+
         if (modelClassification.Type == TurnIntentType.Action &&
             ruleClassification.Type == TurnIntentType.Conversation &&
             modelClassification.Confidence < 0.92)
@@ -157,6 +169,17 @@ public static class TurnIntentClassifier
             return ruleClassification with
             {
                 Rationale = ruleClassification.Rationale + " Model-first classification attempted to promote the turn to Action, but confidence was below the safety threshold."
+            };
+        }
+
+        if (ruleClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+            ruleClassification.IsConcreteEnough &&
+            ruleClassification.RequiresWrite &&
+            modelClassification.Type is TurnIntentType.Conversation or TurnIntentType.Ambiguous)
+        {
+            return ruleClassification with
+            {
+                Rationale = ruleClassification.Rationale + " Model-first classification downgraded a concrete workspace mutation request to a non-executing turn, so AgentQ kept the concrete rule target while preserving permission checks."
             };
         }
 
@@ -173,6 +196,16 @@ public static class TurnIntentClassifier
         if (modelClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
             !modelClassification.IsConcreteEnough)
         {
+            if (ruleClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+                ruleClassification.IsConcreteEnough &&
+                ruleClassification.RequiresWrite)
+            {
+                return ruleClassification with
+                {
+                    Rationale = ruleClassification.Rationale + " Model-first classification lost a concrete workspace target, so AgentQ kept the rule-based execution target."
+                };
+            }
+
             return ruleClassification.Type == TurnIntentType.Ambiguous
                 ? ruleClassification
                 : modelClassification with
@@ -296,6 +329,12 @@ public static class TurnIntentClassifier
             return "git";
         }
 
+        if (ContainsAny(normalized, "create", "make", "generate", "write", "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC791\uC131", "\uCD94\uAC00") &&
+            ContainsAny(normalized, "file", "folder", "directory", "\uD30C\uC77C", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC"))
+        {
+            return "create";
+        }
+
         if (ContainsAny(normalized, "run", "start", "execute", "build", "test", "install", "npmrundev",
                 "\uC2E4\uD589", "\uBE4C\uB4DC", "\uD14C\uC2A4\uD2B8", "\uB3CC\uB824", "\uB744\uC6CC", "\uC124\uCE58"))
         {
@@ -344,10 +383,17 @@ public static class TurnIntentClassifier
             return false;
         }
 
+        if (action == "delete" &&
+            ContainsAny(normalized, "unnecessary", "unused", "useless", "\uBD88\uD544\uC694", "\uC548\uC4F0\uB294", "\uC4F0\uC9C0\uC54A\uB294") &&
+            !ContainsAny(normalized, "thisfolder", "currentfolder", "entirefolder", "\uC774\uD3F4\uB354", "\uD604\uC7AC\uD3F4\uB354", "\uC804\uCCB4"))
+        {
+            return false;
+        }
+
         if (action is "edit" or "delete" or "file" &&
             !ContainsAny(normalized,
-                "file", "code", "ui", "readme", "button", "this", "current",
-                "\uD30C\uC77C", "\uCF54\uB4DC", "\uBC84\uD2BC", "\uD604\uC7AC", "\uC774\uAC70"))
+                "file", "folder", "directory", "code", "ui", "readme", "button", "this", "current", "all", "everything", "entire",
+                "\uD30C\uC77C", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC", "\uCF54\uB4DC", "\uBC84\uD2BC", "\uD604\uC7AC", "\uC774\uAC70", "\uC774\uD3F4\uB354", "\uC804\uBD80", "\uBAA8\uB450", "\uC804\uCCB4", "\uB2E4"))
         {
             return false;
         }
@@ -386,7 +432,7 @@ public static class TurnIntentClassifier
     {
         return ContainsAny(normalized,
             "howis", "howabout", "ok", "good", "recommend", "better", "opinion", "feedback", "review", "analyze", "evaluate", "shouldi",
-            "\uC5B4\uB584", "\uC5B4\uB54C", "\uAD1C\uCC2E", "\uC88B\uC744\uAE4C", "\uBCC4\uB85C", "\uCD94\uCC9C", "\uB098\uC544", "\uC758\uACAC", "\uD53C\uB4DC\uBC31", "\uB9AC\uBDF0", "\uBD84\uC11D", "\uD3C9\uAC00", "\uD574\uC57C\uD560\uAE4C", "\uB9D0\uC544\uC57C\uD560\uAE4C");
+            "\uC5B4\uB584", "\uC5B4\uB54C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uAC78", "\uC5B4\uB5A4\uAC8C", "\uBB58", "\uBB50\uAC00", "\uBB34\uC5C7\uC744", "\uBCFC\uAE4C", "\uC218\uC788\uC744\uAE4C", "\uAD1C\uCC2E", "\uC88B\uC744\uAE4C", "\uBCC4\uB85C", "\uCD94\uCC9C", "\uB098\uC544", "\uC758\uACAC", "\uC0DD\uAC01", "\uBC29\uD5A5", "\uAE30\uB2A5\uC740", "\uD53C\uB4DC\uBC31", "\uB9AC\uBDF0", "\uBD84\uC11D", "\uD3C9\uAC00", "\uD574\uC57C\uD560\uAE4C", "\uB9D0\uC544\uC57C\uD560\uAE4C");
     }
 
     private static bool HasHowToSignal(string normalized)
@@ -400,7 +446,7 @@ public static class TurnIntentClassifier
     {
         return ContainsAny(normalized,
             "wanttocreate", "wanttomake", "wanttobuild", "thinkingaboutcreating", "whatwouldbegood", "possible",
-            "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uD574\uBCF4\uACE0\uC2F6", "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uAC00\uB2A5\uD560\uAE4C", "\uB420\uAE4C");
+            "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74", "\uB9CC\uB4E4\uC5B4\uBCFC\uAE4C", "\uB9CC\uB4E4\uAE4C", "\uB9CC\uB4E4\uB824\uACE0", "\uD558\uB824\uACE0\uD558\uB294\uB370", "\uD574\uBCF4\uACE0\uC2F6", "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uC5B4\uB5A4\uAC78\uB9CC\uB4E4", "\uC5B4\uB5A4\uAC8C\uB9CC\uB4E4", "\uC218\uC788\uC744\uAE4C", "\uAC00\uB2A5\uD560\uAE4C", "\uB420\uAE4C");
     }
 
     private static bool RequiresWrite(string action) => action is "create" or "edit" or "delete" or "file" or "git";
@@ -412,11 +458,11 @@ public static class TurnIntentClassifier
 
     private static string BuildClarifyingQuestion(string action) => action switch
     {
-        "create" => "What exactly should AgentQ create? Examples: React stock analysis site, portfolio homepage, Python data analysis tool, API server.",
-        "edit" => "Which file, screen, or behavior should AgentQ change?",
-        "delete" => "What exactly should AgentQ delete? Deletion requires a clear target and approval.",
-        "shell" => "Which command or task should AgentQ run?",
-        _ => "Please clarify the target and desired result before AgentQ executes anything."
+        "create" => "\uBB34\uC5C7\uC744 \uB9CC\uB4E4\uC9C0 \uC880 \uB354 \uAD6C\uCCB4\uC801\uC73C\uB85C \uC54C\uB824\uC8FC\uC138\uC694. \uC608: React \uC8FC\uC2DD \uBD84\uC11D \uC0AC\uC774\uD2B8, \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0, Python \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C, API \uC11C\uBC84.",
+        "edit" => "\uC5B4\uB290 \uD30C\uC77C, \uD654\uBA74, \uB3D9\uC791\uC744 \uBC14\uAFC0\uC9C0 \uC54C\uB824\uC8FC\uC138\uC694.",
+        "delete" => "\uC0AD\uC81C \uB300\uC0C1\uC744 \uBA85\uD655\uD788 \uC54C\uB824\uC8FC\uC138\uC694. \uC0AD\uC81C\uB294 \uC2E4\uD589 \uC804\uC5D0 \uBC18\uB4DC\uC2DC \uC2B9\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.",
+        "shell" => "\uC2E4\uD589\uD560 \uBA85\uB839\uC774\uB098 \uC791\uC5C5\uC744 \uAD6C\uCCB4\uC801\uC73C\uB85C \uC54C\uB824\uC8FC\uC138\uC694.",
+        _ => "\uC2E4\uD589\uD558\uAE30 \uC804\uC5D0 \uB300\uC0C1\uACFC \uC6D0\uD558\uB294 \uACB0\uACFC\uB97C \uC880 \uB354 \uAD6C\uCCB4\uC801\uC73C\uB85C \uC54C\uB824\uC8FC\uC138\uC694."
     };
 
     private static string Normalize(string text)

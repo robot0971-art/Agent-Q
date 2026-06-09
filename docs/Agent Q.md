@@ -214,6 +214,22 @@ AgentQ는 하나의 거대한 상태 기계라기보다 UI 상태, 실행 이벤
 - 계획 상태: `AgentPlanItem`, `WorkerExecutionContext`
 - 로컬 서버 상태: `DesktopLocalServerState`, `LocalServerSession`
 
+## 8.1. LLM-first 실행 보강
+
+현재 Desktop 실행 흐름은 기존 deterministic primary path 위에 LLM-first 보강을 얹은 상태다.
+
+핵심 변화:
+
+- Provider endpoint가 설정된 실행에서는 LLM이 최신 사용자 요청의 의미와 도구 경로를 먼저 판단한다.
+- Desktop은 workspace 경계, 위험 명령, 삭제, 네트워크/Git 위험, 승인, 증거 기록을 담당하는 최소 안전층으로 남는다.
+- transient context는 `Latest user request priority` 블록으로 시작하며, workspace snapshot, memory, scaffold hint, skill, execution lesson은 최신 요청을 대체할 수 없는 보조 자료로 명시된다.
+- `TaskContract`는 `CreateDirectory`, `CreateFile`, `RunVerification`, `SearchAndSummarize` 같은 일반 요청까지 포함한다.
+- `SearchAndSummarize`는 `web_search` 또는 read/fetch/search evidence를 요구한다.
+- 최종 답변 guard는 replay evidence를 확인한다. 예를 들어 `create_directory` 호출 없이 “폴더를 생성했습니다”라고 답하면 retry 대상이다.
+- conversation compaction은 최신 요청, 현재 task contract, required evidence, verification, error, next action 같은 줄을 보존한다.
+
+이 구조의 목표는 Desktop이 너무 이른 단계에서 LLM 판단을 막아 답변이 엉뚱하게 튀는 문제를 줄이면서도, 실제 파일 변경/삭제/명령 실행의 안전성과 검증 가능성은 유지하는 것이다.
+
 ## 9. 설계 철학
 
 Agent Q의 방향은 단순한 ChatGPT wrapper가 아니라, 실제 개발 workflow를 보조하는 데스크톱 에이전트 runtime에 가깝다.
@@ -223,4 +239,3 @@ Agent Q의 방향은 단순한 ChatGPT wrapper가 아니라, 실제 개발 workf
 1. 결정적 실행 경로: 새 프로젝트 생성, 로컬 서버 실행처럼 성공 경로가 명확해야 하는 작업은 Desktop service가 책임진다.
 2. 관찰 가능성: run step, replay, verification, confidence, lesson memory로 행동 근거를 남긴다.
 3. 반복 실수 감소: 긴 대화 저장보다 실행 교훈을 저장해 같은 실패 패턴을 줄인다.
-

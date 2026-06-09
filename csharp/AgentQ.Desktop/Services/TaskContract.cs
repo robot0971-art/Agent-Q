@@ -24,8 +24,13 @@ public enum TaskContractIntent
     None,
     RunLocalServer,
     StopLocalServer,
+    DeletePath,
+    CreateDirectory,
+    CreateFile,
     CreateProject,
     ModifyCode,
+    RunVerification,
+    SearchAndSummarize,
     InspectProject,
     ExplainOrChat
 }
@@ -88,6 +93,199 @@ public static class UserIntentTranslator
             };
         }
 
+        if (IsDeletePathRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.DeletePath,
+                Confidence = 0.88,
+                Goal = "Delete the explicit workspace file or folder requested by the user.",
+                RequiredActions =
+                [
+                    "identify the explicit workspace-relative path from the user request",
+                    "inspect the workspace only if needed to confirm the target exists",
+                    "call delete_path for the explicit target instead of using shell deletion commands",
+                    "report success, missing target, or permission denial"
+                ],
+                DoneWhen =
+                [
+                    "delete_path succeeds for the requested target",
+                    "or delete_path reports that the target is missing or unsafe",
+                    "or the user denies the required delete approval"
+                ],
+                InvalidCompletions =
+                [
+                    "only listing the workspace repeatedly",
+                    "describing AgentQ or tool capabilities",
+                    "asking what to do next when the user already named the target"
+                ]
+            };
+        }
+
+        if (IsRunVerificationRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.RunVerification,
+                Confidence = 0.88,
+                Goal = "Run the requested build, test, lint, or verification command and report the concrete result.",
+                RequiredActions =
+                [
+                    "identify the requested verification command or infer the focused workspace verification command",
+                    "run the build, test, lint, or verification command with shell tools",
+                    "report pass, fail, or the concrete command error"
+                ],
+                DoneWhen =
+                [
+                    "a verification command was executed and its result was reported",
+                    "or no safe verification command could be identified and the assistant asked one focused question"
+                ],
+                InvalidCompletions =
+                [
+                    "only explaining how to run tests",
+                    "summarizing project files without running a command",
+                    "asking what to do next when the user already asked to run verification"
+                ]
+            };
+        }
+
+        if (IsCreateDirectoryRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.CreateDirectory,
+                Confidence = 0.86,
+                Goal = "Create the requested empty workspace folder.",
+                RequiredActions =
+                [
+                    "identify the explicit folder name or workspace-relative path",
+                    "call create_directory for that target",
+                    "report the created folder path or the concrete error"
+                ],
+                DoneWhen =
+                [
+                    "create_directory succeeds for the requested target",
+                    "or create_directory reports that the target is unsafe or already exists"
+                ],
+                InvalidCompletions =
+                [
+                    "only saying the folder can be created",
+                    "describing steps without calling create_directory",
+                    "asking what to do next when the user already named the folder"
+                ]
+            };
+        }
+
+        if (IsCreateFileRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.CreateFile,
+                Confidence = 0.86,
+                Goal = "Create the requested workspace file.",
+                RequiredActions =
+                [
+                    "identify the explicit file name or workspace-relative path",
+                    "call write_file for the target file",
+                    "report the created file path or the concrete error"
+                ],
+                DoneWhen =
+                [
+                    "write_file succeeds for the requested file",
+                    "or write_file reports that the target is unsafe or needs approval"
+                ],
+                InvalidCompletions =
+                [
+                    "only saying the file can be created",
+                    "showing file contents in prose without calling write_file",
+                    "asking what to do next when the user already named the file"
+                ]
+            };
+        }
+
+        if (IsModifyCodeRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.ModifyCode,
+                Confidence = 0.84,
+                Goal = "Modify the requested workspace code or file and report what changed.",
+                RequiredActions =
+                [
+                    "inspect the relevant file or search the workspace to find it",
+                    "edit the requested file with workspace mutation tools",
+                    "run focused verification when useful",
+                    "summarize the changed file and result"
+                ],
+                DoneWhen =
+                [
+                    "the requested file was edited",
+                    "or the target could not be found and the assistant asked one focused question"
+                ],
+                InvalidCompletions =
+                [
+                    "only explaining what should be changed",
+                    "providing a patch in prose without applying it",
+                    "summarizing the project without editing the target"
+                ]
+            };
+        }
+
+        if (IsSearchAndSummarizeRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.SearchAndSummarize,
+                Confidence = 0.82,
+                Goal = "Search for the requested information and summarize the findings with evidence.",
+                RequiredActions =
+                [
+                    "use search, read, fetch, or available network tools appropriate to the requested source",
+                    "collect concrete evidence before summarizing",
+                    "summarize the findings and mention any limits"
+                ],
+                DoneWhen =
+                [
+                    "evidence was gathered and summarized",
+                    "or the requested source is unavailable and that limitation is reported"
+                ],
+                InvalidCompletions =
+                [
+                    "answering from guesses without searching",
+                    "claiming to have checked without tool evidence",
+                    "asking what to search when the user already named the topic"
+                ]
+            };
+        }
+
+        if (IsCreateProjectRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.CreateProject,
+                Confidence = 0.84,
+                Goal = "Create or scaffold the requested project in the workspace.",
+                RequiredActions =
+                [
+                    "use the scaffold or file creation tools to create the project",
+                    "honor the requested stack and constraints",
+                    "run focused verification when useful",
+                    "report created files and verification result"
+                ],
+                DoneWhen =
+                [
+                    "project files were created",
+                    "or the target is ambiguous and the assistant asked one focused question"
+                ],
+                InvalidCompletions =
+                [
+                    "only describing a possible project",
+                    "saying the project will be created without creating files",
+                    "asking what to do next when the requested stack is concrete"
+                ]
+            };
+        }
+
         return new TaskContract
         {
             Intent = TaskContractIntent.None,
@@ -116,6 +314,79 @@ public static class UserIntentTranslator
             "stop", "kill", "terminate", "shutdown", "close",
             "\uB044", "\uAEBC", "\uB054", "\uC885\uB8CC", "\uC911\uC9C0", "\uB0B4\uB824", "\uB2EB");
         return hasServer && hasStopVerb;
+    }
+
+    private static bool IsDeletePathRequest(string normalized)
+    {
+        var hasDeleteVerb = ContainsAny(normalized, "delete", "remove", "erase", "\uC0AD\uC81C", "\uC9C0\uC6CC");
+        var hasTargetHint = ContainsAny(normalized,
+            "file", "folder", "directory", "path", "thisfolder", "currentfolder",
+            "\uD30C\uC77C", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC", "\uACBD\uB85C", "\uC774\uD3F4\uB354", "\uD604\uC7AC\uD3F4\uB354");
+        return hasDeleteVerb && hasTargetHint;
+    }
+
+    private static bool IsRunVerificationRequest(string normalized)
+    {
+        var hasRunVerb = ContainsAny(normalized, "run", "start", "execute", "\uB3CC\uB824", "\uC2E4\uD589", "\uD574\uC918");
+        var hasVerification = ContainsAny(normalized,
+            "test", "build", "lint", "verify", "verification", "dotnettest", "npmtest", "npmrunbuild",
+            "\uD14C\uC2A4\uD2B8", "\uBE4C\uB4DC", "\uAC80\uC99D", "\uD655\uC778");
+        var asksHow = ContainsAny(normalized, "howto", "howcan", "\uBC29\uBC95", "\uC5B4\uB5BB\uAC8C");
+        return hasRunVerb && hasVerification && !asksHow;
+    }
+
+    private static bool IsCreateDirectoryRequest(string normalized)
+    {
+        return HasExecutionCreateVerb(normalized) &&
+               ContainsAny(normalized, "folder", "directory", "dir", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC") &&
+               !IsConsultativeRequest(normalized);
+    }
+
+    private static bool IsCreateFileRequest(string normalized)
+    {
+        return HasExecutionCreateVerb(normalized) &&
+               ContainsAny(normalized, "file", ".txt", ".md", ".json", ".cs", ".js", ".ts", ".tsx", ".jsx", "\uD30C\uC77C") &&
+               !ContainsAny(normalized, "project", "\uD504\uB85C\uC81D\uD2B8") &&
+               !IsConsultativeRequest(normalized);
+    }
+
+    private static bool IsModifyCodeRequest(string normalized)
+    {
+        var hasModifyVerb = ContainsAny(normalized,
+            "fix", "edit", "modify", "update", "change", "refactor", "implement",
+            "\uACE0\uCCD0", "\uC218\uC815", "\uBCC0\uACBD", "\uBC14\uAFC0", "\uAD6C\uD604");
+        var hasTarget = ContainsAny(normalized,
+            "code", "file", "bug", "error", "function", "class", ".cs", ".js", ".ts", ".tsx", ".jsx",
+            "\uCF54\uB4DC", "\uD30C\uC77C", "\uBC84\uADF8", "\uC624\uB958", "\uD568\uC218", "\uD074\uB798\uC2A4");
+        return hasModifyVerb && hasTarget && !IsConsultativeRequest(normalized);
+    }
+
+    private static bool IsSearchAndSummarizeRequest(string normalized)
+    {
+        var hasSearch = ContainsAny(normalized, "search", "find", "lookup", "research", "\uCC3E\uC544", "\uAC80\uC0C9", "\uC870\uC0AC");
+        var hasSummary = ContainsAny(normalized, "summarize", "summary", "organize", "report", "\uC815\uB9AC", "\uC694\uC57D", "\uBCF4\uACE0");
+        return hasSearch && hasSummary && !IsConsultativeRequest(normalized);
+    }
+
+    private static bool IsCreateProjectRequest(string normalized)
+    {
+        return HasExecutionCreateVerb(normalized) &&
+               ContainsAny(normalized, "project", "app", "website", "site", "react", "vite", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8") &&
+               !IsConsultativeRequest(normalized);
+    }
+
+    private static bool HasExecutionCreateVerb(string normalized)
+    {
+        return ContainsAny(normalized,
+            "create", "make", "build", "scaffold", "generate", "write",
+            "\uB9CC\uB4E4\uC5B4\uC918", "\uB9CC\uB4E4\uC5B4\uC8FC", "\uB9CC\uB4E4\uC790", "\uC0DD\uC131\uD574\uC918", "\uC0DD\uC131\uD574\uC8FC", "\uC791\uC131\uD574\uC918");
+    }
+
+    private static bool IsConsultativeRequest(string normalized)
+    {
+        return ContainsAny(normalized,
+            "shouldi", "shouldwe", "wouldit", "isitok", "isitgood", "whatshould", "howabout",
+            "\uB9CC\uB4E4\uAE4C", "\uAD1C\uCC2E\uC744\uAE4C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uBC29\uD5A5", "\uC88B\uC744\uAE4C", "\uC5B4\uB5BB\uAC8C\uD560\uAE4C");
     }
 
     private static string Normalize(string text)
@@ -153,7 +424,9 @@ public static class TaskContractPromptBuilder
         AppendList(builder, "Required actions", contract.RequiredActions);
         AppendList(builder, "Done when", contract.DoneWhen);
         AppendList(builder, "Invalid completions", contract.InvalidCompletions);
+        AppendList(builder, "Required completion evidence", BuildRequiredEvidence(contract.Intent));
         builder.AppendLine("- Keep this contract as the completion target even after inspecting files.");
+        builder.AppendLine("- Do not produce a final success answer until the required evidence exists in this run. If the target is unclear or a safety policy blocks the action, ask one focused question or report the concrete policy/tool result.");
         return builder.ToString().TrimEnd();
     }
 
@@ -175,42 +448,137 @@ public static class TaskContractPromptBuilder
     {
         TaskContractIntent.RunLocalServer => "run_local_server",
         TaskContractIntent.StopLocalServer => "stop_local_server",
+        TaskContractIntent.DeletePath => "delete_path",
+        TaskContractIntent.CreateDirectory => "create_directory",
+        TaskContractIntent.CreateFile => "create_file",
         TaskContractIntent.CreateProject => "create_project",
         TaskContractIntent.ModifyCode => "modify_code",
+        TaskContractIntent.RunVerification => "run_verification",
+        TaskContractIntent.SearchAndSummarize => "search_and_summarize",
         TaskContractIntent.InspectProject => "inspect_project",
         TaskContractIntent.ExplainOrChat => "explain_or_chat",
         _ => "none"
+    };
+
+    private static IReadOnlyList<string> BuildRequiredEvidence(TaskContractIntent intent) => intent switch
+    {
+        TaskContractIntent.RunLocalServer =>
+        [
+            "executed command evidence for starting the server",
+            "a reachable localhost/127.0.0.1 URL or a concrete startup error"
+        ],
+        TaskContractIntent.StopLocalServer =>
+        [
+            "local server stop result from the Desktop local server service"
+        ],
+        TaskContractIntent.DeletePath =>
+        [
+            "delete_path tool result for the explicit target"
+        ],
+        TaskContractIntent.CreateDirectory =>
+        [
+            "create_directory tool result for the requested folder"
+        ],
+        TaskContractIntent.CreateFile =>
+        [
+            "write_file tool result for the requested file"
+        ],
+        TaskContractIntent.CreateProject =>
+        [
+            "scaffold or file-creation tool results",
+            "created file list and verification result when available"
+        ],
+        TaskContractIntent.ModifyCode =>
+        [
+            "read/search evidence for the target file",
+            "workspace edit tool result or recorded file change",
+            "focused verification result when useful"
+        ],
+        TaskContractIntent.RunVerification =>
+        [
+            "executed build/test/lint command",
+            "pass/fail/exit-code result or concrete command error"
+        ],
+        TaskContractIntent.SearchAndSummarize =>
+        [
+            "web_search/search/read/fetch evidence from the requested source",
+            "summary grounded in gathered evidence",
+            "or a clear limitation report when no web/search/fetch source is available"
+        ],
+        _ => []
     };
 }
 
 public static class TaskContractCompletionChecker
 {
     public static bool ShouldRetry(TaskContract contract, string assistantText, IReadOnlyList<string> executedCommands, AgentWorkMode workMode)
+        => ShouldRetry(contract, assistantText, executedCommands, workMode, []);
+
+    public static bool ShouldRetry(
+        TaskContract contract,
+        string assistantText,
+        IReadOnlyList<string> executedCommands,
+        AgentWorkMode workMode,
+        IReadOnlyList<ToolReplayEntry> replayEntries)
     {
         if (workMode == AgentWorkMode.Readonly || !contract.IsActionable)
         {
             return false;
         }
 
+        if (MissingRequiredEvidence(contract, executedCommands, replayEntries) &&
+            !LooksLikeClarificationOrConcreteLimitation(assistantText))
+        {
+            return true;
+        }
+
         return contract.Intent switch
         {
             TaskContractIntent.RunLocalServer => executedCommands.Count == 0 && LooksLikeInvalidRunServerCompletion(assistantText),
             TaskContractIntent.StopLocalServer => false,
+            TaskContractIntent.DeletePath => LooksLikeInvalidDeletePathCompletion(assistantText),
+            TaskContractIntent.CreateDirectory => LooksLikeInvalidToolActionCompletion(assistantText, "create_directory", "\uD3F4\uB354"),
+            TaskContractIntent.CreateFile => LooksLikeInvalidToolActionCompletion(assistantText, "write_file", "\uD30C\uC77C"),
+            TaskContractIntent.CreateProject => LooksLikeInvalidMutationCompletion(assistantText),
+            TaskContractIntent.ModifyCode => LooksLikeInvalidMutationCompletion(assistantText),
+            TaskContractIntent.RunVerification => executedCommands.Count == 0 && LooksLikeInvalidVerificationCompletion(assistantText),
+            TaskContractIntent.SearchAndSummarize => LooksLikeInvalidSearchCompletion(assistantText),
             _ => false
         };
     }
 
     public static bool ShouldReject(TaskContract contract, string assistantText, IReadOnlyList<string> executedCommands, AgentWorkMode workMode)
+        => ShouldReject(contract, assistantText, executedCommands, workMode, []);
+
+    public static bool ShouldReject(
+        TaskContract contract,
+        string assistantText,
+        IReadOnlyList<string> executedCommands,
+        AgentWorkMode workMode,
+        IReadOnlyList<ToolReplayEntry> replayEntries)
     {
         if (workMode == AgentWorkMode.Readonly || !contract.IsActionable)
         {
             return false;
         }
 
+        if (MissingRequiredEvidence(contract, executedCommands, replayEntries) &&
+            !LooksLikeClarificationOrConcreteLimitation(assistantText))
+        {
+            return true;
+        }
+
         return contract.Intent switch
         {
             TaskContractIntent.RunLocalServer => executedCommands.Count == 0 && LooksLikeInvalidRunServerCompletion(assistantText),
             TaskContractIntent.StopLocalServer => false,
+            TaskContractIntent.DeletePath => LooksLikeInvalidDeletePathCompletion(assistantText),
+            TaskContractIntent.CreateDirectory => LooksLikeInvalidToolActionCompletion(assistantText, "create_directory", "\uD3F4\uB354"),
+            TaskContractIntent.CreateFile => LooksLikeInvalidToolActionCompletion(assistantText, "write_file", "\uD30C\uC77C"),
+            TaskContractIntent.CreateProject => LooksLikeInvalidMutationCompletion(assistantText),
+            TaskContractIntent.ModifyCode => LooksLikeInvalidMutationCompletion(assistantText),
+            TaskContractIntent.RunVerification => executedCommands.Count == 0 && LooksLikeInvalidVerificationCompletion(assistantText),
+            TaskContractIntent.SearchAndSummarize => LooksLikeInvalidSearchCompletion(assistantText),
             _ => false
         };
     }
@@ -230,6 +598,57 @@ public static class TaskContractCompletionChecker
             return
                 "The current task contract is stop_local_server. Do not complete with a project structure summary. " +
                 "Find the active local server session for this workspace, stop it if present, then report the result.";
+        }
+
+        if (contract.Intent == TaskContractIntent.DeletePath)
+        {
+            return
+                "The current task contract is delete_path. Do not describe AgentQ and do not repeat directory listings. " +
+                "Identify the explicit target from the user's request, call delete_path for that target, then report the result. " +
+                "If the target is missing or unsafe, report that concrete delete_path result.";
+        }
+
+        if (contract.Intent == TaskContractIntent.CreateDirectory)
+        {
+            return
+                "The current task contract is create_directory. Do not only say the folder can be created. " +
+                "Identify the requested workspace-relative folder path, call create_directory now, then report the created path or concrete error.";
+        }
+
+        if (contract.Intent == TaskContractIntent.CreateFile)
+        {
+            return
+                "The current task contract is create_file. Do not only show file contents in prose. " +
+                "Identify the requested workspace-relative file path, call write_file now, then report the created path or concrete error.";
+        }
+
+        if (contract.Intent == TaskContractIntent.CreateProject)
+        {
+            return
+                "The current task contract is create_project. Do not only describe the project. " +
+                "Use scaffold or workspace file creation tools now, honor the requested stack, then report created files and verification.";
+        }
+
+        if (contract.Intent == TaskContractIntent.ModifyCode)
+        {
+            return
+                "The current task contract is modify_code. Do not only explain the change. " +
+                "Inspect/search the target file, apply the edit with workspace mutation tools, run focused verification when useful, then summarize the changed file.";
+        }
+
+        if (contract.Intent == TaskContractIntent.RunVerification)
+        {
+            return
+                "The current task contract is run_verification. Do not only explain how to run verification. " +
+                "Run the requested build/test/lint command or the focused inferred verification command now, then report pass, fail, or the concrete command error.";
+        }
+
+        if (contract.Intent == TaskContractIntent.SearchAndSummarize)
+        {
+            return
+                "The current task contract is search_and_summarize. Do not answer from guesses. " +
+                "Use web_search or other available search/read/fetch tools to gather evidence first, then summarize the findings and limits. " +
+                "If no web search tool or source URL is available, say that concrete limitation instead of inventing findings.";
         }
 
         return "The previous answer did not satisfy the current task contract. Re-plan from the contract goal and perform the required actions before answering.";
@@ -255,6 +674,132 @@ public static class TaskContractCompletionChecker
         var reportsUrl = ContainsAny(text, "http://localhost:", "http://127.0.0.1:");
         var reportsFailure = ContainsAny(text, "failed", "error", "실패", "오류");
         return !reportsUrl && !reportsFailure && (mentionsStructure || asksNext);
+    }
+
+    private static bool LooksLikeInvalidDeletePathCompletion(string assistantText)
+    {
+        var text = assistantText.ToLowerInvariant();
+        var reportsDelete = ContainsAny(text,
+            "deleted", "removed", "delete_path", "permission denied", "not found",
+            "\uC0AD\uC81C\uD588", "\uC0AD\uC81C\uB418", "\uC9C0\uC6E0", "\uC5C6\uC2B5", "\uAC70\uBD80");
+        var describesAgent = ContainsAny(text, "agentq desktop", "agentq\uB294", "agentq desktop\uC740");
+        var asksNext = ContainsAny(text, "what would you like", "what can i help", "\uBB34\uC5C7\uC744 \uB3C4\uC640", "\uAD81\uAE08\uD558\uC2E0 \uC810");
+        return !reportsDelete && (describesAgent || asksNext || text.Length > 0);
+    }
+
+    private static bool LooksLikeInvalidToolActionCompletion(string assistantText, string successMarker, string localizedTarget)
+    {
+        var text = assistantText.ToLowerInvariant();
+        var reportsTool = ContainsAny(text, successMarker, "created", "success", "\uC0DD\uC131\uD588", "\uB9CC\uB4E4\uC5C8", localizedTarget + "\uB97C \uC0DD\uC131");
+        var onlyPromises = ContainsAny(text,
+            "can create", "will create", "i'll create", "i can make", "steps",
+            "\uC0DD\uC131\uD560 \uC218", "\uB9CC\uB4E4 \uC218", "\uB9CC\uB4E4\uACA0", "\uD558\uACA0\uC2B5\uB2C8\uB2E4");
+        var asksNext = ContainsAny(text, "what would you like", "what can i help", "\uBB34\uC5C7\uC744 \uB3C4\uC640");
+        return !reportsTool && (onlyPromises || asksNext || text.Length > 0);
+    }
+
+    private static bool LooksLikeInvalidMutationCompletion(string assistantText)
+    {
+        var text = assistantText.ToLowerInvariant();
+        var reportsMutation = ContainsAny(text,
+            "created", "modified", "updated", "changed", "edited", "write_file", "edit_file", "create_project_scaffold",
+            "\uC0DD\uC131\uD588", "\uC218\uC815\uD588", "\uBCC0\uACBD\uD588", "\uC791\uC131\uD588");
+        var onlyExplains = ContainsAny(text,
+            "can create", "will create", "i can", "would", "steps", "plan",
+            "\uAC00\uB2A5\uD569\uB2C8\uB2E4", "\uD560 \uC218", "\uD558\uACA0\uC2B5\uB2C8\uB2E4", "\uACC4\uD68D");
+        return !reportsMutation && (onlyExplains || text.Length > 0);
+    }
+
+    private static bool LooksLikeInvalidVerificationCompletion(string assistantText)
+    {
+        var text = assistantText.ToLowerInvariant();
+        var reportsResult = ContainsAny(text,
+            "passed", "failed", "exit code", "error", "build succeeded", "test result",
+            "\uD1B5\uACFC", "\uC2E4\uD328", "\uC624\uB958", "\uACB0\uACFC");
+        var onlyExplains = ContainsAny(text,
+            "run this", "you can run", "how to run", "command is",
+            "\uC2E4\uD589\uD558\uBA74", "\uB3CC\uB9AC\uBA74", "\uBA85\uB839\uC740", "\uBC29\uBC95");
+        return !reportsResult && (onlyExplains || text.Length > 0);
+    }
+
+    private static bool LooksLikeInvalidSearchCompletion(string assistantText)
+    {
+        var text = assistantText.ToLowerInvariant();
+        var reportsEvidence = ContainsAny(text,
+            "source", "according", "found", "searched", "read", "http://", "https://",
+            "\uCC3E\uC544", "\uAC80\uC0C9", "\uC870\uC0AC", "\uCD9C\uCC98", "\uADFC\uAC70");
+        var guesses = ContainsAny(text,
+            "probably", "likely", "generally", "i think", "\uC77C\uBC18\uC801", "\uC544\uB9C8", "\uC0DD\uAC01");
+        return !reportsEvidence && (guesses || text.Length > 0);
+    }
+
+    private static bool MissingRequiredEvidence(
+        TaskContract contract,
+        IReadOnlyList<string> executedCommands,
+        IReadOnlyList<ToolReplayEntry> replayEntries)
+    {
+        if (!contract.IsActionable)
+        {
+            return false;
+        }
+
+        return contract.Intent switch
+        {
+            TaskContractIntent.RunLocalServer => executedCommands.Count == 0 && !HasAnyTool(replayEntries, "bash"),
+            TaskContractIntent.StopLocalServer => false,
+            TaskContractIntent.DeletePath => !HasAnyTool(replayEntries, "delete_path"),
+            TaskContractIntent.CreateDirectory => !HasAnyTool(replayEntries, "create_directory"),
+            TaskContractIntent.CreateFile => !HasAnyTool(replayEntries, "write_file"),
+            TaskContractIntent.CreateProject => !HasAnyTool(replayEntries, "create_project_scaffold", "write_file"),
+            TaskContractIntent.ModifyCode => !HasAnyTool(replayEntries, "edit_file", "write_file"),
+            TaskContractIntent.InspectProject => !HasAnyTool(replayEntries, "read_file", "list_directory", "grep_search", "glob_search", "hybrid_search", "symbol_search", "semantic_search"),
+            TaskContractIntent.RunVerification => executedCommands.Count == 0 && !HasAnyTool(replayEntries, "bash"),
+            TaskContractIntent.SearchAndSummarize => !HasAnyTool(replayEntries, "web_search", "fetch_url", "read_file", "grep_search", "hybrid_search", "semantic_search"),
+            _ => false
+        };
+    }
+
+    private static bool HasAnyTool(IReadOnlyList<ToolReplayEntry> replayEntries, params string[] toolNames)
+    {
+        if (replayEntries.Count == 0)
+        {
+            return false;
+        }
+
+        return replayEntries.Any(entry =>
+            toolNames.Any(toolName => string.Equals(entry.ToolName, toolName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool LooksLikeClarificationOrConcreteLimitation(string assistantText)
+    {
+        if (string.IsNullOrWhiteSpace(assistantText))
+        {
+            return false;
+        }
+
+        var text = assistantText.ToLowerInvariant();
+        return text.Contains('?') ||
+            ContainsAny(
+                text,
+                "permission denied",
+                "blocked",
+                "policy",
+                "not found",
+                "failed",
+                "error",
+                "no web search",
+                "no search tool",
+                "source url",
+                "cannot access",
+                "clarify",
+                "\uAD8C\uD55C",
+                "\uAC70\uBD80",
+                "\uCC28\uB2E8",
+                "\uC5C6\uC2B5",
+                "\uC2E4\uD328",
+                "\uC624\uB958",
+                "\uBA85\uD655",
+                "\uC9C8\uBB38");
     }
 
     private static bool ContainsAny(string text, params string[] values) =>

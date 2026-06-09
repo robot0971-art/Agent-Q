@@ -342,6 +342,7 @@ public static class DesktopLocalizer
         {
             return assessment.RiskLevel switch
             {
+                PermissionRiskLevel.LowRiskProjectWrite => "AgentQ wants to create an empty workspace item.",
                 PermissionRiskLevel.ProjectWrite => "AgentQ wants to modify a project file.",
                 PermissionRiskLevel.VerificationCommand => "AgentQ wants to run a build or test command.",
                 PermissionRiskLevel.GitWrite => "AgentQ wants to change Git state.",
@@ -353,6 +354,7 @@ public static class DesktopLocalizer
 
         return assessment.RiskLevel switch
         {
+            PermissionRiskLevel.LowRiskProjectWrite => "AgentQ\uAC00 \uBE48 \uD30C\uC77C \uB610\uB294 \uBE48 \uD3F4\uB354\uB97C \uB9CC\uB4E4\uB824\uACE0 \uD569\uB2C8\uB2E4.",
             PermissionRiskLevel.ProjectWrite => "AgentQ\uAC00 \uD504\uB85C\uC81D\uD2B8 \uD30C\uC77C\uC744 \uC218\uC815\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4.",
             PermissionRiskLevel.VerificationCommand => "AgentQ\uAC00 \uBE4C\uB4DC \uB610\uB294 \uD14C\uC2A4\uD2B8 \uBA85\uB839\uC744 \uC2E4\uD589\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4.",
             PermissionRiskLevel.GitWrite => "AgentQ\uAC00 Git \uC0C1\uD0DC\uB97C \uBCC0\uACBD\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4.",

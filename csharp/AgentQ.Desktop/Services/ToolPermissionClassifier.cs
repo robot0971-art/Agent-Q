@@ -43,16 +43,31 @@ public static class ToolPermissionClassifier
     {
         return toolName switch
         {
-            "write_file" or "edit_file" => AssessFileMutation(toolName, input),
+            "write_file" or "edit_file" => AssessFileMutation(toolName, input, workspaceRoot),
+            "create_directory" => AssessDirectoryCreation(input, workspaceRoot),
+            "delete_path" => AssessPathDeletion(input, workspaceRoot),
             "create_project_scaffold" => AssessProjectScaffoldCreation(input, workspaceRoot),
             "verify_project_scaffold" => AssessProjectScaffoldVerification(input),
             "bash" => AssessShell(input),
+            "web_search" => AssessWebSearch(input),
             _ => new ToolPermissionAssessment
             {
                 RiskLevel = PermissionRiskLevel.ShellCommand,
                 Operation = toolName,
                 Reason = "This tool can affect the local workspace."
             }
+        };
+    }
+
+    private static ToolPermissionAssessment AssessWebSearch(IReadOnlyDictionary<string, object?> input)
+    {
+        var query = TryGetString(input, "query");
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.Network,
+            Operation = "Web search",
+            Target = string.IsNullOrWhiteSpace(query) ? "(missing query)" : query,
+            Reason = "This searches the public web and returns read-only evidence."
         };
     }
 
@@ -255,21 +270,90 @@ public static class ToolPermissionClassifier
         };
     }
 
-    private static ToolPermissionAssessment AssessFileMutation(string toolName, IReadOnlyDictionary<string, object?> input)
+    private static ToolPermissionAssessment AssessFileMutation(
+        string toolName,
+        IReadOnlyDictionary<string, object?> input,
+        string workspaceRoot)
     {
-        var path = input.TryGetValue("path", out var rawPath) ? rawPath as string : null;
-        var risk = IsWorkspacePath(path)
+        var path = TryGetString(input, "path");
+        var isWorkspacePath = IsWorkspacePath(path, workspaceRoot);
+        var risk = isWorkspacePath
             ? PermissionRiskLevel.ProjectWrite
             : PermissionRiskLevel.ExternalWrite;
+        if (toolName == "write_file" &&
+            isWorkspacePath &&
+            IsEmptyWrite(input) &&
+            !TargetExists(path, workspaceRoot))
+        {
+            risk = PermissionRiskLevel.LowRiskProjectWrite;
+        }
 
         return new ToolPermissionAssessment
         {
             RiskLevel = risk,
             Operation = toolName == "write_file" ? "Write file" : "Edit file",
             Target = path ?? "(missing path)",
-            Reason = risk == PermissionRiskLevel.ProjectWrite
-                ? "This will modify a file inside the selected workspace."
-                : "This may modify a file outside the selected workspace."
+            Reason = risk switch
+            {
+                PermissionRiskLevel.LowRiskProjectWrite => "This will create a new empty file inside the selected workspace without overwriting existing content.",
+                PermissionRiskLevel.ProjectWrite => "This will modify a file inside the selected workspace.",
+                _ => "This may modify a file outside the selected workspace."
+            }
+        };
+    }
+
+    private static ToolPermissionAssessment AssessDirectoryCreation(
+        IReadOnlyDictionary<string, object?> input,
+        string workspaceRoot)
+    {
+        var path = TryGetString(input, "path");
+        var isWorkspacePath = IsWorkspacePath(path, workspaceRoot);
+        var exists = TargetExists(path, workspaceRoot);
+        var risk = isWorkspacePath && !exists
+            ? PermissionRiskLevel.LowRiskProjectWrite
+            : isWorkspacePath
+                ? PermissionRiskLevel.ProjectWrite
+                : PermissionRiskLevel.ExternalWrite;
+
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = risk,
+            Operation = "Create empty folder",
+            Target = path ?? "(missing path)",
+            Reason = risk switch
+            {
+                PermissionRiskLevel.LowRiskProjectWrite => "This will create a new empty folder inside the selected workspace without overwriting existing content.",
+                PermissionRiskLevel.ProjectWrite => "This targets an existing workspace path.",
+                _ => "This may create a folder outside the selected workspace."
+            }
+        };
+    }
+
+    private static ToolPermissionAssessment AssessPathDeletion(
+        IReadOnlyDictionary<string, object?> input,
+        string workspaceRoot)
+    {
+        var path = TryGetString(input, "path");
+        var recursive = TryGetBool(input, "recursive");
+        var isWorkspacePath = IsWorkspacePath(path, workspaceRoot);
+        var targetsWorkspaceRoot = IsWorkspaceRootTarget(path, workspaceRoot);
+        var risk = !isWorkspacePath
+            ? PermissionRiskLevel.ExternalWrite
+            : targetsWorkspaceRoot || recursive
+                ? PermissionRiskLevel.Destructive
+                : PermissionRiskLevel.ProjectWrite;
+
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = risk,
+            Operation = recursive ? "Delete path recursively" : "Delete path",
+            Target = path ?? "(missing path)",
+            Reason = risk switch
+            {
+                PermissionRiskLevel.ProjectWrite => "This will delete an explicit file or empty folder inside the selected workspace.",
+                PermissionRiskLevel.Destructive => "This targets the workspace root or requests recursive deletion.",
+                _ => "This may delete a path outside the selected workspace."
+            }
         };
     }
 
@@ -384,22 +468,24 @@ public static class ToolPermissionClassifier
         return tokens[0];
     }
 
-    private static bool IsWorkspacePath(string? path)
+    private static bool IsWorkspacePath(string? path, string workspaceRoot = "")
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             return false;
         }
 
-        var workspaceRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
-        if (string.IsNullOrWhiteSpace(workspaceRoot))
+        var rootValue = string.IsNullOrWhiteSpace(workspaceRoot)
+            ? Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT")
+            : workspaceRoot;
+        if (string.IsNullOrWhiteSpace(rootValue))
         {
             return !Path.IsPathRooted(path);
         }
 
         try
         {
-            var root = Path.GetFullPath(workspaceRoot);
+            var root = Path.GetFullPath(rootValue);
             var fullPath = Path.IsPathRooted(path)
                 ? Path.GetFullPath(path)
                 : Path.GetFullPath(Path.Combine(root, path));
@@ -413,6 +499,86 @@ public static class ToolPermissionClassifier
         catch
         {
             return false;
+        }
+    }
+
+    private static bool IsEmptyWrite(IReadOnlyDictionary<string, object?> input)
+    {
+        if (!input.TryGetValue("content", out var rawContent) || rawContent == null)
+        {
+            return false;
+        }
+
+        return rawContent switch
+        {
+            string text => text.Length == 0,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString()?.Length == 0,
+            _ => false
+        };
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
+    }
+
+    private static bool TargetExists(string? path, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return true;
+        }
+
+        try
+        {
+            var root = string.IsNullOrWhiteSpace(workspaceRoot)
+                ? Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT")
+                : workspaceRoot;
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return Path.IsPathRooted(path) && (File.Exists(path) || Directory.Exists(path));
+            }
+
+            var fullPath = Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(Path.GetFullPath(root), path));
+            return File.Exists(fullPath) || Directory.Exists(fullPath);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static bool IsWorkspaceRootTarget(string? path, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            return false;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullPath = Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(root, path));
+            fullPath = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.Equals(root, fullPath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return true;
         }
     }
 

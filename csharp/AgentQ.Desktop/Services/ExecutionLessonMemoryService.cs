@@ -272,6 +272,7 @@ public sealed class ExecutionLessonMemoryService
     {
         TaskContractIntent.RunLocalServer => "run_local_server",
         TaskContractIntent.StopLocalServer => "stop_local_server",
+        TaskContractIntent.DeletePath => "delete_path",
         TaskContractIntent.CreateProject => "create_project",
         TaskContractIntent.ModifyCode => "modify_code",
         TaskContractIntent.InspectProject => "inspect_project",

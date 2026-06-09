@@ -61,12 +61,18 @@ public static class ToolPermissionPolicy
     {
         return assessment.RiskLevel switch
         {
+            PermissionRiskLevel.LowRiskProjectWrite => Allow(
+                assessment,
+                "Coding mode allows creating new empty workspace files and folders without approval."),
             PermissionRiskLevel.ProjectWrite => RequireApproval(
                 assessment,
                 "Coding mode allows workspace file edits with explicit user approval."),
-            PermissionRiskLevel.VerificationCommand => RequireApproval(
+            PermissionRiskLevel.VerificationCommand => Allow(
                 assessment,
-                "Coding mode allows build and test commands with explicit user approval."),
+                "Coding mode allows build and test verification commands without approval."),
+            PermissionRiskLevel.Network when string.Equals(assessment.Operation, "Web search", StringComparison.OrdinalIgnoreCase) => Allow(
+                assessment,
+                "Coding mode allows read-only public web search for evidence gathering."),
             _ => Block(
                 assessment,
                 "Coding mode blocks broad shell, network, and Git write operations. Switch to Full Agent mode if this is intended.")

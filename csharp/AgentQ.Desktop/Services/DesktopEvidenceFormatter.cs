@@ -44,6 +44,9 @@ public static class DesktopEvidenceFormatter
             "hybrid_search" => TryGetString(input, "query", out var hybridQuery)
                 ? $"Hybrid search query: {hybridQuery}. Reason: combined symbol, dependency graph, Git recency, project memory, semantic, keyword, and project-map ranking before reading files."
                 : "Hybrid search requested to rank candidate files across symbol, graph, Git, memory, semantic, keyword, and project-map signals.",
+            "web_search" => TryGetString(input, "query", out var webQuery)
+                ? $"Web search query: {webQuery}. Reason: public web evidence for search-and-summarize requests."
+                : "Web search requested. Reason: public web evidence for search-and-summarize requests.",
             "symbol_search" => TryGetString(input, "query", out var symbolQuery)
                 ? $"Symbol search query: {symbolQuery}. Reason: symbol index lookup to find candidate files and definitions before reading code."
                 : "Symbol search requested against the local workspace symbol index.",

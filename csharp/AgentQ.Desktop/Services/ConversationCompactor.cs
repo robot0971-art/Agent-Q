@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Text;
+using System.Text.Json;
 using AgentQ.Core.Models;
 
 namespace AgentQ.Desktop.Services;
@@ -11,6 +12,10 @@ public sealed class ConversationCompactor
 {
     private static readonly Regex ImportantToolLinePattern = new(
         @"(error|failed|failure|exception|timeout|denied|blocked|not found|exit code|status\s+\d{3}|http\s+\d{3}|[A-Za-z]:\\|/[^ \t\r\n]+|\\[^ \t\r\n]+|\b(?:npm|dotnet|python|git|node|pnpm|yarn)\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ImportantTextLinePattern = new(
+        @"(latest user request|current task contract|current completion target|required actions|done when|invalid completions|required completion evidence|planId|planHash|workspace|verification|next action|remaining|blocked|failed|error)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public List<ChatMessage> Compact(
@@ -90,6 +95,13 @@ public sealed class ConversationCompactor
                     // Shorten to last 2 paragraphs or first/last 500 chars
                     var summary = $"[Shortened text, original length: {text.Length} chars]\n" +
                                   text.Substring(0, 300) + "\n...\n" + text.Substring(text.Length - 300);
+                    var importantContext = ExtractImportantTextContext(text);
+                    if (importantContext.Count > 0)
+                    {
+                        summary += "\n\nPreserved priority context:\n" +
+                                   string.Join("\n", importantContext.Select(line => $"- {line}"));
+                    }
+
                     newMsg.Content.Add(ChatContent.CreateText(summary));
                     newMsg.CompactionSummary = $"Shortened text ({text.Length} -> {summary.Length} chars)";
                 }
@@ -116,13 +128,15 @@ public sealed class ConversationCompactor
         };
 
         var sb = new StringBuilder();
-        sb.AppendLine("[Tool Use Summary]");
+        sb.AppendLine("[Compacted Tool Use]");
 
         foreach (var content in msg.Content)
         {
             if (content.Type == ContentType.ToolUse)
             {
-                sb.AppendLine($"🛠️ Call: {content.ToolName} (ID: {content.ToolId})");
+                sb.AppendLine($"- Tool: {content.ToolName}");
+                sb.AppendLine($"- Tool use id: {content.ToolId}");
+                sb.AppendLine($"- Input: {FormatToolInput(content.ToolInput)}");
             }
             else if (content.Type == ContentType.Text && !string.IsNullOrEmpty(content.Text))
             {
@@ -145,13 +159,13 @@ public sealed class ConversationCompactor
         };
 
         var sb = new StringBuilder();
-        sb.AppendLine("[Tool Result Summary]");
+        sb.AppendLine("[Compacted Tool Result]");
 
         foreach (var content in msg.Content)
         {
             if (content.Type == ContentType.ToolResult)
             {
-                var status = content.IsToolError == true ? "❌ Error" : "✅ Success";
+                var status = content.IsToolError == true ? "error" : "success";
                 var resultLength = content.ToolResult?.Length ?? 0;
                 var snippet = "";
                 if (resultLength > 0 && content.ToolResult != null)
@@ -165,11 +179,15 @@ public sealed class ConversationCompactor
                         snippet = snippet.Substring(0, 300) + "...";
                     }
                 }
-                sb.AppendLine($"{status} toolUseId: {content.ToolUseId}. Output length: {resultLength} chars. Preview:\n{snippet}");
+                sb.AppendLine($"- Tool use id: {content.ToolUseId}");
+                sb.AppendLine($"- Status: {status}");
+                sb.AppendLine($"- Output length: {resultLength} chars");
+                sb.AppendLine("- Preview:");
+                sb.AppendLine(snippet);
                 var importantContext = ExtractImportantToolContext(content.ToolResult);
                 if (importantContext.Count > 0)
                 {
-                    sb.AppendLine("Important context:");
+                    sb.AppendLine("Important evidence:");
                     foreach (var line in importantContext)
                     {
                         sb.AppendLine($"- {line}");
@@ -181,6 +199,30 @@ public sealed class ConversationCompactor
         newMsg.Content.Add(ChatContent.CreateText(sb.ToString()));
         newMsg.CompactionSummary = sb.ToString();
         return newMsg;
+    }
+
+    private static string FormatToolInput(object? toolInput)
+    {
+        if (toolInput == null)
+        {
+            return "{}";
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(toolInput);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                return json.Length <= 500 ? json : json[..500] + "...";
+            }
+        }
+        catch
+        {
+            // Best-effort formatting only; fall back to ToString below.
+        }
+
+        var text = toolInput.ToString() ?? string.Empty;
+        return text.Length <= 500 ? text : text[..500] + "...";
     }
 
     private static IReadOnlyList<string> ExtractImportantToolContext(string? toolResult)
@@ -197,6 +239,23 @@ public sealed class ConversationCompactor
             .Select(line => line.Length <= 240 ? line : line[..240] + "...")
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(8)
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> ExtractImportantTextContext(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        return text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && ImportantTextLinePattern.IsMatch(line))
+            .Select(line => line.Length <= 240 ? line : line[..240] + "...")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
             .ToList();
     }
 

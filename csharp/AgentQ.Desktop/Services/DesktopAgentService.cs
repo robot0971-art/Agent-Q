@@ -19,14 +19,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         Answer the user's direct request first; do not introduce AgentQ identity, model-provider details, tool inventories, or capability explanations unless the user explicitly asks about them.
         Do not begin by saying you cannot remember previous conversations, that this is a new session, or that you need to recover context; answer the current request from the visible message and available workspace evidence.
         Do not output hidden reasoning, thinking blocks, prompt fragments, or planning metadata as user-visible text.
-        For feasibility questions, answer the feasibility briefly (one sentence), then immediately inspect the workspace with list_directory or read_file before suggesting next steps. Do not end the response after stating feasibility.
-        When you find yourself saying "I need to check X first" or "\uD655\uC778\uD574\uC57C", call the appropriate inspection tool (list_directory, read_file) instead of writing another sentence. Text is not a check; tool output is.
+        You own the route for each turn: decide whether to answer directly, inspect, edit, run commands, scaffold, or ask one focused question.
+        Treat Desktop as a minimal safety layer for workspace boundaries, destructive operations, network/Git risk, approvals, and evidence recording.
+        For feasibility questions, answer the feasibility directly. If workspace evidence would materially improve the answer, inspect with read/search/list tools before suggesting next steps.
+        When you find yourself saying "I need to check X first" or "\uD655\uC778\uD574\uC57C", call the appropriate inspection tool if inspection is useful. Text is not a check; tool output is.
         If explicitly asked who developed AgentQ or who made you, answer that AgentQ was developed by robot0971-art.
         If explicitly asked whether you are Kimi, Moonshot AI, OpenAI, Anthropic, DeepSeek, or another model provider, explain that model providers are only the underlying inference engines used by AgentQ.
         If explicitly asked about the underlying model, mention the selected provider or model separately.
         Answer in Korean by default unless the user asks for another language.
         Assume the user is working on Windows. Prefer safe, concise guidance.
-        You can use tools to read files, search the workspace, edit files, write files, and run shell commands.
+        You can use tools to read files, search the workspace, create empty folders, delete explicit workspace paths, edit files, write files, and run shell commands.
         Prefer inspecting files before editing. After making code changes, run focused build or test commands when useful.
         Prefer hybrid_search for codebase discovery because it combines symbol, semantic, keyword, and project-map evidence.
         For code navigation, prefer symbol_search first when the user mentions a function, class, component, method, or likely identifier.
@@ -72,6 +74,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ProjectScaffoldPlanRegistry _projectScaffoldPlanRegistry = new();
     private readonly ExecutionLessonMemoryService _executionLessonMemoryService = new();
     private readonly DesktopLocalServerService _localServerService;
+    private readonly DesktopDiagnosticsService _diagnosticsService;
+    private readonly ITool? _webSearchTool;
     private readonly TaskExecutor _taskExecutor;
 
     public DesktopAgentService(
@@ -86,7 +90,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         WorkspaceSymbolIndexService symbolIndexService,
         WorkspaceAnalysisService workspaceAnalysisService,
         DesktopLocalServerService? localServerService = null,
-        SystemSkillService? systemSkillService = null)
+        SystemSkillService? systemSkillService = null,
+        DesktopDiagnosticsService? diagnosticsService = null,
+        ITool? webSearchTool = null)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -100,6 +106,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _workspaceAnalysisService = workspaceAnalysisService;
         _systemSkillService = systemSkillService ?? new SystemSkillService();
         _localServerService = localServerService ?? new DesktopLocalServerService(httpClientFactory);
+        _diagnosticsService = diagnosticsService ?? new DesktopDiagnosticsService();
+        _webSearchTool = webSearchTool;
         
         _taskExecutor = new TaskExecutor(
             httpClientFactory,
@@ -128,19 +136,43 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Run started", "Preparing provider and workspace context.");
         var effectiveWorkspaceRoot = ResolveWorkspaceRoot(workspaceRoot);
+        _diagnosticsService.SetActiveWorkspace(effectiveWorkspaceRoot);
+        var turnTraceId = Guid.NewGuid().ToString("N")[..12];
+        RecordDiagnostic(
+            "turn_started",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; workMode={workMode}; attachments={attachments?.Count ?? 0}; prompt=\"{DesktopPromptBuilder.Truncate(userText.ReplaceLineEndings(" "), 500)}\"");
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
         var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Planning, "Task profile", taskProfile.Label);
         var ruleTurnIntent = TurnIntentClassifier.Classify(userText);
+        RecordIntentDiagnostic(
+            "turn_intent_rule",
+            effectiveWorkspaceRoot,
+            config,
+            ruleTurnIntent,
+            $"taskKind={taskProfile.Kind}; workMode={workMode}; prompt=\"{DesktopPromptBuilder.Truncate(userText.ReplaceLineEndings(" "), 240)}\"");
         var turnIntent = await ClassifyTurnIntentWithModelAsync(config, userText, ruleTurnIntent, toolCallbacks, ct);
+        RecordIntentDiagnostic(
+            "turn_intent_effective",
+            effectiveWorkspaceRoot,
+            config,
+            turnIntent,
+            $"rule={ruleTurnIntent.Type}; taskKind={taskProfile.Kind}; workMode={workMode}");
         toolCallbacks?.OnRunStep?.Invoke(
             AgentRunState.Planning,
             $"Turn intent: {turnIntent.Type}",
             $"{turnIntent.Rationale} action={turnIntent.ActionKind}; confidence={turnIntent.Confidence:0.00}; concrete={turnIntent.IsConcreteEnough}");
         var taskContract = UserIntentTranslator.Translate(userText);
-        if (turnIntent.Type != TurnIntentType.Conversation && taskContract.IsActionable)
+        RecordDiagnostic(
+            "task_contract_translated",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; intent={taskContract.Intent}; actionable={taskContract.IsActionable}; goal=\"{DesktopPromptBuilder.Truncate(taskContract.Goal.ReplaceLineEndings(" "), 360)}\"");
+        if (taskContract.IsActionable)
         {
             toolCallbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
@@ -148,7 +180,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 taskContract.Goal);
         }
 
-        var projectScaffoldPlan = turnIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid
+        var shouldAttemptProjectScaffoldPlan =
+            turnIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid ||
+            ShouldAttemptProjectScaffoldRecovery(ruleTurnIntent, turnIntent, workMode, taskProfile.Kind);
+        var projectScaffoldPlan = shouldAttemptProjectScaffoldPlan
             ? _projectScaffoldPlanRegistry.Register(_projectScaffoldPlanner.Plan(userText, effectiveWorkspaceRoot), effectiveWorkspaceRoot)
             : new ProjectScaffoldPlanningResult
             {
@@ -156,10 +191,43 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 CanProceed = false,
                 Reasons = [$"Turn intent is {turnIntent.Type}, so scaffold planning was skipped before execution."]
             };
+        if (ShouldRecoverProjectScaffoldIntent(ruleTurnIntent, turnIntent, projectScaffoldPlan, workMode, taskProfile.Kind))
+        {
+            var previousTurnIntent = turnIntent;
+            turnIntent = ruleTurnIntent with
+            {
+                Rationale =
+                    $"{ruleTurnIntent.Rationale} LLM intent classification was unavailable, but deterministic project scaffold planning produced a registered greenfield plan, so AgentQ recovered the intent for the safe scaffold primary path.",
+                Confidence = Math.Min(ruleTurnIntent.Confidence, 0.82),
+                IsConcreteEnough = true
+            };
+            RecordDiagnostic(
+                "turn_intent_scaffold_recovered",
+                effectiveWorkspaceRoot,
+                config,
+                $"previous={previousTurnIntent.Type}; recovered={turnIntent.Type}; rule={ruleTurnIntent.Type}; planId={SafeValue(projectScaffoldPlan.PlanId)}; projectType={SafeValue(projectScaffoldPlan.Intent?.ProjectType)}; framework={SafeValue(projectScaffoldPlan.Intent?.Framework)}");
+            RecordIntentDiagnostic(
+                "turn_intent_effective",
+                effectiveWorkspaceRoot,
+                config,
+                turnIntent,
+                $"rule={ruleTurnIntent.Type}; recoveredFrom={previousTurnIntent.Type}; taskKind={taskProfile.Kind}; workMode={workMode}");
+        }
+        RecordProjectScaffoldDiagnostic(
+            "project_scaffold_plan",
+            effectiveWorkspaceRoot,
+            config,
+            projectScaffoldPlan,
+            $"effectiveIntent={turnIntent.Type}; allowsDeterministic={turnIntent.AllowsDeterministicExecution}; workMode={workMode}");
         var selectedSystemSkills = _systemSkillService.SelectRelevantSkills(userText, effectiveWorkspaceRoot, taskProfile, projectConfig);
         var skillToolUseRequired =
             turnIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
             SystemSkillService.RequiresToolUseForFileProducingTask(selectedSystemSkills, userText, taskProfile);
+        RecordDiagnostic(
+            "system_skills_selected",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; count={selectedSystemSkills.Count}; requiresToolUse={skillToolUseRequired}; skills=\"{DesktopPromptBuilder.Truncate(string.Join(", ", selectedSystemSkills.Select(skill => string.IsNullOrWhiteSpace(skill.Title) ? skill.Id : skill.Title)), 500)}\"");
         if (turnIntent.Type == TurnIntentType.Ambiguous)
         {
             var clarification = string.IsNullOrWhiteSpace(turnIntent.ClarifyingQuestion)
@@ -176,6 +244,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Clarifying,
                 "Ambiguous clarification",
                 $"question=\"{DesktopPromptBuilder.Truncate(clarification.ReplaceLineEndings(" "), 360)}\"; intent={turnIntent.Type}; action={(string.IsNullOrWhiteSpace(turnIntent.ActionKind) ? "none" : turnIntent.ActionKind)}; concrete={turnIntent.IsConcreteEnough}; reason=\"{DesktopPromptBuilder.Truncate(turnIntent.Rationale.ReplaceLineEndings(" "), 360)}\"");
+            RecordDiagnostic(
+                "turn_clarification_returned",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; source=intent; intent={turnIntent.Type}; action={turnIntent.ActionKind}; concrete={turnIntent.IsConcreteEnough}; question=\"{DesktopPromptBuilder.Truncate(clarification.ReplaceLineEndings(" "), 360)}\"");
             return clarification;
         }
 
@@ -194,6 +267,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Clarifying,
                 "Waiting for user answer",
                 string.Join(" ", projectScaffoldPlan.Reasons.DefaultIfEmpty("The project request is underspecified, so AgentQ asked a focused project-type question before calling a provider.")));
+            RecordDiagnostic(
+                "turn_clarification_returned",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; source=project_scaffold_plan; intent={turnIntent.Type}; greenfield={projectScaffoldPlan.IsGreenfieldRequest}; canProceed={projectScaffoldPlan.CanProceed}; question=\"{DesktopPromptBuilder.Truncate(clarification.ReplaceLineEndings(" "), 360)}\"");
             return clarification;
         }
 
@@ -210,6 +288,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 ? $"Current model matches route. {routingRecommendation.DisplayText}"
                 : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
         var transientContext = await BuildContextOnlyAsync(config, userText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, selectedSystemSkills, ct);
+        RecordDiagnostic(
+            "transient_context_built",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; chars={transientContext.Length}; hasContext={!string.IsNullOrWhiteSpace(transientContext)}; preview=\"{DesktopPromptBuilder.Truncate(transientContext.ReplaceLineEndings(" "), 700)}\"");
         var touchedLessons = await _projectMemoryService.TouchRelevantLocalLessonsAsync(effectiveWorkspaceRoot, userText, ct);
         if (touchedLessons.Count > 0)
         {
@@ -262,13 +345,26 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var editFailureTracker = new Dictionary<string, int>(StringComparer.Ordinal);
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
+        RecordDiagnostic(
+            "tool_registry_created",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; tools={toolRegistry.GetToolDefinitions().Count()}; names=\"{DesktopPromptBuilder.Truncate(string.Join(", ", toolRegistry.GetToolDefinitions().Select(tool => tool.Name)), 900)}\"");
         var manualFallbackRetryUsed = false;
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
         var sessionMemoryDeflectionRetryUsed = false;
 
-        if (turnIntent.AllowsDeterministicExecution &&
-            ShouldExecuteLocalServerDirectly(taskContract, workMode))
+        var desktopPrimaryExecutionEnabled = !HasConfiguredProviderEndpoint(config);
+        var shouldExecuteLocalServerDirectly = desktopPrimaryExecutionEnabled &&
+            taskContract.IsActionable &&
+            ShouldExecuteLocalServerDirectly(taskContract, workMode);
+        RecordDiagnostic(
+            "local_server_direct_decision",
+            effectiveWorkspaceRoot,
+            config,
+            $"shouldExecute={shouldExecuteLocalServerDirectly}; desktopPrimaryExecutionEnabled={desktopPrimaryExecutionEnabled}; intent={turnIntent.Type}; concrete={turnIntent.IsConcreteEnough}; taskContract={taskContract.Intent}; actionable={taskContract.IsActionable}; workMode={workMode}");
+        if (shouldExecuteLocalServerDirectly)
         {
             toolCallbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
@@ -338,12 +434,24 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 touchedLessons.Count,
                 replayEntries,
                 toolCallbacks);
+            RecordDiagnostic(
+                "turn_completed",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; path=local_server_direct; succeeded={localServerSucceeded}; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
             await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
             return builder.ToString();
         }
 
-        if (turnIntent.AllowsDeterministicExecution &&
-            ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode))
+        var shouldExecuteSafeScaffoldDirectly = desktopPrimaryExecutionEnabled &&
+            turnIntent.AllowsDeterministicExecution &&
+            ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode);
+        RecordDiagnostic(
+            "safe_scaffold_direct_decision",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; shouldExecute={shouldExecuteSafeScaffoldDirectly}; desktopPrimaryExecutionEnabled={desktopPrimaryExecutionEnabled}; intent={turnIntent.Type}; concrete={turnIntent.IsConcreteEnough}; greenfield={projectScaffoldPlan.IsGreenfieldRequest}; canProceed={projectScaffoldPlan.CanProceed}; planId={SafeValue(projectScaffoldPlan.PlanId)}; planHashPresent={!string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanHash)}; workMode={workMode}");
+        if (shouldExecuteSafeScaffoldDirectly)
         {
             toolCallbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
@@ -361,6 +469,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 replayEntries,
                 editFailureTracker,
                 ct);
+            RecordDiagnostic(
+                "safe_scaffold_primary_result",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; summary=\"{DesktopPromptBuilder.Truncate(scaffoldSummary.ReplaceLineEndings(" "), 600)}\"; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; replayEntries={replayEntries.Count}");
             builder.Clear();
             builder.Append(scaffoldSummary);
             onDelta?.Invoke(scaffoldSummary);
@@ -379,12 +492,22 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Done,
                 "Run complete",
                 "Safe scaffold mode finished after deterministic project creation.");
+            RecordDiagnostic(
+                "turn_completed",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; path=safe_scaffold_direct; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
             await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
             return builder.ToString();
         }
 
         var provider = CreateProvider(config, toolCallbacks);
         var maxToolSteps = ResolveMaxToolSteps(config, workMode);
+        RecordDiagnostic(
+            "model_loop_starting",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; provider={provider.Name}; model={ResolveModel(config, provider.DefaultModel)}; maxToolSteps={maxToolSteps}; streamDeltas={onDelta != null}");
 
         for (var step = 1; step <= maxToolSteps; step++)
         {
@@ -404,6 +527,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             var compactedList = _compactor.Compact(_messages, maxEstimatedTokens: 80_000);
             _messages.Clear();
             _messages.AddRange(compactedList);
+            RecordDiagnostic(
+                "model_turn_request",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; step={step}; messages={_messages.Count}; includeTransientContext={includeTransientContext}; transientChars={(includeTransientContext ? transientContext?.Length ?? 0 : 0)}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}");
 
             var bufferTextUntilValidated =
                 workMode != AgentWorkMode.Readonly &&
@@ -434,6 +562,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     fileChanges,
                     builder.Length));
             includeTransientContext = false;
+            RecordDiagnostic(
+                "model_turn_response",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; step={step}; textChars={response.AssistantText.Length}; toolUses={response.ToolUses.Count}; assistantContent={response.AssistantContent.Count}; textPreview=\"{DesktopPromptBuilder.Truncate(response.AssistantText.ReplaceLineEndings(" "), 900)}\"");
             if (response.ToolUses.Count == 0 &&
                 !bufferTextUntilValidated &&
                 !string.IsNullOrEmpty(response.AssistantText))
@@ -455,6 +588,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 var candidateText = bufferTextUntilValidated
                     ? response.AssistantText
                     : builder.ToString();
+                RecordDiagnostic(
+                    "model_turn_no_tool_candidate",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; concrete={turnIntent.IsConcreteEnough}; taskKind={taskProfile.Kind}; taskContract={taskContract.Intent}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 1000)}\"");
                 if (ShouldRetryEmptyResponse(candidateText, response.ToolUses.Count))
                 {
                     if (!emptyResponseRetryUsed)
@@ -468,6 +606,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             AgentRunState.Generating,
                             "Retrying empty response",
                             "The model returned no text and no tool calls.");
+                        RecordDiagnostic(
+                            "guard_retry_empty_response",
+                            effectiveWorkspaceRoot,
+                            config,
+                            $"trace={turnTraceId}; step={step}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 500)}\"");
                         continue;
                     }
 
@@ -485,6 +628,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         replayEntries,
                         toolCallbacks);
                     toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Empty model response", emptyResponseMessage);
+                    RecordDiagnostic(
+                        "turn_failed",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; reason=empty_model_response; step={step}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}");
                     await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                     return emptyResponseMessage;
                 }
@@ -502,6 +650,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         AgentRunState.Planning,
                         "Retrying with tools",
                         "Manual fallback detected before any workspace action.");
+                    RecordDiagnostic(
+                        "guard_retry_manual_fallback",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                     continue;
                 }
 
@@ -531,8 +684,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         candidateText);
 
                 if (!genericGreetingRetryUsed &&
-                    turnIntent.Type != TurnIntentType.Conversation &&
-                    TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode))
+                    TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     genericGreetingRetryUsed = true;
                     builder.Clear();
@@ -552,6 +704,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workMode,
                             taskProfile.Kind,
                             skillToolUseRequired));
+                    RecordDiagnostic(
+                        "guard_retry_task_contract",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; taskContract={taskContract.Intent}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                     continue;
                 }
 
@@ -569,23 +726,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         AgentRunState.Planning,
                         "Conversation guard: retry",
                         "The assistant deflected to session/memory context instead of answering the user's consultation question.");
+                    RecordDiagnostic(
+                        "guard_retry_session_memory_deflection",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                     continue;
                 }
 
-                if (turnIntent.Type != TurnIntentType.Conversation &&
-                    TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode))
+                if (TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     var message = $"The answer did not satisfy the current task contract ({taskContract.Intent}). Please retry; AgentQ should {taskContract.Goal}";
                     await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
-                    builder.Clear();
-                    builder.Append(message);
-                    onDelta?.Invoke(message);
-                    _messages.Add(ChatMessage.AssistantText(message));
                     toolCallbacks?.OnRunStep?.Invoke(
-                        AgentRunState.Failed,
-                        "Task contract: rejected",
+                        AgentRunState.Planning,
+                        "Task contract: warning",
                         BuildNoToolGuardDetail(
-                            "rejected",
+                            "warning",
                             $"Assistant answer did not satisfy task contract {taskContract.Intent}.",
                             userText,
                             candidateText,
@@ -594,8 +751,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workMode,
                             taskProfile.Kind,
                             skillToolUseRequired));
-                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
-                    return builder.ToString();
+                    RecordDiagnostic(
+                        "guard_warn_task_contract",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; taskContract={taskContract.Intent}; message=\"{DesktopPromptBuilder.Truncate(message.ReplaceLineEndings(" "), 500)}\"; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                 }
 
                 if (!genericGreetingRetryUsed &&
@@ -627,6 +787,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workMode,
                             taskProfile.Kind,
                             skillToolUseRequired));
+                    RecordDiagnostic(
+                        shouldRetryConversationGenericGreeting || shouldRetryGenericGreeting ? "guard_retry_greeting" : "guard_retry_no_tool",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; triggerNoTool={shouldRetryNoToolCoding}; triggerGenericGreeting={shouldRetryGenericGreeting}; triggerConversationGenericGreeting={shouldRetryConversationGenericGreeting}; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                     continue;
                 }
 
@@ -638,18 +803,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         fileChanges,
                         workMode,
                         taskProfile.Kind,
-                        skillToolUseRequired))
+                        skillToolUseRequired,
+                        HasSuccessfulMutationTool(replayEntries)))
                 {
                     var noToolCompletionMessage = BuildNoToolCompletionMessage(projectScaffoldPlan, skillToolUseRequired);
-                    builder.Clear();
-                    builder.Append(noToolCompletionMessage);
-                    onDelta?.Invoke(noToolCompletionMessage);
-                    _messages.Add(ChatMessage.AssistantText(noToolCompletionMessage));
                     toolCallbacks?.OnRunStep?.Invoke(
-                        AgentRunState.Failed,
-                        "No-tool guard: rejected",
+                        AgentRunState.Planning,
+                        "No-tool guard: warning",
                         BuildNoToolGuardDetail(
-                            "rejected",
+                            "warning",
                             "A coding task ended without tool use after retry.",
                             userText,
                             candidateText,
@@ -658,8 +820,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workMode,
                             taskProfile.Kind,
                             skillToolUseRequired));
-                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
-                    return builder.ToString();
+                    RecordDiagnostic(
+                        "guard_warn_no_tool_completion",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; message=\"{DesktopPromptBuilder.Truncate(noToolCompletionMessage.ReplaceLineEndings(" "), 500)}\"; candidatePreview=\"{DesktopPromptBuilder.Truncate(candidateText.ReplaceLineEndings(" "), 700)}\"");
                 }
 
                 if (IsAllowedClarification(userText, candidateText.ToLowerInvariant()))
@@ -674,6 +839,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         AgentRunState.Clarifying,
                         "Waiting for user answer",
                         "The project request is underspecified, so AgentQ asked a focused project-type question.");
+                    RecordDiagnostic(
+                        "turn_completed",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; outcome=clarification; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                     await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                     return builder.ToString();
                 }
@@ -700,6 +870,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         builder.Append(scaffoldText);
                         onDelta?.Invoke(scaffoldText);
                         _messages.Add(ChatMessage.AssistantText(scaffoldText));
+                        RecordDiagnostic(
+                            "turn_completed",
+                            effectiveWorkspaceRoot,
+                            config,
+                            $"trace={turnTraceId}; outcome=scaffold_primary_from_no_tool; step={step}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(scaffoldText.ReplaceLineEndings(" "), 700)}\"");
                         await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                         return builder.ToString();
                     }
@@ -772,11 +947,21 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     replayEntries,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished without more tool calls.");
+                RecordDiagnostic(
+                    "turn_completed",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; outcome=no_more_tool_calls; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
 
             executedToolCount += response.ToolUses.Count;
+            RecordDiagnostic(
+                "tool_batch_starting",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; step={step}; count={response.ToolUses.Count}; tools=\"{DesktopPromptBuilder.Truncate(string.Join(", ", response.ToolUses.Select(toolUse => toolUse.ToolName ?? string.Empty)), 500)}\"");
             toolCallbacks?.OnRunStep?.Invoke(AgentRunState.RunningTool, $"Executing {response.ToolUses.Count} tool call(s)", null);
             var toolResults = await ExecuteToolsAsync(
                 response.ToolUses,
@@ -790,7 +975,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 replayEntries,
                 editFailureTracker,
                 ct,
-                turnIntent);
+                turnIntent,
+                turnTraceId,
+                taskContract);
+            RecordDiagnostic(
+                "tool_batch_completed",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; step={step}; results={toolResults.Count}; errors={toolResults.Count(result => result.IsToolError == true)}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}");
             if (toolResults.Count > 0)
             {
                 _messages.Add(new ChatMessage
@@ -820,6 +1012,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     replayEntries,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant stopped after project scaffold file collision.");
+                RecordDiagnostic(
+                    "turn_completed",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; outcome=scaffold_collision; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
@@ -861,6 +1058,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     replayEntries,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished after permission fallback.");
+                RecordDiagnostic(
+                    "turn_completed",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; outcome=permission_fallback_scaffold; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
@@ -928,6 +1130,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     replayEntries,
                     toolCallbacks);
                 toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished after repeated read-only tool loop guard.");
+                RecordDiagnostic(
+                    "turn_completed",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; outcome=read_only_loop_guard; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
@@ -949,6 +1156,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             replayEntries,
             toolCallbacks);
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool step limit reached", stoppedMessage);
+        RecordDiagnostic(
+            "turn_failed",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; reason=max_tool_steps; maxToolSteps={maxToolSteps}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}");
         await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
         return builder.ToString();
     }
@@ -988,7 +1200,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             Name = tool.Name,
             Description = tool.Description,
             InputSchema = tool.InputSchema
-        });
+        }).ToList();
+        RecordDiagnostic(
+            "model_request_built",
+            "",
+            config,
+            $"messages={requestMessages.Count}; tools={tools.Count}; toolNames=\"{DesktopPromptBuilder.Truncate(string.Join(", ", tools.Select(tool => tool.Name)), 900)}\"; systemPromptChars={context.SystemPrompt.Length}; transientIncluded={!string.IsNullOrWhiteSpace(transientContext)}; streamTextDeltas={streamTextDeltas}; maxSteps={maxToolSteps}");
 
         await foreach (var chunk in provider.GenerateStreamAsync(context, tools, ct))
         {
@@ -1052,6 +1269,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Planning,
                 $"Intent classification: {ruleClassification.Type}",
                 FormatTurnIntentDecisionDetail(ruleClassification, null, ruleClassification, "Provider is not configured, so AgentQ used the rule safety pass as the effective intent."));
+            RecordIntentDiagnostic(
+                "llm_intent_skipped",
+                "",
+                config,
+                ruleClassification,
+                "reason=provider_not_configured; effective=rule");
             return ruleClassification;
         }
 
@@ -1096,12 +1319,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 AgentRunState.Planning,
                 "LLM intent raw response",
                 $"contentParts={response.Content.Count}; chars={responseText.Length}; preview=\"{DesktopPromptBuilder.Truncate(responseText.ReplaceLineEndings(" "), 900)}\"");
+            RecordDiagnostic(
+                "llm_intent_raw_response",
+                "",
+                config,
+                $"contentParts={response.Content.Count}; chars={responseText.Length}; preview=\"{DesktopPromptBuilder.Truncate(responseText.ReplaceLineEndings(" "), 900)}\"");
 
             if (!TurnIntentClassifier.TryParseModelResponse(responseText, ruleClassification, out var modelClassification))
             {
                 var fallback = TurnIntentClassifier.BuildModelUnavailableFallback(
                     ruleClassification,
                     "Model JSON parse failed.");
+                RecordIntentDiagnostic(
+                    "llm_intent_json_parse_failed",
+                    "",
+                    config,
+                    fallback,
+                    $"rawPreview=\"{DesktopPromptBuilder.Truncate(responseText.ReplaceLineEndings(" "), 900)}\"");
                 callbacks?.OnRunStep?.Invoke(
                     AgentRunState.Planning,
                     "LLM intent JSON parse failed",
@@ -1118,6 +1352,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             }
 
             var merged = TurnIntentClassifier.ApplySafetyRules(ruleClassification, modelClassification);
+            RecordIntentDiagnostic(
+                "llm_intent_model_result",
+                "",
+                config,
+                modelClassification,
+                $"effective={merged.Type}; rule={ruleClassification.Type}");
+            RecordIntentDiagnostic(
+                "llm_intent_effective_result",
+                "",
+                config,
+                merged,
+                $"model={modelClassification.Type}; rule={ruleClassification.Type}");
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
                 $"LLM intent result: {merged.Type}",
@@ -1137,6 +1383,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             var fallback = TurnIntentClassifier.BuildModelUnavailableFallback(
                 ruleClassification,
                 "Model classification call failed.");
+            RecordIntentDiagnostic(
+                "llm_intent_call_failed",
+                "",
+                config,
+                fallback,
+                $"exception={ex.GetType().Name}; message=\"{DesktopPromptBuilder.Truncate(ex.Message.ReplaceLineEndings(" "), 500)}\"");
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.Planning,
                 "LLM intent call exception",
@@ -1171,6 +1423,99 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             ? "none"
             : classification.ActionKind;
         return $"{classification.Type} {classification.Confidence:0.00} action={action} concrete={classification.IsConcreteEnough}";
+    }
+
+    private void RecordIntentDiagnostic(
+        string eventType,
+        string workspaceRoot,
+        ProviderConfiguration config,
+        TurnIntentClassification classification,
+        string detail = "")
+    {
+        RecordDiagnostic(
+            eventType,
+            workspaceRoot,
+            config,
+            $"{FormatIntentForRunStep(classification)}; writes={classification.RequiresWrite}; shell={classification.RequiresShell}; network={classification.RequiresNetwork}; " +
+            $"rationale=\"{DesktopPromptBuilder.Truncate(classification.Rationale.ReplaceLineEndings(" "), 360)}\"" +
+            (string.IsNullOrWhiteSpace(classification.ClarifyingQuestion)
+                ? string.Empty
+                : $"; clarifyingQuestion=\"{DesktopPromptBuilder.Truncate(classification.ClarifyingQuestion.ReplaceLineEndings(" "), 240)}\"") +
+            (string.IsNullOrWhiteSpace(detail) ? string.Empty : $"; {detail}"));
+    }
+
+    private void RecordProjectScaffoldDiagnostic(
+        string eventType,
+        string workspaceRoot,
+        ProviderConfiguration config,
+        ProjectScaffoldPlanningResult result,
+        string detail = "")
+    {
+        var files = result.Plan?.Files.Count ?? 0;
+        var commands = result.Plan?.VerificationCommands.Count ?? 0;
+        var reasons = string.Join(" | ", result.Reasons.Select(reason => reason.ReplaceLineEndings(" ")));
+        RecordDiagnostic(
+            eventType,
+            workspaceRoot,
+            config,
+            $"greenfield={result.IsGreenfieldRequest}; canProceed={result.CanProceed}; planId={SafeValue(result.PlanId)}; planHashPresent={!string.IsNullOrWhiteSpace(result.PlanHash)}; " +
+            $"projectType={SafeValue(result.Intent?.ProjectType)}; language={SafeValue(result.Intent?.Language)}; framework={SafeValue(result.Intent?.Framework)}; " +
+            $"files={files}; verificationCommands={commands}; reasons=\"{DesktopPromptBuilder.Truncate(reasons, 500)}\"" +
+            (string.IsNullOrWhiteSpace(detail) ? string.Empty : $"; {detail}"));
+    }
+
+    private void RecordDiagnostic(
+        string eventType,
+        string workspaceRoot,
+        ProviderConfiguration config,
+        string detail)
+    {
+        _diagnosticsService.Record(
+            eventType,
+            detail,
+            workspaceRoot,
+            config.Provider,
+            config.Model);
+    }
+
+    private static string SafeValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "(none)" : value.Trim();
+
+    private static bool ShouldAttemptProjectScaffoldRecovery(
+        TurnIntentClassification ruleIntent,
+        TurnIntentClassification effectiveIntent,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind)
+    {
+        return workMode != AgentWorkMode.Readonly &&
+               taskKind == DesktopTaskKind.Feature &&
+               effectiveIntent.Type == TurnIntentType.Ambiguous &&
+               IsModelUnavailableIntentFallback(effectiveIntent) &&
+               ruleIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+               ruleIntent.IsConcreteEnough &&
+               string.Equals(ruleIntent.ActionKind, "create", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldRecoverProjectScaffoldIntent(
+        TurnIntentClassification ruleIntent,
+        TurnIntentClassification effectiveIntent,
+        ProjectScaffoldPlanningResult projectScaffoldPlan,
+        AgentWorkMode workMode,
+        DesktopTaskKind taskKind)
+    {
+        return ShouldAttemptProjectScaffoldRecovery(ruleIntent, effectiveIntent, workMode, taskKind) &&
+               projectScaffoldPlan.IsGreenfieldRequest &&
+               projectScaffoldPlan.CanProceed &&
+               projectScaffoldPlan.Intent != null &&
+               projectScaffoldPlan.Plan != null &&
+               !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanId) &&
+               !string.IsNullOrWhiteSpace(projectScaffoldPlan.PlanHash);
+    }
+
+    private static bool IsModelUnavailableIntentFallback(TurnIntentClassification intent)
+    {
+        return intent.Rationale.Contains("Model JSON parse failed", StringComparison.OrdinalIgnoreCase) ||
+               intent.Rationale.Contains("Model classification call failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasConfiguredProviderEndpoint(ProviderConfiguration config)
@@ -1279,7 +1624,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (turnIntentType != TurnIntentType.Conversation ||
             string.IsNullOrWhiteSpace(userText) ||
             string.IsNullOrWhiteSpace(assistantText) ||
-            UserAskedAboutSessionOrMemory(userText))
+            (UserAskedAboutSessionOrMemory(userText) && !UserIsChallengingCurrentVisibleContext(userText)))
         {
             return false;
         }
@@ -1304,6 +1649,40 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uB2E4\uB978 \uCC3D");
     }
 
+    private static bool UserIsChallengingCurrentVisibleContext(string userText)
+    {
+        var lower = userText.ToLowerInvariant();
+        var referencesCurrentThread = ContainsAny(
+            lower,
+            "\uC704\uC5D0\uC11C",
+            "\uC704\uC5D0",
+            "\uC55E\uC5D0\uC11C",
+            "\uC55E\uC11C",
+            "\uBC29\uAE08",
+            "\uC704\uC758",
+            "\uC774 \uB300\uD654",
+            "\uC774\uB300\uD654",
+            "above",
+            "earlier in this chat",
+            "this chat");
+        var referencesPriorContent = ContainsAny(
+            lower,
+            "\uC598\uAE30",
+            "\uB9D0\uD588",
+            "\uB9D0\uD55C",
+            "\uD504\uB85C\uC81D\uD2B8",
+            "\uB0B4\uC6A9",
+            "\uC8FC\uC81C",
+            "\uBB38\uB9E5",
+            "\uAE30\uC220\uC2A4\uD0DD",
+            "\uC2A4\uD0DD",
+            "project",
+            "context",
+            "stack");
+
+        return referencesCurrentThread && referencesPriorContent;
+    }
+
     private static bool LooksLikeSessionMemoryDeflection(string assistantText)
     {
         var lower = assistantText.ToLowerInvariant();
@@ -1323,8 +1702,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uC774\uC804\uB300\uD654",
             "\uC774 \uB300\uD654\uC5D0\uC11C",
             "\uC774\uB300\uD654\uC5D0\uC11C",
+            "\uCCAB \uBC88\uC9F8 \uBA54\uC2DC\uC9C0",
+            "\uCCAB\uBC88\uC9F8 \uBA54\uC2DC\uC9C0",
+            "\uCCAB \uBA54\uC2DC\uC9C0",
+            "\uCCAB\uBA54\uC2DC\uC9C0",
+            "\uCC98\uC74C \uBC1B\uC740 \uBA54\uC2DC\uC9C0",
+            "\uCC98\uC74C\uBC1B\uC740 \uBA54\uC2DC\uC9C0",
             "\uB2E4\uB978 \uCC3D",
             "\uB2E4\uB978\uCC3D",
+            "\uBCF4\uC774\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4",
+            "\uBCF4\uC774\uC9C0\uC54A\uC2B5\uB2C8\uB2E4",
             "\uB9D0\uC500\uB4DC\uB9B0 \uB0B4\uC6A9\uC740 \uC5C6",
             "\uB530\uB85C \uB9D0\uC500\uB4DC\uB9B0 \uB0B4\uC6A9\uC740 \uC5C6",
             "\uB354 \uB9E5\uB77D",
@@ -1722,8 +2109,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     }
 
     public static string BuildConversationRetryInstruction() =>
-        "Your previous answer reset into a generic greeting or tried to use tools during a Conversation turn. " +
-        "Do not call tools. Do not ask what the user wants. Answer the latest Korean user question directly in Korean with practical advice, tradeoffs, and a suggested next step.";
+        "Your previous answer reset into a generic greeting instead of answering the user. " +
+        "Answer the latest Korean user question directly in Korean with practical advice, tradeoffs, and a suggested next step. " +
+        "You may use safe read/search tools if workspace evidence would improve the answer, but do not mutate files or run commands unless the user explicitly asked for execution.";
 
     public static string BuildNoToolCompletionMessage(
         ProjectScaffoldPlanningResult projectScaffoldPlan,
@@ -1836,29 +2224,39 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         IReadOnlyList<FileChangeRecord> fileChanges,
         AgentWorkMode workMode,
         DesktopTaskKind taskKind,
-        bool skillToolUseRequired = false)
+        bool skillToolUseRequired = false,
+        bool hasSuccessfulMutationTool = false)
     {
         if (workMode == AgentWorkMode.Readonly ||
             fileChanges.Count > 0 ||
+            hasSuccessfulMutationTool ||
             string.IsNullOrWhiteSpace(userText) ||
-            string.IsNullOrWhiteSpace(assistantText) ||
-            !IsActionableCodingTask(taskKind))
+            string.IsNullOrWhiteSpace(assistantText))
         {
             return false;
         }
 
         var userLower = userText.ToLowerInvariant();
+        var userAskedMutation = UserAskedForMutationWork(userText);
+        var userAskedWorkspace = UserAskedForWorkspaceWork(userText);
+        if (!IsActionableCodingTask(taskKind) &&
+            !userAskedMutation &&
+            !userAskedWorkspace)
+        {
+            return false;
+        }
+
         var assistantLower = assistantText.ToLowerInvariant();
         if (!skillToolUseRequired &&
             LooksLikeConsultativeCodingQuestion(userLower) &&
-            !UserAskedForWorkspaceWork(userText))
+            !userAskedWorkspace)
         {
             return false;
         }
 
         if (!skillToolUseRequired &&
-            !UserAskedForMutationWork(userText) &&
-            !UserAskedForWorkspaceWork(userText))
+            !userAskedMutation &&
+            !userAskedWorkspace)
         {
             return false;
         }
@@ -1866,6 +2264,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (IsAllowedClarification(userText, assistantLower))
         {
             return false;
+        }
+
+        if (userAskedMutation)
+        {
+            return !LooksLikeTerminalMutationReport(assistantLower);
         }
 
         return !LooksLikeWorkspaceActionSummary(assistantLower);
@@ -1942,6 +2345,28 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "i need to inspect",
             "must inspect");
 
+    private static bool LooksLikeTerminalMutationReport(string assistantLower) =>
+        LooksLikeWorkspaceActionSummary(assistantLower) ||
+        ContainsAny(
+            assistantLower,
+            "permission denied",
+            "denied",
+            "not found",
+            "missing",
+            "unsafe",
+            "blocked",
+            "failed to delete",
+            "delete_path",
+            "\uAC70\uBD80",
+            "\uC2B9\uC778\uC774 \uAC70\uBD80",
+            "\uC5C6\uC2B5",
+            "\uCC3E\uC744 \uC218 \uC5C6",
+            "\uC704\uD5D8",
+            "\uCC28\uB2E8",
+            "\uC0AD\uC81C\uD588",
+            "\uC0AD\uC81C\uB418",
+            "\uC0AD\uC81C\uD558\uC9C0 \uBABB");
+
     private static bool UserAskedForMutationWork(string userText)
     {
         var userLower = userText.ToLowerInvariant();
@@ -1985,6 +2410,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "modify",
             "update",
             "add ",
+            "delete",
+            "remove",
             "scaffold",
             "generate",
             "proceed",
@@ -1997,6 +2424,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uACE0\uCCD0",
             "\uC218\uC815",
             "\uCD94\uAC00",
+            "\uC0AD\uC81C",
+            "\uC9C0\uC6CC",
             "\uC9C4\uD589",
             "\uB2E4\uC74C \uC791\uC5C5",
             "\uD574\uBCF4\uC790",
@@ -2458,8 +2887,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         var builder = new StringBuilder();
+        builder.AppendLine(BuildLatestRequestPriorityContext(userText, taskContract));
+        builder.AppendLine();
         builder.AppendLine("The desktop app attached local context for this request only.");
         builder.AppendLine("Use this as supplemental runtime context; do not tell the user you lack previous conversation memory unless they explicitly ask about memory.");
+        builder.AppendLine("Do not treat supplemental context, memory, scaffold hints, skills, or workspace snapshots as a newer user request.");
         builder.AppendLine("Answer the latest user request directly before mentioning workspace inspection, session state, or missing context.");
         builder.AppendLine("Use the workspace snapshot for repository questions, but say when a file may be missing from the snapshot.");
         builder.AppendLine($"Current AgentQ work mode: {config.DesktopWorkMode}.");
@@ -2468,7 +2900,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine(DesktopExecutionStrategyCatalog.ForProfile(taskProfile).FormatForPrompt());
         builder.AppendLine("Codebase discovery hint: use hybrid_search first when you need ranked candidate files with reasons.");
         builder.AppendLine("Code navigation hint: use symbol_search for known or likely identifiers before broad grep; then read_file the best candidate.");
-        builder.AppendLine("Search fallback order: list_directory for folder structure and empty-workspace checks, symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad fallback.");
+        builder.AppendLine("Search fallback order: web_search for public web research, list_directory for folder structure and empty-workspace checks, symbol_search for definitions, semantic_search for meaning-based context when enabled, grep_search/glob_search for broad local fallback.");
         builder.AppendLine("Evidence-backed analysis rule: when answering project analysis or documentation questions, cite the inspected files or commands in a short Evidence section and put unsupported inferences under Needs verification.");
         if (hasLinkIntent || !string.IsNullOrWhiteSpace(linkedContext) || !string.IsNullOrWhiteSpace(linkStatusContext))
         {
@@ -2538,6 +2970,22 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         {
             builder.AppendLine();
             builder.AppendLine(linkedContext);
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildLatestRequestPriorityContext(string userText, TaskContract taskContract)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Latest user request priority:");
+        builder.AppendLine($"- Latest user request: {DesktopPromptBuilder.Truncate(userText.Trim().ReplaceLineEndings(" "), 800)}");
+        builder.AppendLine("- This latest user request is the routing anchor for the turn.");
+        builder.AppendLine("- If attached workspace context, memory, scaffold hints, skills, or execution lessons conflict with the latest user request, follow the latest user request and the current task contract.");
+        builder.AppendLine("- Use older context only as evidence or implementation detail, not as a replacement goal.");
+        if (taskContract.IsActionable)
+        {
+            builder.AppendLine($"- Current completion target: {taskContract.Goal}");
         }
 
         return builder.ToString().TrimEnd();
@@ -2846,7 +3294,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         List<ToolReplayEntry> replayEntries,
         Dictionary<string, int> editFailureTracker,
         CancellationToken ct,
-        TurnIntentClassification? turnIntent = null)
+        TurnIntentClassification? turnIntent = null,
+        string? turnTraceId = null,
+        TaskContract? taskContract = null)
     {
         var results = new List<ChatContent>();
 
@@ -2859,6 +3309,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 var tool = toolRegistry.Get(toolName);
                 if (tool == null)
                 {
+                    RecordDiagnostic(
+                        "tool_lookup_failed",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={toolName}; toolId={toolId}");
                     callbacks?.OnToolError?.Invoke(toolName, $"Tool not found: {toolName}");
                     replayEntries.Add(CreateReplayEntry(toolName, toolId, "{}", $"Tool not found: {toolName}", isError: true, DateTime.UtcNow));
                     results.Add(ChatContent.CreateToolResult(toolId, $"Tool not found: {toolName}", true));
@@ -2866,22 +3321,32 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
+                RecordDiagnostic(
+                    "tool_use_received",
+                    workspaceRoot,
+                    new ProviderConfiguration(),
+                    $"trace={SafeValue(turnTraceId)}; tool={toolName}; toolId={toolId}; parsedKeys=\"{string.Join(",", parsedInput.Keys)}\"; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 700)}\"");
                 if (turnIntent?.Type == TurnIntentType.Conversation)
                 {
-                    var blockedInputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
-                    var blockedMessage =
-                        $"Turn intent is Conversation, so AgentQ blocked tool '{tool.Name}' before execution. " +
-                        "Answer the user in prose, or ask for explicit execution if the user wants AgentQ to act.";
-                    callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Turn intent guard", blockedMessage);
-                    callbacks?.OnToolError?.Invoke(tool.Name, blockedMessage);
-                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, blockedInputJson, blockedMessage, isError: true, DateTime.UtcNow));
-                    results.Add(ChatContent.CreateToolResult(toolId, blockedMessage, true));
-                    continue;
+                    RecordDiagnostic(
+                        "tool_allowed_by_llm_first_policy",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; intent={turnIntent.Type}; policy=conversation_intent_does_not_block_tools");
+                    callbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        "LLM-first tool policy",
+                        $"Conversation intent no longer blocks tool '{tool.Name}'. Desktop safety policy will evaluate risk.");
                 }
 
                 if (ShouldStopRepeatedReadOnlyToolCall(tool.Name, parsedInput, editFailureTracker, out var loopMessage))
                 {
                     var loopInputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
+                    RecordDiagnostic(
+                        "tool_blocked_by_read_only_loop_guard",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(loopInputJson.ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(loopMessage.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Read-only tool loop guard", loopMessage);
                     callbacks?.OnToolError?.Invoke(tool.Name, loopMessage);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, loopInputJson, loopMessage, isError: true, DateTime.UtcNow));
@@ -2891,6 +3356,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 if (ShouldStopRepeatedEditStrategy(tool.Name, parsedInput, editFailureTracker, out var recoveryMessage))
                 {
+                    RecordDiagnostic(
+                        "tool_blocked_by_edit_recovery_guard",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(recoveryMessage.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Edit recovery guard", recoveryMessage);
                     callbacks?.OnToolError?.Invoke(tool.Name, recoveryMessage);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, JsonSerializer.Serialize(parsedInput), recoveryMessage, isError: true, DateTime.UtcNow));
@@ -2909,14 +3379,33 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 if (tool.RequiresPermission &&
                     !await RequestToolPermissionAsync(tool, inputJson, workMode, workspaceRoot, enforcer, callbacks))
                 {
+                    RecordDiagnostic(
+                        "tool_permission_denied",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnPermissionDenied?.Invoke(tool.Name);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, "Permission denied by user", isError: true, DateTime.UtcNow));
                     results.Add(ChatContent.CreateToolResult(toolId, "Permission denied by user", true));
                     continue;
                 }
 
+                if (tool.RequiresPermission)
+                {
+                    RecordDiagnostic(
+                        "tool_permission_approved",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; workMode={workMode}");
+                }
+
                 callbacks?.OnToolExecution?.Invoke(tool.Name);
                 var startedAt = DateTime.UtcNow;
+                RecordDiagnostic(
+                    "tool_execution_starting",
+                    workspaceRoot,
+                    new ProviderConfiguration(),
+                    $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; requiresPermission={tool.RequiresPermission}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 700)}\"");
 
                 try
                 {
@@ -2939,6 +3428,20 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     else
                     {
                         callbacks?.OnToolOutput?.Invoke(tool.Name, result.Content);
+                        if (TryDescribeTaskContractEvidence(taskContract, tool.Name, parsedInput, result.Content, out var contractEvidence))
+                        {
+                            var contractIntent = taskContract?.Intent.ToString() ?? "Unknown";
+                            callbacks?.OnRunStep?.Invoke(
+                                AgentRunState.RunningTool,
+                                $"Contract evidence: {contractIntent}",
+                                contractEvidence);
+                            RecordDiagnostic(
+                                "task_contract_evidence",
+                                workspaceRoot,
+                                new ProviderConfiguration(),
+                                $"trace={SafeValue(turnTraceId)}; intent={contractIntent}; tool={tool.Name}; evidence=\"{DesktopPromptBuilder.Truncate(contractEvidence.ReplaceLineEndings(" "), 700)}\"");
+                        }
+
                         if (ShellVerificationResultDetector.TryCreate(tool.Name, parsedInput, result.Content, out var verificationResult))
                         {
                             callbacks?.OnVerificationResult?.Invoke(verificationResult);
@@ -2948,6 +3451,21 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                                 verificationResult.Summary);
                         }
                     }
+                    RecordDiagnostic(
+                        result.IsError ? "tool_execution_failed" : "tool_execution_completed",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
+
+                    if (string.Equals(tool.Name, "create_project_scaffold", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(tool.Name, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase))
+                    {
+                        RecordDiagnostic(
+                            result.IsError ? "project_scaffold_tool_failed" : "project_scaffold_tool_completed",
+                            workspaceRoot,
+                            new ProviderConfiguration(),
+                            $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
+                    }
 
                     if (!result.IsError)
                     {
@@ -2955,6 +3473,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         if (change != null)
                         {
                             fileChanges.Add(change);
+                            RecordDiagnostic(
+                                "file_change_recorded",
+                                workspaceRoot,
+                                new ProviderConfiguration(),
+                                $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; relativePath={change.RelativePath}; summary=\"{DesktopPromptBuilder.Truncate(change.Summary.ReplaceLineEndings(" "), 500)}\"");
                             callbacks?.OnRunStep?.Invoke(
                                 AgentRunState.RecordingChanges,
                                 "Evidence: file changed",
@@ -2968,7 +3491,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             workspaceRoot,
                             fileChanges,
                             callbacks,
-                            ct);
+                            ct,
+                            turnTraceId);
                     }
 
                     results.Add(ChatContent.CreateToolResult(
@@ -2989,6 +3513,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 catch (Exception ex)
                 {
                     var message = $"Error: {ex.Message}";
+                    RecordDiagnostic(
+                        "tool_execution_exception",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; exception={ex.GetType().Name}; message=\"{DesktopPromptBuilder.Truncate(ex.Message.ReplaceLineEndings(" "), 700)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, $"Tool failed: {tool.Name}", message);
                     callbacks?.OnToolError?.Invoke(tool.Name, message);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, message, isError: true, startedAt));
@@ -3171,6 +3700,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         if (!string.IsNullOrWhiteSpace(path))
         {
             callbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Tool replay saved", path);
+            RecordDiagnostic(
+                "tool_replay_saved",
+                workspaceRoot,
+                config,
+                $"entries={replayEntries.Count}; path={path}");
         }
     }
 
@@ -3274,6 +3808,74 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return false;
     }
 
+    private static bool TryDescribeTaskContractEvidence(
+        TaskContract? taskContract,
+        string toolName,
+        IReadOnlyDictionary<string, object?> input,
+        string resultContent,
+        out string evidence)
+    {
+        evidence = string.Empty;
+        if (taskContract is not { IsActionable: true } ||
+            string.IsNullOrWhiteSpace(toolName) ||
+            string.IsNullOrWhiteSpace(resultContent))
+        {
+            return false;
+        }
+
+        var target = TryGetString(input, "path", out var path) ? path : string.Empty;
+        evidence = taskContract.Intent switch
+        {
+            TaskContractIntent.CreateDirectory when IsTool(toolName, "create_directory") =>
+                $"create_directory completed for {FallbackTarget(target)}.",
+            TaskContractIntent.CreateFile when IsTool(toolName, "write_file") =>
+                $"write_file completed for {FallbackTarget(target)}.",
+            TaskContractIntent.DeletePath when IsTool(toolName, "delete_path") =>
+                $"delete_path completed for {FallbackTarget(target)}.",
+            TaskContractIntent.CreateProject when IsTool(toolName, "create_project_scaffold") || IsTool(toolName, "write_file") =>
+                $"{toolName} completed for the project creation contract.",
+            TaskContractIntent.ModifyCode when IsTool(toolName, "edit_file") || IsTool(toolName, "write_file") =>
+                $"{toolName} completed for {FallbackTarget(target)}.",
+            TaskContractIntent.ModifyCode when IsReadEvidenceTool(toolName) =>
+                $"{toolName} supplied workspace evidence for the modification contract.",
+            TaskContractIntent.InspectProject when IsReadEvidenceTool(toolName) =>
+                $"{toolName} supplied workspace evidence for the inspection contract.",
+            TaskContractIntent.SearchAndSummarize when IsTool(toolName, "web_search") =>
+                TryGetString(input, "query", out var query)
+                    ? $"web_search supplied public web evidence for: {query}"
+                    : "web_search supplied public web evidence.",
+            TaskContractIntent.SearchAndSummarize when IsReadEvidenceTool(toolName) || IsTool(toolName, "fetch_url") =>
+                $"{toolName} supplied evidence for the search-and-summarize contract.",
+            TaskContractIntent.RunVerification when IsTool(toolName, "bash") =>
+                TryGetString(input, "command", out var command)
+                    ? $"Verification command executed: {command}"
+                    : "Verification command executed.",
+            TaskContractIntent.RunLocalServer when IsTool(toolName, "bash") =>
+                TryGetString(input, "command", out var command)
+                    ? $"Local server command executed: {command}"
+                    : "Local server command executed.",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(evidence);
+    }
+
+    private static bool IsReadEvidenceTool(string toolName) =>
+        IsTool(toolName, "list_directory") ||
+        IsTool(toolName, "read_file") ||
+        IsTool(toolName, "grep_search") ||
+        IsTool(toolName, "glob_search") ||
+        IsTool(toolName, "semantic_search") ||
+        IsTool(toolName, "symbol_search") ||
+        IsTool(toolName, "hybrid_search") ||
+        IsTool(toolName, "web_search");
+
+    private static bool IsTool(string toolName, string expected) =>
+        string.Equals(toolName, expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string FallbackTarget(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "the requested target" : value;
+
     private static bool TryGetFirstVerificationCommand(object? rawPlan, out string command)
     {
         command = string.Empty;
@@ -3323,6 +3925,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         var policy = ToolPermissionPolicy.Evaluate(tool.Name, inputJson, workspaceRoot, workMode);
         var assessment = policy.Assessment;
+        callbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            $"Permission policy: {policy.Decision}",
+            $"{assessment.RiskLevel}: {assessment.Operation} -> {assessment.Target}. {policy.PolicyReason}");
         if (policy.IsBlocked)
         {
             callbacks?.OnRunStep?.Invoke(
@@ -3425,7 +4031,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         string workspaceRoot,
         List<FileChangeRecord> fileChanges,
         DesktopToolCallbacks? callbacks,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? turnTraceId = null)
     {
         if (!string.Equals(toolName, "create_project_scaffold", StringComparison.Ordinal))
         {
@@ -3448,6 +4055,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             }
 
             fileChanges.Add(change);
+            RecordDiagnostic(
+                "file_change_recorded",
+                workspaceRoot,
+                new ProviderConfiguration(),
+                $"trace={SafeValue(turnTraceId)}; tool={toolName}; relativePath={change.RelativePath}; summary=\"{DesktopPromptBuilder.Truncate(change.Summary.ReplaceLineEndings(" "), 500)}\"");
             callbacks?.OnRunStep?.Invoke(
                 AgentRunState.RecordingChanges,
                 "Evidence: file changed",
@@ -3487,7 +4099,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     private static bool IsFileMutationTool(string toolName)
     {
-        return toolName is "write_file" or "edit_file";
+        return toolName is "write_file" or "edit_file" or "create_directory" or "delete_path";
+    }
+
+    private static bool HasSuccessfulMutationTool(IReadOnlyList<ToolReplayEntry> replayEntries)
+    {
+        return replayEntries.Any(entry =>
+            !entry.IsError &&
+            IsFileMutationTool(entry.ToolName));
     }
 
     private static bool IsReadOnlyRepeatGuardTool(string toolName)
@@ -3600,9 +4219,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         registry.Register(new ListDirectoryTool());
         registry.Register(new ReadFileTool());
         registry.Register(new WriteFileTool());
+        registry.Register(new CreateDirectoryTool());
+        registry.Register(new DeletePathTool());
         registry.Register(new EditFileTool());
         registry.Register(new GrepTool());
         registry.Register(new GlobTool());
+        registry.Register(_webSearchTool ?? new WebSearchTool());
         registry.Register(new DesktopProjectScaffoldPlanTool(workspaceRoot, _projectScaffoldPlanner, _projectScaffoldPlanRegistry));
         registry.Register(new DesktopProjectScaffoldCreateTool(workspaceRoot, planRegistry: _projectScaffoldPlanRegistry));
         registry.Register(new DesktopProjectScaffoldVerifyTool(workspaceRoot, planRegistry: _projectScaffoldPlanRegistry));

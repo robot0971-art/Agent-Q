@@ -88,14 +88,17 @@ public sealed class DesktopConversationCompactorTests
         // Verify tool use is summarized
         var compactedToolUse = result[1];
         Assert.True(compactedToolUse.IsCompacted);
-        Assert.Contains("[Tool Use Summary]", compactedToolUse.Content[0].Text);
-        Assert.Contains("🛠️ Call: read_file (ID: id-1)", compactedToolUse.Content[0].Text);
+        Assert.Contains("[Compacted Tool Use]", compactedToolUse.Content[0].Text);
+        Assert.Contains("- Tool: read_file", compactedToolUse.Content[0].Text);
+        Assert.Contains("- Tool use id: id-1", compactedToolUse.Content[0].Text);
+        Assert.Contains("test.txt", compactedToolUse.Content[0].Text);
 
         // Verify tool result is summarized
         var compactedToolResult = result[2];
         Assert.True(compactedToolResult.IsCompacted);
-        Assert.Contains("[Tool Result Summary]", compactedToolResult.Content[0].Text);
-        Assert.Contains("✅ Success toolUseId: id-1", compactedToolResult.Content[0].Text);
+        Assert.Contains("[Compacted Tool Result]", compactedToolResult.Content[0].Text);
+        Assert.Contains("- Tool use id: id-1", compactedToolResult.Content[0].Text);
+        Assert.Contains("- Status: success", compactedToolResult.Content[0].Text);
     }
 
     [Fact]
@@ -128,9 +131,47 @@ public sealed class DesktopConversationCompactorTests
         var result = compactor.Compact(messages, maxEstimatedTokens: 5, keepRecentTurns: 4);
         var compactedToolResult = result[2].Content[0].Text!;
 
-        Assert.Contains("Important context:", compactedToolResult);
+        Assert.Contains("Important evidence:", compactedToolResult);
         Assert.Contains("Error: build failed", compactedToolResult);
         Assert.Contains("Exit code: 1", compactedToolResult);
         Assert.Contains("npm run build", compactedToolResult);
+    }
+
+    [Fact]
+    public void Compact_ShouldPreservePriorityContextFromLongTextMessages()
+    {
+        var compactor = new ConversationCompactor();
+        var longContext = string.Join(
+            "\n",
+            [
+                "Latest user request priority:",
+                "- Latest user request: logs 폴더 만들어줘",
+                "ordinary context " + new string('x', 1200),
+                "Current task contract:",
+                "- Intent: create_directory",
+                "- Required completion evidence:",
+                "  - create_directory tool result",
+                "tail " + new string('y', 1200)
+            ]);
+
+        var messages = new List<ChatMessage>
+        {
+            ChatMessage.SystemText("System message"),
+            ChatMessage.UserText(longContext),
+            ChatMessage.AssistantText("Assistant response 1"),
+            ChatMessage.UserText("User message 2"),
+            ChatMessage.AssistantText("Assistant response 2"),
+            ChatMessage.UserText("User message 3"),
+            ChatMessage.AssistantText("Assistant response 3")
+        };
+
+        var result = compactor.Compact(messages, maxEstimatedTokens: 5, keepRecentTurns: 4);
+        var compactedText = result[1].Content[0].Text!;
+
+        Assert.Contains("Preserved priority context:", compactedText);
+        Assert.Contains("Latest user request priority:", compactedText);
+        Assert.Contains("- Latest user request: logs 폴더 만들어줘", compactedText);
+        Assert.Contains("Current task contract:", compactedText);
+        Assert.Contains("- Required completion evidence:", compactedText);
     }
 }

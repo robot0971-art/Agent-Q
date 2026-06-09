@@ -142,6 +142,7 @@ public sealed class DesktopPermissionEnforcer(
             .OrderBy(risk => risk)
             .Select(risk => risk switch
             {
+                PermissionRiskLevel.LowRiskProjectWrite => "new empty files/folders",
                 PermissionRiskLevel.ProjectWrite => "workspace edits",
                 PermissionRiskLevel.VerificationCommand => "build/test",
                 _ => risk.ToString()

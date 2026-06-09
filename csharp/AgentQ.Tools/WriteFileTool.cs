@@ -48,10 +48,12 @@ public class WriteFileTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!input.TryGetValue("path", out var pathObj) || pathObj is not string path)
+        var path = TryGetString(input, "path");
+        if (string.IsNullOrWhiteSpace(path))
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
 
-        if (!input.TryGetValue("content", out var contentObj) || contentObj is not string content)
+        var content = TryGetString(input, "content");
+        if (content == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: content"));
 
         var overwrite = true;
@@ -145,5 +147,20 @@ public class WriteFileTool : ITool
         }
 
         return false;
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 }

@@ -2,6 +2,7 @@
 using AgentQ.Desktop.ViewModels;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
+using AgentQ.Providers.OpenAi;
 using AgentQ.Tools;
 using System.Diagnostics;
 using System.Net;
@@ -205,7 +206,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("cannot remember previous conversations", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("thinking blocks", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("feasibility questions", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("immediately inspect the workspace", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("workspace evidence would materially improve", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Text is not a check", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("patch-sized edits", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SerializeField", prompt, StringComparison.Ordinal);
@@ -400,6 +401,17 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_RetriesVisibleContextDeflectionEvenWhenUserMentionsMemory()
+    {
+        var shouldRetry = DesktopAgentService.ShouldRetrySessionMemoryDeflection(
+            "\uB0B4\uAC00 \uC704\uC5D0\uC11C \uC598\uAE30 \uD588\uB294\uB370 \uC5B4\uB5A4 \uD504\uB85C\uC81D\uD2B8 \uC778\uC9C0 \uAE30\uC5B5\uC774 \uC548\uB098\uB098?",
+            "\uC8C4\uC1A1\uD569\uB2C8\uB2E4. \uD604\uC7AC \uC774 \uB300\uD654\uC5D0\uC11C \uC774\uC804\uC5D0 \uD504\uB85C\uC81D\uD2B8\uC5D0 \uB300\uD574 \uC774\uC57C\uAE30\uD55C \uB0B4\uC6A9\uC774 \uBCF4\uC774\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uBC1B\uC740 \uBA54\uC2DC\uC9C0\uAC00 \uCCAB \uBC88\uC9F8 \uBA54\uC2DC\uC9C0\uC785\uB2C8\uB2E4.",
+            TurnIntentType.Conversation);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void DesktopAgentService_AllowsSessionMemoryAnswerWhenUserAskedAboutMemory()
     {
         var shouldRetry = DesktopAgentService.ShouldRetrySessionMemoryDeflection(
@@ -446,6 +458,16 @@ public sealed class DesktopServiceTests
     [InlineData("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918", TurnIntentType.Hybrid)]
     [InlineData("\uD14C\uC2A4\uD2B8 \uB3CC\uB9AC\uB294 \uBC29\uBC95 \uC54C\uB824\uC918", TurnIntentType.Conversation)]
     [InlineData("\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918", TurnIntentType.Action)]
+    [InlineData("그럼 웹사이트는 어떤걸 만들어 볼까", TurnIntentType.Conversation)]
+    [InlineData("포트폴리오 사이트 만들까 하는데 괜찮을까?", TurnIntentType.Conversation)]
+    [InlineData("주식 분석 사이트를 만들어보면 어떨까?", TurnIntentType.Conversation)]
+    [InlineData("개발자 용어집 웹사이트를 만들고 싶은데 어떤 방향이 좋을까?", TurnIntentType.Conversation)]
+    [InlineData("쇼핑몰 만들어볼까 하는데 기능은 뭐가 좋을까?", TurnIntentType.Conversation)]
+    [InlineData("이런 앱을 만들 수 있을까?", TurnIntentType.Conversation)]
+    [InlineData("개발자 용어집 웹사이트 생성해줘", TurnIntentType.Action)]
+    [InlineData("이 폴더에 test2 라는 폴더를 만들어줘 ?", TurnIntentType.Action)]
+    [InlineData("이 폴더에 있는 것들을 전부 삭제해줘", TurnIntentType.Action)]
+    [InlineData("불필요한 파일들은 모두 삭제해줘", TurnIntentType.Ambiguous)]
     public void TurnIntentClassifier_ClassifiesConversationActionHybridAndAmbiguous(
         string userText,
         TurnIntentType expected)
@@ -469,6 +491,92 @@ public sealed class DesktopServiceTests
         var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
 
         Assert.Equal(TurnIntentType.Conversation, merged.Type);
+    }
+
+    [Theory]
+    [InlineData("그럼 웹사이트는 어떤걸 만들어 볼까")]
+    [InlineData("포트폴리오 사이트 만들까 하는데 괜찮을까?")]
+    [InlineData("주식 분석 사이트를 만들어보면 어떨까?")]
+    [InlineData("개발자 용어집 웹사이트를 만들고 싶은데 어떤 방향이 좋을까?")]
+    [InlineData("쇼핑몰 만들어볼까 하는데 기능은 뭐가 좋을까?")]
+    [InlineData("이런 앱을 만들 수 있을까?")]
+    public void TurnIntentClassifier_DoesNotPromoteConversationToHighConfidenceWriteAction(string userText)
+    {
+        var rule = TurnIntentClassifier.Classify(userText);
+        Assert.True(TurnIntentClassifier.TryParseModelResponse(
+            """
+            {"type":"Action","confidence":0.96,"rationale":"The user mentions making a website.","actionKind":"create","requiresWrite":true,"requiresShell":false,"requiresNetwork":false,"isConcreteEnough":true}
+            """,
+            rule,
+            out var model));
+
+        var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
+
+        Assert.Equal(TurnIntentType.Conversation, rule.Type);
+        Assert.Equal(TurnIntentType.Conversation, merged.Type);
+    }
+
+    [Fact]
+    public void TurnIntentClassifier_KeepsConcreteFolderCreationWhenModelAsksForShellClarification()
+    {
+        var rule = TurnIntentClassifier.Classify("이 폴더에 test2 라는 폴더를 만들어줘 ?");
+        Assert.True(TurnIntentClassifier.TryParseModelResponse(
+            """
+            {"type":"Action","confidence":0.95,"rationale":"The user might need a shell command.","actionKind":"shell","requiresWrite":false,"requiresShell":true,"requiresNetwork":false,"isConcreteEnough":false}
+            """,
+            rule,
+            out var model));
+
+        var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
+
+        Assert.Equal(TurnIntentType.Action, rule.Type);
+        Assert.True(rule.IsConcreteEnough);
+        Assert.Equal(TurnIntentType.Action, merged.Type);
+        Assert.True(merged.IsConcreteEnough);
+        Assert.NotEqual("shell", merged.ActionKind);
+    }
+
+    [Theory]
+    [InlineData("Ambiguous")]
+    [InlineData("Conversation")]
+    public void TurnIntentClassifier_KeepsConcreteFolderCreationWhenModelDowngradesIntent(string modelType)
+    {
+        var rule = TurnIntentClassifier.Classify("이 폴더에 test2 라는 폴더를 만들어줘 ?");
+        Assert.True(TurnIntentClassifier.TryParseModelResponse(
+            $$"""
+            {"type":"{{modelType}}","confidence":0.96,"rationale":"The user may be asking a question.","actionKind":"create","requiresWrite":false,"requiresShell":false,"requiresNetwork":false,"isConcreteEnough":false,"clarifyingQuestion":"Which command or task should AgentQ run?"}
+            """,
+            rule,
+            out var model));
+
+        var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
+
+        Assert.Equal(TurnIntentType.Action, rule.Type);
+        Assert.True(rule.IsConcreteEnough);
+        Assert.Equal(TurnIntentType.Action, merged.Type);
+        Assert.Equal("create", merged.ActionKind);
+        Assert.True(merged.RequiresWrite);
+        Assert.True(merged.IsConcreteEnough);
+    }
+
+    [Fact]
+    public void TurnIntentClassifier_KeepsConcreteDeleteWhenModelDowngradesButRequiresPermissionLater()
+    {
+        var rule = TurnIntentClassifier.Classify("이 폴더에 있는 것들을 전부 삭제해줘");
+        Assert.True(TurnIntentClassifier.TryParseModelResponse(
+            """
+            {"type":"Ambiguous","confidence":0.96,"rationale":"Deletion needs a clearer target.","actionKind":"delete","requiresWrite":false,"requiresShell":false,"requiresNetwork":false,"isConcreteEnough":false,"clarifyingQuestion":"What exactly should AgentQ delete?"}
+            """,
+            rule,
+            out var model));
+
+        var merged = TurnIntentClassifier.ApplySafetyRules(rule, model);
+
+        Assert.Equal(TurnIntentType.Action, rule.Type);
+        Assert.Equal(TurnIntentType.Action, merged.Type);
+        Assert.Equal("delete", merged.ActionKind);
+        Assert.True(merged.RequiresWrite);
+        Assert.True(merged.IsConcreteEnough);
     }
 
     [Fact]
@@ -1224,6 +1332,88 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesDeletePathRequest()
+    {
+        var contract = UserIntentTranslator.Translate("test\uD30C\uC77C\uC744 \uC0AD\uC81C\uD574\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.DeletePath, contract.Intent);
+        Assert.Contains("delete_path", string.Join(" ", contract.RequiredActions), StringComparison.Ordinal);
+        Assert.Contains(contract.InvalidCompletions, item => item.Contains("AgentQ", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesCreateDirectoryRequest()
+    {
+        var contract = UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateDirectory, contract.Intent);
+        Assert.Contains("create_directory", string.Join(" ", contract.RequiredActions), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesCreateFileRequest()
+    {
+        var contract = UserIntentTranslator.Translate("notes.md \uD30C\uC77C \uD558\uB098 \uC0DD\uC131\uD574\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateFile, contract.Intent);
+        Assert.Contains("write_file", string.Join(" ", contract.RequiredActions), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesModifyCodeRequest()
+    {
+        var contract = UserIntentTranslator.Translate("App.jsx \uCF54\uB4DC \uC218\uC815\uD574\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.ModifyCode, contract.Intent);
+        Assert.Contains("edit", string.Join(" ", contract.RequiredActions), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesRunVerificationRequest()
+    {
+        var contract = UserIntentTranslator.Translate("\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.RunVerification, contract.Intent);
+        Assert.Contains("verification command", contract.Goal, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesSearchAndSummarizeRequest()
+    {
+        var contract = UserIntentTranslator.Translate("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.SearchAndSummarize, contract.Intent);
+        Assert.Contains("evidence", string.Join(" ", contract.RequiredActions), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_DoesNotCreateContractForConsultativeProjectQuestion()
+    {
+        var contract = UserIntentTranslator.Translate("\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC0AC\uC774\uD2B8 \uB9CC\uB4E4\uAE4C \uD558\uB294\uB370 \uAD1C\uCC2E\uC744\uAE4C?");
+
+        Assert.False(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.None, contract.Intent);
+    }
+
+    [Fact]
+    public void TaskContractPromptBuilder_RequiresToolEvidenceForCreateDirectory()
+    {
+        var contract = UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918");
+
+        var context = TaskContractPromptBuilder.BuildContext(contract);
+
+        Assert.Contains("Required completion evidence", context, StringComparison.Ordinal);
+        Assert.Contains("create_directory tool result", context, StringComparison.Ordinal);
+        Assert.Contains("Do not produce a final success answer", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TaskContractCompletionChecker_RetriesStructureSummaryForRunLocalServer()
     {
         var contract = UserIntentTranslator.Translate("\uB85C\uCEEC\uC11C\uBC84 \uB744\uC6CC\uC918");
@@ -1241,6 +1431,468 @@ public sealed class DesktopServiceTests
 
         Assert.False(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, ["npm run dev"], AgentWorkMode.Coding));
         Assert.False(TaskContractCompletionChecker.ShouldReject(contract, assistantText, ["npm run dev"], AgentWorkMode.Coding));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RejectsAgentDescriptionForDeletePath()
+    {
+        var contract = UserIntentTranslator.Translate("test\uD30C\uC77C\uC744 \uC0AD\uC81C\uD574\uC918");
+        var assistantText = "## AgentQ Desktop\uC774 \uBB34\uC5C7\uC778\uAC00\uC694? AgentQ Desktop\uC740 Windows \uB370\uC2A4\uD06C\uD1B1\uC5D0\uC11C \uB3D9\uC791\uD558\uB294 \uCF54\uB529 AI \uC2DC\uC2A4\uD15C\uC785\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding));
+        Assert.True(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesProseForCreateDirectory()
+    {
+        var contract = UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918");
+        var assistantText = "\uD3F4\uB354\uB97C \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding));
+        Assert.Contains("create_directory", TaskContractCompletionChecker.BuildRetryInstruction(contract), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesFalseCreateDirectorySuccessWithoutToolEvidence()
+    {
+        var contract = UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918");
+        var assistantText = "logs \uD3F4\uB354\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding, []));
+        Assert.True(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, []));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_AllowsCreateDirectoryReportWithToolEvidence()
+    {
+        var contract = UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918");
+        var assistantText = "logs \uD3F4\uB354\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.";
+        var replayEntries = new[]
+        {
+            new ToolReplayEntry
+            {
+                ToolName = "create_directory",
+                ToolUseId = "tool-create-dir",
+                ResultPreview = "{\"status\":\"success\",\"directoryPath\":\"logs\"}"
+            }
+        };
+
+        Assert.False(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding, replayEntries));
+        Assert.False(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, replayEntries));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesProseForRunVerification()
+    {
+        var contract = UserIntentTranslator.Translate("\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918");
+        var assistantText = "\uD14C\uC2A4\uD2B8\uB294 dotnet test\uB97C \uC2E4\uD589\uD558\uBA74 \uB429\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding));
+        Assert.Contains("run_verification", TaskContractCompletionChecker.BuildRetryInstruction(contract), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesGuessForSearchAndSummarize()
+    {
+        var contract = UserIntentTranslator.Translate("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918");
+        var assistantText = "\uC77C\uBC18\uC801\uC73C\uB85C \uD6C4\uAE30\uB294 \uC88B\uC744 \uAC83\uC785\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding));
+        Assert.Contains("search_and_summarize", TaskContractCompletionChecker.BuildRetryInstruction(contract), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_RetriesSearchSummaryWithoutSearchEvidence()
+    {
+        var contract = UserIntentTranslator.Translate("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918");
+        var assistantText = "\uCD9C\uCC98\uB97C \uC885\uD569\uD558\uBA74 \uD6C4\uAE30\uB294 \uB300\uCCB4\uB85C \uAE0D\uC815\uC801\uC785\uB2C8\uB2E4.";
+
+        Assert.True(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding, []));
+        Assert.True(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, []));
+    }
+
+    [Fact]
+    public void TaskContractCompletionChecker_AllowsSearchSummaryWithWebSearchEvidence()
+    {
+        var contract = UserIntentTranslator.Translate("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918");
+        var assistantText = "web_search \uACB0\uACFC\uB97C \uBCF4\uBA74 \uD6C4\uAE30\uB294 \uC5C7\uAC08\uB9BD\uB2C8\uB2E4. \uCD9C\uCC98: https://example.com/review";
+        var replayEntries = new[]
+        {
+            new ToolReplayEntry
+            {
+                ToolName = "web_search",
+                ToolUseId = "tool-web-search",
+                ResultPreview = "{\"resultCount\":1}"
+            }
+        };
+
+        Assert.False(TaskContractCompletionChecker.ShouldRetry(contract, assistantText, [], AgentWorkMode.Coding, replayEntries));
+        Assert.False(TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, replayEntries));
+    }
+
+    [Fact]
+    public void TaskContractPromptBuilder_IncludesWebSearchEvidenceForSearchAndSummarize()
+    {
+        var contract = UserIntentTranslator.Translate("\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918");
+
+        var context = TaskContractPromptBuilder.BuildContext(contract);
+
+        Assert.Contains("web_search/search/read/fetch evidence", context, StringComparison.Ordinal);
+        Assert.Contains("clear limitation report", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_RetryPromptUsesTaskContractForNoToolCreateDirectoryAnswer()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asked to create a folder.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamTextResponse("\uD3F4\uB354\uB97C \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4."),
+            StreamTextResponse("create_directory\uB97C \uD638\uCD9C\uD574\uC57C \uD569\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: new AllowAllPermissionEnforcer());
+
+        Assert.True(httpClientFactory.RequestBodies.Count >= 3);
+        Assert.Contains(httpClientFactory.RequestBodies, body => body.Contains("Current task contract", StringComparison.Ordinal) &&
+                                                                 body.Contains("create_directory tool result", StringComparison.Ordinal));
+        var retryRequestBody = httpClientFactory.RequestBodies[^1];
+        Assert.Contains("create_directory", retryRequestBody, StringComparison.Ordinal);
+        Assert.Contains("folder", retryRequestBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OpenAiCompatibleProvider_ParsesToolCallResponse()
+    {
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ToolCallResponse("tool-create-dir", "create_directory", new Dictionary<string, object?> { ["path"] = "logs" }));
+        var client = httpClientFactory.CreateClient("test");
+        client.BaseAddress = new Uri("http://localhost/v1/");
+        var provider = new OpenAiCompatibleProvider(client, "intent-test");
+
+        var response = await provider.GenerateResponseAsync(
+            new ChatContext
+            {
+                Messages = [ChatMessage.UserText("logs folder")]
+            },
+            [
+                new AgentQ.Core.Models.ToolDefinition
+                {
+                    Name = "create_directory",
+                    Description = "Create folder",
+                    InputSchema = new { type = "object" }
+                }
+            ]);
+
+        var toolUse = Assert.Single(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.Equal("create_directory", toolUse.ToolName);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_E2eCreatesDirectoryFromExplicitCommand()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asked to create a folder.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamToolCallResponse("tool-create-dir", "create_directory", new Dictionary<string, object?> { ["path"] = "logs" }),
+            StreamTextResponse("logs \uD3F4\uB354\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Low-risk directory creation should not request approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.True(Directory.Exists(Path.Combine(root, "logs")));
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains("logs", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(runSteps, step => step.Contains("Contract evidence: CreateDirectory", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_LlmFirstRegressionRetriesFalseSuccessThenExecutesContractTool()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asked to create a folder.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamTextResponse("logs \uD3F4\uB354\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4."),
+            StreamToolCallResponse("tool-create-dir", "create_directory", new Dictionary<string, object?> { ["path"] = "logs" }),
+            StreamTextResponse("logs \uD3F4\uB354\uB97C create_directory \uACB0\uACFC\uB85C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Low-risk directory creation should not request approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 4
+            },
+            "logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.True(Directory.Exists(Path.Combine(root, "logs")));
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains("logs", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(runSteps, step => step.Contains("Task contract: retry", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("Contract evidence: CreateDirectory", StringComparison.Ordinal));
+        Assert.Contains(httpClientFactory.RequestBodies, body =>
+            body.Contains("Latest user request priority", StringComparison.Ordinal) &&
+            body.Contains("Current task contract", StringComparison.Ordinal));
+        Assert.True(httpClientFactory.RequestBodies.Count >= 4);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_E2eCreatesEmptyFileFromExplicitCommandWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asked to create a file.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamToolCallResponse("tool-write-file", "write_file", new Dictionary<string, object?> { ["path"] = "notes.md", ["content"] = "", ["overwrite"] = false }),
+            StreamTextResponse("notes.md \uD30C\uC77C\uC744 \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("New empty file creation should not request approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "notes.md \uD30C\uC77C \uD558\uB098 \uC0DD\uC131\uD574\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.True(File.Exists(Path.Combine(root, "notes.md")));
+        Assert.Equal(string.Empty, File.ReadAllText(Path.Combine(root, "notes.md")));
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains("notes.md", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_E2eRunsVerificationCommandWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Action\",\"confidence\":0.95,\"rationale\":\"The user asked to run verification.\",\"actionKind\":\"shell\",\"requiresWrite\":false,\"requiresShell\":true,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamToolCallResponse("tool-bash", "bash", new Dictionary<string, object?> { ["command"] = "dotnet test --help", ["timeout"] = 30000 }),
+            StreamTextResponse("\uD14C\uC2A4\uD2B8 \uBA85\uB839\uC744 \uC2E4\uD589\uD588\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Verification command should not request approval in Coding mode."));
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "\uD14C\uC2A4\uD2B8 \uB3CC\uB824\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains(runSteps, step => step.Contains("Contract evidence: RunVerification", StringComparison.Ordinal) &&
+                                         step.Contains("dotnet test --help", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_AttachesSearchAndSummarizeEvidenceLimitContract()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Hybrid\",\"confidence\":0.93,\"rationale\":\"The user asked to search and summarize reviews.\",\"actionKind\":\"search\",\"requiresWrite\":false,\"requiresShell\":false,\"requiresNetwork\":true,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamTextResponse("\uC77C\uBC18\uC801\uC73C\uB85C \uD6C4\uAE30\uB294 \uC88B\uC744 \uAC83\uC785\uB2C8\uB2E4."),
+            StreamTextResponse("\uC6F9 \uAC80\uC0C9 \uB3C4\uAD6C\uAC00 \uC5C6\uC5B4 \uADFC\uAC70\uB97C \uD655\uC778\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: new AllowAllPermissionEnforcer());
+
+        Assert.True(httpClientFactory.RequestBodies.Count >= 3);
+        var allRequestBodies = string.Join("\n", httpClientFactory.RequestBodies);
+        Assert.Contains("search", allRequestBodies, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("summarize", allRequestBodies, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("search/read/fetch evidence", allRequestBodies, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("clear limitation report", allRequestBodies, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_E2eUsesWebSearchForSearchAndSummarize()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("{\"type\":\"Hybrid\",\"confidence\":0.93,\"rationale\":\"The user asked to search and summarize reviews.\",\"actionKind\":\"search\",\"requiresWrite\":false,\"requiresShell\":false,\"requiresNetwork\":true,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"),
+            StreamToolCallResponse("tool-web-search", "web_search", new Dictionary<string, object?> { ["query"] = "\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30", ["max_results"] = 3 }),
+            StreamTextResponse("\uAC80\uC0C9 \uADFC\uAC70\uB97C \uBC14\uD0D5\uC73C\uB85C \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4."));
+        var service = CreateDesktopAgentService(httpClientFactory, new FakeWebSearchTool());
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("web_search should be allowed by Coding policy."));
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 3
+            },
+            "\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30 \uCC3E\uC544\uC11C \uC815\uB9AC\uD574\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains(runSteps, step => step.Contains("Evidence: web_search", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("Contract evidence: SearchAndSummarize", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WebSearchTool_ParsesHtmlResults()
+    {
+        var html =
+            """
+            <html>
+              <a rel="nofollow" class="result__a" href="https://example.com/review">Example Review</a>
+              <a class="result__snippet">A useful review snippet.</a>
+            </html>
+            """;
+        using var httpClient = new HttpClient(new StaticHttpMessageHandler(html))
+        {
+            BaseAddress = new Uri("https://duckduckgo.com/")
+        };
+        var tool = new WebSearchTool(httpClient);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["query"] = "example review",
+            ["max_results"] = 3
+        });
+
+        Assert.False(result.IsError, result.Content);
+        using var document = JsonDocument.Parse(result.Content);
+        Assert.Equal("example review", document.RootElement.GetProperty("query").GetString());
+        var first = document.RootElement.GetProperty("results")[0];
+        Assert.Equal("Example Review", first.GetProperty("Title").GetString());
+        Assert.Equal("https://example.com/review", first.GetProperty("Url").GetString());
+        Assert.Equal("A useful review snippet.", first.GetProperty("Snippet").GetString());
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingAllowsWebSearchWithoutApproval()
+    {
+        var assessment = ToolPermissionClassifier.Assess(
+            "web_search",
+            new Dictionary<string, object?>
+            {
+                ["query"] = "\uD2B8\uB9AC\uB178\uB4DC \uD6C4\uAE30"
+            });
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.Network, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RejectsDeleteActionSelfDescriptionAfterReadOnlyLoop()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "test\uD30C\uC77C\uC744 \uC0AD\uC81C\uD574\uC918",
+            "## AgentQ Desktop\uC774 \uBB34\uC5C7\uC778\uAC00\uC694? AgentQ Desktop\uC740 Windows \uB370\uC2A4\uD06C\uD1B1\uC5D0\uC11C \uB3D9\uC791\uD558\uB294 \uCF54\uB529 AI \uC2DC\uC2A4\uD15C\uC785\uB2C8\uB2E4.",
+            executedToolCount: 4,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.General);
+
+        Assert.True(shouldReject);
+    }
+
+    [Fact]
+    public void DesktopAgentService_AllowsPermissionDeniedReportForDeleteAction()
+    {
+        var shouldReject = DesktopAgentService.ShouldRejectNoToolCodingCompletion(
+            "test\uD30C\uC77C\uC744 \uC0AD\uC81C\uD574\uC918",
+            "\uC0AD\uC81C \uAD8C\uD55C\uC774 \uAC70\uBD80\uB418\uC5B4 test \uD30C\uC77C\uC744 \uC0AD\uC81C\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
+            executedToolCount: 1,
+            fileChanges: [],
+            AgentWorkMode.Coding,
+            DesktopTaskKind.General);
+
+        Assert.False(shouldReject);
     }
 
     [Fact]
@@ -1846,6 +2498,51 @@ public sealed class DesktopServiceTests
         Assert.Contains("do not tell the user you lack previous conversation memory", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Answer the latest user request directly", context, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Link capability rule", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_ContextStartsWithLatestUserRequestPriority()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "Old context says analyze architecture.");
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "logs 폴더 만들어줘";
+        var profile = DesktopPromptAssemblyService.BuildTaskProfile(userText);
+        var projectScaffoldPlan = new ProjectScaffoldPlanner().Plan(userText, root);
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            userText,
+            root,
+            new ProjectMemory
+            {
+                WorkspaceRoot = root,
+                WorkspaceRules = ["Always analyze architecture before editing."]
+            },
+            new ProjectAgentConfig(),
+            profile,
+            projectScaffoldPlan,
+            []);
+
+        Assert.StartsWith("Latest user request priority:", context, StringComparison.Ordinal);
+        Assert.Contains("- Latest user request: logs 폴더 만들어줘", context, StringComparison.Ordinal);
+        Assert.Contains("Do not treat supplemental context", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("follow the latest user request and the current task contract", context, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            context.IndexOf("Latest user request priority:", StringComparison.Ordinal) <
+            context.IndexOf("Current task contract", StringComparison.Ordinal),
+            "Latest request priority should appear before the task contract and all supplemental context.");
+        Assert.True(
+            context.IndexOf("Current task contract", StringComparison.Ordinal) <
+            context.IndexOf("Workspace context snapshot", StringComparison.Ordinal),
+            "Task contract should appear before broad workspace snapshots.");
     }
 
     [Fact]
@@ -3343,8 +4040,240 @@ public sealed class DesktopServiceTests
         Assert.Contains("Prepared project scaffold was created", result, StringComparison.Ordinal);
         Assert.Contains("Verification:", result, StringComparison.Ordinal);
         Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
-        Assert.Contains("verify_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.DoesNotContain("verify_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Null(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_WritesDiagnosticsForSafeScaffoldLifecycle()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
+            toolName is "create_project_scaffold" or "verify_project_scaffold");
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "React 포트폴리오 사이트 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        var log = await File.ReadAllTextAsync(DesktopDiagnosticsService.GetWorkspaceDiagnosticsPath(root));
+
+        Assert.Contains("turn_started", log, StringComparison.Ordinal);
+        Assert.Contains("safe_scaffold_direct_decision", log, StringComparison.Ordinal);
+        Assert.Contains("tool_execution_starting", log, StringComparison.Ordinal);
+        Assert.Contains("tool_execution_completed", log, StringComparison.Ordinal);
+        Assert.Contains("file_change_recorded", log, StringComparison.Ordinal);
+        Assert.Contains("turn_completed", log, StringComparison.Ordinal);
+        Assert.Contains("tool_replay_saved", log, StringComparison.Ordinal);
+        Assert.Contains("trace=", log, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DoesNotPrimaryScaffoldWhenProviderIntentJsonFails()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent_invalid",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "This is not structured JSON."
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(toolName => toolName == "create_project_scaffold");
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "React 주식 분석 사이트 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+        Assert.False(File.Exists(Path.Combine(root, "src", "App.jsx")));
+        Assert.DoesNotContain("Prepared project scaffold was created", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.NotEmpty(result);
+        Assert.NotNull(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DoesNotRecoverBareProjectScaffoldWhenIntentJsonFails()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent_invalid",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "This is not structured JSON."
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => true);
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uB9CC\uB4E4\uC5B4\uC918",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+        Assert.False(Directory.Exists(Path.Combine(root, "src")));
+        Assert.Contains("\uBB34\uC5C7\uC744 \uB9CC\uB4E4\uC9C0", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.NotNull(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DoesNotScaffoldForConsultativeWebsiteQuestion()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_intent_action",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"type\":\"Action\",\"confidence\":0.96,\"rationale\":\"The user mentions making a website.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory(responseBody, contentType: "application/json");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => true);
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            "그럼 웹사이트는 어떤걸 만들어 볼까",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer);
+
+        Assert.False(File.Exists(Path.Combine(root, "package.json")));
+        Assert.False(Directory.Exists(Path.Combine(root, "portfolio-site")));
+        Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.NotNull(httpClientFactory.LastRequest);
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DoesNotRequestProjectWriteForConsultativeProjectQuestions()
+    {
+        const string actionClassifierResponse =
+            """
+            {
+              "id": "chatcmpl_intent_action",
+              "model": "intent-test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"type\":\"Action\",\"confidence\":0.97,\"rationale\":\"The user mentions making a project.\",\"actionKind\":\"create\",\"requiresWrite\":true,\"requiresShell\":false,\"requiresNetwork\":false,\"isConcreteEnough\":true,\"clarifyingQuestion\":\"\"}"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+        var prompts = new[]
+        {
+            "\uADF8\uB7FC \uC6F9\uC0AC\uC774\uD2B8\uB294 \uC5B4\uB5A4\uAC78 \uB9CC\uB4E4\uC5B4 \uBCFC\uAE4C",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uC0AC\uC774\uD2B8 \uB9CC\uB4E4\uAE4C \uD558\uB294\uB370 \uAD1C\uCC2E\uC744\uAE4C?",
+            "\uC8FC\uC2DD \uBD84\uC11D \uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uC5B4\uBCF4\uBA74 \uC5B4\uB5A8\uAE4C?",
+            "\uAC1C\uBC1C\uC790 \uC6A9\uC5B4\uC9D1 \uC6F9\uC0AC\uC774\uD2B8\uB97C \uB9CC\uB4E4\uACE0 \uC2F6\uC740\uB370 \uC5B4\uB5A4 \uBC29\uD5A5\uC774 \uC88B\uC744\uAE4C?",
+            "\uC1FC\uD551\uBAB0 \uB9CC\uB4E4\uC5B4\uBCFC\uAE4C \uD558\uB294\uB370 \uAE30\uB2A5\uC740 \uBB50\uAC00 \uC88B\uC744\uAE4C?",
+            "\uAC1C\uBC1C\uC790\uB4E4\uC774 \uC54C\uC544\uC57C\uD560 IT\uC6A9\uC5B4 \uB2E8\uC5B4\uC7A5\uC744 \uB9CC\uB4E4\uACE0 \uC2F6\uB2E4 \uC5B4\uB5A4 \uAE30\uC220\uC2A4\uD14D\uC774 \uC88B\uC744\uAE4C?"
+        };
+        var projectWriteRequests = 0;
+
+        foreach (var prompt in prompts)
+        {
+            var root = CreateTempDirectory();
+            using var httpClientFactory = new StubHttpClientFactory(actionClassifierResponse, contentType: "application/json");
+            var service = CreateDesktopAgentService(httpClientFactory);
+            var permissionEnforcer = new RecordingPermissionEnforcer(_ => true);
+
+            var result = await service.SendAsync(
+                new ProviderConfiguration
+                {
+                    Provider = "openai",
+                    BaseUrl = "http://localhost/v1",
+                    Model = "intent-test",
+                    DesktopAutoAttachWorkspaceContext = false,
+                    DesktopAutoFetchLinks = false,
+                    DesktopWorkMode = "Coding"
+                },
+                prompt,
+                workspaceRoot: root,
+                permissionEnforcer: permissionEnforcer);
+
+            projectWriteRequests += permissionEnforcer.RequestedTools.Count(tool => tool == "create_project_scaffold");
+            Assert.False(File.Exists(Path.Combine(root, "package.json")));
+            Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
+            Assert.NotEmpty(result);
+        }
+
+        Assert.Equal(0, projectWriteRequests);
     }
 
     [Fact]
@@ -3368,7 +4297,7 @@ public sealed class DesktopServiceTests
 
         Assert.False(File.Exists(Path.Combine(root, "package.json")));
         Assert.False(Directory.Exists(Path.Combine(root, "src")));
-        Assert.Contains("What exactly should AgentQ create?", result, StringComparison.Ordinal);
+        Assert.Contains("\uBB34\uC5C7\uC744 \uB9CC\uB4E4\uC9C0", result, StringComparison.Ordinal);
         Assert.DoesNotContain("create_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.DoesNotContain("verify_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Null(httpClientFactory.LastRequest);
@@ -3483,8 +4412,8 @@ public sealed class DesktopServiceTests
 
         var result = Assert.Single(results);
         Assert.True(result.IsToolError);
-        Assert.Contains("Turn intent is Conversation", result.ToolResult, StringComparison.Ordinal);
-        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains("Project scaffold planId is missing", result.ToolResult, StringComparison.Ordinal);
+        Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.False(File.Exists(Path.Combine(root, "package.json")));
     }
 
@@ -3512,8 +4441,8 @@ public sealed class DesktopServiceTests
             TurnIntentClassifier.Classify("\uC774 \uD3F4\uB354\uC5D0 IT \uC6A9\uC5B4\uC9D1 \uC6F9\uC740 \uC5B4\uB5BB\uAC8C \uD574\uC57C \uD560\uAE4C?"));
 
         var result = Assert.Single(results);
-        Assert.True(result.IsToolError);
-        Assert.Contains("blocked tool 'plan_project_scaffold'", result.ToolResult, StringComparison.Ordinal);
+        Assert.False(result.IsToolError, result.ToolResult);
+        Assert.Contains("planId", result.ToolResult, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -4056,7 +4985,7 @@ public sealed class DesktopServiceTests
         Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
         Assert.Equal("npm run build", assessment.Target);
         Assert.Contains("plan allows", assessment.Reason, StringComparison.Ordinal);
-        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
         Assert.False(result.IsBlocked);
     }
 
@@ -9237,7 +10166,378 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
-    public void ToolPermissionPolicy_CodingRequiresApprovalForVerificationCommands()
+    public void ToolPermissionPolicy_CodingAllowsNewEmptyFolderWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        var assessment = ToolPermissionClassifier.Assess(
+            "create_directory",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "test2"
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.LowRiskProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_ReadonlyBlocksNewEmptyFolderWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        var assessment = ToolPermissionClassifier.Assess(
+            "create_directory",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "test2"
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Readonly);
+
+        Assert.Equal(PermissionRiskLevel.LowRiskProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Block, result.Decision);
+        Assert.True(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingRequiresApprovalForExistingFolderTarget()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test2"));
+        var assessment = ToolPermissionClassifier.Assess(
+            "create_directory",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "test2"
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingAllowsNewEmptyFileWithoutApproval()
+    {
+        var root = CreateTempDirectory();
+        var assessment = ToolPermissionClassifier.Assess(
+            "write_file",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "empty.txt",
+                ["content"] = string.Empty,
+                ["overwrite"] = false
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.LowRiskProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingRequiresApprovalForNonEmptyFileWrite()
+    {
+        var root = CreateTempDirectory();
+        var assessment = ToolPermissionClassifier.Assess(
+            "write_file",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "notes.txt",
+                ["content"] = "hello"
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingRequiresApprovalForDeletePath()
+    {
+        var root = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(root, "test.txt"), "delete me");
+        var assessment = ToolPermissionClassifier.Assess(
+            "delete_path",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "test.txt"
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.ProjectWrite, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+        Assert.False(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingBlocksRecursiveDeletePath()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "test"));
+        var assessment = ToolPermissionClassifier.Assess(
+            "delete_path",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "test",
+                ["recursive"] = true
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.Destructive, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Block, result.Decision);
+        Assert.True(result.IsBlocked);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingBlocksWorkspaceRootDeletePath()
+    {
+        var root = CreateTempDirectory();
+        var assessment = ToolPermissionClassifier.Assess(
+            "delete_path",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "."
+            },
+            root);
+
+        var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
+
+        Assert.Equal(PermissionRiskLevel.Destructive, assessment.RiskLevel);
+        Assert.Equal(ToolPermissionDecision.Block, result.Decision);
+        Assert.True(result.IsBlocked);
+    }
+
+    [Fact]
+    public async Task CreateDirectoryTool_CreatesWorkspaceFolder()
+    {
+        var root = CreateTempDirectory();
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var tool = new CreateDirectoryTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "test2"
+            });
+
+            Assert.False(result.IsError);
+            Assert.True(Directory.Exists(Path.Combine(root, "test2")));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public async Task DeletePathTool_DeletesWorkspaceFile()
+    {
+        var root = CreateTempDirectory();
+        var path = Path.Combine(root, "test.txt");
+        File.WriteAllText(path, "delete me");
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var tool = new DeletePathTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "test.txt"
+            });
+
+            Assert.False(result.IsError, result.Content);
+            Assert.False(File.Exists(path));
+            using var document = JsonDocument.Parse(result.Content);
+            Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal("file", document.RootElement.GetProperty("kind").GetString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public async Task DeletePathTool_DeletesEmptyWorkspaceFolder()
+    {
+        var root = CreateTempDirectory();
+        var path = Path.Combine(root, "test");
+        Directory.CreateDirectory(path);
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var tool = new DeletePathTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "test"
+            });
+
+            Assert.False(result.IsError, result.Content);
+            Assert.False(Directory.Exists(path));
+            using var document = JsonDocument.Parse(result.Content);
+            Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal("directory", document.RootElement.GetProperty("kind").GetString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DoesNotPromptForLowRiskDirectoryCreation()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ToolRegistry();
+        registry.Register(new CreateDirectoryTool());
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Low-risk folder creation should not request approval."));
+
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var results = await InvokeExecuteToolsAsync(
+                service,
+                [
+                    ChatContent.CreateToolUse(
+                        "tool-create-dir",
+                        "create_directory",
+                        new Dictionary<string, object?> { ["path"] = "test2" })
+                ],
+                registry,
+                permissionEnforcer,
+                new DesktopToolCallbacks(),
+                root,
+                new TurnIntentClassification
+                {
+                    Type = TurnIntentType.Action,
+                    Confidence = 0.96,
+                    ActionKind = "create",
+                    RequiresWrite = true,
+                    IsConcreteEnough = true
+                });
+
+            Assert.Empty(permissionEnforcer.RequestedTools);
+            var toolResult = Assert.Single(results);
+            Assert.False(toolResult.IsToolError, toolResult.ToolResult);
+            using var document = JsonDocument.Parse(toolResult.ToolResult ?? "{}");
+            var directoryPath = document.RootElement.GetProperty("directoryPath").GetString() ?? string.Empty;
+            Assert.True(Directory.Exists(directoryPath), directoryPath);
+            Assert.Equal(Path.GetFullPath(Path.Combine(root, "test2")), Path.GetFullPath(directoryPath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_RecordsTaskContractEvidenceForCreateDirectory()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ToolRegistry();
+        registry.Register(new CreateDirectoryTool());
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var results = await InvokeExecuteToolsAsync(
+                service,
+                [
+                    ChatContent.CreateToolUse(
+                        "tool-create-dir",
+                        "create_directory",
+                        new Dictionary<string, object?> { ["path"] = "logs" })
+                ],
+                registry,
+                new AllowAllPermissionEnforcer(),
+                new DesktopToolCallbacks
+                {
+                    OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+                },
+                root,
+                taskContract: UserIntentTranslator.Translate("logs \uD3F4\uB354 \uB9CC\uB4E4\uC5B4\uC918"));
+
+            var toolResult = Assert.Single(results);
+            Assert.False(toolResult.IsToolError, toolResult.ToolResult);
+            Assert.Contains(runSteps, step =>
+                step.Contains("Contract evidence: CreateDirectory", StringComparison.Ordinal) &&
+                step.Contains("create_directory completed for logs", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_AllowsSafeReadToolWhenIntentIsConversation()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ToolRegistry();
+        registry.Register(new ListDirectoryTool());
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+
+        var previousRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT");
+        Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", root);
+        try
+        {
+            var results = await InvokeExecuteToolsAsync(
+                service,
+                [
+                    ChatContent.CreateToolUse(
+                        "tool-list-dir",
+                        "list_directory",
+                        new Dictionary<string, object?> { ["path"] = "." })
+                ],
+                registry,
+                new AllowAllPermissionEnforcer(),
+                new DesktopToolCallbacks(),
+                root,
+                new TurnIntentClassification
+                {
+                    Type = TurnIntentType.Conversation,
+                    Confidence = 0.94,
+                    ActionKind = "discuss",
+                    IsConcreteEnough = true
+                });
+
+            var toolResult = Assert.Single(results);
+            Assert.False(toolResult.IsToolError, toolResult.ToolResult);
+            Assert.DoesNotContain("Turn intent is Conversation", toolResult.ToolResult, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT", previousRoot);
+        }
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_CodingAllowsVerificationCommandsWithoutApproval()
     {
         var assessment = ToolPermissionClassifier.Assess(
             "bash",
@@ -9249,7 +10549,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         var result = ToolPermissionPolicy.Evaluate(assessment, AgentWorkMode.Coding);
 
         Assert.Equal(PermissionRiskLevel.VerificationCommand, assessment.RiskLevel);
-        Assert.Equal(ToolPermissionDecision.RequireApproval, result.Decision);
+        Assert.Equal(ToolPermissionDecision.Allow, result.Decision);
         Assert.False(result.IsBlocked);
     }
 
@@ -9862,7 +11162,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         return input;
     }
 
-    private static DesktopAgentService CreateDesktopAgentService(IHttpClientFactory httpClientFactory)
+    private static DesktopAgentService CreateDesktopAgentService(IHttpClientFactory httpClientFactory, ITool? webSearchTool = null)
     {
         var workspaceAnalysisService = new WorkspaceAnalysisService();
         return new DesktopAgentService(
@@ -9875,7 +11175,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             new FileMutationSnapshotService(),
             new ToolReplayService(),
             new WorkspaceSymbolIndexService(),
-            workspaceAnalysisService);
+            workspaceAnalysisService,
+            webSearchTool: webSearchTool);
     }
 
     private static async Task<List<ChatContent>> InvokeExecuteToolsAsync(
@@ -9885,7 +11186,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         IPermissionEnforcer permissionEnforcer,
         DesktopToolCallbacks callbacks,
         string workspaceRoot,
-        TurnIntentClassification? turnIntent = null)
+        TurnIntentClassification? turnIntent = null,
+        TaskContract? taskContract = null)
     {
         var method = typeof(DesktopAgentService).GetMethod(
             "ExecuteToolsAsync",
@@ -9904,7 +11206,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             new List<ToolReplayEntry>(),
             new Dictionary<string, int>(StringComparer.Ordinal),
             CancellationToken.None,
-            turnIntent
+            turnIntent,
+            null,
+            taskContract
         ])!;
         return await task;
     }
@@ -10075,6 +11379,51 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             return value is JsonElement { ValueKind: JsonValueKind.String } element
                 ? element.GetString() ?? string.Empty
                 : value.ToString() ?? string.Empty;
+        }
+    }
+
+    private sealed class FakeWebSearchTool : ITool
+    {
+        public string Name => "web_search";
+
+        public string Description => "Fake web search tool for tests.";
+
+        public object InputSchema => new { type = "object" };
+
+        public bool RequiresPermission => true;
+
+        public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
+        {
+            var query = input.TryGetValue("query", out var rawQuery)
+                ? rawQuery?.ToString() ?? string.Empty
+                : string.Empty;
+            var payload = JsonSerializer.Serialize(new
+            {
+                query,
+                source = "fake",
+                resultCount = 1,
+                results = new[]
+                {
+                    new
+                    {
+                        title = "Fake review result",
+                        url = "https://example.com/review",
+                        snippet = "A fake evidence snippet."
+                    }
+                }
+            });
+            return Task.FromResult(ToolResult.Success(payload));
+        }
+    }
+
+    private sealed class StaticHttpMessageHandler(string content, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(content, System.Text.Encoding.UTF8, "text/html")
+            });
         }
     }
 
@@ -10724,6 +12073,155 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         public void Dispose()
         {
             _handler.Dispose();
+        }
+    }
+
+    private static string ChatResponse(string content)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            id = "chatcmpl_test",
+            model = "intent-test",
+            choices = new[]
+            {
+                new
+                {
+                    index = 0,
+                    message = new
+                    {
+                        role = "assistant",
+                        content
+                    },
+                    finish_reason = "stop"
+                }
+            }
+        });
+    }
+
+    private static string ToolCallResponse(string toolCallId, string toolName, object arguments)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            id = "chatcmpl_tool_test",
+            model = "intent-test",
+            choices = new[]
+            {
+                new
+                {
+                    index = 0,
+                    message = new
+                    {
+                        role = "assistant",
+                        content = (string?)null,
+                        tool_calls = new[]
+                        {
+                            new
+                            {
+                                id = toolCallId,
+                                type = "function",
+                                function = new
+                                {
+                                    name = toolName,
+                                    arguments = JsonSerializer.Serialize(arguments)
+                                }
+                            }
+                        }
+                    },
+                    finish_reason = "tool_calls"
+                }
+            }
+        });
+    }
+
+    private static string StreamTextResponse(string content)
+    {
+        var chunk = JsonSerializer.Serialize(new
+        {
+            id = "chatcmpl_stream_text",
+            choices = new[]
+            {
+                new
+                {
+                    index = 0,
+                    delta = new
+                    {
+                        role = "assistant",
+                        content
+                    },
+                    finish_reason = "stop"
+                }
+            }
+        });
+        return $"data: {chunk}\n\ndata: [DONE]\n\n";
+    }
+
+    private static string StreamToolCallResponse(string toolCallId, string toolName, object arguments)
+    {
+        var chunk = JsonSerializer.Serialize(new
+        {
+            id = "chatcmpl_stream_tool",
+            choices = new[]
+            {
+                new
+                {
+                    index = 0,
+                    delta = new
+                    {
+                        role = "assistant",
+                        tool_calls = new[]
+                        {
+                            new
+                            {
+                                index = 0,
+                                id = toolCallId,
+                                type = "function",
+                                function = new
+                                {
+                                    name = toolName,
+                                    arguments = JsonSerializer.Serialize(arguments)
+                                }
+                            }
+                        }
+                    },
+                    finish_reason = "tool_calls"
+                }
+            }
+        });
+        return $"data: {chunk}\n\ndata: [DONE]\n\n";
+    }
+
+    private sealed class SequentialStubHttpClientFactory(params string[] contents) : IHttpClientFactory, IDisposable
+    {
+        private readonly SequentialStubHttpMessageHandler _handler = new(contents);
+
+        public IReadOnlyList<string> RequestBodies => _handler.RequestBodies;
+
+        public HttpClient CreateClient(string name)
+        {
+            return new HttpClient(_handler, disposeHandler: false);
+        }
+
+        public void Dispose()
+        {
+            _handler.Dispose();
+        }
+    }
+
+    private sealed class SequentialStubHttpMessageHandler(params string[] contents) : HttpMessageHandler
+    {
+        private readonly Queue<string> _contents = new(contents);
+        private readonly List<string> _requestBodies = [];
+
+        public IReadOnlyList<string> RequestBodies => _requestBodies;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            _requestBodies.Add(request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty);
+            var content = _contents.Count > 0 ? _contents.Dequeue() : ChatResponse(string.Empty);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json")
+            });
         }
     }
 

@@ -10,6 +10,7 @@ internal static class DesktopToolInputParser
         {
             JsonElement json when json.ValueKind == JsonValueKind.Object => ParseObject(json),
             string rawJson => ParseRawJson(rawJson),
+            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.Ordinal),
             _ => []
         };
     }
