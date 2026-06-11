@@ -71,14 +71,27 @@ public static class DesktopConfidenceAssessor
         if (fileChanges.Count > 0)
         {
             signals.Add($"{fileChanges.Count} file change(s) recorded");
+            var onlyNewChanges = fileChanges.All(change => !change.ExistedBefore);
+            var onlyDirectoryChanges = fileChanges.All(IsDirectoryChange);
 
-            if (toolEvidence.Count > 0 && readFileCount == 0)
+            if (onlyDirectoryChanges)
+            {
+                score += 12;
+                signals.Add("directory creation/deletion evidence matched a simple filesystem task");
+            }
+            else if (onlyNewChanges)
+            {
+                score += 6;
+                signals.Add("new file creation evidence was recorded");
+            }
+
+            if (!onlyNewChanges && toolEvidence.Count > 0 && readFileCount == 0)
             {
                 score -= 12;
                 warnings.Add("Changes were made without reading file context in this run");
             }
 
-            if (toolEvidence.Count > 0 && searchToolCount == 0)
+            if (!onlyNewChanges && toolEvidence.Count > 0 && searchToolCount == 0)
             {
                 score -= 10;
                 warnings.Add("Changes were made without search or symbol navigation evidence");
@@ -93,7 +106,8 @@ public static class DesktopConfidenceAssessor
         else if (fileChanges.Count > 0)
         {
             var alreadySatisfied = verificationPlans.Any(plan => plan.AlreadySatisfied);
-            if (!alreadySatisfied)
+            var hasAutomatedVerificationCommand = verificationPlans.Any(plan => !string.IsNullOrWhiteSpace(plan.Command));
+            if (!alreadySatisfied && hasAutomatedVerificationCommand)
             {
                 score -= 15;
                 warnings.Add("Changes were made without a completed build/test command");
@@ -150,6 +164,14 @@ public static class DesktopConfidenceAssessor
                    normalized.Contains("pnpm test", StringComparison.Ordinal) ||
                    normalized.Contains("pnpm build", StringComparison.Ordinal);
         });
+    }
+
+    private static bool IsDirectoryChange(FileChangeRecord change)
+    {
+        return string.Equals(change.Before, DesktopAgentService.DirectorySnapshotMarker, StringComparison.Ordinal) ||
+               string.Equals(change.After, DesktopAgentService.DirectorySnapshotMarker, StringComparison.Ordinal) ||
+               change.RelativePath.EndsWith("/", StringComparison.Ordinal) ||
+               change.RelativePath.EndsWith("\\", StringComparison.Ordinal);
     }
 
     private static bool IsSearchTool(string toolName)

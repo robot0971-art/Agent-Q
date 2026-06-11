@@ -47,14 +47,15 @@ public class GlobTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!input.TryGetValue("pattern", out var patternObj) || patternObj is not string pattern)
+        var pattern = TryGetString(input, "pattern");
+        if (pattern == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
         if (string.IsNullOrWhiteSpace(pattern))
             return Task.FromResult(ToolResult.Error("pattern must not be empty"));
 
         var searchPath = ".";
-        if (input.TryGetValue("path", out var pathObj) && pathObj is string p) searchPath = p;
+        if (TryGetString(input, "path") is { } p) searchPath = p;
 
         try
         {
@@ -67,7 +68,7 @@ public class GlobTool : ITool
                 return Task.FromResult(ToolResult.Error($"Directory not found: {searchPath}"));
 
             var matcher = BuildGlobRegex(pattern);
-            var files = Directory.EnumerateFiles(searchDir, "*", SearchOption.AllDirectories)
+            var files = EnumerateFilesWithoutFollowingLinks(searchDir)
                 .Where(f => !IsExcludedPath(f))
                 .Where(f => matcher.IsMatch(ToRelativePath(searchDir, f)))
                 .Take(MaximumFiles + 1)
@@ -124,6 +125,65 @@ public class GlobTool : ITool
         return Path.GetRelativePath(root, path).Replace('\\', '/');
     }
 
+    private static IEnumerable<string> EnumerateFilesWithoutFollowingLinks(string searchDir)
+    {
+        var pending = new Stack<string>();
+        pending.Push(searchDir);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(current, "*", SearchOption.TopDirectoryOnly).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                if (!IsReparsePoint(file))
+                {
+                    yield return file;
+                }
+            }
+
+            IEnumerable<string> directories;
+            try
+            {
+                directories = Directory.EnumerateDirectories(current, "*", SearchOption.TopDirectoryOnly).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var directory in directories)
+            {
+                if (!IsReparsePoint(directory))
+                {
+                    pending.Push(directory);
+                }
+            }
+        }
+    }
+
+    private static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
     /// <summary>
     /// 제외 경로 여부 확인
     /// </summary>
@@ -134,5 +194,20 @@ public class GlobTool : ITool
         return path.Contains("\\bin\\") || path.Contains("\\obj\\") || path.Contains("\\.git\\") ||
                path.Contains("/bin/") || path.Contains("/obj/") || path.Contains("/.git/") ||
                path.Contains("\\node_modules\\") || path.Contains("/node_modules/");
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 }

@@ -9,23 +9,23 @@ public static class DesktopModelRoutingAdvisor
         "architecture",
         "multi-agent",
         "refactor",
-        "설계",
-        "구조",
-        "전체",
-        "복잡",
-        "대규모"
+        "\uC124\uACC4",
+        "\uAD6C\uC870",
+        "\uC804\uCCB4",
+        "\uBCF5\uC7A1",
+        "\uB300\uADDC\uBAA8"
     ];
 
     private static readonly string[] SimpleSignals =
     [
         "typo",
-        "문구",
+        "\uBB38\uAD6C",
         "readme",
         "docs",
-        "설명",
-        "찾아",
-        "확인",
-        "분석"
+        "\uC124\uBA85",
+        "\uCC3E\uC544",
+        "\uD655\uC778",
+        "\uBD84\uC11D"
     ];
 
     public static DesktopModelRoutingRecommendation Recommend(

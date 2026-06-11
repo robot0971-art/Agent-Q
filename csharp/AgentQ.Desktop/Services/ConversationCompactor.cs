@@ -25,13 +25,13 @@ public sealed class ConversationCompactor
     {
         if (messages == null || messages.Count == 0)
         {
-            return messages ?? new List<ChatMessage>();
+            return new List<ChatMessage>();
         }
 
         var totalTokens = EstimateTokens(messages);
         if (totalTokens <= maxEstimatedTokens)
         {
-            return messages;
+            return messages.ToList();
         }
 
         // We will keep System messages, and then compact the rest, keeping keepRecentTurns messages intact.

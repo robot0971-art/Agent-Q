@@ -200,7 +200,7 @@ public sealed class AgentCouncilPanelViewModel : INotifyPropertyChanged
         EnsureParticipant(roleKey).StatusText = plan.AlreadySatisfied
             ? (UseKoreanUi ? "\uC774\uBBF8 \uCDA9\uC871" : "Already satisfied")
             : (UseKoreanUi ? "\uAC80\uC99D \uC900\uBE44" : "Preparing check");
-        AddEvent(roleKey, plan.Title, plan.Detail, AgentRunState.Verifying);
+        AddEvent(roleKey, plan.Title, plan.Detail, plan.AlreadySatisfied ? AgentRunState.Done : AgentRunState.Planning);
     }
 
     public void RecordVerificationResult(VerificationResultCard result)

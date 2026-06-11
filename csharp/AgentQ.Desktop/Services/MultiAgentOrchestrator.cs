@@ -150,7 +150,9 @@ Command: {step.VerificationCommand}
                     toolCallbacks: callbacks,
                     ct: ct);
 
-                stepSucceeded = !testerOutput.Contains("failed") && !testerOutput.Contains("Error");
+                stepSucceeded = TaskExecutor.IsStepOutputSuccessful(testerOutput) &&
+                                !testerOutput.Contains("failed", StringComparison.OrdinalIgnoreCase) &&
+                                !testerOutput.Contains("error", StringComparison.OrdinalIgnoreCase);
             }
 
             var stepResult = new TaskStepResult

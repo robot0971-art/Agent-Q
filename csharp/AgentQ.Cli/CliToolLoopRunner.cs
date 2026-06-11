@@ -24,7 +24,7 @@ public sealed class CliToolLoopRunner
     /// <param name="onToolError">도구 오류 콜백</param>
     /// <param name="onPermissionDenied">권한 거부 콜백</param>
     /// <param name="ct">취소 토큰</param>
-    public async Task ExecuteConversationTurnAsync(
+    public async Task<CliToolLoopRunResult> ExecuteConversationTurnAsync(
         ILlmProvider provider,
         string model,
         ChatConversationHistory history,
@@ -48,10 +48,11 @@ public sealed class CliToolLoopRunner
             stepCount++;
             if (stepCount > stepLimit)
             {
+                var message = $"Stopped after reaching the maximum tool steps ({stepLimit}).";
                 history.AddAssistantMessage([
-                    ChatContent.CreateText($"Stopped after reaching the maximum tool steps ({stepLimit}).")
+                    ChatContent.CreateText(message)
                 ]);
-                break;
+                return CliToolLoopRunResult.StoppedByMaxSteps(stepLimit, message);
             }
 
             var turnBuilder = new ConversationTurnBuilder();
@@ -70,7 +71,7 @@ public sealed class CliToolLoopRunner
 
             if (!response.ToolUses.Any())
             {
-                break;
+                return CliToolLoopRunResult.Completed(stepCount);
             }
 
             var toolExecutor = new ToolExecutor(
@@ -101,4 +102,17 @@ public sealed class CliToolLoopRunner
     {
         return JsonArgumentParser.ParseJsonArguments(jsonArgs);
     }
+}
+
+public sealed record CliToolLoopRunResult(
+    bool HitMaxSteps,
+    int StepCount,
+    int StepLimit,
+    string? StopMessage)
+{
+    public static CliToolLoopRunResult Completed(int stepCount) =>
+        new(false, stepCount, 0, null);
+
+    public static CliToolLoopRunResult StoppedByMaxSteps(int stepLimit, string stopMessage) =>
+        new(true, stepLimit, stepLimit, stopMessage);
 }

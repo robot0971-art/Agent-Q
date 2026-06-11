@@ -44,6 +44,7 @@ public sealed class WorkerPlanCandidateBuilder
                 : recommendation.Description,
             VerificationCommands = recommendation.VerificationCommands
                 .Where(command => !string.IsNullOrWhiteSpace(command))
+                .Where(command => VerificationCommandPolicy.IsAllowed(command))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList()
         };

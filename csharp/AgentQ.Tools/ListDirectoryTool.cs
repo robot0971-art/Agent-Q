@@ -28,7 +28,8 @@ public sealed class ListDirectoryTool : ITool
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         var requestedPath = ".";
-        if (input.TryGetValue("path", out var pathObj) && pathObj is string path && !string.IsNullOrWhiteSpace(path))
+        var path = TryGetString(input, "path");
+        if (!string.IsNullOrWhiteSpace(path))
         {
             requestedPath = path;
         }
@@ -179,5 +180,20 @@ public sealed class ListDirectoryTool : ITool
         }
 
         return false;
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 }

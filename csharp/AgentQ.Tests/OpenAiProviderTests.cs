@@ -95,6 +95,50 @@ public sealed class OpenAiProviderTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_ClampsHugeMaxTokens()
+    {
+        JsonDocument? capturedRequest = null;
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_max_tokens",
+              "model": "gpt-4o-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "gpt-4o-mini");
+        var context = new ChatContext
+        {
+            Model = "gpt-4o-mini",
+            Messages = [ChatMessage.UserText("hello")],
+            MaxTokens = uint.MaxValue
+        };
+
+        await provider.GenerateResponseAsync(context, []);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(int.MaxValue, capturedRequest!.RootElement.GetProperty("max_tokens").GetInt32());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateResponseAsync_PreservesBaseUrlPathWithoutTrailingSlash()
     {
         string? capturedPath = null;
@@ -452,6 +496,213 @@ public sealed class OpenAiProviderTests
         Assert.Contains(toolUses, tool => tool.ToolId == "call_grep" && tool.ToolName == "grep_search");
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_ParsesObjectToolArgumentsFromCompatibleProviders()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_object_args",
+              "model": "compatible-model",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "id": "call_read",
+                        "type": "function",
+                        "function": {
+                          "name": "read_file",
+                          "arguments": { "path": "fixture.txt" }
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(responseBody, "application/json"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        var toolUse = Assert.Single(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.Equal("call_read", toolUse.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{ \"path\": \"fixture.txt\" }", toolUse.ToolInput);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_ReplacesWhitespaceToolCallId()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_blank_tool_id",
+              "model": "compatible-model",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "id": "   ",
+                        "type": "function",
+                        "function": {
+                          "name": "read_file",
+                          "arguments": "{\"path\":\"fixture.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(responseBody, "application/json"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        var toolUse = Assert.Single(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.False(string.IsNullOrWhiteSpace(toolUse.ToolId));
+        Assert.NotEqual("   ", toolUse.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_DropsToolCallsWithoutToolName()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_missing_tool_name",
+              "model": "compatible-model",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "I tried to call a tool.",
+                    "tool_calls": [
+                      {
+                        "id": "call_missing_name",
+                        "type": "function",
+                        "function": {
+                          "arguments": "{\"path\":\"fixture.txt\"}"
+                        }
+                      }
+                    ]
+                  },
+                  "finish_reason": "tool_calls"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(responseBody, "application/json"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        Assert.DoesNotContain(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.Equal("I tried to call a tool.", Assert.Single(response.Content, content => content.Type == ContentType.Text).Text);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_ParsesLegacyFunctionCall()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_legacy_function",
+              "model": "compatible-model",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "I will inspect the file.",
+                    "function_call": {
+                      "name": "read_file",
+                      "arguments": "{\"path\":\"fixture.txt\"}"
+                    }
+                  },
+                  "finish_reason": "function_call"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(responseBody, "application/json"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        Assert.Equal("I will inspect the file.", Assert.Single(response.Content, content => content.Type == ContentType.Text).Text);
+        var toolUse = Assert.Single(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.Equal("function_call_0", toolUse.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", Assert.IsType<string>(toolUse.ToolInput));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_UsesLegacyFunctionCallWhenToolCallsAreInvalid()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_legacy_fallback",
+              "model": "compatible-model",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "id": "call_missing_name",
+                        "type": "function",
+                        "function": {
+                          "arguments": "{\"path\":\"bad.txt\"}"
+                        }
+                      }
+                    ],
+                    "function_call": {
+                      "name": "read_file",
+                      "arguments": "{\"path\":\"fixture.txt\"}"
+                    }
+                  },
+                  "finish_reason": "function_call"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(responseBody, "application/json"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        var toolUse = Assert.Single(response.Content, content => content.Type == ContentType.ToolUse);
+        Assert.Equal("function_call_0", toolUse.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", Assert.IsType<string>(toolUse.ToolInput));
+    }
+
     /// <summary>
     /// GenerateStreamAsync이 스트리밍 응답에서 여러 도구 호출을 올바르게 조립하는지 검증합니다.
     /// </summary>
@@ -507,6 +758,41 @@ public sealed class OpenAiProviderTests
                                           tool.ToolName == "grep_search" &&
                                           tool.PartialInput == "{\"pattern\":\"parity\",\"path\":\"fixture.txt\"}");
 
+        Assert.Single(chunks, chunk => chunk.IsComplete);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GenerateStreamAsync_AssemblesLegacyFunctionCall()
+    {
+        const string streamBody =
+            """
+            data: {"id":"chatcmpl_legacy_stream","choices":[{"index":0,"delta":{"content":"Working."},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_legacy_stream","choices":[{"index":0,"delta":{"function_call":{"name":"read_file","arguments":"{\"path\":\"fi"}},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_legacy_stream","choices":[{"index":0,"delta":{"function_call":{"arguments":"xture.txt\"}"}},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_legacy_stream","choices":[{"index":0,"delta":{},"finish_reason":"function_call"}]}
+
+            data: [DONE]
+
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(_ => new StaticResponse(streamBody, "text/event-stream"));
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "compatible-model");
+
+        var chunks = new List<StreamChunk>();
+        await foreach (var chunk in provider.GenerateStreamAsync(CreateContext(), CreateToolDefinitions("read_file")))
+        {
+            chunks.Add(chunk);
+        }
+
+        Assert.Equal("Working.", string.Concat(chunks.Select(chunk => chunk.TextDelta).Where(value => !string.IsNullOrEmpty(value))));
+        var toolUse = Assert.Single(chunks.Where(chunk => chunk.ToolUseDelta?.IsComplete == true).Select(chunk => chunk.ToolUseDelta!));
+        Assert.Equal("tool_call_0", toolUse.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
         Assert.Single(chunks, chunk => chunk.IsComplete);
     }
 

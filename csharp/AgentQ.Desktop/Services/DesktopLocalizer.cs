@@ -103,6 +103,7 @@ public static class DesktopLocalizer
             nameof(DesktopText.GitUnstageSelectedFailed) => useKoreanUi ? "\uC120\uD0DD\uD55C \uD30C\uC77C unstage \uC2E4\uD328" : "Unstage selected failed",
             nameof(DesktopText.GitCommitMessageRequired) => useKoreanUi ? "\uCEE4\uBC0B \uBA54\uC2DC\uC9C0\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4" : "Commit message is required",
             nameof(DesktopText.GitNoStagedFilesToCommit) => useKoreanUi ? "\uCEE4\uBC0B\uD560 staged \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4" : "No staged files to commit",
+            nameof(DesktopText.GitUnapprovedStagedFiles) => useKoreanUi ? "staged \uD30C\uC77C\uC744 \uAC80\uD1A0\uD558\uACE0 \uC2B9\uC778\uD55C \uB4A4 \uCEE4\uBC0B\uD558\uC138\uC694" : "Review and approve staged files before committing",
             nameof(DesktopText.GitCreatingCommit) => useKoreanUi ? "\uCEE4\uBC0B \uC0DD\uC131 \uC911" : "Creating commit",
             nameof(DesktopText.GitCommitCreated) => useKoreanUi ? "\uCEE4\uBC0B \uC0DD\uC131 \uC644\uB8CC" : "Commit created",
             nameof(DesktopText.GitCommitFailed) => useKoreanUi ? "\uCEE4\uBC0B \uC2E4\uD328" : "Commit failed",
@@ -442,6 +443,11 @@ public static class DesktopLocalizer
                statusText.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
                statusText.Contains("blocked", StringComparison.OrdinalIgnoreCase) ||
                statusText.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ||
-               statusText.Contains("denied", StringComparison.OrdinalIgnoreCase);
+               statusText.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("stopped by guard", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("tool step limit", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("step limit reached", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not created", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("incomplete", StringComparison.OrdinalIgnoreCase);
     }
 }

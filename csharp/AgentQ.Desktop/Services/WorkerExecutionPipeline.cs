@@ -18,10 +18,14 @@ public sealed class WorkerExecutionPipeline(
             Plan = plan,
             Preview = preview,
             State = ToExecutionState(preview.ApprovalState),
-            StatusMessage = preview.DecisionSummary
+            StatusMessage = preview.DecisionSummary,
+            ProjectAllowedCommands = projectAllowedCommands?
+                .Where(command => !string.IsNullOrWhiteSpace(command))
+                .Distinct(StringComparer.Ordinal)
+                .ToList() ?? []
         };
 
-        foreach (var verificationPlan in BuildVerificationPlans(plan))
+        foreach (var verificationPlan in BuildVerificationPlans(plan, projectAllowedCommands))
         {
             context.VerificationPlans.Add(verificationPlan);
         }
@@ -95,12 +99,13 @@ public sealed class WorkerExecutionPipeline(
         context.LoopGuardState = decision.State;
         if (decision.ShouldStop)
         {
+            context.RepairPlan = null;
             context.State = WorkerExecutionState.StoppedRepeatedFailure;
             context.StatusMessage = decision.Message;
             return;
         }
 
-        context.RepairPlan = BuildRepairPlan(context.Plan, verificationResult, signature);
+        context.RepairPlan = BuildRepairPlan(context.Plan, verificationResult, signature, context.ProjectAllowedCommands);
         context.State = WorkerExecutionState.RepairRequired;
         context.StatusMessage = "Worker repair required after failed verification.";
     }
@@ -115,10 +120,13 @@ public sealed class WorkerExecutionPipeline(
         };
     }
 
-    private static IEnumerable<AgentVerificationPlan> BuildVerificationPlans(WorkerPlan plan)
+    private static IEnumerable<AgentVerificationPlan> BuildVerificationPlans(
+        WorkerPlan plan,
+        IEnumerable<string>? projectAllowedCommands)
     {
         return plan.VerificationCommands
             .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Where(command => VerificationCommandPolicy.IsAllowed(command, projectAllowedCommands))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(command => new AgentVerificationPlan
             {
@@ -133,7 +141,8 @@ public sealed class WorkerExecutionPipeline(
     private static WorkerRepairPlan BuildRepairPlan(
         WorkerPlan plan,
         DesktopVerificationWorkflowResult verificationResult,
-        string signature)
+        string signature,
+        IEnumerable<string>? projectAllowedCommands)
     {
         return new WorkerRepairPlan
         {
@@ -145,7 +154,9 @@ public sealed class WorkerExecutionPipeline(
             FailureKind = verificationResult.FailureAnalysis?.Kind.ToString() ?? "Unknown",
             SuggestedNextStep = verificationResult.FailureAnalysis?.SuggestedNextStep ?? "Inspect the failed verification output before editing.",
             Evidence = verificationResult.FailureAnalysis?.Evidence.ToList() ?? [],
-            VerificationCommands = plan.VerificationCommands.ToList(),
+            VerificationCommands = plan.VerificationCommands
+                .Where(command => VerificationCommandPolicy.IsAllowed(command, projectAllowedCommands))
+                .ToList(),
             Risks = ["Repair should stay scoped to the failed verification evidence."]
         };
     }

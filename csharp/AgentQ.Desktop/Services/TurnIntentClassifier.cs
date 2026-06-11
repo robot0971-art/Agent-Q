@@ -154,11 +154,11 @@ public static class TurnIntentClassifier
     {
         if (ruleClassification.Type == TurnIntentType.Conversation &&
             modelClassification.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
-            modelClassification.RequiresWrite)
+            (modelClassification.RequiresWrite || modelClassification.RequiresShell))
         {
             return ruleClassification with
             {
-                Rationale = ruleClassification.Rationale + " Model-first classification attempted to promote a conversation turn to a write action, so AgentQ kept the non-executing classification."
+                Rationale = ruleClassification.Rationale + " Model-first classification attempted to promote a conversation turn to a write or shell action, so AgentQ kept the non-executing classification."
             };
         }
 
@@ -347,8 +347,8 @@ public static class TurnIntentClassifier
             return "edit";
         }
 
-        if (ContainsAny(normalized, "create", "make", "generate", "scaffold", "implement", "write", "draw",
-                "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC791\uC131", "\uAD6C\uD604", "\uCD94\uAC00", "\uADF8\uB824"))
+        if (ContainsAny(normalized, "create", "make", "generate", "scaffold", "implement", "write", "draw", "proceed", "continue", "goahead",
+                "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC791\uC131", "\uAD6C\uD604", "\uCD94\uAC00", "\uADF8\uB824", "\uC9C4\uD589"))
         {
             return "create";
         }
@@ -432,7 +432,7 @@ public static class TurnIntentClassifier
     {
         return ContainsAny(normalized,
             "howis", "howabout", "ok", "good", "recommend", "better", "opinion", "feedback", "review", "analyze", "evaluate", "shouldi",
-            "\uC5B4\uB584", "\uC5B4\uB54C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uAC78", "\uC5B4\uB5A4\uAC8C", "\uBB58", "\uBB50\uAC00", "\uBB34\uC5C7\uC744", "\uBCFC\uAE4C", "\uC218\uC788\uC744\uAE4C", "\uAD1C\uCC2E", "\uC88B\uC744\uAE4C", "\uBCC4\uB85C", "\uCD94\uCC9C", "\uB098\uC544", "\uC758\uACAC", "\uC0DD\uAC01", "\uBC29\uD5A5", "\uAE30\uB2A5\uC740", "\uD53C\uB4DC\uBC31", "\uB9AC\uBDF0", "\uBD84\uC11D", "\uD3C9\uAC00", "\uD574\uC57C\uD560\uAE4C", "\uB9D0\uC544\uC57C\uD560\uAE4C");
+            "\uC5B4\uB584", "\uC5B4\uB54C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uAC78", "\uC5B4\uB5A4\uAC8C", "\uBB58", "\uBB50\uAC00", "\uBB34\uC5C7\uC744", "\uBCFC\uAE4C", "\uC218\uC788\uC744\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uAC00\uB2A5\uD55C\uAC00", "\uAD1C\uCC2E", "\uC88B\uC744\uAE4C", "\uBCC4\uB85C", "\uCD94\uCC9C", "\uB098\uC544", "\uC758\uACAC", "\uC0DD\uAC01", "\uBC29\uD5A5", "\uAE30\uB2A5\uC740", "\uD53C\uB4DC\uBC31", "\uB9AC\uBDF0", "\uBD84\uC11D", "\uD3C9\uAC00", "\uD574\uC57C\uD560\uAE4C", "\uB9D0\uC544\uC57C\uD560\uAE4C");
     }
 
     private static bool HasHowToSignal(string normalized)
@@ -446,7 +446,7 @@ public static class TurnIntentClassifier
     {
         return ContainsAny(normalized,
             "wanttocreate", "wanttomake", "wanttobuild", "thinkingaboutcreating", "whatwouldbegood", "possible",
-            "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74", "\uB9CC\uB4E4\uC5B4\uBCFC\uAE4C", "\uB9CC\uB4E4\uAE4C", "\uB9CC\uB4E4\uB824\uACE0", "\uD558\uB824\uACE0\uD558\uB294\uB370", "\uD574\uBCF4\uACE0\uC2F6", "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uC5B4\uB5A4\uAC78\uB9CC\uB4E4", "\uC5B4\uB5A4\uAC8C\uB9CC\uB4E4", "\uC218\uC788\uC744\uAE4C", "\uAC00\uB2A5\uD560\uAE4C", "\uB420\uAE4C");
+            "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74", "\uB9CC\uB4E4\uC5B4\uBCFC\uAE4C", "\uB9CC\uB4E4\uC5B4\uBCFC\uC218", "\uB9CC\uB4E4\uAE4C", "\uB9CC\uB4E4\uB824\uACE0", "\uD558\uB824\uACE0\uD558\uB294\uB370", "\uD574\uBCF4\uACE0\uC2F6", "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uC5B4\uB5A4\uAC78\uB9CC\uB4E4", "\uC5B4\uB5A4\uAC8C\uB9CC\uB4E4", "\uC218\uC788\uC744\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uAC00\uB2A5\uD560\uAE4C", "\uAC00\uB2A5\uD55C\uAC00", "\uB420\uAE4C");
     }
 
     private static bool RequiresWrite(string action) => action is "create" or "edit" or "delete" or "file" or "git";

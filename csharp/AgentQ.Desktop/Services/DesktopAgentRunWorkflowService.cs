@@ -118,8 +118,12 @@ public sealed class DesktopAgentRunWorkflowService(
         var assistantIndex = viewModel.Messages.Count - 1;
         viewModel.RunSteps.Clear();
         viewModel.VerificationPlans.Clear();
-        var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(prompt);
-        viewModel.Council.StartSession(prompt, taskProfile, MultiAgentRolePlanner.Build(taskProfile), viewModel.IsKoreanUi);
+        var turnUnderstanding = UserTurnUnderstandingService.Understand(prompt);
+        var routingText = string.IsNullOrWhiteSpace(turnUnderstanding.RoutingText)
+            ? prompt
+            : turnUnderstanding.RoutingText;
+        var taskProfile = DesktopPromptAssemblyService.BuildTaskProfile(routingText);
+        viewModel.Council.StartSession(routingText, taskProfile, MultiAgentRolePlanner.Build(taskProfile), viewModel.IsKoreanUi);
         if (preserveLastVerificationFailure)
         {
             verificationPanelWorkflowService.RestoreRetryPlan(viewModel);
@@ -316,8 +320,9 @@ public sealed class DesktopAgentRunWorkflowService(
 
             UpdateContinuationState(viewModel, fullText);
             AddLearningCandidates(viewModel, prompt, fullText);
-            viewModel.StatusText = "Response complete";
-            viewModel.AddLog("Model call completed");
+            var completionOutcome = BuildRunCompletionOutcome(fullText);
+            viewModel.StatusText = completionOutcome.StatusText;
+            viewModel.AddLog(completionOutcome.LogText);
             var usage = _usageTracker.RecordEstimate(prompt, fullText);
             if (usage.LastTotalTokens > 0 || usage.IsEstimate)
             {
@@ -325,21 +330,31 @@ public sealed class DesktopAgentRunWorkflowService(
                 viewModel.AddLog($"Usage recorded: {usage.DisplayText}");
                 RecordUsageTelemetry("usage_estimate", workspaceRoot, config, usage);
             }
-            ClearPendingAttachmentsAfterSuccessfulSend(viewModel, attachments);
+            if (completionOutcome.Succeeded)
+            {
+                ClearPendingAttachmentsAfterSuccessfulSend(viewModel, attachments);
+            }
+            else
+            {
+                AddAttachmentRetryLog(viewModel, attachmentsForRequest.Count);
+            }
+
             await workspaceContextWorkflowService.SaveSessionSummaryAsync(
                 viewModel,
                 "Session summary auto-saved",
-                trimForLog);
+                trimForLog,
+                updateStatus: false);
             RecordTelemetry(
-                "run_completed",
+                completionOutcome.TelemetryEventType,
                 workspaceRoot,
                 config.Provider,
                 config.Model,
-                succeeded: true,
+                succeeded: completionOutcome.Succeeded,
+                isError: completionOutcome.IsError,
                 durationMs: (int)(DateTime.UtcNow - startedAt).TotalMilliseconds,
                 detail: $"files={viewModel.FileChanges.Count}; verificationPlans={viewModel.VerificationPlans.Count}");
             diagnosticsService.Record(
-                "run_completed",
+                completionOutcome.TelemetryEventType,
                 $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}; files={viewModel.FileChanges.Count}; verificationPlans={viewModel.VerificationPlans.Count}; responseChars={fullText.Length}",
                 workspaceRoot,
                 config.Provider,
@@ -428,6 +443,14 @@ public sealed class DesktopAgentRunWorkflowService(
             return false;
         }
 
+        if (!string.IsNullOrWhiteSpace(viewModel.InputText) &&
+            !string.Equals(viewModel.InputText.Trim(), viewModel.LastContinuationPrompt.Trim(), StringComparison.Ordinal))
+        {
+            viewModel.StatusText = "Send or clear the current draft before continuing the paused run";
+            viewModel.AddLog("Continuation blocked because the input box contains a user draft.");
+            return false;
+        }
+
         viewModel.InputText = viewModel.LastContinuationPrompt;
         viewModel.CanContinueLastRun = false;
         viewModel.AddLog("Continuation prompt prepared");
@@ -479,6 +502,93 @@ public sealed class DesktopAgentRunWorkflowService(
         {
             viewModel.AddLog("Run can be continued from the tool step limit.");
         }
+    }
+
+    public static DesktopRunCompletionOutcome BuildRunCompletionOutcome(string fullText)
+    {
+        if (string.IsNullOrWhiteSpace(fullText))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_empty_response",
+                Succeeded = false,
+                IsError = true,
+                StatusText = "Empty response",
+                LogText = "Model returned an empty response"
+            };
+        }
+
+        if (fullText.Contains("Stopped after reaching the maximum tool steps", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_step_limit_reached",
+                Succeeded = false,
+                StatusText = "Tool step limit reached",
+                LogText = "Run stopped at the tool step limit"
+            };
+        }
+
+        if (fullText.Contains("stopped this answer instead of showing an unsupported completion", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("the model did not call create_project_scaffold", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("the model did not call tools after retry", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("did not satisfy the current task contract", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_guard_stopped",
+                Succeeded = false,
+                StatusText = "Run stopped by guard",
+                LogText = "Run stopped by a safety guard"
+            };
+        }
+
+        if (fullText.Contains("Project scaffold creation failed:", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_scaffold_failed",
+                Succeeded = false,
+                IsError = true,
+                StatusText = "Project scaffold failed",
+                LogText = "Project scaffold creation failed"
+            };
+        }
+
+        if (fullText.Contains("Prepared project scaffold was not created.", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("프로젝트 생성은 진행하지 않았습니다", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_scaffold_not_created",
+                Succeeded = false,
+                StatusText = "Project scaffold not created",
+                LogText = "Project scaffold was not created"
+            };
+        }
+
+        if (fullText.Contains("로컬 개발 서버를 띄우지 못했습니다", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("로컬 개발 서버를 종료하지 못했습니다", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("Failed to start local development server", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("Failed to stop local development server", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_local_server_failed",
+                Succeeded = false,
+                IsError = true,
+                StatusText = "Local server failed",
+                LogText = "Local server action failed"
+            };
+        }
+
+        return new DesktopRunCompletionOutcome
+        {
+            TelemetryEventType = "run_completed",
+            Succeeded = true,
+            StatusText = "Response complete",
+            LogText = "Model call completed"
+        };
     }
 
     private void AddLearningCandidates(MainViewModel viewModel, string prompt, string fullText)
@@ -612,6 +722,23 @@ public sealed class DesktopAgentRunWorkflowService(
                 RecordTelemetry("verification_result", workspaceRoot, config.Provider, config.Model, succeeded: string.Equals(result.Status, "PASSED", StringComparison.OrdinalIgnoreCase), detail: result.Summary);
             },
             OnUsage = usage => SafeCallback("OnUsage", () => callbacks.OnUsage?.Invoke(usage), usage.ToString() ?? string.Empty),
+            OnLocalServerChanged = state =>
+            {
+                SafeCallback("OnLocalServerChanged", () => callbacks.OnLocalServerChanged?.Invoke(state), $"{state.Url}; running={state.IsRunning}");
+                diagnosticsService.Record(
+                    "local_server_state_changed",
+                    $"running={state.IsRunning}; url={state.Url}; processId={state.ProcessId}; command={state.Command}",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model);
+                RecordTelemetry(
+                    "local_server_state_changed",
+                    workspaceRoot,
+                    config.Provider,
+                    config.Model,
+                    succeeded: state.IsRunning,
+                    detail: state.Url);
+            },
             OnRequestExtendSteps = currentLimit =>
             {
                 try
@@ -748,4 +875,17 @@ public sealed class DesktopAgentRunWorkflowService(
             ? new CancellationTokenSource()
             : new CancellationTokenSource(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
     }
+}
+
+public sealed class DesktopRunCompletionOutcome
+{
+    public required string TelemetryEventType { get; init; }
+
+    public required bool Succeeded { get; init; }
+
+    public bool IsError { get; init; }
+
+    public required string StatusText { get; init; }
+
+    public required string LogText { get; init; }
 }

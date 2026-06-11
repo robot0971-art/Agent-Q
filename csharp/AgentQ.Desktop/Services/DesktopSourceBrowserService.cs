@@ -172,7 +172,9 @@ public sealed class DesktopSourceBrowserService
             var directory = pending.Pop();
             foreach (var childDirectory in SafeEnumerateDirectories(directory))
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(childDirectory), StringComparer.OrdinalIgnoreCase))
+                if (!ExcludedDirectories.Contains(Path.GetFileName(childDirectory), StringComparer.OrdinalIgnoreCase) &&
+                    !IsReparseDirectory(childDirectory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, childDirectory))
                 {
                     pending.Push(childDirectory);
                 }
@@ -186,7 +188,9 @@ public sealed class DesktopSourceBrowserService
                 }
 
                 var relativePath = Normalize(Path.GetRelativePath(root, file));
-                if (!MatchesFilter(relativePath, filter) || !IsPreferredSourceFile(file))
+                if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, file) ||
+                    !MatchesFilter(relativePath, filter) ||
+                    !IsPreferredSourceFile(file))
                 {
                     continue;
                 }
@@ -254,9 +258,26 @@ public sealed class DesktopSourceBrowserService
 
     private static bool IsUnderWorkspace(string workspaceRoot, string path)
     {
-        var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var fullPath = Path.GetFullPath(path);
-        return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            return WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static IEnumerable<string> SafeEnumerateDirectories(string path)

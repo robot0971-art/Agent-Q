@@ -16,11 +16,15 @@ public static class AgentQCliServiceCollectionExtensions
         services.AddSingleton<CommandLineConfigurationParser>();
         services.AddSingleton(CreateProviderFactory);
         services.AddSingleton<ITool, BashTool>();
+        services.AddSingleton<ITool, ListDirectoryTool>();
         services.AddSingleton<ITool, ReadFileTool>();
         services.AddSingleton<ITool, WriteFileTool>();
+        services.AddSingleton<ITool, CreateDirectoryTool>();
+        services.AddSingleton<ITool, DeletePathTool>();
         services.AddSingleton<ITool, EditFileTool>();
         services.AddSingleton<ITool, GrepTool>();
         services.AddSingleton<ITool, GlobTool>();
+        services.AddSingleton<ITool, WebSearchTool>();
         services.AddSingleton<ITool, PluginEchoTool>();
         services.AddSingleton(CreateToolRegistry);
         services.AddSingleton<IConfigStore, FileConfigStore>();

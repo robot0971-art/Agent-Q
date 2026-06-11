@@ -28,6 +28,7 @@ public static class McpServerRegistry
     {
         return config?.McpServers
             .Where(server => server.Enabled && IsAllowed(server, workspaceRoot))
+            .Select(server => NormalizeForExecution(server, workspaceRoot))
             .ToList() ?? [];
     }
 
@@ -162,11 +163,43 @@ public static class McpServerRegistry
             return true;
         }
 
-        var fullWorkingDirectory = Path.IsPathRooted(server.WorkingDirectory)
-            ? Path.GetFullPath(server.WorkingDirectory)
-            : Path.GetFullPath(Path.Combine(workspaceRoot, server.WorkingDirectory));
+        try
+        {
+            var root = Path.GetFullPath(workspaceRoot);
+            var fullWorkingDirectory = Path.IsPathRooted(server.WorkingDirectory)
+                ? Path.GetFullPath(server.WorkingDirectory)
+                : Path.GetFullPath(Path.Combine(root, server.WorkingDirectory));
 
-        return IsPathInside(fullWorkingDirectory, Path.GetFullPath(workspaceRoot));
+            return IsPathInside(fullWorkingDirectory, root) &&
+                   IsResolvedPathInsideRoot(fullWorkingDirectory, root);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static McpServerConfig NormalizeForExecution(McpServerConfig server, string? workspaceRoot)
+    {
+        var copy = new McpServerConfig
+        {
+            Name = server.Name,
+            Transport = server.Transport,
+            Command = server.Command,
+            Args = server.Args.ToList(),
+            WorkingDirectory = server.WorkingDirectory,
+            Enabled = server.Enabled,
+            Tags = server.Tags.ToList()
+        };
+
+        if (!string.IsNullOrWhiteSpace(copy.WorkingDirectory) &&
+            !string.IsNullOrWhiteSpace(workspaceRoot) &&
+            !Path.IsPathRooted(copy.WorkingDirectory))
+        {
+            copy.WorkingDirectory = Path.GetFullPath(Path.Combine(workspaceRoot, copy.WorkingDirectory));
+        }
+
+        return copy;
     }
 
     private static bool IsPathInside(string path, string root)
@@ -175,5 +208,83 @@ public static class McpServerRegistry
         return relative == "." ||
                (!relative.StartsWith("..", StringComparison.Ordinal) &&
                 !Path.IsPathRooted(relative));
+    }
+
+    private static bool IsResolvedPathInsideRoot(string path, string root)
+    {
+        var rootFullPath = Path.GetFullPath(root);
+        var resolvedRoot = TryResolveExistingPath(rootFullPath, out var rootTarget)
+            ? rootTarget
+            : rootFullPath;
+
+        var directoryToCheck = Directory.Exists(path)
+            ? path
+            : Path.GetDirectoryName(path);
+
+        while (!string.IsNullOrWhiteSpace(directoryToCheck) &&
+               IsPathInside(directoryToCheck, rootFullPath))
+        {
+            if (Directory.Exists(directoryToCheck) &&
+                TryResolveExistingPath(directoryToCheck, out var resolvedDirectory) &&
+                !IsPathInside(resolvedDirectory, resolvedRoot))
+            {
+                return false;
+            }
+
+            if (PathsEqual(rootFullPath, directoryToCheck))
+            {
+                break;
+            }
+
+            directoryToCheck = Path.GetDirectoryName(directoryToCheck);
+        }
+
+        return true;
+    }
+
+    private static bool TryResolveExistingPath(string path, out string resolvedPath)
+    {
+        resolvedPath = Path.GetFullPath(path);
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                var directory = new DirectoryInfo(path);
+                var target = directory.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? directory.FullName);
+                return true;
+            }
+
+            if (File.Exists(path))
+            {
+                var file = new FileInfo(path);
+                var target = file.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? file.FullName);
+                return true;
+            }
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(left),
+            Path.TrimEndingDirectorySeparator(right),
+            comparison);
     }
 }

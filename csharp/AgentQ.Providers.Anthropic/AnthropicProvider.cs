@@ -114,110 +114,44 @@ public class AnthropicProvider : ILlmProvider
 
         var toolCallBuffer = new ToolCallDeltaBuffer();
         var completionSent = false;
+        var eventType = string.Empty;
+        var eventData = new StringBuilder();
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) != null)
         {
-            if (line.StartsWith("event:"))
+            if (line.Length == 0)
             {
-                var eventType = line.Substring("event:".Length).Trim();
-                var dataLine = await reader.ReadLineAsync(ct);
-
-                if (dataLine?.StartsWith("data:") == true)
+                foreach (var chunk in ProcessAnthropicStreamEvent(eventType, eventData.ToString(), toolCallBuffer, ref completionSent))
                 {
-                    var data = dataLine.Substring("data:".Length).Trim();
-                    JsonDocument? doc = null;
-                    try
-                    {
-                        doc = JsonDocument.Parse(data);
-                    }
-                    catch (JsonException)
-                    {
-                        continue;
-                    }
-
-                    using (doc)
-                    {
-                        var root = doc.RootElement;
-
-                        switch (eventType)
-                        {
-                            case "content_block_start":
-                                if (!TryGetInt32(root, "index", out var startIndex) ||
-                                    !root.TryGetProperty("content_block", out var contentBlock) ||
-                                    !TryGetString(contentBlock, "type", out var startType))
-                                {
-                                    break;
-                                }
-
-                                if (startType == "tool_use")
-                                {
-                                    toolCallBuffer.SetToolId(startIndex, TryGetString(contentBlock, "id", out var id) ? id : null);
-                                    toolCallBuffer.SetToolName(startIndex, TryGetString(contentBlock, "name", out var name) ? name : null);
-                                    var partialChunk = toolCallBuffer.BuildPartialChunk(startIndex, "");
-                                    if (partialChunk != null)
-                                    {
-                                        yield return new StreamChunk { ToolUseDelta = partialChunk };
-                                    }
-                                }
-                                break;
-
-                            case "content_block_delta":
-                                if (!TryGetInt32(root, "index", out var deltaIndex) ||
-                                    !root.TryGetProperty("delta", out var delta) ||
-                                    !TryGetString(delta, "type", out var deltaType))
-                                {
-                                    break;
-                                }
-
-                                if (deltaType == "text_delta")
-                                {
-                                    if (TryGetString(delta, "text", out var text) && !string.IsNullOrEmpty(text))
-                                    {
-                                        yield return new StreamChunk { TextDelta = text };
-                                    }
-                                }
-                                else if (deltaType == "input_json_delta")
-                                {
-                                    var partialJson = TryGetString(delta, "partial_json", out var jsonDelta) ? jsonDelta : string.Empty;
-                                    toolCallBuffer.AppendArguments(deltaIndex, partialJson);
-                                    var partialChunk = toolCallBuffer.BuildPartialChunk(deltaIndex, partialJson);
-                                    if (partialChunk != null)
-                                    {
-                                        yield return new StreamChunk { ToolUseDelta = partialChunk };
-                                    }
-                                }
-                                break;
-
-                            case "content_block_stop":
-                                if (!TryGetInt32(root, "index", out var stopIndex))
-                                {
-                                    break;
-                                }
-
-                                var completedChunk = toolCallBuffer.Complete(stopIndex);
-                                if (completedChunk != null)
-                                {
-                                    yield return new StreamChunk { ToolUseDelta = completedChunk };
-                                }
-                                break;
-
-                            case "message_stop":
-                                foreach (var toolCall in toolCallBuffer.CompleteAll())
-                                {
-                                    yield return new StreamChunk { ToolUseDelta = toolCall };
-                                }
-
-                                if (!completionSent)
-                                {
-                                    completionSent = true;
-                                    yield return new StreamChunk { IsComplete = true };
-                                }
-                                break;
-                        }
-                    }
+                    yield return chunk;
                 }
+
+                eventType = string.Empty;
+                eventData.Clear();
+                continue;
             }
+
+            if (line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                eventType = line["event:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                if (eventData.Length > 0)
+                {
+                    eventData.AppendLine();
+                }
+
+                eventData.Append(line["data:".Length..].Trim());
+            }
+        }
+
+        foreach (var chunk in ProcessAnthropicStreamEvent(eventType, eventData.ToString(), toolCallBuffer, ref completionSent))
+        {
+            yield return chunk;
         }
     }
 
@@ -233,7 +167,7 @@ public class AnthropicProvider : ILlmProvider
         var request = new MessageRequest
         {
             Model = string.IsNullOrEmpty(context.Model) ? DefaultModel : context.Model,
-            MaxTokens = context.MaxTokens,
+            MaxTokens = NormalizeMaxTokens(context.MaxTokens),
             Messages = ConvertToApiMessages(context.Messages),
             Stream = stream
         };
@@ -291,17 +225,15 @@ public class AnthropicProvider : ILlmProvider
                         break;
 
                     case ContentType.ToolUse:
-                        if (!string.IsNullOrEmpty(content.ToolId) && !string.IsNullOrEmpty(content.ToolName))
+                        if (!string.IsNullOrWhiteSpace(content.ToolId) && !string.IsNullOrWhiteSpace(content.ToolName))
                         {
-                            var input = content.ToolInput is JsonElement je
-                                ? je
-                                : JsonSerializer.SerializeToElement(content.ToolInput);
+                            var input = NormalizeToolInput(content.ToolInput);
                             apiMsg.Content.Add(InputContentBlock.CreateToolUse(content.ToolId, content.ToolName, input));
                         }
                         break;
 
                     case ContentType.ToolResult:
-                        if (!string.IsNullOrEmpty(content.ToolUseId))
+                        if (!string.IsNullOrWhiteSpace(content.ToolUseId))
                         {
                             apiMsg.Content.Add(InputContentBlock.CreateToolResult(
                                 content.ToolUseId,
@@ -319,6 +251,49 @@ public class AnthropicProvider : ILlmProvider
         }
 
         return result;
+    }
+
+    private static object NormalizeToolInput(object? toolInput)
+    {
+        if (toolInput is JsonElement jsonElement)
+        {
+            return jsonElement;
+        }
+
+        if (toolInput is string rawInput)
+        {
+            if (string.IsNullOrWhiteSpace(rawInput))
+            {
+                return EmptyToolInput();
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(rawInput);
+                return doc.RootElement.ValueKind == JsonValueKind.Object
+                    ? doc.RootElement.Clone()
+                    : EmptyToolInput();
+            }
+            catch (JsonException)
+            {
+                return EmptyToolInput();
+            }
+        }
+
+        if (toolInput == null)
+        {
+            return EmptyToolInput();
+        }
+
+        var serialized = JsonSerializer.SerializeToElement(toolInput);
+        return serialized.ValueKind == JsonValueKind.Object
+            ? serialized
+            : EmptyToolInput();
+    }
+
+    private static JsonElement EmptyToolInput()
+    {
+        return JsonSerializer.SerializeToElement(new Dictionary<string, object?>());
     }
 
     /// <summary>
@@ -356,7 +331,7 @@ public class AnthropicProvider : ILlmProvider
                         break;
 
                     case OutputContentBlockType.ToolUse:
-                        if (!string.IsNullOrEmpty(block.Id) && !string.IsNullOrEmpty(block.Name))
+                        if (!string.IsNullOrWhiteSpace(block.Id) && !string.IsNullOrWhiteSpace(block.Name))
                         {
                             chatResponse.Content.Add(ChatContent.CreateToolUse(block.Id, block.Name, block.Input ?? new { }));
                         }
@@ -396,8 +371,128 @@ public class AnthropicProvider : ILlmProvider
             return false;
         }
 
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
         value = property.GetString();
         return true;
+    }
+
+    private static uint NormalizeMaxTokens(uint maxTokens)
+    {
+        return maxTokens == 0 ? 1024u : maxTokens;
+    }
+
+    private static IReadOnlyList<StreamChunk> ProcessAnthropicStreamEvent(
+        string eventType,
+        string data,
+        ToolCallDeltaBuffer toolCallBuffer,
+        ref bool completionSent)
+    {
+        if (string.IsNullOrWhiteSpace(eventType) || string.IsNullOrWhiteSpace(data))
+        {
+            return [];
+        }
+
+        JsonDocument? doc = null;
+        try
+        {
+            doc = JsonDocument.Parse(data);
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+
+        using (doc)
+        {
+            var chunks = new List<StreamChunk>();
+            var root = doc.RootElement;
+
+            switch (eventType)
+            {
+                case "content_block_start":
+                    if (!TryGetInt32(root, "index", out var startIndex) ||
+                        !root.TryGetProperty("content_block", out var contentBlock) ||
+                        !TryGetString(contentBlock, "type", out var startType))
+                    {
+                        break;
+                    }
+
+                    if (startType == "tool_use")
+                    {
+                        toolCallBuffer.SetToolId(startIndex, TryGetString(contentBlock, "id", out var id) ? id : null);
+                        toolCallBuffer.SetToolName(startIndex, TryGetString(contentBlock, "name", out var name) ? name : null);
+                        var partialChunk = toolCallBuffer.BuildPartialChunk(startIndex, "");
+                        if (partialChunk != null)
+                        {
+                            chunks.Add(new StreamChunk { ToolUseDelta = partialChunk });
+                        }
+                    }
+
+                    break;
+
+                case "content_block_delta":
+                    if (!TryGetInt32(root, "index", out var deltaIndex) ||
+                        !root.TryGetProperty("delta", out var delta) ||
+                        !TryGetString(delta, "type", out var deltaType))
+                    {
+                        break;
+                    }
+
+                    if (deltaType == "text_delta")
+                    {
+                        if (TryGetString(delta, "text", out var text) && !string.IsNullOrEmpty(text))
+                        {
+                            chunks.Add(new StreamChunk { TextDelta = text });
+                        }
+                    }
+                    else if (deltaType == "input_json_delta")
+                    {
+                        var partialJson = TryGetString(delta, "partial_json", out var jsonDelta) ? jsonDelta : string.Empty;
+                        toolCallBuffer.AppendArguments(deltaIndex, partialJson);
+                        var partialChunk = toolCallBuffer.BuildPartialChunk(deltaIndex, partialJson);
+                        if (partialChunk != null)
+                        {
+                            chunks.Add(new StreamChunk { ToolUseDelta = partialChunk });
+                        }
+                    }
+
+                    break;
+
+                case "content_block_stop":
+                    if (!TryGetInt32(root, "index", out var stopIndex))
+                    {
+                        break;
+                    }
+
+                    var completedChunk = toolCallBuffer.Complete(stopIndex);
+                    if (completedChunk != null)
+                    {
+                        chunks.Add(new StreamChunk { ToolUseDelta = completedChunk });
+                    }
+
+                    break;
+
+                case "message_stop":
+                    foreach (var toolCall in toolCallBuffer.CompleteAll())
+                    {
+                        chunks.Add(new StreamChunk { ToolUseDelta = toolCall });
+                    }
+
+                    if (!completionSent)
+                    {
+                        completionSent = true;
+                        chunks.Add(new StreamChunk { IsComplete = true });
+                    }
+
+                    break;
+            }
+
+            return chunks;
+        }
     }
 
     private static async Task EnsureSuccessStatusCodeAsync(HttpResponseMessage response, CancellationToken ct)
@@ -420,4 +515,3 @@ public class AnthropicProvider : ILlmProvider
             response.StatusCode);
     }
 }
-

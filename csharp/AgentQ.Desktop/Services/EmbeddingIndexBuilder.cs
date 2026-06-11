@@ -69,6 +69,7 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
 
         var chunks = new List<EmbeddingIndexChunk>();
         var files = SafeEnumerateFiles(root)
+            .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file))
             .Where(file => IsIndexableFile(root, file))
             .OrderBy(file => Path.GetRelativePath(root, file), StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -270,7 +271,9 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
 
             foreach (var directory in directories)
             {
-                if (IsExcludedDirectory(directory))
+                if (IsExcludedDirectory(directory) ||
+                    IsReparseDirectory(directory) ||
+                    !WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     continue;
                 }
@@ -290,6 +293,18 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
                name.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("embeddings", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static bool IsExcludedPath(string root, string file)

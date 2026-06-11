@@ -6,8 +6,11 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopPlanCommandService(
     DesktopPlanCheckpointWorkflowService planCheckpointWorkflowService,
     DesktopWorkspaceContextWorkflowService workspaceContextWorkflowService,
-    WorkerExecutionPipeline workerExecutionPipeline)
+    WorkerExecutionPipeline workerExecutionPipeline,
+    FileMutationSnapshotService? fileMutationSnapshotService = null)
 {
+    private readonly FileMutationSnapshotService _fileMutationSnapshotService = fileMutationSnapshotService ?? new FileMutationSnapshotService();
+
     public async Task CreatePlanAsync(MainViewModel viewModel, Func<bool, Task> sendCurrentMessageAsync)
     {
         if (viewModel.IsBusy)
@@ -112,6 +115,29 @@ public sealed class DesktopPlanCommandService(
             return null;
         }
 
+        if (context.State != WorkerExecutionState.Ready)
+        {
+            var message = $"Worker plan must be approved before scaffold execution. Current state: {context.State}.";
+            viewModel.StatusText = "Worker plan approval required";
+            viewModel.AddLog(message);
+            return new WorkerScaffoldExecutionResult
+            {
+                Succeeded = false,
+                Issues = [message]
+            };
+        }
+
+        if (!context.Plan.Steps.Any(step => step.Kind == WorkerPlanStepKind.CreateFile))
+        {
+            viewModel.StatusText = "No worker scaffold steps to execute";
+            viewModel.AddLog("Worker scaffold execution skipped: no create-file steps.");
+            return new WorkerScaffoldExecutionResult
+            {
+                Succeeded = false,
+                Issues = ["No worker scaffold steps to execute."]
+            };
+        }
+
         viewModel.IsBusy = true;
         try
         {
@@ -132,7 +158,7 @@ public sealed class DesktopPlanCommandService(
 
             foreach (var change in result.WiringChanges)
             {
-                viewModel.FileChanges.Add(CreateWiringFileChange(viewModel.WorkspaceRoot, change));
+                viewModel.FileChanges.Add(await CreateWiringFileChangeAsync(viewModel.WorkspaceRoot, change));
             }
 
             foreach (var verificationPlan in context.VerificationPlans)
@@ -195,9 +221,9 @@ public sealed class DesktopPlanCommandService(
         if (context.State == WorkerExecutionState.RepairRequired)
         {
             var repairPrompt = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
-            if (!string.IsNullOrWhiteSpace(repairPrompt))
+            if (!string.IsNullOrWhiteSpace(repairPrompt) &&
+                DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, repairPrompt, "worker repair"))
             {
-                viewModel.InputText = repairPrompt;
                 viewModel.AddRunStep(
                     AgentRunState.Planning,
                     "Worker repair prompt prepared",
@@ -231,7 +257,11 @@ public sealed class DesktopPlanCommandService(
             return;
         }
 
-        viewModel.InputText = prompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, prompt, "worker repair"))
+        {
+            return;
+        }
+
         viewModel.AddRunStep(
             AgentRunState.Planning,
             "Worker repair started",
@@ -267,11 +297,15 @@ public sealed class DesktopPlanCommandService(
         viewModel.SetWorkerExecutionContext(context);
         if (context.State == WorkerExecutionState.RepairRequired)
         {
-            viewModel.InputText = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
-            viewModel.AddRunStep(
-                AgentRunState.Planning,
-                "Worker repair prompt prepared",
-                context.RepairPlan?.Summary);
+            var repairPrompt = DesktopPromptBuilder.BuildWorkerRepairPrompt(context);
+            if (!string.IsNullOrWhiteSpace(repairPrompt) &&
+                DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, repairPrompt, "worker repair"))
+            {
+                viewModel.AddRunStep(
+                    AgentRunState.Planning,
+                    "Worker repair prompt prepared",
+                    context.RepairPlan?.Summary);
+            }
         }
     }
 
@@ -294,10 +328,11 @@ public sealed class DesktopPlanCommandService(
         return string.IsNullOrWhiteSpace(plan.Summary) ? "Feature" : plan.Summary;
     }
 
-    private static async Task<FileChangeRecord> CreateCreatedFileChangeAsync(string workspaceRoot, string relativePath)
+    private async Task<FileChangeRecord> CreateCreatedFileChangeAsync(string workspaceRoot, string relativePath)
     {
         var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
         var after = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath) : string.Empty;
+        var normalizedRelativePath = relativePath.Replace('\\', '/');
         var diffLines = after.Split(['\r', '\n'], StringSplitOptions.None)
             .Where(line => line.Length > 0)
             .Select(line => new DiffLine
@@ -306,29 +341,55 @@ public sealed class DesktopPlanCommandService(
                 Text = line
             })
             .ToList();
+        var snapshotPath = await _fileMutationSnapshotService.SaveAsync(new FileMutationSnapshot
+        {
+            WorkspaceRoot = workspaceRoot,
+            Path = fullPath,
+            RelativePath = normalizedRelativePath,
+            ExistedBefore = false,
+            ExistsAfter = true,
+            Before = string.Empty,
+            After = after
+        });
 
         return new FileChangeRecord
         {
             Path = fullPath,
-            RelativePath = relativePath.Replace('\\', '/'),
+            RelativePath = normalizedRelativePath,
             ExistedBefore = false,
+            ExistsAfter = true,
             After = after,
+            SnapshotPath = snapshotPath,
             DiffLines = diffLines
         };
     }
 
-    private static FileChangeRecord CreateWiringFileChange(
+    private async Task<FileChangeRecord> CreateWiringFileChangeAsync(
         string workspaceRoot,
         WorkerScaffoldWiringChange change)
     {
         var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, change.Path));
+        var normalizedRelativePath = change.Path.Replace('\\', '/');
+        var snapshotPath = await _fileMutationSnapshotService.SaveAsync(new FileMutationSnapshot
+        {
+            WorkspaceRoot = workspaceRoot,
+            Path = fullPath,
+            RelativePath = normalizedRelativePath,
+            ExistedBefore = !string.IsNullOrEmpty(change.Before),
+            ExistsAfter = true,
+            Before = change.Before,
+            After = change.After
+        });
+
         return new FileChangeRecord
         {
             Path = fullPath,
-            RelativePath = change.Path.Replace('\\', '/'),
+            RelativePath = normalizedRelativePath,
             ExistedBefore = !string.IsNullOrEmpty(change.Before),
+            ExistsAfter = true,
             Before = change.Before,
             After = change.After,
+            SnapshotPath = snapshotPath,
             DiffLines = BuildSimpleDiff(change.Before, change.After)
         };
     }
@@ -400,7 +461,11 @@ public sealed class DesktopPlanCommandService(
             return;
         }
 
-        viewModel.InputText = resumePrompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, resumePrompt, "checkpoint resume"))
+        {
+            return;
+        }
+
         await sendCurrentMessageAsync(false);
     }
 
@@ -436,7 +501,11 @@ public sealed class DesktopPlanCommandService(
             return;
         }
 
-        viewModel.InputText = resumePrompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, resumePrompt, "session summary resume"))
+        {
+            return;
+        }
+
         await sendCurrentMessageAsync(false);
     }
 }

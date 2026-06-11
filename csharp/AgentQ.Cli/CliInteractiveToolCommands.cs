@@ -25,15 +25,6 @@ public sealed class CliInteractiveToolCommands
             return;
         }
 
-        if (tool.RequiresPermission)
-        {
-            if (!await enforcer.RequestPermissionAsync(tool.Name, tool.Description, jsonArgs))
-            {
-                AnsiConsole.MarkupLine("[yellow]Execution cancelled by user.[/]");
-                return;
-            }
-        }
-
         Dictionary<string, object?> inputDict;
         try
         {
@@ -47,6 +38,16 @@ public sealed class CliInteractiveToolCommands
                 Header = new PanelHeader("[red]JSON Syntax Error[/]")
             });
             return;
+        }
+
+        var normalizedJsonArgs = JsonSerializer.Serialize(inputDict, new JsonSerializerOptions { WriteIndented = true });
+        if (tool.RequiresPermission)
+        {
+            if (!await enforcer.RequestPermissionAsync(tool.Name, tool.Description, normalizedJsonArgs))
+            {
+                AnsiConsole.MarkupLine("[yellow]Execution cancelled by user.[/]");
+                return;
+            }
         }
 
         AnsiConsole.MarkupLine($"[dim]Running tool:[/] [cyan]{toolName}[/]");

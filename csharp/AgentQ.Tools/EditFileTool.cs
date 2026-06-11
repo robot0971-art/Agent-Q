@@ -48,13 +48,16 @@ public class EditFileTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!input.TryGetValue("path", out var pathObj) || pathObj is not string path)
+        var path = TryGetString(input, "path");
+        if (string.IsNullOrWhiteSpace(path))
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
 
-        if (!input.TryGetValue("old_string", out var oldObj) || oldObj is not string oldString)
+        var oldString = TryGetString(input, "old_string");
+        if (oldString == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: old_string"));
 
-        if (!input.TryGetValue("new_string", out var newObj) || newObj is not string newString)
+        var newString = TryGetString(input, "new_string");
+        if (newString == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: new_string"));
 
         var replaceAll = false;
@@ -182,5 +185,20 @@ public class EditFileTool : ITool
         }
 
         return false;
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 }

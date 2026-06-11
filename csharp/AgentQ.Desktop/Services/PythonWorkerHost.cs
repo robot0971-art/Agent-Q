@@ -20,27 +20,33 @@ public sealed class PythonWorkerHost
             return null;
         }
 
-        return await TryRunAsync("python", $"\"{scriptPath}\" \"{Path.GetFullPath(workspaceRoot)}\"", workspaceRoot, ct) ??
-            await TryRunAsync("py", $"-3 \"{scriptPath}\" \"{Path.GetFullPath(workspaceRoot)}\"", workspaceRoot, ct);
+        var fullWorkspaceRoot = Path.GetFullPath(workspaceRoot);
+        return await TryRunAsync("python", [scriptPath, fullWorkspaceRoot], workspaceRoot, ct) ??
+            await TryRunAsync("py", ["-3", scriptPath, fullWorkspaceRoot], workspaceRoot, ct);
     }
 
     private static async Task<PythonWorkerResult?> TryRunAsync(
         string fileName,
-        string arguments,
+        IReadOnlyList<string> arguments,
         string workspaceRoot,
         CancellationToken ct)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = fileName,
-                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
-            });
+            };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(startInfo);
 
             if (process == null)
             {
@@ -84,8 +90,6 @@ public sealed class PythonWorkerHost
 
             current = Directory.GetParent(current)?.FullName;
         }
-
-        var workspaceCandidate = Path.Combine(Environment.CurrentDirectory, "tools", "language-workers", "python-worker.py");
-        return File.Exists(workspaceCandidate) ? workspaceCandidate : null;
+        return null;
     }
 }

@@ -42,7 +42,8 @@ public static class ToolPermissionPolicy
             return Block(assessment, "Remote or release Git write commands are blocked by desktop policy.");
         }
 
-        if (assessment.RiskLevel == PermissionRiskLevel.SafeRead)
+        if (assessment.RiskLevel == PermissionRiskLevel.SafeRead &&
+            !IsReadOnlyShellOperation(assessment))
         {
             return Allow(assessment, "Safe read-only operation.");
         }
@@ -61,15 +62,21 @@ public static class ToolPermissionPolicy
     {
         return assessment.RiskLevel switch
         {
-            PermissionRiskLevel.LowRiskProjectWrite => Allow(
+            PermissionRiskLevel.LowRiskProjectWrite => RequireApproval(
                 assessment,
-                "Coding mode allows creating new empty workspace files and folders without approval."),
+                "Coding mode requires explicit user approval before creating workspace files or folders."),
             PermissionRiskLevel.ProjectWrite => RequireApproval(
                 assessment,
                 "Coding mode allows workspace file edits with explicit user approval."),
-            PermissionRiskLevel.VerificationCommand => Allow(
+            PermissionRiskLevel.VerificationCommand => RequireApproval(
                 assessment,
-                "Coding mode allows build and test verification commands without approval."),
+                "Coding mode requires explicit user approval before running build or test shell commands."),
+            PermissionRiskLevel.ShellCommand when IsLocalServerOperation(assessment) => RequireApproval(
+                assessment,
+                "Coding mode requires explicit user approval before starting or stopping a local development server."),
+            PermissionRiskLevel.SafeRead when IsReadOnlyShellOperation(assessment) => RequireApproval(
+                assessment,
+                "Coding mode requires explicit user approval before running read-only shell commands."),
             PermissionRiskLevel.Network when string.Equals(assessment.Operation, "Web search", StringComparison.OrdinalIgnoreCase) => Allow(
                 assessment,
                 "Coding mode allows read-only public web search for evidence gathering."),
@@ -78,6 +85,15 @@ public static class ToolPermissionPolicy
                 "Coding mode blocks broad shell, network, and Git write operations. Switch to Full Agent mode if this is intended.")
         };
     }
+
+    private static bool IsLocalServerOperation(ToolPermissionAssessment assessment)
+    {
+        return string.Equals(assessment.Operation, "Start local development server", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(assessment.Operation, "Stop local development server", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReadOnlyShellOperation(ToolPermissionAssessment assessment) =>
+        string.Equals(assessment.Operation, "Read-only shell command", StringComparison.OrdinalIgnoreCase);
 
     private static ToolPermissionPolicyResult Allow(ToolPermissionAssessment assessment, string reason)
     {

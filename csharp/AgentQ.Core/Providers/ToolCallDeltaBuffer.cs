@@ -15,7 +15,7 @@ public sealed class ToolCallDeltaBuffer
     /// </summary>
     public void SetToolId(int index, string? toolId)
     {
-        if (!string.IsNullOrEmpty(toolId))
+        if (!string.IsNullOrWhiteSpace(toolId))
         {
             GetOrCreate(index).ToolId = toolId;
         }
@@ -26,7 +26,7 @@ public sealed class ToolCallDeltaBuffer
     /// </summary>
     public void SetToolName(int index, string? toolName)
     {
-        if (!string.IsNullOrEmpty(toolName))
+        if (!string.IsNullOrWhiteSpace(toolName))
         {
             GetOrCreate(index).ToolName = toolName;
         }
@@ -48,7 +48,9 @@ public sealed class ToolCallDeltaBuffer
     /// </summary>
     public ToolUseChunk? BuildPartialChunk(int index, string? partialArguments = null)
     {
-        if (!_entries.TryGetValue(index, out var entry) || string.IsNullOrEmpty(entry.ToolId))
+        if (!_entries.TryGetValue(index, out var entry) ||
+            string.IsNullOrWhiteSpace(entry.ToolId) ||
+            string.IsNullOrWhiteSpace(entry.ToolName))
         {
             return null;
         }
@@ -56,7 +58,7 @@ public sealed class ToolCallDeltaBuffer
         return new ToolUseChunk
         {
             ToolId = entry.ToolId,
-            ToolName = entry.ToolName ?? "unknown",
+            ToolName = entry.ToolName,
             PartialInput = partialArguments ?? entry.Arguments.ToString(),
             IsComplete = false
         };
@@ -67,7 +69,8 @@ public sealed class ToolCallDeltaBuffer
     /// </summary>
     public ToolUseChunk? Complete(int index)
     {
-        if (!_entries.TryGetValue(index, out var entry) || string.IsNullOrEmpty(entry.ToolId))
+        if (!_entries.TryGetValue(index, out var entry) ||
+            string.IsNullOrWhiteSpace(entry.ToolName))
         {
             _entries.Remove(index);
             return null;
@@ -76,8 +79,8 @@ public sealed class ToolCallDeltaBuffer
         _entries.Remove(index);
         return new ToolUseChunk
         {
-            ToolId = entry.ToolId,
-            ToolName = entry.ToolName ?? "unknown",
+            ToolId = string.IsNullOrWhiteSpace(entry.ToolId) ? $"tool_call_{index}" : entry.ToolId,
+            ToolName = entry.ToolName,
             PartialInput = entry.Arguments.ToString(),
             IsComplete = true
         };
@@ -88,9 +91,10 @@ public sealed class ToolCallDeltaBuffer
     /// </summary>
     public IReadOnlyList<ToolUseChunk> CompleteAll()
     {
-        var result = _entries
-            .OrderBy(pair => pair.Key)
-            .Select(pair => Complete(pair.Key))
+        var result = _entries.Keys
+            .OrderBy(index => index)
+            .ToArray()
+            .Select(Complete)
             .Where(chunk => chunk != null)
             .Cast<ToolUseChunk>()
             .ToArray();

@@ -56,9 +56,7 @@ public static class DesktopSessionSummaryBuilder
             ? $"Continue: {openPlanItems[0]}"
             : statusText;
 
-        var narrative = lastAssistantMessage == null
-            ? "No assistant response has been captured yet."
-            : DesktopPromptBuilder.Truncate(lastAssistantMessage.Content.ReplaceLineEndings(" "), 600);
+        var narrative = BuildNarrative(lastAssistantMessage, changedFiles, verification);
 
         var nextSteps = !string.IsNullOrWhiteSpace(pendingQuestion)
             ? [$"Answer AgentQ's pending question: {pendingQuestion}"]
@@ -85,5 +83,58 @@ public static class DesktopSessionSummaryBuilder
             ? step.Title
             : $"{step.Title}: {step.Detail}";
         return DesktopPromptBuilder.Truncate(text, 160);
+    }
+
+    private static string BuildNarrative(
+        ChatMessageViewModel? lastAssistantMessage,
+        IReadOnlyList<string> changedFiles,
+        IReadOnlyList<string> verification)
+    {
+        if (changedFiles.Count > 0)
+        {
+            var files = string.Join(", ", changedFiles.Take(6));
+            var verifyText = verification.Count == 0
+                ? "No verification result was captured in the session summary."
+                : $"Verification captured: {string.Join("; ", verification.Take(3))}.";
+            return DesktopPromptBuilder.Truncate(
+                $"AgentQ changed workspace files: {files}. {verifyText}",
+                600);
+        }
+
+        if (lastAssistantMessage == null)
+        {
+            return "No assistant response has been captured yet.";
+        }
+
+        if (LooksLikeIrrelevantAssistantText(lastAssistantMessage.Content))
+        {
+            return "Last assistant response was omitted because it appeared unrelated to the workspace task; inspect the current workspace and latest user request before resuming.";
+        }
+
+        return DesktopPromptBuilder.Truncate(lastAssistantMessage.Content.ReplaceLineEndings(" "), 600);
+    }
+
+    private static bool LooksLikeIrrelevantAssistantText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var mentionsReadingAndGames =
+            value.Contains("독서", StringComparison.OrdinalIgnoreCase) &&
+            value.Contains("게임", StringComparison.OrdinalIgnoreCase);
+        var mentionsMojibakeReadingOrGames =
+            value.Contains("?놓까", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("寃뭯엫", StringComparison.OrdinalIgnoreCase);
+
+        if (mentionsReadingAndGames || mentionsMojibakeReadingOrGames)
+        {
+            return true;
+        }
+
+        return value.Contains("무엇을 도와", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("what can I help", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("reading", StringComparison.OrdinalIgnoreCase) && value.Contains("games", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -129,9 +129,22 @@ public sealed class DesktopGitPanelWorkflowService(DesktopGitService gitService)
             return;
         }
 
-        if (viewModel.GitChangedFiles.All(file => !file.IsStaged))
+        var stagedFiles = viewModel.GitChangedFiles
+            .Where(file => file.IsStaged)
+            .ToArray();
+        if (stagedFiles.Length == 0)
         {
             viewModel.StatusText = Ui(viewModel, DesktopText.GitNoStagedFilesToCommit);
+            return;
+        }
+
+        var unapprovedStagedFiles = stagedFiles
+            .Where(file => file.ReviewStatus != GitChangeReviewStatus.Approved)
+            .ToArray();
+        if (unapprovedStagedFiles.Length > 0)
+        {
+            viewModel.StatusText = Ui(viewModel, DesktopText.GitUnapprovedStagedFiles);
+            viewModel.AddLog($"{Ui(viewModel, DesktopText.GitUnapprovedStagedFiles)}: {string.Join(", ", unapprovedStagedFiles.Select(file => file.Path))}");
             return;
         }
 

@@ -75,9 +75,18 @@ public sealed class DesktopPlanCheckpointWorkflowService(
             return null;
         }
 
+        var prompt = DesktopPromptBuilder.BuildContinuePlanItemPrompt(item, viewModel.PlanItems);
+        if (!string.IsNullOrWhiteSpace(viewModel.InputText) &&
+            !string.Equals(viewModel.InputText.Trim(), prompt.Trim(), StringComparison.Ordinal))
+        {
+            viewModel.StatusText = "Send or clear the current draft before continuing the plan";
+            viewModel.AddLog("Plan continuation blocked because the input box contains a user draft.");
+            return null;
+        }
+
         item.Status = AgentPlanItemStatus.InProgress;
         viewModel.SelectedPlanItem = item;
-        viewModel.InputText = DesktopPromptBuilder.BuildContinuePlanItemPrompt(item, viewModel.PlanItems);
+        viewModel.InputText = prompt;
         viewModel.AddLog($"Continuing plan item: {item.Title}");
         return item;
     }

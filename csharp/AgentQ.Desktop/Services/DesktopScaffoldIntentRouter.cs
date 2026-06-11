@@ -117,6 +117,11 @@ public sealed class DesktopScaffoldIntentRouter
 
     private static DesktopScaffoldIntentKind ClassifyIntent(string normalized)
     {
+        if (IsConsultativeScaffoldQuestion(normalized))
+        {
+            return DesktopScaffoldIntentKind.None;
+        }
+
         var create = ContainsAny(
             normalized,
             "\uC0DD\uC131",
@@ -165,6 +170,24 @@ public sealed class DesktopScaffoldIntentRouter
         }
 
         return DesktopScaffoldIntentKind.None;
+    }
+
+    private static bool IsConsultativeScaffoldQuestion(string normalized)
+    {
+        return ContainsAny(
+            normalized,
+            "\uAC00\uB2A5",
+            "\uC5B4\uB5A8\uAE4C",
+            "\uAD1C\uCC2E\uC744\uAE4C",
+            "\uC88B\uC744\uAE4C",
+            "\uB9CC\uB4E4\uAE4C",
+            "\uB9CC\uB4E4\uC5B4\uBCFC\uAE4C",
+            "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74",
+            "cani",
+            "couldi",
+            "shouldi",
+            "woulditbegood",
+            "whatif");
     }
 
     private static DesktopWorkspaceScaffoldState ClassifyWorkspace(string workspaceRoot)

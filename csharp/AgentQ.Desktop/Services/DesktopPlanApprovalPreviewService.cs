@@ -56,6 +56,12 @@ public sealed class DesktopPlanApprovalPreviewService(
             return false;
         }
 
+        var intent = _scaffoldIntentRouter.Analyze(userRequest ?? string.Empty, viewModel.WorkspaceRoot);
+        if (intent.Kind == DesktopScaffoldIntentKind.None)
+        {
+            return false;
+        }
+
         viewModel.SetWorkerExecutionContext(BuildScaffoldRecommendationContext(
             viewModel,
             _scaffoldIntentRouter.SelectRecommendation(

@@ -244,13 +244,17 @@ public sealed class ProjectScaffoldPlanner
 
             intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
-        else if (string.IsNullOrWhiteSpace(intent.Language) &&
+        else if ((string.IsNullOrWhiteSpace(intent.Language) || IsJavaScriptOrTypeScript(intent.Language)) &&
                  ContainsAny(normalized, "portfolio", "homepage", "website", "site", "landingpage", "webpage",
                 "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uD648\uD398\uC774\uC9C0", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uB79C\uB529"))
         {
             intent.ProjectType = ContainsAny(normalized, "landingpage", "\uB79C\uB529") ? "landing-page" : "portfolio";
             intent.Framework = "vite-react";
-            intent.Language = "javascript";
+            if (string.IsNullOrWhiteSpace(intent.Language))
+            {
+                intent.Language = "javascript";
+            }
+
             intent.Framework = DefaultFrameworkForWebProject(intent.Language);
         }
         else if (ContainsAny(normalized, "dataanalysis", "datatool", "streamlit", "\uB370\uC774\uD130\uBD84\uC11D", "\uBD84\uC11D\uB3C4\uAD6C"))
@@ -276,6 +280,15 @@ public sealed class ProjectScaffoldPlanner
             intent.Framework = intent.Language.Equals("python", StringComparison.OrdinalIgnoreCase)
                 ? "fastapi"
                 : DefaultFrameworkForLanguage(intent.Language);
+        }
+        else if (ContainsGameProjectRequest(normalized))
+        {
+            intent.ProjectType = "game";
+            intent.Framework = DetectGameFramework(normalized);
+            if (string.IsNullOrWhiteSpace(intent.Framework))
+            {
+                intent.Framework = "game-project";
+            }
         }
         else if (HasExplicitStackOrLanguage(normalized, intent))
         {
@@ -303,9 +316,42 @@ public sealed class ProjectScaffoldPlanner
             "django", "flask", "fastapi", "streamlit", "spring", "springboot",
             "rails", "laravel", "flutter", "electron", "tauri", "unity",
             "unreal", "godot", "aspnet", "aspnetcore", "dotnet",
-            "\uB9AC\uC561\uD2B8", "\uBE44\uD2B8", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
+            "\uB9AC\uC561\uD2B8", "\uBE44\uD2B8", "\uB125\uC2A4\uD2B8", "\uC575\uADE4\uB7EC", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
             "\uC7A5\uACE0", "\uD50C\uB77C\uC2A4\uD06C", "\uD328\uC2A4\uD2B8api", "\uC2A4\uD2B8\uB9BC\uB9BF",
-            "\uC2A4\uD504\uB9C1", "\uD50C\uB7EC\uD130", "\uC720\uB2C8\uD2F0", "\uB2F7\uB137");
+            "\uC2A4\uD504\uB9C1", "\uD50C\uB7EC\uD130", "\uC720\uB2C8\uD2F0", "\uC5B8\uB9AC\uC5BC", "\uACE0\uB3C4", "\uB2F7\uB137");
+    }
+
+    private static bool ContainsGameProjectRequest(string normalized)
+    {
+        if (ContainsAny(normalized, "game", "\uAC8C\uC784"))
+        {
+            return true;
+        }
+
+        return ContainsAny(normalized, "unity", "unity3d", "unreal", "godot",
+                   "\uC720\uB2C8\uD2F0", "\uC5B8\uB9AC\uC5BC", "\uACE0\uB3C4") &&
+               ContainsAny(normalized, "engine", "script", "controller", "playercontroller",
+                   "\uC5D4\uC9C4", "\uC2A4\uD06C\uB9BD\uD2B8", "\uCEE8\uD2B8\uB864\uB7EC");
+    }
+
+    private static string DetectGameFramework(string normalized)
+    {
+        if (ContainsAny(normalized, "unity", "unity3d", "\uC720\uB2C8\uD2F0"))
+        {
+            return "unity";
+        }
+
+        if (ContainsAny(normalized, "unreal", "\uC5B8\uB9AC\uC5BC"))
+        {
+            return "unreal";
+        }
+
+        if (ContainsAny(normalized, "godot", "\uACE0\uB3C4"))
+        {
+            return "godot";
+        }
+
+        return string.Empty;
     }
 
     private static ProjectScaffoldPlanModel? BuildPlan(ProjectScaffoldIntentModel intent)
@@ -660,6 +706,12 @@ public sealed class ProjectScaffoldPlanner
             : DefaultFrameworkForLanguage(language);
     }
 
+    private static bool IsJavaScriptOrTypeScript(string language)
+    {
+        return language.Equals("javascript", StringComparison.OrdinalIgnoreCase) ||
+               language.Equals("typescript", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool ContainsGoLanguage(string normalized)
     {
         return normalized.Equals("go", StringComparison.OrdinalIgnoreCase) ||
@@ -691,6 +743,16 @@ public sealed class ProjectScaffoldPlanner
 
     private static bool IsGreenfieldRequest(string normalized, DesktopWorkspaceScaffoldState workspaceState)
     {
+        if (IsExplicitFileOrCodeMutationRequest(normalized))
+        {
+            return false;
+        }
+
+        if (IsFeasibilityQuestion(normalized) && !ContainsImmediateCreateRequest(normalized))
+        {
+            return false;
+        }
+
         if (ContainsAny(normalized,
                 "\uACE0\uBBFC", "\uC0C1\uB2F4", "\uAC71\uC815", "\uD574\uC57C\uD560\uC9C0",
                 "shouldi", "whether") &&
@@ -713,6 +775,18 @@ public sealed class ProjectScaffoldPlanner
         return (hasCreateVerb && hasGreenfieldKeyword) || hasStandaloneNewProjectPattern;
     }
 
+    private static bool IsExplicitFileOrCodeMutationRequest(string normalized)
+    {
+        var hasExplicitFileTarget = ContainsAny(normalized,
+            ".cs", ".js", ".jsx", ".ts", ".tsx", ".json", ".md", ".txt",
+            "\uD30C\uC77C", "\uCF54\uB4DC");
+        var hasMutationVerb = ContainsAny(normalized,
+            "fix", "edit", "modify", "update", "change", "implement", "write",
+            "\uC218\uC815", "\uACE0\uCCD0", "\uBCC0\uACBD", "\uBC14\uAFD4", "\uAD6C\uD604", "\uC791\uC131", "\uC4F0");
+
+        return hasExplicitFileTarget && hasMutationVerb;
+    }
+
     private static bool HasStandaloneNewProjectPattern(string normalized)
     {
         return ContainsAny(normalized,
@@ -729,8 +803,23 @@ public sealed class ProjectScaffoldPlanner
 
     private static bool ContainsCreate(string normalized)
     {
-        return ContainsAny(normalized, "create", "make", "build", "generate", "scaffold",
-            "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC9DC", "\uD558\uC790");
+        return ContainsAny(normalized, "create", "make", "build", "generate", "scaffold", "implement", "write", "proceed", "continue", "goahead",
+            "\uB9CC\uB4E4", "\uC0DD\uC131", "\uC9DC", "\uAD6C\uD604", "\uC791\uC131", "\uC9C4\uD589");
+    }
+
+    private static bool IsFeasibilityQuestion(string normalized)
+    {
+        return ContainsAny(normalized,
+            "possible", "isitpossible", "canwe", "cani",
+            "\uAC00\uB2A5\uD55C\uAC00", "\uAC00\uB2A5\uD560\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uC218\uC788\uC744\uAE4C");
+    }
+
+    private static bool ContainsImmediateCreateRequest(string normalized)
+    {
+        return ContainsAny(normalized,
+            "createnow", "makeitnow", "builditnow", "pleasecreate", "pleasebuild",
+            "\uBC14\uB85C\uB9CC\uB4E4", "\uBC14\uB85C\uC0DD\uC131", "\uC774\uB300\uB85C\uB9CC\uB4E4",
+            "\uB9CC\uB4E4\uC5B4\uC918", "\uC0DD\uC131\uD574\uC918", "\uAD6C\uD604\uD574\uC918", "\uC9C4\uD589\uD574\uC918", "\uC9C4\uD589\uD574");
     }
 
     private static DesktopWorkspaceScaffoldState ClassifyWorkspace(string workspaceRoot)
@@ -842,8 +931,8 @@ public sealed class ProjectScaffoldPlanner
         "\uC1FC\uD551", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC0C1\uC810",
         "\uBE14\uB85C\uADF8",
         "\uC0C8\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uB85C\uC6B4\uD504\uB85C\uC81D\uD2B8", "\uC0C8\uC571", "\uC0C8\uC6F9", "\uC0C8\uC6F9\uC0AC\uC774\uD2B8",
-        "\uB9AC\uC561\uD2B8", "\uB125\uC2A4\uD2B8", "\uC560\uC2F1\uD04C\uB7EC", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
-        "\uAC8C\uC784", "\uC720\uB2C8\uD2F0", "\uC5B4\uB10C\uB9AC\uC5BC", "\uACE0\uB3D7",
+        "\uB9AC\uC561\uD2B8", "\uB125\uC2A4\uD2B8", "\uC575\uADE4\uB7EC", "\uBDF0", "\uC2A4\uBCA8\uD2B8",
+        "\uAC8C\uC784", "\uC720\uB2C8\uD2F0", "\uC5B8\uB9AC\uC5BC", "\uACE0\uB3C4",
         "\uB2F7\uB128", "\uC528\uC0E4\uD504", "\uC2A4\uD504\uB9C1", "\uD50C\uB7EC\uD130",
         "\uC804\uC790", "\uD0C0\uC6B0\uB9AC", "\uBAA8\uBC14\uC77C", "\uBAA8\uBC14\uC77C\uC571", "\uBAA8\uBC14\uC77C\uC571",
         "\uB370\uC2A4\uD06C\uD0D1", "\uC708\uB3C4\uC6B0\uC571", "\uB9E5\uC571", "\uB9AC\uB205\uC2A4\uC571"

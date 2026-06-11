@@ -41,7 +41,8 @@ public sealed class DesktopPermissionEnforcer(
                 return true;
             }
 
-            if (IsReusableApproval(assessment.RiskLevel) &&
+            var reusableApprovalAllowed = IsReusableApproval(toolName, assessment.RiskLevel);
+            if (reusableApprovalAllowed &&
                 _approvedForRun.Contains(assessment.RiskLevel))
             {
                 RecordPermissionEvent("Allowed by run approval", toolName, assessment, null);
@@ -52,7 +53,7 @@ public sealed class DesktopPermissionEnforcer(
                 ? inputJson[..1400] + Environment.NewLine + "...(truncated)"
                 : inputJson;
             var focusedPreview = BuildFocusedPreview(toolName, inputJson);
-            var approvalHint = IsReusableApproval(assessment.RiskLevel)
+            var approvalHint = reusableApprovalAllowed
                 ? DesktopLocalizer.ReusableApprovalHint(useKoreanUi)
                 : string.Empty;
             var dialogContent = new PermissionDialogContent(
@@ -70,11 +71,11 @@ public sealed class DesktopPermissionEnforcer(
                 owner,
                 $"AgentQ permission: {assessment.RiskLevel}",
                 dialogContent,
-                IsReusableApproval(assessment.RiskLevel),
-                IsReusableApproval(assessment.RiskLevel),
+                reusableApprovalAllowed,
+                reusableApprovalAllowed,
                 useKoreanUi);
 
-            foreach (var approvedRisk in GetReusableApprovals(choice, assessment.RiskLevel))
+            foreach (var approvedRisk in GetReusableApprovals(choice, assessment.RiskLevel, toolName))
             {
                 _approvedForRun.Add(approvedRisk);
             }
@@ -116,9 +117,20 @@ public sealed class DesktopPermissionEnforcer(
     public static IReadOnlyList<PermissionRiskLevel> GetReusableApprovals(
         PermissionApprovalChoice choice,
         PermissionRiskLevel currentRiskLevel)
+        => GetReusableApprovals(choice, currentRiskLevel, toolName: string.Empty);
+
+    public static IReadOnlyList<PermissionRiskLevel> GetReusableApprovals(
+        PermissionApprovalChoice choice,
+        PermissionRiskLevel currentRiskLevel,
+        string toolName)
     {
+        if (!IsReusableApproval(toolName, currentRiskLevel))
+        {
+            return [];
+        }
+
         if (choice == PermissionApprovalChoice.AllowSimilarForRun &&
-            IsReusableApproval(currentRiskLevel))
+            IsReusableApproval(toolName, currentRiskLevel))
         {
             return [currentRiskLevel];
         }
@@ -172,10 +184,14 @@ public sealed class DesktopPermissionEnforcer(
         bool useKoreanUi = true) =>
         DesktopLocalizer.PermissionBlockedMessage(assessment, workMode, policyReason, useKoreanUi);
 
-    private static bool IsReusableApproval(PermissionRiskLevel riskLevel)
+    private static bool IsReusableApproval(string toolName, PermissionRiskLevel riskLevel)
     {
-        return riskLevel is PermissionRiskLevel.ProjectWrite or PermissionRiskLevel.VerificationCommand;
+        return !IsPlanSpecificApprovalTool(toolName) &&
+               (riskLevel is PermissionRiskLevel.ProjectWrite or PermissionRiskLevel.VerificationCommand);
     }
+
+    private static bool IsPlanSpecificApprovalTool(string toolName) =>
+        string.Equals(toolName, "create_project_scaffold", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildFocusedPreview(string toolName, string inputJson)
     {

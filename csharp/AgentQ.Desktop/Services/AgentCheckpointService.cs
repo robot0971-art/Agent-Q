@@ -13,10 +13,17 @@ public sealed class AgentCheckpointService
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly string _checkpointRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".agentq",
-        "checkpoints");
+    private readonly string _checkpointRoot;
+
+    public AgentCheckpointService(string? checkpointRoot = null)
+    {
+        _checkpointRoot = string.IsNullOrWhiteSpace(checkpointRoot)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".agentq",
+                "checkpoints")
+            : Path.GetFullPath(checkpointRoot);
+    }
 
     public async Task SaveAsync(AgentCheckpoint checkpoint, CancellationToken ct = default)
     {
@@ -50,24 +57,25 @@ public sealed class AgentCheckpointService
             return null;
         }
 
-        var path = Directory.EnumerateFiles(directory, "*.json", SearchOption.TopDirectoryOnly)
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(path))
+        foreach (var path in Directory.EnumerateFiles(directory, "*.json", SearchOption.TopDirectoryOnly)
+                     .OrderByDescending(File.GetLastWriteTimeUtc))
         {
-            return null;
+            try
+            {
+                var json = await File.ReadAllTextAsync(path, ct);
+                var checkpoint = JsonSerializer.Deserialize<AgentCheckpoint>(json, Options);
+                if (checkpoint != null)
+                {
+                    return checkpoint;
+                }
+            }
+            catch
+            {
+                // Keep looking for the previous valid checkpoint.
+            }
         }
 
-        try
-        {
-            var json = await File.ReadAllTextAsync(path, ct);
-            return JsonSerializer.Deserialize<AgentCheckpoint>(json, Options);
-        }
-        catch
-        {
-            return null;
-        }
+        return null;
     }
 
     private string GetCheckpointPath(AgentCheckpoint checkpoint)

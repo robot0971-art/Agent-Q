@@ -126,9 +126,7 @@ Verification Command to run if applicable: {step.VerificationCommand}
                     toolCallbacks: callbacks,
                     ct: ct);
 
-                // Simple check for success (e.g. if execution did not end in generic failure message)
-                var succeeded = !stepOutput.Contains("Stopped after reaching the maximum tool steps") &&
-                                !stepOutput.Contains("Model response was empty");
+                var succeeded = IsStepOutputSuccessful(stepOutput);
 
                 var stepResult = new TaskStepResult
                 {
@@ -164,4 +162,7 @@ Verification Command to run if applicable: {step.VerificationCommand}
 
         return result;
     }
+
+    public static bool IsStepOutputSuccessful(string stepOutput) =>
+        DesktopAgentRunWorkflowService.BuildRunCompletionOutcome(stepOutput).Succeeded;
 }

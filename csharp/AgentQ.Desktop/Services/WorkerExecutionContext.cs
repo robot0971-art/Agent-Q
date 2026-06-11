@@ -10,6 +10,8 @@ public sealed class WorkerExecutionContext
 
     public List<AgentVerificationPlan> VerificationPlans { get; init; } = [];
 
+    public List<string> ProjectAllowedCommands { get; init; } = [];
+
     public AutoFixLoopGuardState LoopGuardState { get; set; } = AutoFixLoopGuardState.Empty;
 
     public WorkerRepairPlan? RepairPlan { get; set; }

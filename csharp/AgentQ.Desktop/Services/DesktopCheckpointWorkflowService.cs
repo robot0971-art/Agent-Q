@@ -63,15 +63,7 @@ public sealed class DesktopCheckpointWorkflowService(
             PendingInput = pendingInput,
             GitStatus = gitStatus.DisplayOutput,
             GitDiffStat = gitDiffStat.DisplayOutput,
-            Conversation = messages
-                .TakeLast(20)
-                .Select(message => new AgentCheckpointMessage
-                {
-                    Role = message.Role,
-                    Content = DesktopPromptBuilder.Truncate(message.Content, 6000),
-                    CreatedAt = message.CreatedAt
-                })
-                .ToList(),
+            Conversation = BuildCheckpointConversation(messages, runSteps),
             Logs = logs.TakeLast(80).ToList(),
             RunSteps = runSteps.TakeLast(40).Select(step => new AgentCheckpointRunStep
             {
@@ -88,5 +80,62 @@ public sealed class DesktopCheckpointWorkflowService(
                 Status = item.Status
             }).ToList()
         };
+    }
+
+    private static List<AgentCheckpointMessage> BuildCheckpointConversation(
+        IEnumerable<ChatMessageViewModel> messages,
+        IEnumerable<AgentRunStep> runSteps)
+    {
+        var hasRecordedFileChange = runSteps.Any(step =>
+            step.State == AgentRunState.RecordingChanges ||
+            step.Title.Contains("file changed", StringComparison.OrdinalIgnoreCase) ||
+            step.Detail.Contains("file changed", StringComparison.OrdinalIgnoreCase));
+        var note = hasRecordedFileChange
+            ? "Checkpoint note: workspace file changes were recorded in this run; ignore the omitted off-target assistant text and inspect current files/run steps before resuming."
+            : "Checkpoint note: off-target assistant text was omitted; inspect current files, run steps, and the latest user request before resuming.";
+
+        return messages
+            .TakeLast(20)
+            .Select(message =>
+            {
+                var content = message.Content;
+                if (string.Equals(message.Role, "AgentQ", StringComparison.OrdinalIgnoreCase) &&
+                    LooksLikeIrrelevantAssistantText(content))
+                {
+                    content = note;
+                }
+
+                return new AgentCheckpointMessage
+                {
+                    Role = message.Role,
+                    Content = DesktopPromptBuilder.Truncate(content, 6000),
+                    CreatedAt = message.CreatedAt
+                };
+            })
+            .ToList();
+    }
+
+    private static bool LooksLikeIrrelevantAssistantText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var mentionsReadingAndGames =
+            value.Contains("\uB3C5\uC11C", StringComparison.OrdinalIgnoreCase) &&
+            value.Contains("\uAC8C\uC784", StringComparison.OrdinalIgnoreCase);
+        var mentionsMojibakeReadingOrGames =
+            value.Contains("\u003F\uB086\uAF4C", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("\u5BC3\uB6AF\uC5EB", StringComparison.OrdinalIgnoreCase);
+
+        if (mentionsReadingAndGames || mentionsMojibakeReadingOrGames)
+        {
+            return true;
+        }
+
+        return value.Contains("\uBB34\uC5C7\uC744 \uB3C4\uC640", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("what can I help", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("reading", StringComparison.OrdinalIgnoreCase) && value.Contains("games", StringComparison.OrdinalIgnoreCase);
     }
 }

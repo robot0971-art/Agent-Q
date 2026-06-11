@@ -60,11 +60,15 @@ public sealed class WorkerScaffoldAutoWirer
         }
 
         var indexRelative = $"{directory}/index.ts";
-        var indexPath = Path.Combine(workspaceRoot, indexRelative);
+        if (!TryResolveInsideWorkspace(workspaceRoot, indexRelative, out var indexPath, out var safeIndexRelative))
+        {
+            return;
+        }
+
         var exportLine = $"export {{ {feature.Pascal}View }} from \"./{feature.Pascal}View\";";
         var change = await AppendLineIfMissingAsync(
             indexPath,
-            indexRelative,
+            safeIndexRelative,
             exportLine,
             $"Export {feature.Pascal}View from feature barrel.",
             ct);
@@ -194,8 +198,46 @@ public sealed class WorkerScaffoldAutoWirer
     private static string? FindFirstExisting(string workspaceRoot, IEnumerable<string> candidates)
     {
         return candidates
-            .Select(candidate => Path.Combine(workspaceRoot, candidate))
+            .Select(candidate => TryResolveInsideWorkspace(workspaceRoot, candidate, out var fullPath, out _)
+                ? fullPath
+                : string.Empty)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
             .FirstOrDefault(File.Exists);
+    }
+
+    private static bool TryResolveInsideWorkspace(
+        string workspaceRoot,
+        string relativePath,
+        out string fullPath,
+        out string normalizedRelativePath)
+    {
+        fullPath = string.Empty;
+        normalizedRelativePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(workspaceRoot) ||
+            string.IsNullOrWhiteSpace(relativePath) ||
+            Path.IsPathRooted(relativePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(workspaceRoot);
+            var candidate = Path.GetFullPath(Path.Combine(root, relativePath));
+            if (!WorkspacePathResolver.IsInsideWorkspace(root, candidate) ||
+                !WorkspacePathResolver.IsResolvedInsideWorkspace(root, candidate))
+            {
+                return false;
+            }
+
+            fullPath = candidate;
+            normalizedRelativePath = Path.GetRelativePath(root, candidate).Replace('\\', '/');
+            return !normalizedRelativePath.StartsWith("..", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string AddLineAfterImports(string text, string importLine)

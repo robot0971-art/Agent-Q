@@ -73,7 +73,7 @@ public sealed class DesktopHybridSearchTool(
         AddKeywordSignals(candidates, query, warnings);
         await AddProjectMapSignalsAsync(candidates, query, ct);
         AddGraphSignals(candidates, query);
-        await AddGitRecencySignalsAsync(candidates, warnings, ct);
+        await AddGitRecencySignalsAsync(candidates, query, warnings, ct);
         await AddMemorySignalsAsync(candidates, query, ct);
 
         if (includeSemantic)
@@ -140,7 +140,8 @@ public sealed class DesktopHybridSearchTool(
         }
 
         var lessons = await _projectMemoryService.LoadLocalLessonsAsync(workspaceRoot, ct);
-        foreach (var lesson in lessons.Where(lesson => lesson.Enabled).Take(20))
+        var relevantLessons = _projectMemoryService.SelectRelevantLessons(lessons, query, maxCount: 20);
+        foreach (var lesson in relevantLessons)
         {
             var memoryText = $"{lesson.Title}\n{lesson.Content}\n{string.Join(' ', lesson.Tags)}";
             if (!ContainsAnyToken(memoryText, tokens))
@@ -225,6 +226,7 @@ public sealed class DesktopHybridSearchTool(
 
     private async Task AddGitRecencySignalsAsync(
         Dictionary<string, HybridCandidate> candidates,
+        string query,
         List<string> warnings,
         CancellationToken ct)
     {
@@ -234,9 +236,21 @@ public sealed class DesktopHybridSearchTool(
             return;
         }
 
+        var tokens = BuildSearchTokens(query);
         foreach (var file in result.Take(24))
         {
-            var candidate = GetCandidate(candidates, file.Path);
+            var normalizedPath = file.Path.Replace('\\', '/');
+            var pathMatchesQuery = ContainsAnyToken(normalizedPath, tokens);
+            if (!candidates.TryGetValue(normalizedPath, out var candidate) && pathMatchesQuery)
+            {
+                candidate = GetCandidate(candidates, normalizedPath);
+            }
+
+            if (candidate == null)
+            {
+                continue;
+            }
+
             candidate.Score += file.IsStaged ? 16 : 12;
             candidate.Sources.Add("git");
             candidate.Reasons.Add(file.IsStaged
@@ -488,7 +502,8 @@ public sealed class DesktopHybridSearchTool(
             try
             {
                 files = Directory.EnumerateFiles(current)
-                    .Where(file => !IsBinaryFile(file));
+                    .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file) &&
+                                   !IsBinaryFile(file));
             }
             catch
             {
@@ -512,11 +527,25 @@ public sealed class DesktopHybridSearchTool(
 
             foreach (var directory in directories)
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)) &&
+                    !IsReparseDirectory(directory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     pending.Push(directory);
                 }
             }
+        }
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
         }
     }
 

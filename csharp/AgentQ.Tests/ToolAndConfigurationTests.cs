@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AgentQ.Cli;
 using AgentQ.Core.Providers;
+using AgentQ.Desktop.Services;
 using AgentQ.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -8,8 +9,9 @@ using Xunit;
 namespace AgentQ.Tests;
 
 /// <summary>
-/// 도구 및 구성 설정에 대한 단위 테스트 클래스입니다.
+/// ?꾧뎄 諛?援ъ꽦 ?ㅼ젙??????⑥쐞 ?뚯뒪???대옒?ㅼ엯?덈떎.
 /// </summary>
+[Collection("Environment variable tests")]
 public sealed class ToolAndConfigurationTests : IDisposable
 {
     private readonly Dictionary<string, string?> _originalEnvironment = new();
@@ -126,6 +128,22 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task ListDirectoryTool_AcceptsJsonElementStringPath()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        Directory.CreateDirectory(Path.Combine(workspace.RootPath, "src"));
+
+        var result = await new ListDirectoryTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = JsonSerializer.SerializeToElement(".")
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("src", result.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ListDirectoryTool_HidesDotPrefixedEntriesByDefault()
     {
         using var workspace = new TemporaryWorkspace();
@@ -190,7 +208,8 @@ public sealed class ToolAndConfigurationTests : IDisposable
             Model = "gpt-5",
             BaseUrl = "https://example.test",
             ApiKey = "secret",
-            TimeoutSeconds = 45
+            TimeoutSeconds = 45,
+            DesktopEnableScreenshotLlmVisionReview = true
         };
 
         await ConfigStore.SaveAsync(config);
@@ -202,6 +221,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("https://example.test", loaded.BaseUrl);
         Assert.Equal("secret", loaded.ApiKey);
         Assert.Equal(45, loaded.TimeoutSeconds);
+        Assert.True(loaded.DesktopEnableScreenshotLlmVisionReview);
         Assert.Equal(4096u, loaded.MaxTokens);
         Assert.True(ConfigStore.Exists);
         Assert.EndsWith(Path.Combine(".agentq", "config.json"), ConfigStore.PathValue, StringComparison.OrdinalIgnoreCase);
@@ -319,6 +339,12 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.NotNull(provider.GetRequiredService<CliInteractiveConversationRunner>());
         Assert.NotNull(provider.GetRequiredService<CliConfigurationLoader>());
         Assert.NotNull(provider.GetRequiredService<CliApplication>());
+
+        var registry = provider.GetRequiredService<ToolRegistry>();
+        Assert.NotNull(registry.Get("list_directory"));
+        Assert.NotNull(registry.Get("create_directory"));
+        Assert.NotNull(registry.Get("delete_path"));
+        Assert.NotNull(registry.Get("web_search"));
     }
 
     [Fact]
@@ -333,13 +359,13 @@ public sealed class ToolAndConfigurationTests : IDisposable
         var result = (IEnumerable<string>?)method!.Invoke(null, ["bash", "\"{\\\"command\\\":\\\"echo hello\\\",\\\"timeout\\\":5000}\""]);
         var summaryLines = Assert.IsAssignableFrom<IEnumerable<string>>(result).ToArray();
 
-        Assert.Contains(summaryLines, line => line.Contains("명령:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(summaryLines, line => line.Contains("Command:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(summaryLines, line => line.Contains("echo hello", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(summaryLines, line => line.Contains("5000", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void ConsolePermissionEnforcer_ClearSessionAllowedTools_RemovesTrackedPermissions()
+    public void ConsolePermissionEnforcer_SessionAllowedTools_ShowsOnlyReusablePermissions()
     {
         var enforcer = new ConsolePermissionEnforcer();
         var field = typeof(ConsolePermissionEnforcer).GetField(
@@ -351,16 +377,43 @@ public sealed class ToolAndConfigurationTests : IDisposable
         var allowedTools = Assert.IsType<HashSet<string>>(field!.GetValue(enforcer));
         allowedTools.Add("bash");
         allowedTools.Add("read_file");
+        allowedTools.Add("web_search");
 
-        Assert.Equal(["bash", "read_file"], enforcer.SessionAllowedTools.ToArray());
+        Assert.Equal(["web_search"], enforcer.SessionAllowedTools.ToArray());
 
         enforcer.ClearSessionAllowedTools();
 
         Assert.Empty(enforcer.SessionAllowedTools);
     }
 
+    [Theory]
+    [InlineData("bash", false)]
+    [InlineData("write_file", false)]
+    [InlineData("edit_file", false)]
+    [InlineData("create_directory", false)]
+    [InlineData("delete_path", false)]
+    [InlineData("web_search", true)]
+    public void ConsolePermissionEnforcer_OnlyReadOnlySearchIsSessionReusable(string toolName, bool expected)
+    {
+        Assert.Equal(expected, ConsolePermissionEnforcer.IsSessionReusableTool(toolName));
+    }
+
+    [Fact]
+    public async Task CliInteractiveToolCommands_ParsesJsonBeforePermissionRequest()
+    {
+        var registry = new ToolRegistry();
+        registry.Register(new NamedTestTool("secure_tool", "test secure tool", requiresPermission: true));
+        var commands = new CliInteractiveToolCommands();
+
+        await commands.RunToolAsync(
+            registry,
+            new ThrowingPermissionEnforcer(),
+            new CliToolLoopRunner(),
+            "secure_tool {\"path\":");
+    }
+
     /// <summary>
-    /// ReadFileTool이 문자열 offset과 limit 파라미터를 올바르게 파싱하는지 검증합니다.
+    /// ReadFileTool??臾몄옄??offset怨?limit ?뚮씪誘명꽣瑜??щ컮瑜닿쾶 ?뚯떛?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task ReadFileTool_ParsesStringOffsetAndLimit()
@@ -416,8 +469,25 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.True(json.RootElement.GetProperty("contentTruncated").GetBoolean());
     }
 
+    [Fact]
+    public async Task ReadFileTool_AcceptsJsonElementStringPath()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        workspace.CreateFile("sample.txt", "hello");
+        var pathElement = JsonSerializer.SerializeToElement("sample.txt");
+
+        var result = await new ReadFileTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = pathElement
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("hello", result.Content, StringComparison.Ordinal);
+    }
+
     /// <summary>
-    /// EditFileTool이 replace_all 모드에서 실제 교체 횟수를 올바르게 보고하는지 검증합니다.
+    /// EditFileTool??replace_all 紐⑤뱶?먯꽌 ?ㅼ젣 援먯껜 ?잛닔瑜??щ컮瑜닿쾶 蹂닿퀬?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task EditFileTool_ReplaceAllReportsActualReplacementCount()
@@ -442,8 +512,26 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal(2, json.RootElement.GetProperty("replacements").GetInt32());
     }
 
+    [Fact]
+    public async Task EditFileTool_AcceptsJsonElementStringArguments()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile("sample.txt", "alpha beta");
+
+        var result = await new EditFileTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = JsonSerializer.SerializeToElement("sample.txt"),
+            ["old_string"] = JsonSerializer.SerializeToElement("alpha"),
+            ["new_string"] = JsonSerializer.SerializeToElement("omega")
+        });
+
+        Assert.False(result.IsError);
+        Assert.Equal("omega beta".Replace("\n", Environment.NewLine), File.ReadAllText(filePath));
+    }
+
     /// <summary>
-    /// EditFileTool이 단일 교체 모드에서 중복 매치를 안전하게 거부하는지 검증합니다.
+    /// EditFileTool???⑥씪 援먯껜 紐⑤뱶?먯꽌 以묐났 留ㅼ튂瑜??덉쟾?섍쾶 嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task EditFileTool_RejectsAmbiguousSingleReplace()
@@ -466,7 +554,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// EditFileTool이 빈 old_string을 거부하는지 검증합니다.
+    /// EditFileTool??鍮?old_string??嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task EditFileTool_RejectsEmptyOldString()
@@ -557,7 +645,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// WriteFileTool이 overwrite=false일 때 기존 파일 덮어쓰기를 거부하는지 검증합니다.
+    /// WriteFileTool??overwrite=false????湲곗〈 ?뚯씪 ??뼱?곌린瑜?嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task WriteFileTool_RejectsOverwriteWhenExplicitlyDisabled()
@@ -608,7 +696,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// WriteFileTool이 디렉토리 경로를 파일 대상으로 허용하지 않는지 검증합니다.
+    /// WriteFileTool???붾젆?좊━ 寃쎈줈瑜??뚯씪 ??곸쑝濡??덉슜?섏? ?딅뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task WriteFileTool_RejectsDirectoryTargets()
@@ -630,7 +718,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// BashTool이 위험한 명령 패턴을 차단하는지 검증합니다.
+    /// BashTool???꾪뿕??紐낅졊 ?⑦꽩??李⑤떒?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task BashTool_BlocksDangerousCommands()
@@ -639,7 +727,11 @@ public sealed class ToolAndConfigurationTests : IDisposable
         var dangerousCommands = new[]
         {
             "rm -rf /",
+            "rm -rf .",
+            "rm -fr src",
+            "rm --recursive --force src",
             "rmdir /s /q C:\\temp\\danger",
+            "rmdir -rf src",
             "rd /s /q C:\\temp\\danger",
             "erase /q /s C:\\temp\\danger\\*",
             "del /s /q /f C:\\temp\\danger\\*",
@@ -669,7 +761,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// BashTool이 허용 범위를 벗어난 timeout 값을 거부하는지 검증합니다.
+    /// BashTool???덉슜 踰붿쐞瑜?踰쀬뼱??timeout 媛믪쓣 嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task BashTool_RejectsTimeoutOutsideAllowedRange()
@@ -706,6 +798,20 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task BashTool_AcceptsJsonElementStringCommand()
+    {
+        var command = OperatingSystem.IsWindows() ? "Write-Output 'hello'" : "printf hello";
+
+        var result = await new BashTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["command"] = JsonSerializer.SerializeToElement(command)
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("hello", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BashTool_DescribesWindowsPowerShellSemantics()
     {
         var tool = new BashTool();
@@ -723,7 +829,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// BashTool이 긴 출력을 잘라내고 절단 여부를 보고하는지 검증합니다.
+    /// BashTool??湲?異쒕젰???섎씪?닿퀬 ?덈떒 ?щ?瑜?蹂닿퀬?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task BashTool_TruncatesLongOutput()
@@ -747,7 +853,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// GlobTool이 중첩 glob 패턴과 일치하는 파일을 올바르게 찾는지 검증합니다.
+    /// GlobTool??以묒꺽 glob ?⑦꽩怨??쇱튂?섎뒗 ?뚯씪???щ컮瑜닿쾶 李얜뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task GlobTool_MatchesNestedGlobPatterns()
@@ -779,6 +885,23 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task GlobTool_AcceptsJsonElementStringArguments()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        workspace.CreateFile(Path.Combine("config", "appsettings.json"), "{}");
+
+        var result = await new GlobTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = JsonSerializer.SerializeToElement("."),
+            ["pattern"] = JsonSerializer.SerializeToElement("**/*.json")
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("appsettings.json", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GlobTool_RejectsPathsOutsideWorkspaceRoot()
     {
         using var workspace = new TemporaryWorkspace();
@@ -798,7 +921,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// GrepTool이 OneDrive 경로를 제외하지 않고 올바르게 검색하는지 검증합니다.
+    /// GrepTool??OneDrive 寃쎈줈瑜??쒖쇅?섏? ?딄퀬 ?щ컮瑜닿쾶 寃?됲븯?붿? 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task GrepTool_DoesNotExcludeOneDrivePaths()
@@ -823,6 +946,25 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task GrepTool_AcceptsJsonElementStringArguments()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        workspace.CreateFile(Path.Combine("nested", "match.txt"), "needle");
+
+        var result = await new GrepTool().ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = JsonSerializer.SerializeToElement("."),
+            ["pattern"] = JsonSerializer.SerializeToElement("needle"),
+            ["output_mode"] = JsonSerializer.SerializeToElement("count"),
+            ["include"] = JsonSerializer.SerializeToElement("*.txt")
+        });
+
+        Assert.False(result.IsError);
+        Assert.Contains("\"numMatches\":1", result.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GrepTool_RejectsPathsOutsideWorkspaceRoot()
     {
         using var workspace = new TemporaryWorkspace();
@@ -839,6 +981,75 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.True(result.IsError);
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GrepTool_DoesNotTraverseDirectorySymlinkOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        outside.CreateFile("secret.txt", "needle");
+        workspace.CreateFile("visible.txt", "ordinary");
+
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await new GrepTool().ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = ".",
+                ["pattern"] = "needle",
+                ["include"] = "*.txt"
+            });
+
+            Assert.False(result.IsError);
+            using var json = JsonDocument.Parse(result.Content);
+            Assert.Equal(0, json.RootElement.GetProperty("numMatches").GetInt32());
+            Assert.DoesNotContain("secret.txt", result.Content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task GlobTool_DoesNotTraverseDirectorySymlinkOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        outside.CreateFile("secret.json", "{}");
+        workspace.CreateFile("visible.txt", "ordinary");
+
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await new GlobTool().ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = ".",
+                ["pattern"] = "**/*.json"
+            });
+
+            Assert.False(result.IsError);
+            using var json = JsonDocument.Parse(result.Content);
+            Assert.Equal(0, json.RootElement.GetProperty("numFiles").GetInt32());
+            Assert.DoesNotContain("secret.json", result.Content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
     }
 
     [Fact]
@@ -865,7 +1076,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// PluginEchoTool이 plugin 스타일 페이로드를 올바르게 반환하는지 검증합니다.
+    /// PluginEchoTool??plugin ?ㅽ????섏씠濡쒕뱶瑜??щ컮瑜닿쾶 諛섑솚?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task PluginEchoTool_ReturnsPluginStylePayload()
@@ -883,8 +1094,31 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.Equal("hello", json.RootElement.GetProperty("input").GetProperty("message").GetString());
     }
 
+    [Fact]
+    public async Task WebSearchTool_ClampsHugeMaxResultsWithoutThrowing()
+    {
+        const string html = """
+            <html><body>
+            <a class="result__a" href="https://example.com/a">A</a><div class="result__snippet">First</div>
+            <a class="result__a" href="https://example.com/b">B</a><div class="result__snippet">Second</div>
+            </body></html>
+            """;
+        using var httpClient = new HttpClient(new StaticResponseHandler(html));
+        var tool = new WebSearchTool(httpClient);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["query"] = "agent q",
+            ["max_results"] = long.MaxValue
+        });
+
+        Assert.False(result.IsError);
+        using var json = JsonDocument.Parse(result.Content);
+        Assert.Equal(2, json.RootElement.GetProperty("resultCount").GetInt32());
+    }
+
     /// <summary>
-    /// ProviderConfiguration.FromArgs가 환경 변수 폴백을 사용하여 제공자를 올바르게 구성하는지 검증합니다.
+    /// ProviderConfiguration.FromArgs媛 ?섍꼍 蹂???대갚???ъ슜?섏뿬 ?쒓났?먮? ?щ컮瑜닿쾶 援ъ꽦?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public void ProviderConfiguration_FromArgs_UsesEnvironmentFallbackForProvider()
@@ -972,7 +1206,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// ProviderConfiguration.FromArgs가 명시적 인수가 환경 변수보다 우선하는지 검증합니다.
+    /// ProviderConfiguration.FromArgs媛 紐낆떆???몄닔媛 ?섍꼍 蹂?섎낫???곗꽑?섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public void ProviderConfiguration_FromArgs_PrefersExplicitArguments()
@@ -999,6 +1233,20 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void ProviderConfiguration_FromArgs_IgnoresNegativeTimeoutValues()
+    {
+        SetEnvironment("AGENTQ_TIMEOUT", "-1");
+
+        var envConfig = ProviderConfiguration.FromArgs([]);
+        var explicitConfig = ProviderConfiguration.FromArgs(["--timeout", "-1"]);
+        var disabledConfig = ProviderConfiguration.FromArgs(["--timeout", "0"]);
+
+        Assert.Equal(60, envConfig.TimeoutSeconds);
+        Assert.Equal(60, explicitConfig.TimeoutSeconds);
+        Assert.Equal(0, disabledConfig.TimeoutSeconds);
+    }
+
+    [Fact]
     public void ProviderConfiguration_FromArgs_ParsesNonInteractivePromptOptions()
     {
         var config = ProviderConfiguration.FromArgs([
@@ -1021,7 +1269,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// ReadFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// ReadFileTool???묒뾽 怨듦컙 猷⑦듃 ?몃????뚯씪 寃쎈줈瑜?嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task ReadFileTool_RejectsPathsOutsideWorkspaceRoot()
@@ -1042,7 +1290,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// WriteFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// WriteFileTool???묒뾽 怨듦컙 猷⑦듃 ?몃????뚯씪 寃쎈줈瑜?嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task WriteFileTool_RejectsPathsOutsideWorkspaceRoot()
@@ -1061,6 +1309,44 @@ public sealed class ToolAndConfigurationTests : IDisposable
 
         Assert.True(result.IsError);
         Assert.False(File.Exists(outsideFile));
+        Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateDirectoryTool_RejectsPathsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideDirectory = Path.Combine(outside.RootPath, "created");
+        var tool = new CreateDirectoryTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = outsideDirectory
+        });
+
+        Assert.True(result.IsError);
+        Assert.False(Directory.Exists(outsideDirectory));
+        Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DeletePathTool_RejectsPathsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideFile = outside.CreateFile("outside.txt", "blocked");
+        var tool = new DeletePathTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = outsideFile
+        });
+
+        Assert.True(result.IsError);
+        Assert.True(File.Exists(outsideFile));
         Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -1087,6 +1373,150 @@ public sealed class ToolAndConfigurationTests : IDisposable
             });
 
             Assert.True(result.IsError);
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDirectoryTool_RejectsDirectorySymlinkParentsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        var outsideDirectory = Path.Combine(outside.RootPath, "created");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new CreateDirectoryTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "link-out/created"
+            });
+
+            Assert.True(result.IsError);
+            Assert.False(Directory.Exists(outsideDirectory));
+            Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public void ToolPermissionClassifier_TreatsDirectorySymlinkParentWritesAsExternal()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var createAssessment = ToolPermissionClassifier.Assess(
+                "create_directory",
+                new Dictionary<string, object?>
+                {
+                    ["path"] = "link-out/created"
+                },
+                workspace.RootPath);
+            var writeAssessment = ToolPermissionClassifier.Assess(
+                "write_file",
+                new Dictionary<string, object?>
+                {
+                    ["path"] = "link-out/created.txt",
+                    ["content"] = "blocked"
+                },
+                workspace.RootPath);
+
+            Assert.Equal(PermissionRiskLevel.ExternalWrite, createAssessment.RiskLevel);
+            Assert.Equal(PermissionRiskLevel.ExternalWrite, writeAssessment.RiskLevel);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public void ToolPermissionClassifier_TreatsExistingFileThroughDirectorySymlinkAsExternal()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+
+        outside.CreateFile("editable.txt", "blocked");
+        var linkPath = Path.Combine(workspace.RootPath, "link-out");
+        if (!TryCreateDirectorySymbolicLink(linkPath, outside.RootPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var editAssessment = ToolPermissionClassifier.Assess(
+                "edit_file",
+                new Dictionary<string, object?>
+                {
+                    ["path"] = "link-out/editable.txt",
+                    ["old_string"] = "blocked",
+                    ["new_string"] = "changed"
+                },
+                workspace.RootPath);
+            var deleteAssessment = ToolPermissionClassifier.Assess(
+                "delete_path",
+                new Dictionary<string, object?>
+                {
+                    ["path"] = "link-out/editable.txt"
+                },
+                workspace.RootPath);
+
+            Assert.Equal(PermissionRiskLevel.ExternalWrite, editAssessment.RiskLevel);
+            Assert.Equal(PermissionRiskLevel.ExternalWrite, deleteAssessment.RiskLevel);
+        }
+        finally
+        {
+            DeleteFileSystemLink(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task DeletePathTool_RejectsSymlinkTargetsOutsideWorkspaceRoot()
+    {
+        using var workspace = new TemporaryWorkspace();
+        using var outside = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+
+        var outsideFile = outside.CreateFile("outside.txt", "blocked");
+        var linkPath = Path.Combine(workspace.RootPath, "outside-link.txt");
+        if (!TryCreateFileSymbolicLink(linkPath, outsideFile))
+        {
+            return;
+        }
+
+        try
+        {
+            var tool = new DeletePathTool();
+            var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+            {
+                ["path"] = "outside-link.txt"
+            });
+
+            Assert.True(result.IsError);
+            Assert.True(File.Exists(outsideFile));
             Assert.Contains("outside the workspace root", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         }
         finally
@@ -1129,7 +1559,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// EditFileTool이 작업 공간 루트 외부의 파일 경로를 거부하는지 검증합니다.
+    /// EditFileTool???묒뾽 怨듦컙 猷⑦듃 ?몃????뚯씪 寃쎈줈瑜?嫄곕??섎뒗吏 寃利앺빀?덈떎.
     /// </summary>
     [Fact]
     public async Task EditFileTool_RejectsPathsOutsideWorkspaceRoot()
@@ -1221,7 +1651,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// 환경 변수를 설정하고 원래 값을 추적합니다.
+    /// ?섍꼍 蹂?섎? ?ㅼ젙?섍퀬 ?먮옒 媛믪쓣 異붿쟻?⑸땲??
     /// </summary>
     private void SetEnvironment(string name, string? value)
     {
@@ -1283,7 +1713,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// 임시 디렉토리와 모든 내용을 삭제합니다.
+    /// ?꾩떆 ?붾젆?좊━? 紐⑤뱺 ?댁슜????젣?⑸땲??
     /// </summary>
     public void Dispose()
     {
@@ -1313,12 +1743,12 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     /// <summary>
-    /// 임시 작업 공간 디렉토리를 관리하는 헬퍼 클래스입니다.
+    /// ?꾩떆 ?묒뾽 怨듦컙 ?붾젆?좊━瑜?愿由ы븯???ы띁 ?대옒?ㅼ엯?덈떎.
     /// </summary>
     private sealed class TemporaryWorkspace : IDisposable
     {
         /// <summary>
-        /// 지정된 이름으로 임시 작업 공간 디렉토리를 생성합니다.
+        /// 吏?뺣맂 ?대쫫?쇰줈 ?꾩떆 ?묒뾽 怨듦컙 ?붾젆?좊━瑜??앹꽦?⑸땲??
         /// </summary>
         public TemporaryWorkspace(string? rootName = null)
         {
@@ -1331,12 +1761,12 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
 
         /// <summary>
-        /// 임시 작업 공간의 루트 디렉토리 경로입니다.
+        /// ?꾩떆 ?묒뾽 怨듦컙??猷⑦듃 ?붾젆?좊━ 寃쎈줈?낅땲??
         /// </summary>
         public string RootPath { get; }
 
         /// <summary>
-        /// 지정된 상대 경로와 내용으로 파일을 생성합니다.
+        /// 吏?뺣맂 ?곷? 寃쎈줈? ?댁슜?쇰줈 ?뚯씪???앹꽦?⑸땲??
         /// </summary>
         public string CreateFile(string relativePath, string content)
         {
@@ -1352,7 +1782,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
 
         /// <summary>
-        /// 테스트 중 변경된 환경 변수를 원래 값으로 복원합니다.
+        /// ?뚯뒪??以?蹂寃쎈맂 ?섍꼍 蹂?섎? ?먮옒 媛믪쑝濡?蹂듭썝?⑸땲??
         /// </summary>
         public void Dispose()
         {
@@ -1363,7 +1793,7 @@ public sealed class ToolAndConfigurationTests : IDisposable
         }
     }
 
-    private sealed class NamedTestTool(string name, string description) : ITool
+    private sealed class NamedTestTool(string name, string description, bool requiresPermission = false) : ITool
     {
         public string Name => name;
 
@@ -1375,9 +1805,26 @@ public sealed class ToolAndConfigurationTests : IDisposable
             properties = new Dictionary<string, object?>()
         };
 
-        public bool RequiresPermission => false;
+        public bool RequiresPermission => requiresPermission;
 
         public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default) =>
             Task.FromResult(ToolResult.Success("{}"));
+    }
+
+    private sealed class ThrowingPermissionEnforcer : IPermissionEnforcer
+    {
+        public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson) =>
+            throw new InvalidOperationException("Permission should not be requested before JSON arguments are valid.");
+    }
+
+    private sealed class StaticResponseHandler(string content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(content)
+            });
+        }
     }
 }

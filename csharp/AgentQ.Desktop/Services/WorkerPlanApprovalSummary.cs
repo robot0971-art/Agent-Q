@@ -8,6 +8,8 @@ public sealed class WorkerPlanApprovalSummary
 
     public int DeleteCount { get; init; }
 
+    public int RunCommandCount { get; init; }
+
     public List<string> CreatedFiles { get; init; } = [];
 
     public List<string> ModifiedFiles { get; init; } = [];

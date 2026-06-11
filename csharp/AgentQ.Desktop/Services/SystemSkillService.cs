@@ -81,7 +81,7 @@ public sealed class SystemSkillService
             return false;
         }
 
-        if (false && ContainsAnyNormalized(
+        if (ContainsAnyNormalized(
                 normalized,
                 "isitpossible",
                 "woulditbepossible",
@@ -89,14 +89,14 @@ public sealed class SystemSkillService
                 "cani",
                 "couldwe",
                 "couldi",
-                "가능한가",
-                "가능할까",
-                "가능해",
-                "가능하냐",
-                "할수있",
-                "해볼수있",
-                "어떨까",
-                "괜찮을까") &&
+                "\uAC00\uB2A5\uD55C\uAC00",
+                "\uAC00\uB2A5\uD560\uAE4C",
+                "\uAC00\uB2A5\uD574",
+                "\uAC00\uB2A5\uD560\uAE4C\uC694",
+                "\uC218\uC788\uC744\uAE4C",
+                "\uD574\uBCFC\uC218\uC788",
+                "\uC5B4\uB5A8\uAE4C",
+                "\uAD1C\uCC2E\uC744\uAE4C") &&
             !ContainsAnyNormalized(
                 normalized,
                 "makeitnow",
@@ -105,16 +105,16 @@ public sealed class SystemSkillService
                 "implementitnow",
                 "pleasecreate",
                 "pleaseimplement",
-                "바로만들",
-                "바로생성",
-                "바로구현",
-                "이대로만들",
-                "이대로생성",
-                "이대로구현",
-                "만들어줘",
-                "생성해줘",
-                "구현해줘",
-                "진행해"))
+                "\uBC14\uB85C\uB9CC\uB4E4",
+                "\uBC14\uB85C\uC0DD\uC131",
+                "\uBC14\uB85C\uAD6C\uD604",
+                "\uC774\uB300\uB85C\uB9CC\uB4E4",
+                "\uC774\uB300\uB85C\uC0DD\uC131",
+                "\uC774\uB300\uB85C\uAD6C\uD604",
+                "\uB9CC\uB4E4\uC5B4\uC918",
+                "\uC0DD\uC131\uD574\uC918",
+                "\uAD6C\uD604\uD574\uC918",
+                "\uC9C4\uD589\uD574"))
         {
             return false;
         }
@@ -142,18 +142,16 @@ public sealed class SystemSkillService
             "\uB9CC\uB4E4",
             "\uD648\uD398\uC774\uC9C0",
             "\uC791\uC131",
-            "만들",
-            "생성",
-            "구현",
-            "프로젝트",
-            "앱",
-            "포트폴리오",
-            "홈페이지",
-            "웹사이트",
-            "랜딩",
-            "블로그",
-            "단어장",
-            "쇼핑");
+            "\uC0DD\uC131",
+            "\uAD6C\uD604",
+            "\uD504\uB85C\uC81D\uD2B8",
+            "\uC571",
+            "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+            "\uC6F9\uC0AC\uC774\uD2B8",
+            "\uB79C\uB529",
+            "\uBE14\uB85C\uADF8",
+            "\uB2E8\uC5B4\uC7A5",
+            "\uC1FC\uD551");
     }
 
     private IReadOnlyList<AgentQSystemSkill> LoadSkills(string workspaceRoot)

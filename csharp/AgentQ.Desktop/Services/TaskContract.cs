@@ -122,33 +122,6 @@ public static class UserIntentTranslator
             };
         }
 
-        if (IsRunVerificationRequest(normalized))
-        {
-            return new TaskContract
-            {
-                Intent = TaskContractIntent.RunVerification,
-                Confidence = 0.88,
-                Goal = "Run the requested build, test, lint, or verification command and report the concrete result.",
-                RequiredActions =
-                [
-                    "identify the requested verification command or infer the focused workspace verification command",
-                    "run the build, test, lint, or verification command with shell tools",
-                    "report pass, fail, or the concrete command error"
-                ],
-                DoneWhen =
-                [
-                    "a verification command was executed and its result was reported",
-                    "or no safe verification command could be identified and the assistant asked one focused question"
-                ],
-                InvalidCompletions =
-                [
-                    "only explaining how to run tests",
-                    "summarizing project files without running a command",
-                    "asking what to do next when the user already asked to run verification"
-                ]
-            };
-        }
-
         if (IsCreateDirectoryRequest(normalized))
         {
             return new TaskContract
@@ -172,6 +145,33 @@ public static class UserIntentTranslator
                     "only saying the folder can be created",
                     "describing steps without calling create_directory",
                     "asking what to do next when the user already named the folder"
+                ]
+            };
+        }
+
+        if (IsRunVerificationRequest(normalized))
+        {
+            return new TaskContract
+            {
+                Intent = TaskContractIntent.RunVerification,
+                Confidence = 0.88,
+                Goal = "Run the requested build, test, lint, or verification command and report the concrete result.",
+                RequiredActions =
+                [
+                    "identify the requested verification command or infer the focused workspace verification command",
+                    "run the build, test, lint, or verification command with shell tools",
+                    "report pass, fail, or the concrete command error"
+                ],
+                DoneWhen =
+                [
+                    "a verification command was executed and its result was reported",
+                    "or no safe verification command could be identified and the assistant asked one focused question"
+                ],
+                InvalidCompletions =
+                [
+                    "only explaining how to run tests",
+                    "summarizing project files without running a command",
+                    "asking what to do next when the user already asked to run verification"
                 ]
             };
         }
@@ -296,13 +296,18 @@ public static class UserIntentTranslator
 
     private static bool IsRunLocalServerRequest(string normalized)
     {
+        if (IsConsultativeRequest(normalized))
+        {
+            return false;
+        }
+
         var hasServer = ContainsAny(normalized,
             "localserver", "devserver", "localhost", "server",
             "\uB85C\uCEEC\uC11C\uBC84", "\uAC1C\uBC1C\uC11C\uBC84", "\uC11C\uBC84");
         var hasRunVerb = ContainsAny(normalized,
             "run", "start", "serve", "launch", "open", "preview", "npmrundev",
             "\uB744\uC6CC", "\uB744\uC6B0", "\uC2E4\uD589", "\uC5F4\uC5B4", "\uBCF4\uC5EC", "\uCF1C");
-        return (hasServer && hasRunVerb) || ContainsAny(normalized, "npmrundev", "npmstart", "yarn dev", "pnpmdev");
+        return (hasServer && hasRunVerb) || ContainsAny(normalized, "npmrundev", "npmstart", "yarndev", "pnpmdev");
     }
 
     private static bool IsStopLocalServerRequest(string normalized)
@@ -371,22 +376,26 @@ public static class UserIntentTranslator
     private static bool IsCreateProjectRequest(string normalized)
     {
         return HasExecutionCreateVerb(normalized) &&
-               ContainsAny(normalized, "project", "app", "website", "site", "react", "vite", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8") &&
+               ContainsAny(normalized, "project", "app", "website", "site", "web", "webapp", "react", "vite", "wordbook", "glossary", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1") &&
                !IsConsultativeRequest(normalized);
     }
 
     private static bool HasExecutionCreateVerb(string normalized)
     {
         return ContainsAny(normalized,
-            "create", "make", "build", "scaffold", "generate", "write",
-            "\uB9CC\uB4E4\uC5B4\uC918", "\uB9CC\uB4E4\uC5B4\uC8FC", "\uB9CC\uB4E4\uC790", "\uC0DD\uC131\uD574\uC918", "\uC0DD\uC131\uD574\uC8FC", "\uC791\uC131\uD574\uC918");
+            "create", "make", "build", "scaffold", "generate", "write", "implement", "proceed", "continue", "goahead",
+            "\uB9CC\uB4E4\uC5B4\uC918", "\uB9CC\uB4E4\uC5B4\uC8FC", "\uB9CC\uB4E4\uC790", "\uC0DD\uC131\uD574\uC918", "\uC0DD\uC131\uD574\uC8FC", "\uC791\uC131\uD574\uC918",
+            "\uAD6C\uD604\uD574\uC918", "\uAD6C\uD604\uD574\uC8FC", "\uC9C4\uD589\uD574", "\uC9C4\uD589\uD574\uC918", "\uC9C4\uD589\uD574\uC8FC");
     }
 
     private static bool IsConsultativeRequest(string normalized)
     {
         return ContainsAny(normalized,
             "shouldi", "shouldwe", "wouldit", "isitok", "isitgood", "whatshould", "howabout",
-            "\uB9CC\uB4E4\uAE4C", "\uAD1C\uCC2E\uC744\uAE4C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uBC29\uD5A5", "\uC88B\uC744\uAE4C", "\uC5B4\uB5BB\uAC8C\uD560\uAE4C");
+            "possible", "isitpossible", "canwe", "cani", "howto", "howdo", "howcan", "method", "wayto",
+            "\uB9CC\uB4E4\uAE4C", "\uAD1C\uCC2E\uC744\uAE4C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uBC29\uD5A5", "\uC88B\uC744\uAE4C", "\uC5B4\uB5BB\uAC8C\uD560\uAE4C",
+            "\uAC00\uB2A5\uD55C\uAC00", "\uAC00\uB2A5\uD560\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uC218\uC788\uC744\uAE4C",
+            "\uBC29\uBC95", "\uD558\uB294\uBC95", "\uC5B4\uB5BB\uAC8C");
     }
 
     private static string Normalize(string text)
@@ -527,7 +536,7 @@ public static class TaskContractCompletionChecker
         }
 
         if (MissingRequiredEvidence(contract, executedCommands, replayEntries) &&
-            !LooksLikeClarificationOrConcreteLimitation(assistantText))
+            !HasAcceptableNoEvidenceCompletion(contract, assistantText, replayEntries))
         {
             return true;
         }
@@ -563,7 +572,7 @@ public static class TaskContractCompletionChecker
         }
 
         if (MissingRequiredEvidence(contract, executedCommands, replayEntries) &&
-            !LooksLikeClarificationOrConcreteLimitation(assistantText))
+            !HasAcceptableNoEvidenceCompletion(contract, assistantText, replayEntries))
         {
             return true;
         }
@@ -659,20 +668,20 @@ public static class TaskContractCompletionChecker
         var text = assistantText.ToLowerInvariant();
         var mentionsStructure = ContainsAny(text,
             "project structure",
-            "프로젝트 구조",
+            "\uD504\uB85C\uC81D\uD2B8 \uAD6C\uC870",
             "src/app.jsx",
             "src/main.jsx",
             "vite.config",
-            "현재 앱은",
+            "\uD604\uC7AC \uAD6C\uC131",
             "main component",
             "entry point");
         var asksNext = ContainsAny(text,
             "what would you like",
             "what can i help",
-            "어떤 작업",
-            "무엇을 도와");
+            "\uC5B4\uB5A4 \uC791\uC5C5",
+            "\uBB34\uC5C7\uC744 \uB3C4\uC640");
         var reportsUrl = ContainsAny(text, "http://localhost:", "http://127.0.0.1:");
-        var reportsFailure = ContainsAny(text, "failed", "error", "실패", "오류");
+        var reportsFailure = ContainsAny(text, "failed", "error", "\uC2E4\uD328", "\uC624\uB958");
         return !reportsUrl && !reportsFailure && (mentionsStructure || asksNext);
     }
 
@@ -681,7 +690,8 @@ public static class TaskContractCompletionChecker
         var text = assistantText.ToLowerInvariant();
         var reportsDelete = ContainsAny(text,
             "deleted", "removed", "delete_path", "permission denied", "not found",
-            "\uC0AD\uC81C\uD588", "\uC0AD\uC81C\uB418", "\uC9C0\uC6E0", "\uC5C6\uC2B5", "\uAC70\uBD80");
+            "\uC0AD\uC81C\uD588", "\uC0AD\uC81C\uB418", "\uC9C0\uC6E0", "\uAC70\uBD80",
+            "\uCC3E\uC744 \uC218 \uC5C6", "\uC874\uC7AC\uD558\uC9C0 \uC54A", "\uB300\uC0C1\uC774 \uC5C6", "\uACBD\uB85C\uAC00 \uC5C6");
         var describesAgent = ContainsAny(text, "agentq desktop", "agentq\uB294", "agentq desktop\uC740");
         var asksNext = ContainsAny(text, "what would you like", "what can i help", "\uBB34\uC5C7\uC744 \uB3C4\uC640", "\uAD81\uAE08\uD558\uC2E0 \uC810");
         return !reportsDelete && (describesAgent || asksNext || text.Length > 0);
@@ -759,6 +769,24 @@ public static class TaskContractCompletionChecker
         };
     }
 
+    private static bool HasAcceptableNoEvidenceCompletion(
+        TaskContract contract,
+        string assistantText,
+        IReadOnlyList<ToolReplayEntry> replayEntries)
+    {
+        if (LooksLikeClarification(assistantText))
+        {
+            return true;
+        }
+
+        if (!LooksLikeConcreteLimitation(assistantText))
+        {
+            return false;
+        }
+
+        return !RequiresReplayBackedLimitation(contract.Intent) || HasFailedToolEvidence(replayEntries);
+    }
+
     private static bool HasAnyTool(IReadOnlyList<ToolReplayEntry> replayEntries, params string[] toolNames)
     {
         if (replayEntries.Count == 0)
@@ -767,10 +795,28 @@ public static class TaskContractCompletionChecker
         }
 
         return replayEntries.Any(entry =>
+            entry.IsError != true &&
             toolNames.Any(toolName => string.Equals(entry.ToolName, toolName, StringComparison.OrdinalIgnoreCase)));
     }
 
+    private static bool HasFailedToolEvidence(IReadOnlyList<ToolReplayEntry> replayEntries) =>
+        replayEntries.Any(entry => entry.IsError);
+
+    private static bool RequiresReplayBackedLimitation(TaskContractIntent intent) =>
+        intent is TaskContractIntent.RunLocalServer
+            or TaskContractIntent.DeletePath
+            or TaskContractIntent.CreateDirectory
+            or TaskContractIntent.CreateFile
+            or TaskContractIntent.CreateProject
+            or TaskContractIntent.ModifyCode
+            or TaskContractIntent.RunVerification;
+
     private static bool LooksLikeClarificationOrConcreteLimitation(string assistantText)
+    {
+        return LooksLikeClarification(assistantText) || LooksLikeConcreteLimitation(assistantText);
+    }
+
+    private static bool LooksLikeClarification(string assistantText)
     {
         if (string.IsNullOrWhiteSpace(assistantText))
         {
@@ -778,29 +824,89 @@ public static class TaskContractCompletionChecker
         }
 
         var text = assistantText.ToLowerInvariant();
+        if (LooksLikeCompletionClaim(text))
+        {
+            return false;
+        }
+
         return text.Contains('?') ||
             ContainsAny(
                 text,
-                "permission denied",
-                "blocked",
-                "policy",
-                "not found",
-                "failed",
-                "error",
-                "no web search",
-                "no search tool",
-                "source url",
-                "cannot access",
                 "clarify",
-                "\uAD8C\uD55C",
-                "\uAC70\uBD80",
-                "\uCC28\uB2E8",
-                "\uC5C6\uC2B5",
-                "\uC2E4\uD328",
-                "\uC624\uB958",
                 "\uBA85\uD655",
                 "\uC9C8\uBB38");
     }
+
+    private static bool LooksLikeConcreteLimitation(string assistantText)
+    {
+        if (string.IsNullOrWhiteSpace(assistantText))
+        {
+            return false;
+        }
+
+        var text = assistantText.ToLowerInvariant();
+        var reportsConcreteLimitation = ContainsAny(
+            text,
+            "permission denied",
+            "blocked",
+            "policy",
+            "not found",
+            "failed",
+            "error",
+            "no web search",
+            "no search tool",
+            "source url",
+            "cannot access",
+            "\uAD8C\uD55C",
+            "\uAC70\uBD80",
+            "\uCC28\uB2E8",
+            "\uCC3E\uC744 \uC218 \uC5C6",
+            "\uC874\uC7AC\uD558\uC9C0 \uC54A",
+            "\uB300\uC0C1\uC774 \uC5C6",
+            "\uACBD\uB85C\uAC00 \uC5C6",
+            "\uC2E4\uD328",
+            "\uC624\uB958");
+        var claimsCompletion = ContainsAny(
+            text,
+            "created",
+            "deleted",
+            "modified",
+            "updated",
+            "completed",
+            "done",
+            "success",
+            "\uC0DD\uC131\uD588",
+            "\uB9CC\uB4E4\uC5C8",
+            "\uC0AD\uC81C\uD588",
+            "\uC218\uC815\uD588",
+            "\uBCC0\uACBD\uD588",
+            "\uC644\uB8CC",
+            "\uC131\uACF5");
+        if (claimsCompletion && !reportsConcreteLimitation)
+        {
+            return false;
+        }
+
+        return reportsConcreteLimitation;
+    }
+
+    private static bool LooksLikeCompletionClaim(string text) =>
+        ContainsAny(
+            text,
+            "created",
+            "deleted",
+            "modified",
+            "updated",
+            "completed",
+            "done",
+            "success",
+            "\uC0DD\uC131\uD588",
+            "\uB9CC\uB4E4\uC5C8",
+            "\uC0AD\uC81C\uD588",
+            "\uC218\uC815\uD588",
+            "\uBCC0\uACBD\uD588",
+            "\uC644\uB8CC",
+            "\uC131\uACF5");
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));

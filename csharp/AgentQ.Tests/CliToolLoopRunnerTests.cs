@@ -52,7 +52,7 @@ public sealed class CliToolLoopRunnerTests
         var runner = new CliToolLoopRunner();
         var outputs = new List<string>();
 
-        await runner.ExecuteConversationTurnAsync(
+        var result = await runner.ExecuteConversationTurnAsync(
             provider,
             "test-model",
             history,
@@ -61,6 +61,7 @@ public sealed class CliToolLoopRunnerTests
             onTextDelta: text => outputs.Add(text));
 
         Assert.Equal(4, history.MessageCount);
+        Assert.False(result.HitMaxSteps);
 
         var assistantMessages = history.Messages.Where(message => message.Role == ChatRole.Assistant).ToArray();
         Assert.Equal(2, assistantMessages.Length);
@@ -93,7 +94,7 @@ public sealed class CliToolLoopRunnerTests
 
         var runner = new CliToolLoopRunner();
 
-        await runner.ExecuteConversationTurnAsync(
+        var result = await runner.ExecuteConversationTurnAsync(
             provider,
             "test-model",
             history,
@@ -134,7 +135,7 @@ public sealed class CliToolLoopRunnerTests
 
         var runner = new CliToolLoopRunner();
 
-        await runner.ExecuteConversationTurnAsync(
+        var result = await runner.ExecuteConversationTurnAsync(
             provider,
             "test-model",
             history,
@@ -271,7 +272,7 @@ public sealed class CliToolLoopRunnerTests
 
         var runner = new CliToolLoopRunner();
 
-        await runner.ExecuteConversationTurnAsync(
+        var result = await runner.ExecuteConversationTurnAsync(
             provider,
             "test-model",
             history,
@@ -280,6 +281,8 @@ public sealed class CliToolLoopRunnerTests
             maxSteps: 2);
 
         Assert.Equal(2, providerCallCount);
+        Assert.True(result.HitMaxSteps);
+        Assert.Equal(2, result.StepLimit);
 
         var finalAssistant = history.Messages.Last();
         Assert.Equal(ChatRole.Assistant, finalAssistant.Role);
@@ -696,6 +699,160 @@ public sealed class CliToolLoopRunnerTests
     }
 
     [Fact]
+    public async Task ExecuteConversationTurnAsync_PassesReadableToolInputJsonToPermissionEnforcer()
+    {
+        var provider = new ScriptedProvider(context =>
+        {
+            var toolResult = context.Messages
+                .SelectMany(message => message.Content)
+                .FirstOrDefault(content => content.Type == ContentType.ToolResult);
+
+            return toolResult == null
+                ? StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_secure",
+                            ToolName = "secure_tool",
+                            PartialInput = "{\"path\":\"test2\"}",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk { TextDelta = "done" },
+                    new StreamChunk { IsComplete = true });
+        });
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("create folder");
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool(
+            "secure_tool",
+            requiresPermission: true,
+            execution: _ => ToolResult.Success("{\"status\":\"success\"}")));
+        var enforcer = new CapturingPermissionEnforcer(true);
+
+        await new CliToolLoopRunner().ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            registry,
+            enforcer);
+
+        Assert.NotNull(enforcer.LastInputJson);
+        using var document = JsonDocument.Parse(enforcer.LastInputJson!);
+        Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        Assert.Equal("test2", document.RootElement.GetProperty("path").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteConversationTurnAsync_UnwrapsStringEncodedToolInputForPermissionAndExecution()
+    {
+        Dictionary<string, object?>? capturedInput = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            var toolResult = context.Messages
+                .SelectMany(message => message.Content)
+                .FirstOrDefault(content => content.Type == ContentType.ToolResult);
+
+            return toolResult == null
+                ? StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_secure",
+                            ToolName = "secure_tool",
+                            PartialInput = "\"{\\\"path\\\":\\\"test2\\\"}\"",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk { TextDelta = "done" },
+                    new StreamChunk { IsComplete = true });
+        });
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("create folder");
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool(
+            "secure_tool",
+            requiresPermission: true,
+            execution: input =>
+            {
+                capturedInput = input;
+                return ToolResult.Success("{\"status\":\"success\"}");
+            }));
+        var enforcer = new CapturingPermissionEnforcer(true);
+
+        await new CliToolLoopRunner().ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            registry,
+            enforcer);
+
+        Assert.NotNull(enforcer.LastInputJson);
+        using var document = JsonDocument.Parse(enforcer.LastInputJson!);
+        Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        Assert.Equal("test2", document.RootElement.GetProperty("path").GetString());
+        Assert.NotNull(capturedInput);
+        Assert.Equal("test2", capturedInput!["path"]);
+    }
+
+    [Fact]
+    public async Task ExecuteConversationTurnAsync_ParsesToolInputKeysCaseInsensitively()
+    {
+        Dictionary<string, object?>? capturedInput = null;
+        var provider = new ScriptedProvider(context =>
+        {
+            var toolResult = context.Messages
+                .SelectMany(message => message.Content)
+                .FirstOrDefault(content => content.Type == ContentType.ToolResult);
+
+            return toolResult == null
+                ? StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_secure",
+                            ToolName = "secure_tool",
+                            PartialInput = "{\"Path\":\"test2\"}",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk { TextDelta = "done" },
+                    new StreamChunk { IsComplete = true });
+        });
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("create folder");
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool(
+            "secure_tool",
+            requiresPermission: false,
+            execution: input =>
+            {
+                capturedInput = input;
+                return ToolResult.Success("{\"status\":\"success\"}");
+            }));
+
+        await new CliToolLoopRunner().ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            registry,
+            new AlwaysAllowPermissionEnforcer());
+
+        Assert.NotNull(capturedInput);
+        Assert.Equal("test2", capturedInput!["path"]);
+        Assert.True(capturedInput.ContainsKey("PATH"));
+    }
+
+    [Fact]
     public async Task ExecuteConversationTurnAsync_HandlesMalformedToolInputWithoutCrashing()
     {
         Dictionary<string, object?>? capturedInput = null;
@@ -864,6 +1021,20 @@ public sealed class CliToolLoopRunnerTests
         /// 항상 true를 반환합니다.
         /// </summary>
         public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson) => Task.FromResult(true);
+    }
+
+    private sealed class CapturingPermissionEnforcer(bool allowed) : IPermissionEnforcer
+    {
+        public string? LastToolName { get; private set; }
+
+        public string? LastInputJson { get; private set; }
+
+        public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
+        {
+            LastToolName = toolName;
+            LastInputJson = inputJson;
+            return Task.FromResult(allowed);
+        }
     }
 
     /// <summary>

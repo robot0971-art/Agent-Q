@@ -14,6 +14,10 @@
     <Resource Include="Assets\app-icon.ico" />
     <Resource Include="Assets\app-icon.png" />
     <EmbeddedResource Include="SystemSkills\*.md" />
+    <Content Include="..\..\tools\language-workers\**\*">
+      <Link>tools\language-workers\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

@@ -24,6 +24,7 @@ public sealed class WorkerPlanApprovalSummaryBuilder
         var created = PathsFor(fileSteps, WorkerPlanStepKind.CreateFile);
         var modified = PathsFor(fileSteps, WorkerPlanStepKind.ModifyFile);
         var deleted = PathsFor(fileSteps, WorkerPlanStepKind.DeleteFile);
+        var runCommandCount = plan.Steps.Count(step => step.Kind == WorkerPlanStepKind.RunCommand);
         var riskReasons = BuildRiskReasons(plan, fileSteps, deleted);
         var riskLevel = DetermineRiskLevel(fileSteps, deleted, riskReasons);
 
@@ -32,6 +33,7 @@ public sealed class WorkerPlanApprovalSummaryBuilder
             CreateCount = created.Count,
             ModifyCount = modified.Count,
             DeleteCount = deleted.Count,
+            RunCommandCount = runCommandCount,
             CreatedFiles = created,
             ModifiedFiles = modified,
             DeletedFiles = deleted,
@@ -84,6 +86,11 @@ public sealed class WorkerPlanApprovalSummaryBuilder
         if (deleted.Count > 0)
         {
             reasons.Add("Deletes files.");
+        }
+
+        if (plan.Steps.Any(step => step.Kind == WorkerPlanStepKind.RunCommand))
+        {
+            reasons.Add("Runs shell or tool commands.");
         }
 
         foreach (var risk in plan.Risks.Where(risk => !string.IsNullOrWhiteSpace(risk)).Take(6))
@@ -143,6 +150,7 @@ public sealed class WorkerPlanApprovalSummaryBuilder
             WorkerPlanStepKind.DeleteFile => "Delete",
             WorkerPlanStepKind.RunCommand => "Run",
             WorkerPlanStepKind.Verify => "Verify",
+            WorkerPlanStepKind.Manual => "Manual",
             _ => kind.ToString()
         };
     }

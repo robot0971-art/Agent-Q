@@ -41,6 +41,7 @@ public sealed partial class WorkspaceDependencyGraphService
 
         var root = Path.GetFullPath(workspaceRoot);
         var files = EnumerateSupportedFiles(root)
+            .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file))
             .Where(file => TryGetFileInfo(file, out var length) && length <= MaximumFileBytes)
             .Take(MaximumFiles)
             .ToList();
@@ -308,7 +309,8 @@ public sealed partial class WorkspaceDependencyGraphService
             try
             {
                 files = Directory.EnumerateFiles(current)
-                    .Where(IsSupportedFile);
+                    .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file) &&
+                                   IsSupportedFile(file));
             }
             catch
             {
@@ -332,11 +334,25 @@ public sealed partial class WorkspaceDependencyGraphService
 
             foreach (var directory in directories)
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)) &&
+                    !IsReparseDirectory(directory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     pending.Push(directory);
                 }
             }
+        }
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
         }
     }
 
@@ -377,9 +393,7 @@ public sealed partial class WorkspaceDependencyGraphService
 
     private static bool IsInsideRoot(string root, string path)
     {
-        var relative = Path.GetRelativePath(root, Path.GetFullPath(path));
-        return !relative.StartsWith("..", StringComparison.Ordinal) &&
-               !Path.IsPathRooted(relative);
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(root, path);
     }
 
     private static string Relative(string root, string path)

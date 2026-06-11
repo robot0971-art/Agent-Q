@@ -40,8 +40,12 @@ public sealed class DesktopGitCommandService(DesktopGitPanelWorkflowService gitP
             return;
         }
 
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, result.Prompt, "code review"))
+        {
+            return;
+        }
+
         var messageCountBeforeReview = viewModel.Messages.Count;
-        viewModel.InputText = result.Prompt;
         await sendCurrentMessageAsync(false);
         gitPanelWorkflowService.CaptureLastCodeReview(viewModel, messageCountBeforeReview);
     }
@@ -70,7 +74,11 @@ public sealed class DesktopGitCommandService(DesktopGitPanelWorkflowService gitP
             return;
         }
 
-        viewModel.InputText = result.Prompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, result.Prompt, "code review fix"))
+        {
+            return;
+        }
+
         viewModel.CanFixLastCodeReviewFindings = false;
         await sendCurrentMessageAsync(false);
     }
@@ -95,7 +103,11 @@ public sealed class DesktopGitCommandService(DesktopGitPanelWorkflowService gitP
             return;
         }
 
-        viewModel.InputText = result.Prompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, result.Prompt, "commit summary"))
+        {
+            return;
+        }
+
         await sendCurrentMessageAsync(false);
     }
 }

@@ -148,6 +148,104 @@ public sealed class AutomationSupportTests
     }
 
     [Fact]
+    public async Task CliNonInteractiveRunner_ReportsToolFailureWhenToolLoopHitsMaxSteps()
+    {
+        var providerCallCount = 0;
+        var provider = new ScriptedProvider(_ =>
+        {
+            providerCallCount++;
+            return StreamSequence(
+                new StreamChunk
+                {
+                    ToolUseDelta = new ToolUseChunk
+                    {
+                        ToolId = $"tool_{providerCallCount}",
+                        ToolName = "loop_tool",
+                        PartialInput = "{}",
+                        IsComplete = true
+                    }
+                },
+                new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "loop"
+        };
+        config.AllowedToolNames.Add("loop_tool");
+
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool("loop_tool", ToolResult.Success("{\"status\":\"again\"}")));
+
+        var result = await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames),
+            new CliToolLoopRunner(),
+            "loop");
+
+        Assert.Equal(45, providerCallCount);
+        Assert.Equal(ProcessExitCode.ToolFailure, result.ExitCode);
+        Assert.Equal("tool_error", result.TerminationReason);
+        Assert.Equal("Stopped after reaching the maximum tool steps (45).", result.FinalText);
+        Assert.Contains("Stopped after reaching the maximum tool steps (45).", result.ToolErrors);
+    }
+
+    [Fact]
+    public async Task CliNonInteractiveRunner_ReportsToolFailureWhenBashExitCodeIsNonZero()
+    {
+        var provider = new ScriptedProvider(context =>
+        {
+            var sawToolResult = context.Messages
+                .SelectMany(message => message.Content)
+                .Any(content => content.Type == ContentType.ToolResult);
+
+            return sawToolResult
+                ? StreamSequence(
+                    new StreamChunk { TextDelta = "verification failed" },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_bash",
+                            ToolName = "bash",
+                            PartialInput = "{\"command\":\"dotnet test\"}",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "run tests"
+        };
+        config.AllowedToolNames.Add("bash");
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool(
+            "bash",
+            ToolResult.Success("""{"exitCode":1,"stdout":"1 failed","stderr":"","timeoutMs":30000}""")));
+
+        var result = await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames),
+            new CliToolLoopRunner(),
+            "run tests");
+
+        Assert.Equal(ProcessExitCode.ToolFailure, result.ExitCode);
+        Assert.Equal("tool_error", result.TerminationReason);
+        Assert.Contains(result.ToolOutputs, record => record.ToolName == "bash" && record.IsError);
+        Assert.Contains(result.ToolErrors, error => error.Contains("bash exited with code 1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CliNonInteractiveRunner_RetriesManualFallbackWithAllowedEditTool()
     {
         var providerCallCount = 0;

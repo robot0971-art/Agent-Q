@@ -6,6 +6,8 @@ public static class DesktopVerificationSelector
 {
     private static readonly string[] JavaScriptExtensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"];
 
+    private static readonly string[] StaticWebExtensions = [".html", ".css", ".js"];
+
     private static readonly string[] PythonExtensions = [".py", ".pyi"];
 
     public static IReadOnlyList<AgentVerificationPlan> SelectPlans(
@@ -100,6 +102,18 @@ public static class DesktopVerificationSelector
             ];
         }
 
+        if (IsStandaloneStaticWebChange(paths))
+        {
+            return
+            [
+                new AgentVerificationPlan
+                {
+                    Title = "Manual browser verification suggested",
+                    Reason = "Only standalone static web files changed; automated npm build/test is not applicable unless a package manifest exists."
+                }
+            ];
+        }
+
         if (paths.Any(IsJavaScriptProjectFile))
         {
             var packageRoot = FindNearestProjectRoot(paths, IsJavaScriptProjectFile, "package.json");
@@ -162,24 +176,7 @@ public static class DesktopVerificationSelector
 
     private static bool HasVerificationCommand(IReadOnlyList<string> commands)
     {
-        return commands.Any(command =>
-        {
-            var normalized = command.Replace('/', '\\').ToLowerInvariant();
-            return normalized.Contains("test.cmd", StringComparison.Ordinal) ||
-                   normalized.Contains("build.cmd", StringComparison.Ordinal) ||
-                   normalized.Contains("build.desktop.cmd", StringComparison.Ordinal) ||
-                   normalized.Contains("dotnet test", StringComparison.Ordinal) ||
-                   normalized.Contains("dotnet build", StringComparison.Ordinal) ||
-                   normalized.Contains("npm test", StringComparison.Ordinal) ||
-                   normalized.Contains("npm run build", StringComparison.Ordinal) ||
-                   normalized.Contains("pnpm test", StringComparison.Ordinal) ||
-                   normalized.Contains("pnpm build", StringComparison.Ordinal) ||
-                   normalized.Contains("yarn test", StringComparison.Ordinal) ||
-                   normalized.Contains("yarn build", StringComparison.Ordinal) ||
-                   normalized.Contains("python -m pytest", StringComparison.Ordinal) ||
-                   normalized.Contains("pytest", StringComparison.Ordinal) ||
-                   normalized.Contains("docker compose config", StringComparison.Ordinal);
-        });
+        return commands.Any(command => VerificationCommandPolicy.IsAllowed(command));
     }
 
     private static bool IsDesktopProjectFile(string path)
@@ -242,6 +239,29 @@ public static class DesktopVerificationSelector
                Path.GetFileName(path).Equals("tsconfig.json", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsStandaloneStaticWebChange(IReadOnlyList<string> paths)
+    {
+        return paths.Count > 0 &&
+               paths.All(IsStaticWebFile) &&
+               !paths.Any(IsJavaScriptManifestFile);
+    }
+
+    private static bool IsStaticWebFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return StaticWebExtensions.Any(value => value.Equals(extension, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsJavaScriptManifestFile(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return fileName.Equals("package.json", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("package-lock.json", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("pnpm-lock.yaml", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("yarn.lock", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("tsconfig.json", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsPythonProjectFile(string path)
     {
         var extension = Path.GetExtension(path);
@@ -261,6 +281,7 @@ public static class DesktopVerificationSelector
 
         return projectMemory.VerificationCommands
             .Concat(projectMemory.ContextBank.KeyCommands.Select(fact => fact.Value))
+            .Where(command => VerificationCommandPolicy.IsAllowed(command, projectMemory.VerificationCommands))
             .FirstOrDefault(command => needles.Any(needle => command.Contains(needle, StringComparison.OrdinalIgnoreCase)));
     }
 

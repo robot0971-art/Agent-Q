@@ -65,6 +65,91 @@ public sealed class ProviderUnitTests
     }
 
     [Fact]
+    public void ToolCallDeltaBuffer_CompleteAllHandlesMultiplePendingCalls()
+    {
+        var buffer = new ToolCallDeltaBuffer();
+        buffer.SetToolId(1, "call_second");
+        buffer.SetToolName(1, "write_file");
+        buffer.AppendArguments(1, "{\"path\":\"b.txt\"}");
+        buffer.SetToolId(0, "call_first");
+        buffer.SetToolName(0, "read_file");
+        buffer.AppendArguments(0, "{\"path\":\"a.txt\"}");
+
+        var completed = buffer.CompleteAll();
+
+        Assert.Collection(
+            completed,
+            first =>
+            {
+                Assert.Equal("call_first", first.ToolId);
+                Assert.Equal("read_file", first.ToolName);
+                Assert.Equal("{\"path\":\"a.txt\"}", first.PartialInput);
+                Assert.True(first.IsComplete);
+            },
+            second =>
+            {
+                Assert.Equal("call_second", second.ToolId);
+                Assert.Equal("write_file", second.ToolName);
+                Assert.Equal("{\"path\":\"b.txt\"}", second.PartialInput);
+                Assert.True(second.IsComplete);
+            });
+        Assert.Empty(buffer.CompleteAll());
+    }
+
+    [Fact]
+    public void ToolCallDeltaBuffer_CompletesToolCallsWithoutProviderId()
+    {
+        var buffer = new ToolCallDeltaBuffer();
+        buffer.SetToolName(0, "read_file");
+        buffer.AppendArguments(0, "{\"path\":\"fixture.txt\"}");
+
+        var completed = Assert.Single(buffer.CompleteAll());
+
+        Assert.Equal("tool_call_0", completed.ToolId);
+        Assert.Equal("read_file", completed.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", completed.PartialInput);
+        Assert.True(completed.IsComplete);
+    }
+
+    [Fact]
+    public void ToolCallDeltaBuffer_DropsToolCallsWithoutToolName()
+    {
+        var buffer = new ToolCallDeltaBuffer();
+        buffer.SetToolId(0, "call_missing_name");
+        buffer.AppendArguments(0, "{\"path\":\"fixture.txt\"}");
+
+        Assert.Null(buffer.BuildPartialChunk(0));
+        Assert.Empty(buffer.CompleteAll());
+    }
+
+    [Fact]
+    public void ToolCallDeltaBuffer_DropsToolCallsWithWhitespaceToolName()
+    {
+        var buffer = new ToolCallDeltaBuffer();
+        buffer.SetToolId(0, "call_blank_name");
+        buffer.SetToolName(0, "   ");
+        buffer.AppendArguments(0, "{\"path\":\"fixture.txt\"}");
+
+        Assert.Null(buffer.BuildPartialChunk(0));
+        Assert.Empty(buffer.CompleteAll());
+    }
+
+    [Fact]
+    public void ToolCallDeltaBuffer_UsesFallbackIdForWhitespaceProviderId()
+    {
+        var buffer = new ToolCallDeltaBuffer();
+        buffer.SetToolId(0, "   ");
+        buffer.SetToolName(0, "read_file");
+        buffer.AppendArguments(0, "{\"path\":\"fixture.txt\"}");
+
+        var completed = Assert.Single(buffer.CompleteAll());
+
+        Assert.Equal("tool_call_0", completed.ToolId);
+        Assert.Equal("read_file", completed.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", completed.PartialInput);
+    }
+
+    [Fact]
     public async Task OpenAiStream_IgnoresMalformedChunks_AndCompletesBufferedToolCalls()
     {
         const string body =
@@ -99,6 +184,72 @@ public sealed class ProviderUnitTests
         var toolUseChunk = Assert.Single(chunks, chunk => chunk.ToolUseDelta?.IsComplete == true);
         var toolUse = Assert.IsType<ToolUseChunk>(toolUseChunk.ToolUseDelta);
         Assert.Equal("call_read", toolUse!.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
+        Assert.Single(chunks, chunk => chunk.IsComplete);
+    }
+
+    [Fact]
+    public async Task OpenAiStream_CompletesToolCallWhenCompatibleProviderOmitsId()
+    {
+        const string body =
+            """
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function","function":{"name":"read_file","arguments":"{\"path\":\"fi"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"xture.txt\"}"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+            data: [DONE]
+
+            """;
+
+        using var httpClient = CreateHttpClient(HttpStatusCode.OK, body, "text/event-stream");
+        var provider = new OpenAiCompatibleProvider(httpClient, "compatible-model");
+
+        var chunks = new List<StreamChunk>();
+        await foreach (var chunk in provider.GenerateStreamAsync(CreateContext(), CreateToolDefinitions("read_file")))
+        {
+            chunks.Add(chunk);
+        }
+
+        var toolUseChunk = Assert.Single(chunks, chunk => chunk.ToolUseDelta?.IsComplete == true);
+        var toolUse = Assert.IsType<ToolUseChunk>(toolUseChunk.ToolUseDelta);
+        Assert.Equal("tool_call_0", toolUse!.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
+        Assert.Single(chunks, chunk => chunk.IsComplete);
+    }
+
+    [Fact]
+    public async Task OpenAiStream_HandlesMultiLineDataEvents()
+    {
+        const string body =
+            """
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,
+            data: "delta":{"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"fi"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,
+            data: "function":{"arguments":"xture.txt\"}"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_stream","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+            data: [DONE]
+
+            """;
+
+        using var httpClient = CreateHttpClient(HttpStatusCode.OK, body, "text/event-stream");
+        var provider = new OpenAiCompatibleProvider(httpClient, "gpt-4o-mini");
+
+        var chunks = new List<StreamChunk>();
+        await foreach (var chunk in provider.GenerateStreamAsync(CreateContext(), CreateToolDefinitions("read_file")))
+        {
+            chunks.Add(chunk);
+        }
+
+        var toolUseChunk = Assert.Single(chunks, chunk => chunk.ToolUseDelta?.IsComplete == true);
+        var toolUse = Assert.IsType<ToolUseChunk>(toolUseChunk.ToolUseDelta);
+        Assert.Equal("call_read", toolUse.ToolId);
         Assert.Equal("read_file", toolUse.ToolName);
         Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
         Assert.Single(chunks, chunk => chunk.IsComplete);
@@ -170,6 +321,12 @@ public sealed class ProviderUnitTests
         const string body =
             """
             event: content_block_start
+            data: {"index":9,"content_block":{"type":"tool_use","id":"tool_bad","name":{"not":"a string"}}}
+
+            event: content_block_stop
+            data: {"index":9}
+
+            event: content_block_start
             data: {"index":0,"content_block":{"type":"tool_use","id":"tool_1","name":"read_file"}}
 
             event: content_block_delta
@@ -198,6 +355,48 @@ public sealed class ProviderUnitTests
         var toolUseChunk = Assert.Single(chunks, chunk => chunk.ToolUseDelta?.IsComplete == true);
         var toolUse = Assert.IsType<ToolUseChunk>(toolUseChunk.ToolUseDelta);
         Assert.Equal("tool_1", toolUse!.ToolId);
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
+        Assert.Single(chunks, chunk => chunk.IsComplete);
+    }
+
+    [Fact]
+    public async Task AnthropicStream_HandlesCommentsAndMultiLineDataEvents()
+    {
+        const string body =
+            """
+            event: content_block_start
+            : keep-alive
+            data: {"index":0,"content_block":
+            data: {"type":"tool_use","id":"tool_1","name":"read_file"}}
+
+            event: content_block_delta
+            data: {"index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"fi"}}
+
+            event: content_block_delta
+            : another heartbeat
+            data: {"index":0,"delta":
+            data: {"type":"input_json_delta","partial_json":"xture.txt\"}"}}
+
+            event: content_block_stop
+            data: {"index":0}
+
+            event: message_stop
+            data: {}
+
+            """;
+
+        using var httpClient = CreateHttpClient(HttpStatusCode.OK, body, "text/event-stream");
+        var provider = new AnthropicProvider(httpClient, "test-key");
+
+        var chunks = new List<StreamChunk>();
+        await foreach (var chunk in provider.GenerateStreamAsync(CreateContext(), CreateToolDefinitions("read_file")))
+        {
+            chunks.Add(chunk);
+        }
+
+        var toolUse = Assert.Single(chunks.Where(chunk => chunk.ToolUseDelta?.IsComplete == true).Select(chunk => chunk.ToolUseDelta!));
+        Assert.Equal("tool_1", toolUse.ToolId);
         Assert.Equal("read_file", toolUse.ToolName);
         Assert.Equal("{\"path\":\"fixture.txt\"}", toolUse.PartialInput);
         Assert.Single(chunks, chunk => chunk.IsComplete);
@@ -262,6 +461,147 @@ public sealed class ProviderUnitTests
         var input = Assert.IsType<JsonElement>(toolUse.ToolInput);
         Assert.Equal("fixture.txt", input.GetProperty("path").GetString());
         Assert.True(input.GetProperty("options").GetProperty("include_hidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task AnthropicResponse_DropsWhitespaceToolMetadata()
+    {
+        const string body =
+            """
+            {
+              "id": "msg_blank_tool",
+              "model": "claude-sonnet-4-6",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "   ",
+                  "name": "read_file",
+                  "input": {
+                    "path": "fixture.txt"
+                  }
+                },
+                {
+                  "type": "tool_use",
+                  "id": "tool_123",
+                  "name": "   ",
+                  "input": {
+                    "path": "fixture.txt"
+                  }
+                }
+              ]
+            }
+            """;
+
+        using var httpClient = CreateHttpClient(HttpStatusCode.OK, body);
+        var provider = new AnthropicProvider(httpClient, "test-key");
+
+        var response = await provider.GenerateResponseAsync(CreateContext(), CreateToolDefinitions("read_file"));
+
+        Assert.DoesNotContain(response.Content, content => content.Type == ContentType.ToolUse);
+    }
+
+    [Fact]
+    public async Task AnthropicRequest_SendsStringifiedToolInputAsObject()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "msg_test",
+              "model": "claude-sonnet-4-6",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "done"
+                }
+              ]
+            }
+            """;
+
+        string? capturedBody = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost/")
+        };
+        var provider = new AnthropicProvider(httpClient, "test-key");
+        var context = new ChatContext
+        {
+            Model = "claude-sonnet-4-6",
+            Messages = new List<ChatMessage>
+            {
+                ChatMessage.UserText("Read the file."),
+                ChatMessage.AssistantToolUse("tool_123", "read_file", "{\"path\":\"fixture.txt\"}"),
+                ChatMessage.UserToolResult("tool_123", "{\"contents\":\"ok\"}", false)
+            },
+            MaxTokens = 256
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("read_file"));
+
+        Assert.False(string.IsNullOrWhiteSpace(capturedBody));
+        using var doc = JsonDocument.Parse(capturedBody!);
+        var messages = doc.RootElement.GetProperty("messages");
+        var toolUse = messages[1].GetProperty("content")[0];
+        Assert.Equal("tool_use", toolUse.GetProperty("type").GetString());
+        Assert.Equal(JsonValueKind.Object, toolUse.GetProperty("input").ValueKind);
+        Assert.Equal("fixture.txt", toolUse.GetProperty("input").GetProperty("path").GetString());
+    }
+
+    [Fact]
+    public async Task AnthropicRequest_DefaultsZeroMaxTokens()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "msg_tokens",
+              "model": "claude-sonnet-4-6",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "ok"
+                }
+              ]
+            }
+            """;
+
+        string? capturedBody = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost/")
+        };
+        var provider = new AnthropicProvider(httpClient, "test-key");
+        var context = new ChatContext
+        {
+            Model = "claude-sonnet-4-6",
+            Messages = [ChatMessage.UserText("hello")],
+            MaxTokens = 0
+        };
+
+        await provider.GenerateResponseAsync(context, []);
+
+        Assert.False(string.IsNullOrWhiteSpace(capturedBody));
+        using var doc = JsonDocument.Parse(capturedBody!);
+        Assert.Equal(1024u, doc.RootElement.GetProperty("max_tokens").GetUInt32());
     }
 
     private static ChatContext CreateContext()

@@ -92,6 +92,7 @@ public static class DesktopText
     public const string GitUnstageSelectedFailed = nameof(GitUnstageSelectedFailed);
     public const string GitCommitMessageRequired = nameof(GitCommitMessageRequired);
     public const string GitNoStagedFilesToCommit = nameof(GitNoStagedFilesToCommit);
+    public const string GitUnapprovedStagedFiles = nameof(GitUnapprovedStagedFiles);
     public const string GitCreatingCommit = nameof(GitCreatingCommit);
     public const string GitCommitCreated = nameof(GitCommitCreated);
     public const string GitCommitFailed = nameof(GitCommitFailed);

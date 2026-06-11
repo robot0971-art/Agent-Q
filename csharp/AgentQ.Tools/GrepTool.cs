@@ -51,7 +51,8 @@ public class GrepTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!input.TryGetValue("pattern", out var patternObj) || patternObj is not string pattern)
+        var pattern = TryGetString(input, "pattern");
+        if (pattern == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
         if (string.IsNullOrWhiteSpace(pattern))
@@ -61,9 +62,9 @@ public class GrepTool : ITool
         var outputMode = "content";
         var include = "*";
 
-        if (input.TryGetValue("path", out var pathObj) && pathObj is string p) searchPath = p;
-        if (input.TryGetValue("output_mode", out var modeObj) && modeObj is string m) outputMode = m;
-        if (input.TryGetValue("include", out var incObj) && incObj is string incPattern) include = incPattern;
+        if (TryGetString(input, "path") is { } p) searchPath = p;
+        if (TryGetString(input, "output_mode") is { } m) outputMode = m;
+        if (TryGetString(input, "include") is { } incPattern) include = incPattern;
 
         try
         {
@@ -187,9 +188,68 @@ public class GrepTool : ITool
             return [targetFile];
         }
 
-        return Directory.EnumerateFiles(searchDir, include, SearchOption.AllDirectories)
+        return EnumerateFilesWithoutFollowingLinks(searchDir, include)
             .Where(f => !IsBinaryFile(f) && !IsExcludedPath(f))
             .Take(MaximumFilesToScan);
+    }
+
+    private static IEnumerable<string> EnumerateFilesWithoutFollowingLinks(string searchDir, string include)
+    {
+        var pending = new Stack<string>();
+        pending.Push(searchDir);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(current, include, SearchOption.TopDirectoryOnly).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                if (!IsReparsePoint(file))
+                {
+                    yield return file;
+                }
+            }
+
+            IEnumerable<string> directories;
+            try
+            {
+                directories = Directory.EnumerateDirectories(current, "*", SearchOption.TopDirectoryOnly).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var directory in directories)
+            {
+                if (!IsReparsePoint(directory))
+                {
+                    pending.Push(directory);
+                }
+            }
+        }
+    }
+
+    private static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     /// <summary>
@@ -213,6 +273,21 @@ public class GrepTool : ITool
         var normalized = path.Replace('\\', '/').ToLowerInvariant();
         return normalized.Contains("/bin/") || normalized.Contains("/obj/") || normalized.Contains("/.git/") ||
                normalized.Contains("/node_modules/");
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 }
 

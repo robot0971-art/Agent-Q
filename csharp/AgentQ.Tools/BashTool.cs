@@ -17,6 +17,8 @@ public class BashTool : ITool
     private static readonly (Regex Pattern, string Reason)[] BlockedCommandPatterns =
     [
         (new Regex(@"(^|\s)rm\s+-rf\s+(/|\*)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive recursive delete"),
+        (new Regex(@"\brm\b(?=.*(?:-[a-z]*r[a-z]*|-recursive\b|--recursive\b))(?=.*(?:-[a-z]*f[a-z]*|-force\b|--force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive forced delete"),
+        (new Regex(@"\brmdir\b(?=.*(?:-[a-z]*r[a-z]*|-recursive\b|--recursive\b))(?=.*(?:-[a-z]*f[a-z]*|-force\b|--force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "recursive forced directory delete"),
         (new Regex(@"(^|\s)(shutdown|reboot)(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "system shutdown/reboot"),
         (new Regex(@"(^|\s)format(\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled), "disk format"),
         (new Regex(@"(^|\s)(del|erase)\b(?=.*(?:/s|-recurse\b))(?=.*(?:/q|/f|-force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled), "destructive delete"),
@@ -80,7 +82,8 @@ public class BashTool : ITool
     /// <returns>Tool execution result.</returns>
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        if (!input.TryGetValue("command", out var cmdObj) || cmdObj is not string command)
+        var command = TryGetString(input, "command");
+        if (command == null)
             return ToolResult.Error("Missing required parameter: command");
 
         command = command.Trim();
@@ -227,6 +230,21 @@ public class BashTool : ITool
         }
 
         return false;
+    }
+
+    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
+    {
+        if (!input.TryGetValue(key, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string text => text,
+            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
+            _ => null
+        };
     }
 
     private static bool TryGetBlockedReason(string command, out string reason)

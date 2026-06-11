@@ -6,7 +6,7 @@ public static class DesktopTaskClassifier
     {
         var text = userText.ToLowerInvariant();
 
-        if (ContainsAny(text, "review", "code review", "\uB9AC\uBDF0", "\uAC80\uD1A0"))
+        if (IsCodeReviewRequest(text))
         {
             return DesktopTaskKind.CodeReview;
         }
@@ -95,6 +95,22 @@ public static class DesktopTaskClassifier
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsCodeReviewRequest(string text)
+    {
+        if (ContainsAny(text, "code review", "review code", "pr review", "pull request review", "diff review",
+                "\uCF54\uB4DC \uB9AC\uBDF0", "\uCF54\uB4DC\uB9AC\uBDF0", "\uBCC0\uACBD\uC0AC\uD56D \uB9AC\uBDF0", "\uB514\uD504 \uB9AC\uBDF0"))
+        {
+            return true;
+        }
+
+        var hasReviewVerb = ContainsAny(text, "review", "\uB9AC\uBDF0", "\uAC80\uD1A0");
+        var hasCodeTarget = ContainsAny(text,
+            "code", "diff", "change", "changes", "commit", "pull request", " pr ", ".cs", ".js", ".ts", ".tsx", ".jsx",
+            "\uCF54\uB4DC", "\uB514\uD504", "\uBCC0\uACBD\uC0AC\uD56D", "\uCEE4\uBC0B", "\uD480\uB9AC\uD018\uC2A4\uD2B8", "\uD30C\uC77C");
+
+        return hasReviewVerb && hasCodeTarget;
+    }
 }
 
 public enum TaskComplexity

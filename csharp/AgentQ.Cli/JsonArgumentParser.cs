@@ -19,7 +19,8 @@ internal static class JsonArgumentParser
         {
             JsonElement json when json.ValueKind == JsonValueKind.Object => ParseJsonObject(json),
             string rawJson => TryParseJsonObject(rawJson),
-            _ => new Dictionary<string, object?>()
+            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase),
+            _ => new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         };
     }
 
@@ -32,17 +33,26 @@ internal static class JsonArgumentParser
             {
                 return ParseJsonObject(doc.RootElement);
             }
+
+            if (doc.RootElement.ValueKind == JsonValueKind.String)
+            {
+                var nestedJson = doc.RootElement.GetString();
+                if (!string.IsNullOrWhiteSpace(nestedJson))
+                {
+                    return TryParseJsonObject(nestedJson);
+                }
+            }
         }
         catch
         {
         }
 
-        return new Dictionary<string, object?>();
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, object?> ParseJsonObject(JsonElement element)
     {
-        var inputDict = new Dictionary<string, object?>();
+        var inputDict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var prop in element.EnumerateObject())
         {
             inputDict[prop.Name] = ParseJsonValue(prop.Value);

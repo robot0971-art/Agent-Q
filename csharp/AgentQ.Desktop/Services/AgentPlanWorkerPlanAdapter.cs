@@ -7,6 +7,9 @@ public sealed class AgentPlanWorkerPlanAdapter
     private static readonly Regex PathRegex = new(
         @"(?<path>[\w./\\-]+\.(?:cs|xaml|csproj|sln|ts|tsx|js|jsx|mjs|cjs|py|sql|json|yml|yaml|md|rs|go|java|kt|swift|php|r))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex CommandRegex = new(
+        @"(?<command>\b(?:cmd /c|cmd\.exe /c|powershell|pwsh|bash|sh|dotnet|npm|pnpm|yarn|bun|bunx|npx|python|pytest|go|cargo|mvn|gradle|\.\/gradlew)\b[^\r\n.;]*)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly string[] HighRiskTerms =
     [
@@ -29,7 +32,7 @@ public sealed class AgentPlanWorkerPlanAdapter
         {
             Goal = goal,
             Summary = string.IsNullOrWhiteSpace(goal) ? "Captured desktop plan" : goal,
-            Steps = items.SelectMany(ToSteps).ToList()
+            Steps = items.SelectMany(item => ToSteps(item, workspaceVerificationCommands)).ToList()
         };
 
         foreach (var command in InferVerificationCommands(items, workspaceVerificationCommands).Take(4))
@@ -45,7 +48,9 @@ public sealed class AgentPlanWorkerPlanAdapter
         return plan;
     }
 
-    private static IEnumerable<WorkerPlanStep> ToSteps(AgentPlanItem item)
+    private static IEnumerable<WorkerPlanStep> ToSteps(
+        AgentPlanItem item,
+        IReadOnlyList<string> workspaceVerificationCommands)
     {
         var text = $"{item.Title} {item.Detail}";
         var paths = PathRegex.Matches(text)
@@ -55,11 +60,14 @@ public sealed class AgentPlanWorkerPlanAdapter
 
         if (paths.Count == 0)
         {
+            var command = ExtractCommand(text, workspaceVerificationCommands);
             yield return new WorkerPlanStep
             {
-                Kind = WorkerPlanStepKind.RunCommand,
+                Kind = string.IsNullOrWhiteSpace(command)
+                    ? WorkerPlanStepKind.Manual
+                    : WorkerPlanStepKind.RunCommand,
                 Reason = item.Title,
-                ExpectedChange = item.Detail
+                ExpectedChange = string.IsNullOrWhiteSpace(command) ? item.Detail : command
             };
             yield break;
         }
@@ -75,6 +83,22 @@ public sealed class AgentPlanWorkerPlanAdapter
                 RequiresApproval = IsHighRisk(text) || IsHighRisk(path)
             };
         }
+    }
+
+    private static string ExtractCommand(string text, IReadOnlyList<string> workspaceVerificationCommands)
+    {
+        foreach (var command in workspaceVerificationCommands.Where(command => !string.IsNullOrWhiteSpace(command)))
+        {
+            if (text.Contains(command, StringComparison.OrdinalIgnoreCase))
+            {
+                return command;
+            }
+        }
+
+        var match = CommandRegex.Match(text);
+        return match.Success
+            ? match.Groups["command"].Value.Trim()
+            : string.Empty;
     }
 
     private static WorkerPlanStepKind InferStepKind(string text)
@@ -113,7 +137,7 @@ public sealed class AgentPlanWorkerPlanAdapter
             return false;
         }
 
-        return ContainsAny(planText, "test", "verify", "playwright", "build", "검증", "테스트") ||
+        return ContainsAny(planText, "test", "verify", "playwright", "build", "\uAC80\uC99D", "\uD14C\uC2A4\uD2B8") ||
                ContainsAny(command, "test", "build", "playwright");
     }
 

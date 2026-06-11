@@ -30,7 +30,7 @@ public sealed class EnvironmentConfigurationLoader
                      Environment.GetEnvironmentVariable("CLAW_API_KEY") ??
                      opencodeGoApiKey ??
                      Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? string.Empty,
-            TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("AGENTQ_TIMEOUT"), out var t) ? t : 60,
+            TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("AGENTQ_TIMEOUT"), out var t) && t >= 0 ? t : 60,
             MaxTokens = uint.TryParse(Environment.GetEnvironmentVariable("AGENTQ_MAX_TOKENS"), out var maxTokens) && maxTokens > 0
                 ? maxTokens
                 : 4096
@@ -63,7 +63,7 @@ public sealed class CommandLineConfigurationParser(EnvironmentConfigurationLoade
                     if (i + 1 < args.Length) config.ApiKey = args[++i];
                     break;
                 case "--timeout":
-                    if (i + 1 < args.Length && int.TryParse(args[++i], out var t)) config.TimeoutSeconds = t;
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var t) && t >= 0) config.TimeoutSeconds = t;
                     break;
                 case "--max-tokens":
                     if (i + 1 < args.Length && uint.TryParse(args[++i], out var maxTokens) && maxTokens > 0) config.MaxTokens = maxTokens;

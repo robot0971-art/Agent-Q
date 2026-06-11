@@ -289,7 +289,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (StatusText.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
                 StatusText.Contains("needs", StringComparison.OrdinalIgnoreCase) ||
                 StatusText.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ||
-                StatusText.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+                StatusText.Contains("timed out", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("stopped by guard", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("tool step limit", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("step limit reached", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not created", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("incomplete", StringComparison.OrdinalIgnoreCase))
             {
                 return "#FBBF24";
             }
@@ -791,7 +796,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanApprovePlan => HasPendingPlanApproval && !IsBusy;
 
-    public bool CanExecuteWorkerScaffold => CurrentWorkerExecutionContext?.State == WorkerExecutionState.Ready && !IsBusy;
+    public bool CanExecuteWorkerScaffold => CurrentWorkerExecutionContext?.State == WorkerExecutionState.Ready &&
+                                            CurrentWorkerExecutionContext.Plan.Steps.Any(step => step.Kind == WorkerPlanStepKind.CreateFile) &&
+                                            !IsBusy;
 
     public bool CanRunWorkerRepair => CurrentWorkerExecutionContext?.State == WorkerExecutionState.RepairRequired && !IsBusy;
 

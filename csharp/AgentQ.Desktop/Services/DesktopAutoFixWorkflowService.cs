@@ -175,7 +175,11 @@ public sealed class DesktopAutoFixWorkflowService(
             AgentRunState.Planning,
             $"Auto fix attempt {startAttempt}/{maxAttempts}",
             $"Fix, then rerun: {retryPlan.Command}");
-        viewModel.InputText = fixPrompt;
+        if (!DesktopGeneratedPromptGuard.TryReplaceInput(viewModel, fixPrompt, "auto fix"))
+        {
+            return;
+        }
+
         await sendCurrentMessageAsync(true);
 
         if (viewModel.IsBusy)
@@ -185,14 +189,25 @@ public sealed class DesktopAutoFixWorkflowService(
 
         var recordedFileChangeCount = viewModel.FileChanges.Count - fileChangeCountBeforeAttempt;
         var workspaceFingerprintAfterAttempt = await BuildWorkspaceChangeFingerprintAsync(viewModel.WorkspaceRoot);
-        if (recordedFileChangeCount <= 0 &&
-            string.Equals(workspaceFingerprintBeforeAttempt, workspaceFingerprintAfterAttempt, StringComparison.Ordinal))
+        if (recordedFileChangeCount <= 0)
         {
-            viewModel.AddRunStep(
-                AgentRunState.Failed,
-                "Auto fix stopped: no file changes",
-                "The fix attempt did not change the workspace.");
-            viewModel.StatusText = "Auto fix stopped: no file changes";
+            if (string.Equals(workspaceFingerprintBeforeAttempt, workspaceFingerprintAfterAttempt, StringComparison.Ordinal))
+            {
+                viewModel.AddRunStep(
+                    AgentRunState.Failed,
+                    "Auto fix stopped: no file changes",
+                    "The fix attempt did not change the workspace.");
+                viewModel.StatusText = "Auto fix stopped: no file changes";
+            }
+            else
+            {
+                viewModel.AddRunStep(
+                    AgentRunState.Failed,
+                    "Auto fix stopped: unrecorded workspace changes",
+                    "The workspace changed, but AgentQ did not record file-change snapshots for review.");
+                viewModel.StatusText = "Auto fix stopped: unrecorded workspace changes";
+            }
+
             return;
         }
 

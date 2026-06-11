@@ -105,7 +105,12 @@ public sealed class DesktopWorkspaceContextWorkflowService(
         viewModel.AddLog($"Session summary loaded: {_lastSessionSummary.CreatedAt:yyyy-MM-dd HH:mm:ss}");
     }
 
-    public async Task SaveSessionSummaryAsync(MainViewModel viewModel, string successStatus, Func<string, string> trimForLog, CancellationToken ct = default)
+    public async Task SaveSessionSummaryAsync(
+        MainViewModel viewModel,
+        string successStatus,
+        Func<string, string> trimForLog,
+        CancellationToken ct = default,
+        bool updateStatus = true)
     {
         try
         {
@@ -121,7 +126,11 @@ public sealed class DesktopWorkspaceContextWorkflowService(
             _lastSessionSummary = summary;
             viewModel.LatestSessionSummaryText = summary.DisplayText;
             viewModel.CanResumeSessionSummary = true;
-            viewModel.StatusText = successStatus;
+            if (updateStatus)
+            {
+                viewModel.StatusText = successStatus;
+            }
+
             viewModel.AddLog(successStatus);
         }
         catch (Exception ex)

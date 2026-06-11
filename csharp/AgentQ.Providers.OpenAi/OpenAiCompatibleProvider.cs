@@ -112,103 +112,158 @@ public class OpenAiCompatibleProvider : ILlmProvider
 
         var toolCallBuffer = new ToolCallDeltaBuffer();
         var completionSent = false;
+        var eventData = new StringBuilder();
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) != null)
         {
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+            if (line.Length == 0)
+            {
+                var eventChunks = ProcessOpenAiStreamData(eventData.ToString(), toolCallBuffer, ref completionSent, out var done);
+                foreach (var eventChunk in eventChunks)
+                {
+                    yield return eventChunk;
+                }
+
+                eventData.Clear();
+                if (done)
+                {
+                    yield break;
+                }
+
+                continue;
+            }
+
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            var data = line.Substring(6).Trim();
-            if (data == "[DONE]")
+            if (eventData.Length > 0)
+            {
+                eventData.AppendLine();
+            }
+
+            eventData.Append(line["data:".Length..].Trim());
+        }
+
+        foreach (var eventChunk in ProcessOpenAiStreamData(eventData.ToString(), toolCallBuffer, ref completionSent, out _))
+        {
+            yield return eventChunk;
+        }
+    }
+
+    private static IReadOnlyList<StreamChunk> ProcessOpenAiStreamData(
+        string data,
+        ToolCallDeltaBuffer toolCallBuffer,
+        ref bool completionSent,
+        out bool done)
+    {
+        done = false;
+        if (string.IsNullOrWhiteSpace(data))
+        {
+            return [];
+        }
+
+        data = data.Trim();
+        if (data == "[DONE]")
+        {
+            var doneChunks = new List<StreamChunk>();
+            foreach (var toolCall in toolCallBuffer.CompleteAll())
+            {
+                doneChunks.Add(new StreamChunk
+                {
+                    ToolUseDelta = toolCall
+                });
+            }
+
+            if (!completionSent)
+            {
+                completionSent = true;
+                doneChunks.Add(new StreamChunk { IsComplete = true });
+            }
+
+            done = true;
+            return doneChunks;
+        }
+
+        OpenAiStreamChunk? chunk;
+        try
+        {
+            chunk = JsonSerializer.Deserialize<OpenAiStreamChunk>(data, GetJsonOptions());
+        }
+        catch
+        {
+            return [];
+        }
+
+        var chunks = new List<StreamChunk>();
+        if (chunk?.Choices == null || chunk.Choices.Count == 0)
+        {
+            if (chunk?.Usage != null)
+            {
+                chunks.Add(new StreamChunk
+                {
+                    Usage = new UsageStats
+                    {
+                        InputTokens = chunk.Usage.PromptTokens,
+                        OutputTokens = chunk.Usage.CompletionTokens
+                    }
+                });
+            }
+
+            return chunks;
+        }
+
+        foreach (var choice in chunk.Choices)
+        {
+            var delta = choice.Delta;
+
+            if (!string.IsNullOrEmpty(delta?.Content))
+            {
+                chunks.Add(new StreamChunk { TextDelta = delta.Content });
+            }
+
+            if (!string.IsNullOrEmpty(delta?.ReasoningContent))
+            {
+                chunks.Add(new StreamChunk { ReasoningDelta = delta.ReasoningContent });
+            }
+
+            if (delta?.ToolCalls != null)
+            {
+                foreach (var toolCall in delta.ToolCalls)
+                {
+                    toolCallBuffer.SetToolId(toolCall.Index, toolCall.Id);
+                    toolCallBuffer.SetToolName(toolCall.Index, toolCall.Function?.Name);
+                    toolCallBuffer.AppendArguments(toolCall.Index, NormalizeToolArgumentDelta(toolCall.Function?.Arguments));
+                }
+            }
+
+            if (delta?.FunctionCall != null)
+            {
+                toolCallBuffer.SetToolName(0, delta.FunctionCall.Name);
+                toolCallBuffer.AppendArguments(0, NormalizeToolArgumentDelta(delta.FunctionCall.Arguments));
+            }
+
+            if (choice.FinishReason is "tool_calls" or "function_call")
             {
                 foreach (var toolCall in toolCallBuffer.CompleteAll())
                 {
-                    yield return new StreamChunk
+                    chunks.Add(new StreamChunk
                     {
                         ToolUseDelta = toolCall
-                    };
+                    });
                 }
-
-                if (!completionSent)
-                {
-                    yield return new StreamChunk { IsComplete = true };
-                }
-
-                yield break;
             }
 
-            OpenAiStreamChunk? chunk;
-            try
+            if (IsTerminalFinishReason(choice.FinishReason) && !completionSent)
             {
-                chunk = JsonSerializer.Deserialize<OpenAiStreamChunk>(data, GetJsonOptions());
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (chunk?.Choices == null || chunk.Choices.Count == 0)
-            {
-                if (chunk?.Usage != null)
-                {
-                    yield return new StreamChunk
-                    {
-                        Usage = new UsageStats
-                        {
-                            InputTokens = chunk.Usage.PromptTokens,
-                            OutputTokens = chunk.Usage.CompletionTokens
-                        }
-                    };
-                }
-
-                continue;
-            }
-
-            foreach (var choice in chunk.Choices)
-            {
-                var delta = choice.Delta;
-
-                if (!string.IsNullOrEmpty(delta?.Content))
-                {
-                    yield return new StreamChunk { TextDelta = delta.Content };
-                }
-
-                if (!string.IsNullOrEmpty(delta?.ReasoningContent))
-                {
-                    yield return new StreamChunk { ReasoningDelta = delta.ReasoningContent };
-                }
-
-                if (delta?.ToolCalls != null)
-                {
-                    foreach (var toolCall in delta.ToolCalls)
-                    {
-                        toolCallBuffer.SetToolId(toolCall.Index, toolCall.Id);
-                        toolCallBuffer.SetToolName(toolCall.Index, toolCall.Function?.Name);
-                        toolCallBuffer.AppendArguments(toolCall.Index, toolCall.Function?.Arguments);
-                    }
-                }
-
-                if (choice.FinishReason == "tool_calls")
-                {
-                    foreach (var toolCall in toolCallBuffer.CompleteAll())
-                    {
-                        yield return new StreamChunk
-                        {
-                            ToolUseDelta = toolCall
-                        };
-                    }
-                }
-
-                if (IsTerminalFinishReason(choice.FinishReason) && !completionSent)
-                {
-                    completionSent = true;
-                    yield return new StreamChunk { IsComplete = true };
-                }
+                completionSent = true;
+                chunks.Add(new StreamChunk { IsComplete = true });
             }
         }
+
+        return chunks;
     }
 
     /// <summary>
@@ -310,7 +365,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
         {
             Model = effectiveModel,
             Messages = messages,
-            MaxTokens = context.MaxTokens == 0 ? 1024 : (int)context.MaxTokens,
+            MaxTokens = NormalizeMaxTokens(context.MaxTokens),
             Stream = stream,
             StreamOptions = stream ? new OpenAiStreamOptions { IncludeUsage = true } : null
         };
@@ -369,15 +424,32 @@ public class OpenAiCompatibleProvider : ILlmProvider
                 chatResponse.Content.Add(ChatContent.CreateText(content));
             }
 
+            var addedToolCall = false;
             if (choice.Message?.ToolCalls != null)
             {
                 foreach (var toolCall in choice.Message.ToolCalls)
                 {
+                    if (string.IsNullOrWhiteSpace(toolCall.Function?.Name))
+                    {
+                        continue;
+                    }
+
                     chatResponse.Content.Add(ChatContent.CreateToolUse(
-                        toolCall.Id ?? Guid.NewGuid().ToString(),
-                        toolCall.Function?.Name ?? "unknown",
-                        toolCall.Function?.Arguments ?? "{}"));
+                        string.IsNullOrWhiteSpace(toolCall.Id) ? Guid.NewGuid().ToString() : toolCall.Id,
+                        toolCall.Function.Name,
+                        NormalizeToolArguments(toolCall.Function?.Arguments)));
+                    addedToolCall = true;
                 }
+            }
+
+            if (!addedToolCall &&
+                choice.Message?.FunctionCall != null &&
+                !string.IsNullOrWhiteSpace(choice.Message.FunctionCall.Name))
+            {
+                chatResponse.Content.Add(ChatContent.CreateToolUse(
+                    $"function_call_{choice.Index}",
+                    choice.Message.FunctionCall.Name,
+                    NormalizeToolArguments(choice.Message.FunctionCall.Arguments)));
             }
         }
 
@@ -395,6 +467,56 @@ public class OpenAiCompatibleProvider : ILlmProvider
             string rawJson => rawJson,
             JsonElement element => element.GetRawText(),
             _ => JsonSerializer.Serialize(toolInput)
+        };
+    }
+
+    private static string NormalizeToolArguments(object? arguments)
+    {
+        if (arguments == null)
+        {
+            return "{}";
+        }
+
+        if (arguments is string raw)
+        {
+            return string.IsNullOrWhiteSpace(raw) ? "{}" : raw;
+        }
+
+        if (arguments is not JsonElement value)
+        {
+            return "{}";
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => string.IsNullOrWhiteSpace(value.GetString()) ? "{}" : value.GetString()!,
+            JsonValueKind.Object => value.GetRawText(),
+            _ => "{}"
+        };
+    }
+
+    private static string? NormalizeToolArgumentDelta(object? arguments)
+    {
+        if (arguments == null)
+        {
+            return null;
+        }
+
+        if (arguments is string raw)
+        {
+            return raw;
+        }
+
+        if (arguments is not JsonElement value)
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Object => value.GetRawText(),
+            _ => null
         };
     }
 
@@ -464,6 +586,18 @@ public class OpenAiCompatibleProvider : ILlmProvider
     private static bool IsTerminalFinishReason(string? finishReason)
     {
         return finishReason is "stop" or "length" or "content_filter";
+    }
+
+    private static int NormalizeMaxTokens(uint maxTokens)
+    {
+        if (maxTokens == 0)
+        {
+            return 1024;
+        }
+
+        return maxTokens > int.MaxValue
+            ? int.MaxValue
+            : (int)maxTokens;
     }
 
     private static async Task EnsureSuccessStatusCodeAsync(HttpResponseMessage response, CancellationToken ct)
@@ -542,6 +676,9 @@ public class OpenAiMessage
 
     [JsonPropertyName("tool_calls")]
     public List<OpenAiToolCall>? ToolCalls { get; set; }
+
+    [JsonPropertyName("function_call")]
+    public OpenAiFunctionCall? FunctionCall { get; set; }
 
     [JsonPropertyName("reasoning_content")]
     public string? ReasoningContent { get; set; }
@@ -686,6 +823,9 @@ public class OpenAiStreamDelta
 
     [JsonPropertyName("tool_calls")]
     public List<OpenAiToolCall>? ToolCalls { get; set; }
+
+    [JsonPropertyName("function_call")]
+    public OpenAiFunctionCall? FunctionCall { get; set; }
 }
 
 /// <summary>
@@ -715,6 +855,5 @@ public class OpenAiFunctionCall
     public string? Name { get; set; }
 
     [JsonPropertyName("arguments")]
-    public string? Arguments { get; set; }
+    public object? Arguments { get; set; }
 }
-

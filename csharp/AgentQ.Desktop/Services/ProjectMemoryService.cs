@@ -102,6 +102,7 @@ public sealed class ProjectMemoryService
 
     public string BuildContext(ProjectMemory memory, string query)
     {
+        var hasQuery = ExtractTerms(query).Any();
         var lessons = SelectRelevantLessons(memory.Lessons, query, 12);
         var errorHistoryLessons = lessons
             .Where(IsErrorHistoryLesson)
@@ -113,9 +114,28 @@ public sealed class ProjectMemoryService
         var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
         var checks = memory.Checks.Where(IsUsefulCheck).ToList();
         var contextFacts = SelectRelevantContextFacts(memory.ContextBank, query, 16);
+        var verificationCommands = hasQuery
+            ? memory.VerificationCommands
+                .Where(command => TextMatchesQuery(command, query))
+                .ToList()
+            : memory.VerificationCommands;
+        var projectHints = hasQuery
+            ? memory.ProjectHints
+                .Where(hint => TextMatchesQuery(hint, query))
+                .ToList()
+            : memory.ProjectHints;
+        if (hasQuery)
+        {
+            preferences = preferences
+                .Where(preference => TextMatchesQuery($"{preference.Key} {preference.Value}", query))
+                .ToList();
+            checks = checks
+                .Where(check => TextMatchesQuery($"{check.Name} {check.Command} {check.When}", query))
+                .ToList();
+        }
 
-        if (memory.VerificationCommands.Count == 0 &&
-            memory.ProjectHints.Count == 0 &&
+        if (verificationCommands.Count == 0 &&
+            projectHints.Count == 0 &&
             memory.WorkspaceRules.Count == 0 &&
             generalLessons.Count == 0 &&
             errorHistoryLessons.Count == 0 &&
@@ -130,19 +150,19 @@ public sealed class ProjectMemoryService
         builder.AppendLine("Project memory:");
         builder.AppendLine($"Workspace: {memory.WorkspaceRoot}");
 
-        if (memory.VerificationCommands.Count > 0)
+        if (verificationCommands.Count > 0)
         {
             builder.AppendLine("Known verification commands:");
-            foreach (var command in memory.VerificationCommands)
+            foreach (var command in verificationCommands)
             {
                 builder.AppendLine($"- {command}");
             }
         }
 
-        if (memory.ProjectHints.Count > 0)
+        if (projectHints.Count > 0)
         {
             builder.AppendLine("Project hints:");
-            foreach (var hint in memory.ProjectHints)
+            foreach (var hint in projectHints)
             {
                 builder.AppendLine($"- {hint}");
             }
@@ -238,7 +258,7 @@ public sealed class ProjectMemoryService
             lesson.FailureFingerprint = string.IsNullOrWhiteSpace(lesson.FailureFingerprint)
                 ? duplicate.FailureFingerprint
                 : lesson.FailureFingerprint;
-            lesson.Tags = duplicate.Tags.Concat(lesson.Tags)
+            lesson.Tags = (duplicate.Tags ?? []).Concat(lesson.Tags ?? [])
                 .Where(tag => !string.IsNullOrWhiteSpace(tag))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -393,6 +413,7 @@ public sealed class ProjectMemoryService
 
         return lessons
             .Where(IsUsefulLesson)
+            .Where(lesson => queryTerms.Count == 0 || LessonMatchesQuery(lesson, queryTerms))
             .Select(lesson => new
             {
                 Lesson = lesson,
@@ -471,22 +492,25 @@ public sealed class ProjectMemoryService
         AddUniqueRange(memory.WorkspaceRules, file.WorkspaceRules);
         AddUniqueRange(memory.VerificationCommands, file.VerificationCommands);
 
-        foreach (var lesson in file.Lessons.Where(IsUsefulLesson))
+        foreach (var lesson in (file.Lessons ?? []).Where(IsUsefulLesson))
         {
             AddUnique(memory.Lessons, lesson, existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase));
         }
 
-        foreach (var preference in file.Preferences.Where(IsUsefulPreference))
+        foreach (var preference in (file.Preferences ?? []).Where(IsUsefulPreference))
         {
             AddUnique(memory.Preferences, preference, existing => string.Equals(existing.Key, preference.Key, StringComparison.OrdinalIgnoreCase));
         }
 
-        foreach (var check in file.Checks.Where(IsUsefulCheck))
+        foreach (var check in (file.Checks ?? []).Where(IsUsefulCheck))
         {
             AddUnique(memory.Checks, check, existing => string.Equals(existing.Name, check.Name, StringComparison.OrdinalIgnoreCase));
         }
 
-        ApplyContextBank(memory.ContextBank, file.ContextBank);
+        if (file.ContextBank != null)
+        {
+            ApplyContextBank(memory.ContextBank, file.ContextBank);
+        }
     }
 
     private static void ApplyContextBank(ProjectContextBank target, ProjectContextBank source)
@@ -503,7 +527,7 @@ public sealed class ProjectMemoryService
 
     private static void AddUniqueFacts(List<ProjectMemoryFact> target, IEnumerable<ProjectMemoryFact> additions)
     {
-        foreach (var fact in additions.Where(IsUsefulFact))
+        foreach (var fact in (additions ?? []).Where(IsUsefulFact))
         {
             AddUnique(target, fact, existing =>
                 string.Equals(existing.Key, fact.Key, StringComparison.OrdinalIgnoreCase) &&
@@ -648,8 +672,13 @@ public sealed class ProjectMemoryService
         }
     }
 
-    private static void AddUniqueRange(List<string> values, IEnumerable<string> additions)
+    private static void AddUniqueRange(List<string> values, IEnumerable<string>? additions)
     {
+        if (additions == null)
+        {
+            return;
+        }
+
         foreach (var addition in additions)
         {
             AddUnique(values, addition);
@@ -674,46 +703,72 @@ public sealed class ProjectMemoryService
         }
     }
 
-    private static bool IsUsefulLesson(ProjectMemoryLesson lesson) =>
-        lesson.Enabled &&
-        !IsExpired(lesson.ExpiresAt) &&
-        !string.IsNullOrWhiteSpace(lesson.Content) &&
-        lesson.Confidence >= MinUsefulLessonConfidence &&
-        !IsStaleUnusedLesson(lesson) &&
-        lesson.Content.Length <= MaxMemoryTextLength &&
-        lesson.Title.Length <= 180 &&
-        !LooksSensitive(lesson.Content) &&
-        !LooksSensitive(lesson.Title) &&
-        !LooksSensitive(lesson.Source);
+    private static bool IsUsefulLesson(ProjectMemoryLesson lesson)
+    {
+        var title = lesson.Title ?? string.Empty;
+        var content = lesson.Content ?? string.Empty;
+        var source = lesson.Source ?? string.Empty;
+        IEnumerable<string> tags = lesson.Tags ?? [];
 
-    private static bool IsUsefulPreference(ProjectMemoryPreference preference) =>
-        preference.Enabled &&
-        !string.IsNullOrWhiteSpace(preference.Key) &&
-        !string.IsNullOrWhiteSpace(preference.Value) &&
-        preference.Key.Length <= 120 &&
-        preference.Value.Length <= MaxMemoryTextLength &&
-        !LooksSensitive(preference.Key) &&
-        !LooksSensitive(preference.Value);
+        return lesson.Enabled &&
+               !IsExpired(lesson.ExpiresAt) &&
+               !string.IsNullOrWhiteSpace(content) &&
+               lesson.Confidence >= MinUsefulLessonConfidence &&
+               !IsStaleUnusedLesson(lesson) &&
+               content.Length <= MaxMemoryTextLength &&
+               title.Length <= 180 &&
+               !LooksLikeOffTargetAssistantAdvice($"{title} {content} {string.Join(' ', tags)}") &&
+               !LooksSensitive(content) &&
+               !LooksSensitive(title) &&
+               !LooksSensitive(source);
+    }
 
-    private static bool IsUsefulCheck(ProjectMemoryCheck check) =>
-        check.Enabled &&
-        !string.IsNullOrWhiteSpace(check.Name) &&
-        !string.IsNullOrWhiteSpace(check.Command) &&
-        check.Name.Length <= 160 &&
-        check.Command.Length <= MaxMemoryCommandLength &&
-        !LooksSensitive(check.Command) &&
-        !LooksDangerousCommand(check.Command);
+    private static bool IsUsefulPreference(ProjectMemoryPreference preference)
+    {
+        var key = preference.Key ?? string.Empty;
+        var value = preference.Value ?? string.Empty;
 
-    private static bool IsUsefulFact(ProjectMemoryFact fact) =>
-        fact.Enabled &&
-        !string.IsNullOrWhiteSpace(fact.Key) &&
-        !string.IsNullOrWhiteSpace(fact.Value) &&
-        fact.Key.Length <= 180 &&
-        fact.Value.Length <= MaxContextBankFactLength &&
-        fact.Confidence >= MinUsefulLessonConfidence &&
-        !LooksSensitive(fact.Key) &&
-        !LooksSensitive(fact.Value) &&
-        !LooksSensitive(fact.Source);
+        return preference.Enabled &&
+               !string.IsNullOrWhiteSpace(key) &&
+               !string.IsNullOrWhiteSpace(value) &&
+               key.Length <= 120 &&
+               value.Length <= MaxMemoryTextLength &&
+               !LooksSensitive(key) &&
+               !LooksSensitive(value);
+    }
+
+    private static bool IsUsefulCheck(ProjectMemoryCheck check)
+    {
+        var name = check.Name ?? string.Empty;
+        var command = check.Command ?? string.Empty;
+
+        return check.Enabled &&
+               !string.IsNullOrWhiteSpace(name) &&
+               !string.IsNullOrWhiteSpace(command) &&
+               name.Length <= 160 &&
+               command.Length <= MaxMemoryCommandLength &&
+               !LooksSensitive(command) &&
+               !LooksDangerousCommand(command);
+    }
+
+    private static bool IsUsefulFact(ProjectMemoryFact fact)
+    {
+        var key = fact.Key ?? string.Empty;
+        var value = fact.Value ?? string.Empty;
+        var source = fact.Source ?? string.Empty;
+        IEnumerable<string> tags = fact.Tags ?? [];
+
+        return fact.Enabled &&
+               !string.IsNullOrWhiteSpace(key) &&
+               !string.IsNullOrWhiteSpace(value) &&
+               key.Length <= 180 &&
+               value.Length <= MaxContextBankFactLength &&
+               fact.Confidence >= MinUsefulLessonConfidence &&
+               !LooksLikeOffTargetAssistantAdvice($"{key} {value} {string.Join(' ', tags)}") &&
+               !LooksSensitive(key) &&
+               !LooksSensitive(value) &&
+               !LooksSensitive(source);
+    }
 
     private static bool IsExpired(DateTime? expiresAt) =>
         expiresAt.HasValue && expiresAt.Value <= DateTime.Now;
@@ -734,6 +789,35 @@ public sealed class ProjectMemoryService
                value.Contains("authorization", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("token", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeOffTargetAssistantAdvice(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var lower = value.ToLowerInvariant();
+        var mentionsReading = lower.Contains("\uB3C5\uC11C", StringComparison.OrdinalIgnoreCase) ||
+                              lower.Contains("reading", StringComparison.OrdinalIgnoreCase);
+        var mentionsGames = lower.Contains("\uAC8C\uC784", StringComparison.OrdinalIgnoreCase) ||
+                            lower.Contains("game", StringComparison.OrdinalIgnoreCase) ||
+                            lower.Contains("games", StringComparison.OrdinalIgnoreCase);
+        if (!mentionsReading || !mentionsGames)
+        {
+            return false;
+        }
+
+        return lower.Contains("\uC778\uACF5\uC9C0\uB2A5", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("\uC990\uAE30", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("\uCDE8\uBBF8", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("\uC0C1\uC0C1\uB825", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("\uC804\uB7B5", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("hobb", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("advice", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("imagination", StringComparison.OrdinalIgnoreCase) ||
+               lower.Contains("strategy", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool LooksDangerousCommand(string value)
@@ -774,9 +858,11 @@ public sealed class ProjectMemoryService
 
     private static string CreateLessonFingerprint(ProjectMemoryLesson lesson)
     {
-        var seed = string.IsNullOrWhiteSpace(lesson.Title)
-            ? lesson.Content
-            : $"{lesson.Title}\n{lesson.Content}";
+        var title = lesson.Title ?? string.Empty;
+        var content = lesson.Content ?? string.Empty;
+        var seed = string.IsNullOrWhiteSpace(title)
+            ? content
+            : $"{title}\n{content}";
         return Regex.Replace(seed.Trim().ToLowerInvariant(), @"\s+", " ");
     }
 
@@ -793,7 +879,7 @@ public sealed class ProjectMemoryService
             return score;
         }
 
-        foreach (var term in ExtractTerms($"{lesson.Title} {lesson.Content} {string.Join(' ', lesson.Tags)} {lesson.Source}"))
+        foreach (var term in ExtractTerms(CreateLessonSearchText(lesson)))
         {
             if (queryTerms.Contains(term))
             {
@@ -805,7 +891,7 @@ public sealed class ProjectMemoryService
     }
 
     private static bool IsErrorHistoryLesson(ProjectMemoryLesson lesson) =>
-        lesson.Tags.Any(tag => tag.Equals("error-history", StringComparison.OrdinalIgnoreCase));
+        (lesson.Tags ?? []).Any(tag => tag.Equals("error-history", StringComparison.OrdinalIgnoreCase));
 
     private static bool LooksLikeFailureQuery(IReadOnlySet<string> queryTerms)
     {
@@ -839,7 +925,7 @@ public sealed class ProjectMemoryService
             return false;
         }
 
-        return ExtractTerms($"{lesson.Title} {lesson.Content} {string.Join(' ', lesson.Tags)} {lesson.Source}")
+        return ExtractTerms(CreateLessonSearchText(lesson))
             .Any(queryTerms.Contains);
     }
 
@@ -866,42 +952,42 @@ public sealed class ProjectMemoryService
 
     private static IEnumerable<ContextBankEntry> EnumerateContextFacts(ProjectContextBank contextBank)
     {
-        foreach (var fact in contextBank.Stack)
+        foreach (var fact in contextBank.Stack ?? [])
         {
             yield return new ContextBankEntry("stack", fact);
         }
 
-        foreach (var fact in contextBank.Rules)
+        foreach (var fact in contextBank.Rules ?? [])
         {
             yield return new ContextBankEntry("rule", fact);
         }
 
-        foreach (var fact in contextBank.Preferences)
+        foreach (var fact in contextBank.Preferences ?? [])
         {
             yield return new ContextBankEntry("preference", fact);
         }
 
-        foreach (var fact in contextBank.ForbiddenPatterns)
+        foreach (var fact in contextBank.ForbiddenPatterns ?? [])
         {
             yield return new ContextBankEntry("forbidden", fact);
         }
 
-        foreach (var fact in contextBank.KeyCommands)
+        foreach (var fact in contextBank.KeyCommands ?? [])
         {
             yield return new ContextBankEntry("command", fact);
         }
 
-        foreach (var fact in contextBank.KeyFiles)
+        foreach (var fact in contextBank.KeyFiles ?? [])
         {
             yield return new ContextBankEntry("file", fact);
         }
 
-        foreach (var fact in contextBank.KeySymbols)
+        foreach (var fact in contextBank.KeySymbols ?? [])
         {
             yield return new ContextBankEntry("symbol", fact);
         }
 
-        foreach (var fact in contextBank.RecurringErrors)
+        foreach (var fact in contextBank.RecurringErrors ?? [])
         {
             yield return new ContextBankEntry("recurring-error", fact);
         }
@@ -925,7 +1011,7 @@ public sealed class ProjectMemoryService
             return score;
         }
 
-        foreach (var term in ExtractTerms($"{entry.Category} {entry.Fact.Key} {entry.Fact.Value} {string.Join(' ', entry.Fact.Tags)} {entry.Fact.Source}"))
+        foreach (var term in ExtractTerms(CreateFactSearchText(entry)))
         {
             if (queryTerms.Contains(term))
             {
@@ -942,6 +1028,30 @@ public sealed class ProjectMemoryService
         {
             yield return match.Value.ToLowerInvariant();
         }
+    }
+
+    private static string CreateLessonSearchText(ProjectMemoryLesson lesson)
+    {
+        IEnumerable<string> tags = lesson.Tags ?? [];
+        return $"{lesson.Title ?? string.Empty} {lesson.Content ?? string.Empty} {string.Join(' ', tags)}";
+    }
+
+    private static string CreateFactSearchText(ContextBankEntry entry)
+    {
+        var fact = entry.Fact;
+        IEnumerable<string> tags = fact.Tags ?? [];
+        return $"{entry.Category} {fact.Key ?? string.Empty} {fact.Value ?? string.Empty} {string.Join(' ', tags)} {fact.Source ?? string.Empty}";
+    }
+
+    private static bool TextMatchesQuery(string text, string query)
+    {
+        var queryTerms = ExtractTerms(query).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (queryTerms.Count == 0)
+        {
+            return true;
+        }
+
+        return ExtractTerms(text).Any(queryTerms.Contains);
     }
 
     private static string GetSharedMemoryPath(string workspaceRoot) =>

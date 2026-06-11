@@ -20,7 +20,7 @@ internal sealed class ToolExecutor(
             var toolName = toolUse.ToolName!;
             var toolId = toolUse.ToolId!;
             var input = toolUse.ToolInput;
-            var inputJson = JsonSerializer.Serialize(input, new JsonSerializerOptions { WriteIndented = true });
+            var inputJson = FormatToolInputJson(input);
 
             var tool = registry.Get(toolName);
             if (tool == null)
@@ -64,5 +64,55 @@ internal sealed class ToolExecutor(
         }
 
         return toolResults;
+    }
+
+    private static string FormatToolInputJson(object? input)
+    {
+        if (input is string raw)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(raw);
+                var root = NormalizeRootElement(document.RootElement);
+                return JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                return raw;
+            }
+        }
+
+        if (input is JsonElement json)
+        {
+            return JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        return JsonSerializer.Serialize(input, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static JsonElement NormalizeRootElement(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.String)
+        {
+            return root;
+        }
+
+        var raw = root.GetString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return root;
+        }
+
+        try
+        {
+            using var innerDocument = JsonDocument.Parse(raw);
+            return innerDocument.RootElement.ValueKind == JsonValueKind.Object
+                ? innerDocument.RootElement.Clone()
+                : root;
+        }
+        catch (JsonException)
+        {
+            return root;
+        }
     }
 }

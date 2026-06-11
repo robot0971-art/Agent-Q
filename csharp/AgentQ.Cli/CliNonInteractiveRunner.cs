@@ -20,11 +20,12 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         var toolErrors = new List<string>();
         var deniedTools = new List<string>();
         var executedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hitMaxSteps = false;
 
         try
         {
             using var cts = CreateTimeoutCancellation(config.TimeoutSeconds);
-            await ExecuteWithAutomationPromptAsync(
+            var loopResult = await ExecuteWithAutomationPromptAsync(
                 provider,
                 config,
                 history,
@@ -36,14 +37,15 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                 deniedTools,
                 executedTools,
                 cts?.Token ?? CancellationToken.None);
+            hitMaxSteps = ApplyLoopResult(loopResult, toolErrors);
 
             var finalText = AutomationSupport.GetLatestAssistantText(history);
-            if (ShouldRetryManualFallback(finalText, executedTools, config))
+            if (!hitMaxSteps && ShouldRetryManualFallback(finalText, executedTools, config))
             {
                 history.AddUserMessage(
                     "Your previous answer gave manual copy/paste or permission instructions without using the allowed tools. " +
                     "This is non-interactive automation mode. Use the allowed tools now to make the requested change yourself, then verify it when a shell tool is allowed.");
-                await ExecuteWithAutomationPromptAsync(
+                loopResult = await ExecuteWithAutomationPromptAsync(
                     provider,
                     config,
                     history,
@@ -55,6 +57,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                     deniedTools,
                     executedTools,
                     cts?.Token ?? CancellationToken.None);
+                hitMaxSteps = ApplyLoopResult(loopResult, toolErrors);
             }
 
             var result = new NonInteractiveRunResult
@@ -63,7 +66,8 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                 MessageCount = history.MessageCount,
                 Provider = provider.Name,
                 Model = config.Model,
-                BaseUrl = config.BaseUrl
+                BaseUrl = config.BaseUrl,
+                ForcedExitCode = hitMaxSteps ? ProcessExitCode.ToolFailure : null
             };
             result.AllowedTools.AddRange(config.AllowToolsWithoutPrompt ? ["*"] : config.AllowedToolNames);
             result.ConfiguredDeniedTools.AddRange(config.DeniedToolNames);
@@ -96,7 +100,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         }
     }
 
-    private static async Task ExecuteWithAutomationPromptAsync(
+    private static async Task<CliToolLoopRunResult> ExecuteWithAutomationPromptAsync(
         ILlmProvider provider,
         ProviderConfiguration config,
         ChatConversationHistory history,
@@ -109,7 +113,7 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         HashSet<string> executedTools,
         CancellationToken ct)
     {
-        await loopRunner.ExecuteConversationTurnAsync(
+        return await loopRunner.ExecuteConversationTurnAsync(
                 provider,
                 config.Model,
                 history,
@@ -117,7 +121,15 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                 enforcer,
                 maxTokens: config.MaxTokens,
                 onToolExecution: toolName => executedTools.Add(toolName),
-                onToolOutput: (toolName, toolOutput) => toolOutputs.Add(ToolExecutionRecord.Create(toolName, toolOutput, isError: false)),
+                onToolOutput: (toolName, toolOutput) =>
+                {
+                    var failedShellCommand = IsFailedShellOutput(toolName, toolOutput, out var shellFailure);
+                    toolOutputs.Add(ToolExecutionRecord.Create(toolName, toolOutput, isError: failedShellCommand));
+                    if (failedShellCommand)
+                    {
+                        toolErrors.Add(shellFailure);
+                    }
+                },
                 onToolError: (toolName, error) =>
                 {
                     toolOutputs.Add(ToolExecutionRecord.Create(toolName, error, isError: true));
@@ -126,6 +138,59 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                 onPermissionDenied: toolName => deniedTools.Add(toolName),
                 systemPromptAddendum: BuildAutomationPrompt(config, registry),
                 ct: ct);
+    }
+
+    private static bool ApplyLoopResult(CliToolLoopRunResult loopResult, List<string> toolErrors)
+    {
+        if (!loopResult.HitMaxSteps)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(loopResult.StopMessage))
+        {
+            toolErrors.Add(loopResult.StopMessage);
+        }
+
+        return true;
+    }
+
+    private static bool IsFailedShellOutput(string toolName, string toolOutput, out string failure)
+    {
+        failure = string.Empty;
+        if (!toolName.Equals("bash", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(toolOutput);
+            if (!document.RootElement.TryGetProperty("exitCode", out var exitCodeElement) ||
+                !exitCodeElement.TryGetInt32(out var exitCode) ||
+                exitCode == 0)
+            {
+                return false;
+            }
+
+            var stderr = document.RootElement.TryGetProperty("stderr", out var stderrElement)
+                ? stderrElement.GetString()
+                : null;
+            var stdout = document.RootElement.TryGetProperty("stdout", out var stdoutElement)
+                ? stdoutElement.GetString()
+                : null;
+            var detail = !string.IsNullOrWhiteSpace(stderr)
+                ? stderr
+                : stdout;
+            failure = string.IsNullOrWhiteSpace(detail)
+                ? $"bash exited with code {exitCode}"
+                : $"bash exited with code {exitCode}: {detail.Trim()}";
+            return true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     private static CancellationTokenSource? CreateTimeoutCancellation(int timeoutSeconds)

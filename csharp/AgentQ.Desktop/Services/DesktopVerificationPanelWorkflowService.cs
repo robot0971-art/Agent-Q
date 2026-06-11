@@ -83,8 +83,21 @@ public sealed class DesktopVerificationPanelWorkflowService(
         viewModel.CanFixLastVerificationFailure = false;
     }
 
-    private void ApplyResult(MainViewModel viewModel, DesktopVerificationWorkflowResult result)
+    public void ApplyResult(MainViewModel viewModel, DesktopVerificationWorkflowResult result)
     {
+        if (result.RunState == AgentRunState.Cancelled)
+        {
+            if (result.ResultCard != null)
+            {
+                viewModel.AddVerificationResult(result.ResultCard);
+            }
+
+            viewModel.AddRunStep(result.RunState, result.RunStepTitle, result.RunStepDetail);
+            viewModel.StatusText = result.StatusText;
+            viewModel.AddLog(result.LogText);
+            return;
+        }
+
         if (result.HasFailure && result.FailureAnalysis != null)
         {
             _lastFailedVerificationPlan = result.Plan;

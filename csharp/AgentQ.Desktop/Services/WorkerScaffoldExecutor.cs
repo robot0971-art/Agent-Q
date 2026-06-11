@@ -29,7 +29,9 @@ public sealed class WorkerScaffoldExecutor
         var scaffoldContext = request.ScaffoldContext ?? _contextBuilder.Build(root, request.Plan);
         var result = new WorkerScaffoldExecutionResult
         {
-            VerificationCommands = request.Plan.VerificationCommands.ToList()
+            VerificationCommands = request.Plan.VerificationCommands
+                .Where(command => VerificationCommandPolicy.IsAllowed(command))
+                .ToList()
         };
 
         foreach (var step in request.Plan.Steps.Where(step => step.Kind == WorkerPlanStepKind.CreateFile))
@@ -43,10 +45,32 @@ public sealed class WorkerScaffoldExecutor
                 continue;
             }
 
-            var fullPath = Path.GetFullPath(Path.Combine(root, relativePath));
-            if (!IsInside(root, fullPath))
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(Path.Combine(root, relativePath));
+            }
+            catch (Exception ex) when (IsScaffoldIoException(ex))
+            {
+                result.Issues.Add($"Scaffold path could not be resolved: {step.Path} ({ex.Message})");
+                continue;
+            }
+
+            if (!WorkspacePathResolver.IsInsideWorkspace(root, fullPath))
             {
                 result.Issues.Add($"Scaffold path escapes workspace: {step.Path}");
+                continue;
+            }
+
+            if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, fullPath))
+            {
+                result.Issues.Add($"Scaffold path resolves outside workspace: {step.Path}");
+                continue;
+            }
+
+            if (Directory.Exists(fullPath))
+            {
+                result.Issues.Add($"Scaffold target is an existing directory: {relativePath.Replace('\\', '/')}");
                 continue;
             }
 
@@ -56,26 +80,40 @@ public sealed class WorkerScaffoldExecutor
                 continue;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            await File.WriteAllTextAsync(
-                fullPath,
-                WorkerScaffoldTemplateRenderer.Render(request.Plan, relativePath, feature, scaffoldContext),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                ct);
-            result.CreatedFiles.Add(relativePath.Replace('\\', '/'));
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                await File.WriteAllTextAsync(
+                    fullPath,
+                    WorkerScaffoldTemplateRenderer.Render(request.Plan, relativePath, feature, scaffoldContext),
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    ct);
+                result.CreatedFiles.Add(relativePath.Replace('\\', '/'));
+            }
+            catch (Exception ex) when (IsScaffoldIoException(ex))
+            {
+                result.Issues.Add($"Scaffold file could not be written: {relativePath.Replace('\\', '/')} ({ex.Message})");
+            }
         }
 
         if (request.EnableAutoWiring)
         {
-            result.WiringChanges.AddRange(await _autoWirer.WireAsync(
-                root,
-                request.Plan,
-                feature,
-                scaffoldContext,
-                result.CreatedFiles,
-                result.Issues,
-                ct));
-            result.WiredFiles.AddRange(result.WiringChanges.Select(change => change.Path));
+            try
+            {
+                result.WiringChanges.AddRange(await _autoWirer.WireAsync(
+                    root,
+                    request.Plan,
+                    feature,
+                    scaffoldContext,
+                    result.CreatedFiles,
+                    result.Issues,
+                    ct));
+                result.WiredFiles.AddRange(result.WiringChanges.Select(change => change.Path));
+            }
+            catch (Exception ex) when (IsScaffoldIoException(ex))
+            {
+                result.Issues.Add($"Scaffold auto-wiring failed: {ex.Message}");
+            }
         }
 
         if (result.Issues.Count == 0 &&
@@ -114,12 +152,9 @@ public sealed class WorkerScaffoldExecutor
             .Trim('/');
     }
 
-    private static bool IsInside(string root, string fullPath)
+    private static bool IsScaffoldIoException(Exception ex)
     {
-        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-            ? root
-            : root + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+        return ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
     }
 }
 

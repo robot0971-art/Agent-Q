@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -121,7 +122,7 @@ Provide ONLY the raw JSON. Do not write markdown wrapping, conversational text, 
             var plan = JsonSerializer.Deserialize<TaskPlan>(jsonText, options);
             if (plan != null)
             {
-                return plan;
+                return SanitizePlan(userGoal, workspaceAnalysis, plan);
             }
         }
         catch
@@ -145,5 +146,106 @@ Provide ONLY the raw JSON. Do not write markdown wrapping, conversational text, 
             },
             Risks = new List<string> { "Fallback plan generated due to planning failure." }
         };
+    }
+
+    private static TaskPlan SanitizePlan(string userGoal, WorkspaceAnalysis workspaceAnalysis, TaskPlan plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan.Goal))
+        {
+            plan.Goal = userGoal;
+        }
+
+        var sanitizedSteps = new List<TaskStep>();
+        foreach (var step in plan.Steps.OrderBy(step => step.Order))
+        {
+            if (string.IsNullOrWhiteSpace(step.Description))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(step.VerificationCommand) &&
+                !VerificationCommandPolicy.IsAllowed(step.VerificationCommand))
+            {
+                step.VerificationCommand = string.Empty;
+            }
+
+            step.RelevantFiles = SanitizeRelevantFiles(step.RelevantFiles, workspaceAnalysis.WorkspaceRoot);
+            sanitizedSteps.Add(step);
+        }
+
+        if (sanitizedSteps.Count == 0)
+        {
+            sanitizedSteps.Add(new TaskStep
+            {
+                Order = 1,
+                Description = $"Perform the task: {userGoal}",
+                Kind = TaskStepKind.Implement
+            });
+        }
+
+        for (var index = 0; index < sanitizedSteps.Count; index++)
+        {
+            if (sanitizedSteps[index].Order <= 0)
+            {
+                sanitizedSteps[index].Order = index + 1;
+            }
+        }
+
+        plan.Steps = sanitizedSteps;
+        return plan;
+    }
+
+    private static List<string> SanitizeRelevantFiles(IEnumerable<string> files, string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            return files
+                .Where(file => !string.IsNullOrWhiteSpace(file) && !Path.IsPathRooted(file) && !file.Contains("..", StringComparison.Ordinal))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(12)
+                .ToList();
+        }
+
+        var root = Path.GetFullPath(workspaceRoot);
+        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        var sanitized = new List<string>();
+
+        foreach (var file in files.Where(file => !string.IsNullOrWhiteSpace(file)))
+        {
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(Path.IsPathRooted(file) ? file : Path.Combine(root, file));
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relativePath = Path.GetRelativePath(root, fullPath);
+            if (string.IsNullOrWhiteSpace(relativePath) ||
+                relativePath == "." ||
+                relativePath.StartsWith("..", StringComparison.Ordinal) ||
+                relativePath.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            {
+                continue;
+            }
+
+            var normalized = relativePath.Replace('\\', '/');
+            if (!sanitized.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            {
+                sanitized.Add(normalized);
+            }
+        }
+
+        return sanitized.Take(12).ToList();
     }
 }

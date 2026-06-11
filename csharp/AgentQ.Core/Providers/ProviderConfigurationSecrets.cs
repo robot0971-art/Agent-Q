@@ -86,6 +86,7 @@ public static class ProviderConfigurationSecrets
             DesktopFontSize = config.DesktopFontSize,
             DesktopAutoAttachWorkspaceContext = config.DesktopAutoAttachWorkspaceContext,
             DesktopAutoFetchLinks = config.DesktopAutoFetchLinks,
+            DesktopEnableScreenshotLlmVisionReview = config.DesktopEnableScreenshotLlmVisionReview,
             DesktopWorkMode = config.DesktopWorkMode,
             DesktopMaxToolSteps = config.DesktopMaxToolSteps,
             DesktopUiLanguage = config.DesktopUiLanguage,

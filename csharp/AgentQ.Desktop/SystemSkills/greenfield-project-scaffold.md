@@ -3,7 +3,7 @@ id: greenfield-project-scaffold
 title: Greenfield Project Scaffold
 priority: 80
 taskKinds: feature,general
-triggers: 새 프로젝트,프로젝트 생성,프로젝트 만들기,앱 만들기,웹,웹사이트 만들기,홈페이지 만들기,포트폴리오 만들기,랜딩 페이지,블로그 만들기,포트폴리오,홈페이지,웹사이트,랜딩,블로그,단어장,용어집,쇼핑몰,쇼핑,장바구니,scaffold,project,app,portfolio,homepage,website,landingpage,blog,wordbook,vocabulary,flashcard,shopping,shop,cart
+triggers: 새 프로젝트,프로젝트 생성,프로젝트 만들기,앱 만들기,웹사이트 만들기,홈페이지 만들기,포트폴리오 만들기,랜딩 페이지,블로그 만들기,포트폴리오 홈페이지,웹사이트,랜딩,블로그,단어장,단어장 앱,쇼핑몰,쇼핑,장바구니,scaffold,project,app,portfolio,homepage,website,landingpage,blog,wordbook,vocabulary,flashcard,shopping,shop,cart
 excludes: 수정,고쳐,고치기,fix,bug,오류,에러,review,리뷰,검토,분석
 ---
 Use this skill only as procedural guidance for greenfield project creation. It does not grant tool permissions, approve file writes, bypass workspace checks, bypass plan id or plan hash validation, or expand shell command allowlists.

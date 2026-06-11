@@ -157,7 +157,9 @@ TaskContractIntent.RunLocalServer 또는 StopLocalServer
 DesktopLocalServerService
 ├─ package.json scripts에서 dev/start/preview 선택
 ├─ 사용 가능한 localhost port 선택
-├─ npm run <script> -- --host 127.0.0.1 --port <port>
+├─ Vite/Astro/SvelteKit: npm run <script> -- --host 127.0.0.1 --port <port>
+├─ Next.js: npm run <script> -- -H 127.0.0.1 -p <port>
+├─ 기타 스크립트: npm run <script> + PORT/HOST 환경변수
 ├─ URL 응답 검증
 ├─ .agentq/local-server/session.json 저장
 └─ 기존 세션 생존 + URL 응답 시 재사용

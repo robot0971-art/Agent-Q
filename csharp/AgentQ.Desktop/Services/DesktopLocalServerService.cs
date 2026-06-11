@@ -12,6 +12,7 @@ namespace AgentQ.Desktop.Services;
 public sealed class DesktopLocalServerService
 {
     private static readonly string[] PreferredScripts = ["dev", "start", "preview"];
+    private static readonly string[] BunLockFiles = ["bun.lockb", "bun.lock"];
     private static readonly ConcurrentDictionary<string, LocalServerSession> Sessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -76,10 +77,25 @@ public sealed class DesktopLocalServerService
         var stdoutPath = Path.Combine(logDirectory, $"{stamp}-stdout.log");
         var stderrPath = Path.Combine(logDirectory, $"{stamp}-stderr.log");
 
-        var process = Process.Start(CreateStartInfo(plan, stdoutPath, stderrPath));
+        Process? process;
+        try
+        {
+            process = Process.Start(CreateStartInfo(plan, stdoutPath, stderrPath));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ObjectDisposedException)
+        {
+            return LocalServerStartResult.Failed(
+                $"Failed to start local server process: {ex.Message}",
+                command: plan.DisplayCommand,
+                url: plan.Url);
+        }
+
         if (process == null)
         {
-            return LocalServerStartResult.Failed("Failed to start local server process.");
+            return LocalServerStartResult.Failed(
+                "Failed to start local server process.",
+                command: plan.DisplayCommand,
+                url: plan.Url);
         }
 
         var reachable = await WaitForReachableAsync(plan.Url, process, ct);
@@ -94,7 +110,8 @@ public sealed class DesktopLocalServerService
                 Url: plan.Url,
                 Command: plan.DisplayCommand,
                 ProcessId: process.Id,
-                StartedAtUtc: DateTimeOffset.UtcNow);
+                StartedAtUtc: DateTimeOffset.UtcNow,
+                ProcessStartedAtUtc: TryGetProcessStartTimeUtc(process.Id));
             Sessions[workspaceKey] = session;
             await SaveSessionAsync(session, ct);
             return new LocalServerStartResult
@@ -116,7 +133,10 @@ public sealed class DesktopLocalServerService
         return LocalServerStartResult.Failed(
             string.IsNullOrWhiteSpace(error)
                 ? $"Local server did not respond at {plan.Url}."
-                : $"Local server did not respond at {plan.Url}. {error}");
+                : $"Local server did not respond at {plan.Url}. {error}",
+            command: plan.DisplayCommand,
+            url: plan.Url,
+            processId: process.Id);
     }
 
     public async Task<LocalServerStopResult> StopAsync(
@@ -190,7 +210,7 @@ public sealed class DesktopLocalServerService
     {
         var workspaceKey = NormalizeWorkspaceRoot(workspaceRoot);
         if (Sessions.TryGetValue(workspaceKey, out var inMemory) &&
-            IsProcessAlive(inMemory.ProcessId) &&
+            ProcessMatchesSession(inMemory) &&
             await IsReachableAsync(inMemory.Url, ct))
         {
             return inMemory;
@@ -200,7 +220,7 @@ public sealed class DesktopLocalServerService
         var persisted = await LoadSessionAsync(workspaceKey, ct);
         if (persisted != null &&
             ProjectScaffoldPlanRegistry.MatchesWorkspace(persisted.WorkspaceRoot, workspaceKey) &&
-            IsProcessAlive(persisted.ProcessId) &&
+            ProcessMatchesSession(persisted) &&
             await IsReachableAsync(persisted.Url, ct))
         {
             Sessions[workspaceKey] = persisted;
@@ -220,62 +240,146 @@ public sealed class DesktopLocalServerService
             return LocalServerStartPlan.Failed("No package.json was found in the selected workspace.");
         }
 
-        using var document = JsonDocument.Parse(File.ReadAllText(packageJsonPath));
-        if (!document.RootElement.TryGetProperty("scripts", out var scripts) ||
-            scripts.ValueKind != JsonValueKind.Object)
+        JsonDocument document;
+        try
         {
-            return LocalServerStartPlan.Failed("package.json does not define scripts.");
+            document = JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return LocalServerStartPlan.Failed($"package.json could not be read or parsed: {ex.Message}");
         }
 
-        string? selectedScript = null;
-        foreach (var script in PreferredScripts)
+        using (document)
         {
-            if (scripts.TryGetProperty(script, out var value) &&
-                value.ValueKind == JsonValueKind.String &&
-                !string.IsNullOrWhiteSpace(value.GetString()))
+            if (!document.RootElement.TryGetProperty("scripts", out var scripts) ||
+                scripts.ValueKind != JsonValueKind.Object)
             {
-                selectedScript = script;
-                break;
+                return LocalServerStartPlan.Failed("package.json does not define scripts.");
             }
-        }
 
-        if (selectedScript == null)
-        {
-            return LocalServerStartPlan.Failed("No dev, start, or preview script was found in package.json.");
-        }
+            string? selectedScript = null;
+            string selectedScriptCommand = string.Empty;
+            foreach (var script in PreferredScripts)
+            {
+                if (scripts.TryGetProperty(script, out var value) &&
+                    value.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(value.GetString()))
+                {
+                    selectedScript = script;
+                    selectedScriptCommand = value.GetString() ?? string.Empty;
+                    break;
+                }
+            }
 
-        var port = FindFreePort();
-        return new LocalServerStartPlan
-        {
-            CanStart = true,
-            WorkspaceRoot = root,
-            ScriptName = selectedScript,
-            Port = port,
-            Url = $"http://127.0.0.1:{port}/",
-            DisplayCommand = $"npm run {selectedScript} -- --host 127.0.0.1 --port {port}"
-        };
+            if (selectedScript == null)
+            {
+                return LocalServerStartPlan.Failed("No dev, start, or preview script was found in package.json.");
+            }
+
+            var port = FindFreePort();
+            var packageManager = ResolvePackageManager(root);
+            var arguments = ResolveServerArguments(selectedScriptCommand, port);
+            return new LocalServerStartPlan
+            {
+                CanStart = true,
+                WorkspaceRoot = root,
+                ScriptName = selectedScript,
+                ScriptCommand = selectedScriptCommand,
+                PackageManager = packageManager,
+                ServerArguments = arguments,
+                Port = port,
+                Url = $"http://127.0.0.1:{port}/",
+                DisplayCommand = BuildDisplayCommand(packageManager, selectedScript, arguments)
+            };
+        }
     }
 
     private static ProcessStartInfo CreateStartInfo(LocalServerStartPlan plan, string stdoutPath, string stderrPath)
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = OperatingSystem.IsWindows() ? "npm.cmd" : "npm",
+            FileName = GetPackageManagerExecutable(plan.PackageManager),
             WorkingDirectory = plan.WorkspaceRoot,
             UseShellExecute = false,
             CreateNoWindow = true
         };
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add(plan.ScriptName);
-        startInfo.ArgumentList.Add("--");
-        startInfo.ArgumentList.Add("--host");
-        startInfo.ArgumentList.Add("127.0.0.1");
-        startInfo.ArgumentList.Add("--port");
-        startInfo.ArgumentList.Add(plan.Port.ToString());
+        if (plan.ServerArguments.Count > 0)
+        {
+            startInfo.ArgumentList.Add("--");
+            foreach (var argument in plan.ServerArguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+        }
+
         startInfo.Environment["PORT"] = plan.Port.ToString();
         startInfo.Environment["HOST"] = "127.0.0.1";
 
         return RedirectToFiles(startInfo, stdoutPath, stderrPath);
+    }
+
+    private static string ResolvePackageManager(string workspaceRoot)
+    {
+        if (File.Exists(Path.Combine(workspaceRoot, "pnpm-lock.yaml")))
+        {
+            return "pnpm";
+        }
+
+        if (File.Exists(Path.Combine(workspaceRoot, "yarn.lock")))
+        {
+            return "yarn";
+        }
+
+        if (BunLockFiles.Any(file => File.Exists(Path.Combine(workspaceRoot, file))))
+        {
+            return "bun";
+        }
+
+        return "npm";
+    }
+
+    private static IReadOnlyList<string> ResolveServerArguments(string scriptCommand, int port)
+    {
+        var normalized = scriptCommand.ToLowerInvariant();
+        if (normalized.Contains("vite", StringComparison.Ordinal) ||
+            normalized.Contains("astro", StringComparison.Ordinal) ||
+            normalized.Contains("svelte-kit", StringComparison.Ordinal))
+        {
+            return ["--host", "127.0.0.1", "--port", port.ToString()];
+        }
+
+        if (normalized.Contains("next", StringComparison.Ordinal))
+        {
+            return ["-H", "127.0.0.1", "-p", port.ToString()];
+        }
+
+        return [];
+    }
+
+    private static string BuildDisplayCommand(
+        string packageManager,
+        string scriptName,
+        IReadOnlyList<string> arguments)
+    {
+        var command = $"{packageManager} run {scriptName}";
+        return arguments.Count == 0
+            ? command
+            : $"{command} -- {string.Join(' ', arguments)}";
+    }
+
+    private static string GetPackageManagerExecutable(string packageManager)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return packageManager;
+        }
+
+        return packageManager.Equals("yarn", StringComparison.OrdinalIgnoreCase)
+            ? "yarn.cmd"
+            : $"{packageManager}.cmd";
     }
 
     private static ProcessStartInfo RedirectToFiles(ProcessStartInfo startInfo, string stdoutPath, string stderrPath)
@@ -411,6 +515,45 @@ public sealed class DesktopLocalServerService
         }
     }
 
+    private static bool ProcessMatchesSession(LocalServerSession session)
+    {
+        if (!IsProcessAlive(session.ProcessId))
+        {
+            return false;
+        }
+
+        if (session.ProcessStartedAtUtc == null)
+        {
+            return true;
+        }
+
+        var currentStartTime = TryGetProcessStartTimeUtc(session.ProcessId);
+        if (currentStartTime == null)
+        {
+            return false;
+        }
+
+        return Math.Abs((currentStartTime.Value - session.ProcessStartedAtUtc.Value).TotalSeconds) <= 2;
+    }
+
+    private static DateTimeOffset? TryGetProcessStartTimeUtc(int processId)
+    {
+        if (processId <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.StartTime.ToUniversalTime();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string NormalizeWorkspaceRoot(string workspaceRoot) =>
         Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
@@ -474,6 +617,12 @@ public sealed class LocalServerStartPlan
 
     public string ScriptName { get; init; } = string.Empty;
 
+    public string ScriptCommand { get; init; } = string.Empty;
+
+    public string PackageManager { get; init; } = "npm";
+
+    public IReadOnlyList<string> ServerArguments { get; init; } = [];
+
     public int Port { get; init; }
 
     public string Url { get; init; } = string.Empty;
@@ -503,9 +652,16 @@ public sealed class LocalServerStartResult
 
     public string Message { get; init; } = string.Empty;
 
-    public static LocalServerStartResult Failed(string message) => new()
+    public static LocalServerStartResult Failed(
+        string message,
+        string command = "",
+        string url = "",
+        int processId = 0) => new()
     {
         Succeeded = false,
+        Url = url,
+        Command = command,
+        ProcessId = processId,
         Message = message
     };
 }
@@ -532,4 +688,5 @@ public sealed record LocalServerSession(
     string Url,
     string Command,
     int ProcessId,
-    DateTimeOffset StartedAtUtc);
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset? ProcessStartedAtUtc = null);

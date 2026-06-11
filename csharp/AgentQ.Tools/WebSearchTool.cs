@@ -144,8 +144,16 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
         return raw switch
         {
             int value => value,
-            long value => checked((int)value),
-            double value => checked((int)value),
+            long value => value > int.MaxValue
+                ? int.MaxValue
+                : value < int.MinValue
+                    ? int.MinValue
+                    : (int)value,
+            double value => value > int.MaxValue
+                ? int.MaxValue
+                : value < int.MinValue
+                    ? int.MinValue
+                    : (int)value,
             JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetInt32(out var value) => value,
             string text when int.TryParse(text, out var value) => value,
             _ => null

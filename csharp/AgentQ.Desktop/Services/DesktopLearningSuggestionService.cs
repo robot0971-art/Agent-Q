@@ -22,11 +22,15 @@ public sealed class DesktopLearningSuggestionService
                 "workspace analysis"));
         }
 
-        if (analysis.VerificationCommands.Count > 0)
+        var verificationCommands = analysis.VerificationCommands
+            .Where(command => VerificationCommandPolicy.IsAllowed(command))
+            .Take(4)
+            .ToList();
+        if (verificationCommands.Count > 0)
         {
             lessons.Add(CreateLesson(
                 "Workspace verification commands",
-                $"Use these detected verification commands for this workspace: {string.Join("; ", analysis.VerificationCommands.Take(4))}.",
+                $"Use these detected verification commands for this workspace: {string.Join("; ", verificationCommands)}.",
                 ["workspace", "verification", "command"],
                 "workspace analysis"));
         }

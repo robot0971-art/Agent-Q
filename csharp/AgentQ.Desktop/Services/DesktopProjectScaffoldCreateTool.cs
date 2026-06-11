@@ -167,9 +167,6 @@ public sealed class DesktopProjectScaffoldCreateTool(
         }
 
         var root = Path.GetFullPath(workspaceRoot);
-        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-            ? root
-            : root + Path.DirectorySeparatorChar;
         foreach (var file in plan.Files)
         {
             if (string.IsNullOrWhiteSpace(file))
@@ -184,10 +181,26 @@ public sealed class DesktopProjectScaffoldCreateTool(
                 continue;
             }
 
-            var fullPath = Path.GetFullPath(Path.Combine(root, file));
-            if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(Path.Combine(root, file));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                issues.Add($"plan file path is invalid: {file}");
+                continue;
+            }
+
+            if (!WorkspacePathResolver.IsInsideWorkspace(root, fullPath))
             {
                 issues.Add($"plan file path escapes the workspace: {file}");
+                continue;
+            }
+
+            if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, fullPath))
+            {
+                issues.Add($"plan file path resolves outside the workspace: {file}");
             }
         }
 

@@ -21,15 +21,17 @@ public sealed class TypeScriptWorkerHost
 
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = "node",
-                Arguments = $"\"{scriptPath}\" \"{Path.GetFullPath(workspaceRoot)}\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
-            });
+            };
+            startInfo.ArgumentList.Add(scriptPath);
+            startInfo.ArgumentList.Add(Path.GetFullPath(workspaceRoot));
+            using var process = Process.Start(startInfo);
 
             if (process == null)
             {
@@ -78,8 +80,6 @@ public sealed class TypeScriptWorkerHost
 
             current = Directory.GetParent(current)?.FullName;
         }
-
-        var workspaceCandidate = Path.Combine(Environment.CurrentDirectory, "tools", "language-workers", "typescript-worker.mjs");
-        return File.Exists(workspaceCandidate) ? workspaceCandidate : null;
+        return null;
     }
 }

@@ -45,6 +45,7 @@ public sealed partial class WorkspaceIndexer
         var root = Path.GetFullPath(workspaceRoot);
         var queryTerms = ExtractQueryTerms(query);
         var files = SafeEnumerateFiles(root)
+            .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file))
             .Where(file => !IsExcludedPath(root, file))
             .Select(file => new WorkspaceFile(file, Path.GetRelativePath(root, file).Replace('\\', '/')))
             .OrderByDescending(file => ScoreQueryMatch(file.RelativePath, queryTerms))
@@ -77,7 +78,8 @@ public sealed partial class WorkspaceIndexer
         builder.AppendLine("Selected file contents:");
 
         var included = 0;
-        foreach (var file in files.Where(IsReadableTextFile).Take(MaximumIncludedFiles))
+        var filesForContent = SelectFilesForContent(files, queryTerms);
+        foreach (var file in filesForContent.Take(MaximumIncludedFiles))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -104,7 +106,25 @@ public sealed partial class WorkspaceIndexer
             included++;
         }
 
+        if (included == 0 && queryTerms.Count > 0)
+        {
+            builder.AppendLine("No selected file contents matched the current request terms; use explicit search/read tools before relying on unrelated files.");
+        }
+
         return included == 0 ? builder.ToString().Trim() : builder.ToString().TrimEnd();
+    }
+
+    private static IEnumerable<WorkspaceFile> SelectFilesForContent(
+        IReadOnlyList<WorkspaceFile> files,
+        IReadOnlyList<string> queryTerms)
+    {
+        var readableFiles = files.Where(IsReadableTextFile);
+        if (queryTerms.Count == 0)
+        {
+            return readableFiles;
+        }
+
+        return readableFiles.Where(file => ScoreQueryMatch(file.RelativePath, queryTerms) > 0);
     }
 
     private static async Task<string> ReadTextFileAsync(string path, CancellationToken ct)
@@ -217,7 +237,9 @@ public sealed partial class WorkspaceIndexer
 
             foreach (var directory in directories)
             {
-                if (IsExcludedDirectory(directory))
+                if (IsExcludedDirectory(directory) ||
+                    IsReparseDirectory(directory) ||
+                    !WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     continue;
                 }
@@ -240,6 +262,18 @@ public sealed partial class WorkspaceIndexer
                name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("artifacts", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static bool IsExcludedPath(string root, string file)

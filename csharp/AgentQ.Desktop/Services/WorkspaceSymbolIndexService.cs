@@ -309,9 +309,7 @@ public sealed partial class WorkspaceSymbolIndexService
     {
         try
         {
-            var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var fullPath = Path.GetFullPath(path);
-            return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+            return WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path);
         }
         catch
         {
@@ -331,7 +329,9 @@ public sealed partial class WorkspaceSymbolIndexService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(current).Where(IsSupportedCodeFile);
+                files = Directory.EnumerateFiles(current)
+                    .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file) &&
+                                   IsSupportedCodeFile(file));
             }
             catch
             {
@@ -355,11 +355,25 @@ public sealed partial class WorkspaceSymbolIndexService
 
             foreach (var directory in directories)
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)) &&
+                    !IsReparseDirectory(directory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     pending.Push(directory);
                 }
             }
+        }
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
         }
     }
 

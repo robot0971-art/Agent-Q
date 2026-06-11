@@ -47,5 +47,6 @@ public enum WorkerPlanStepKind
     ModifyFile,
     DeleteFile,
     RunCommand,
-    Verify
+    Verify,
+    Manual
 }

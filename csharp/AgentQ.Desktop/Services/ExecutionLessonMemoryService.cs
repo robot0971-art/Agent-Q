@@ -154,7 +154,9 @@ public sealed class ExecutionLessonMemoryService
         try
         {
             var json = await File.ReadAllTextAsync(path, ct);
-            return JsonSerializer.Deserialize<ExecutionLessonDocument>(json, JsonOptions) ?? new ExecutionLessonDocument();
+            var document = JsonSerializer.Deserialize<ExecutionLessonDocument>(json, JsonOptions) ?? new ExecutionLessonDocument();
+            Normalize(document);
+            return document;
         }
         catch
         {
@@ -238,7 +240,7 @@ public sealed class ExecutionLessonMemoryService
     private static int Score(ExecutionLesson lesson, string query)
     {
         var score = 0;
-        foreach (var trigger in lesson.Triggers)
+        foreach (var trigger in lesson.Triggers ?? [])
         {
             if (!string.IsNullOrWhiteSpace(trigger) && query.Contains(trigger.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
             {
@@ -252,6 +254,27 @@ public sealed class ExecutionLessonMemoryService
         }
 
         return score;
+    }
+
+    private static void Normalize(ExecutionLessonDocument document)
+    {
+        document.Lessons = document.Lessons?
+            .Where(lesson => lesson != null)
+            .ToList() ?? [];
+
+        foreach (var lesson in document.Lessons)
+        {
+            lesson.Id ??= string.Empty;
+            lesson.Scope ??= "workspace";
+            lesson.Intent ??= string.Empty;
+            lesson.Triggers ??= [];
+            lesson.Rule ??= string.Empty;
+            lesson.InvalidCompletions ??= [];
+            if (lesson.CreatedAtUtc == default)
+            {
+                lesson.CreatedAtUtc = DateTimeOffset.UtcNow;
+            }
+        }
     }
 
     private async Task AppendEventAsync(string workspaceRoot, string lessonId, string eventName, string intent, CancellationToken ct)
@@ -273,8 +296,12 @@ public sealed class ExecutionLessonMemoryService
         TaskContractIntent.RunLocalServer => "run_local_server",
         TaskContractIntent.StopLocalServer => "stop_local_server",
         TaskContractIntent.DeletePath => "delete_path",
+        TaskContractIntent.CreateDirectory => "create_directory",
+        TaskContractIntent.CreateFile => "create_file",
         TaskContractIntent.CreateProject => "create_project",
         TaskContractIntent.ModifyCode => "modify_code",
+        TaskContractIntent.RunVerification => "run_verification",
+        TaskContractIntent.SearchAndSummarize => "search_and_summarize",
         TaskContractIntent.InspectProject => "inspect_project",
         TaskContractIntent.ExplainOrChat => "explain_or_chat",
         _ => "none"

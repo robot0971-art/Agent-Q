@@ -49,7 +49,7 @@ public sealed class WorkerPlanPreviewBuilder(
         var title = string.IsNullOrWhiteSpace(plan.Summary)
             ? string.IsNullOrWhiteSpace(plan.Goal) ? "Worker plan" : plan.Goal
             : plan.Summary;
-        var changes = $"{summary.CreateCount:0} create, {summary.ModifyCount:0} modify, {summary.DeleteCount:0} delete";
+        var changes = $"{summary.CreateCount:0} create, {summary.ModifyCount:0} modify, {summary.DeleteCount:0} delete, {summary.RunCommandCount:0} run";
         var risk = $"Risk: {summary.RiskLevel}";
         var verification = summary.VerificationCommands.Count == 0
             ? "Verification: none"

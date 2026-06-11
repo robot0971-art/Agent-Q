@@ -10,7 +10,7 @@ internal static class DesktopToolInputParser
         {
             JsonElement json when json.ValueKind == JsonValueKind.Object => ParseObject(json),
             string rawJson => ParseRawJson(rawJson),
-            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.Ordinal),
+            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase),
             _ => []
         };
     }
@@ -20,19 +20,30 @@ internal static class DesktopToolInputParser
         try
         {
             using var document = JsonDocument.Parse(rawJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                ? ParseObject(document.RootElement)
-                : [];
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                return ParseObject(document.RootElement);
+            }
+
+            if (document.RootElement.ValueKind == JsonValueKind.String)
+            {
+                var nestedJson = document.RootElement.GetString();
+                if (!string.IsNullOrWhiteSpace(nestedJson))
+                {
+                    return ParseRawJson(nestedJson);
+                }
+            }
         }
         catch
         {
-            return [];
         }
+
+        return [];
     }
 
     private static Dictionary<string, object?> ParseObject(JsonElement element)
     {
-        var values = new Dictionary<string, object?>();
+        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var property in element.EnumerateObject())
         {
             values[property.Name] = ParseValue(property.Value);

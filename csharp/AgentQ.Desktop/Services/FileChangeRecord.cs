@@ -19,6 +19,8 @@ public sealed class FileChangeRecord : INotifyPropertyChanged
 
     public bool ExistedBefore { get; init; } = true;
 
+    public bool ExistsAfter { get; init; } = true;
+
     public string SnapshotPath { get; init; } = string.Empty;
 
     public DateTime ChangedAt { get; init; } = DateTime.Now;
@@ -41,12 +43,20 @@ public sealed class FileChangeRecord : INotifyPropertyChanged
     {
         get
         {
+            if (ExistedBefore && !ExistsAfter)
+            {
+                return "File was removed.";
+            }
+
             var content = string.IsNullOrWhiteSpace(After) ? Before : After;
             if (string.IsNullOrWhiteSpace(content))
             {
-                return ExistedBefore
-                    ? "No source preview available."
-                    : "File was removed.";
+                return "File is empty.";
+            }
+
+            if (string.Equals(content, DesktopAgentService.DirectorySnapshotMarker, StringComparison.Ordinal))
+            {
+                return "Directory change.";
             }
 
             return content;

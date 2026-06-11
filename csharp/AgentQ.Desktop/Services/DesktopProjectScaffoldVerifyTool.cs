@@ -219,7 +219,9 @@ public sealed class DesktopProjectScaffoldVerifyTool(
         failureKind = analysis.Kind.ToString(),
         suggestedNextStep = analysis.SuggestedNextStep,
         evidence = analysis.Evidence,
-        verificationCommands = plan.VerificationCommands,
+        verificationCommands = plan.VerificationCommands
+            .Where(command => VerificationCommandPolicy.IsAllowed(command))
+            .ToList(),
         failedCommand = command,
         risks = new[] { "Keep repairs scoped to files created by the approved project scaffold plan." }
     };

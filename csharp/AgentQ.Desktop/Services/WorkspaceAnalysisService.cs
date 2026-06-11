@@ -148,7 +148,7 @@ public sealed class WorkspaceAnalysisService
 
                 foreach (var directory in Directory.EnumerateDirectories(current))
                 {
-                    if (ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                    if (!CanTraverseDirectory(analysis.WorkspaceRoot, directory))
                     {
                         continue;
                     }
@@ -385,7 +385,6 @@ public sealed class WorkspaceAnalysisService
         var version = ReadUnityVersion(versionPath);
         frameworks.Add(string.IsNullOrWhiteSpace(version) ? "Unity" : $"Unity {version}");
         analysis.Hints.Add("Unity project structure detected.");
-        AddUnique(analysis.VerificationCommands, "Unity Test Runner");
         DetectUnityDetails(analysis, frameworks);
     }
 
@@ -793,7 +792,6 @@ public sealed class WorkspaceAnalysisService
         detectedTypes.Add("Docker");
         frameworks.Add("Docker Compose");
         AddUnique(analysis.VerificationCommands, "docker compose config");
-        AddUnique(analysis.VerificationCommands, "docker compose up --build");
         analysis.Hints.Add("Docker Compose file detected.");
     }
 
@@ -834,7 +832,7 @@ public sealed class WorkspaceAnalysisService
         var alembicIni = FindProjectFile(analysis.WorkspaceRoot, "alembic.ini");
         var hasAlembicDirectory = Directory.Exists(Path.Combine(analysis.WorkspaceRoot, "alembic")) ||
                                   Directory.EnumerateDirectories(analysis.WorkspaceRoot)
-                                      .Where(directory => !ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                                      .Where(directory => CanTraverseDirectory(analysis.WorkspaceRoot, directory))
                                       .Any(directory => Directory.Exists(Path.Combine(directory, "alembic")));
         if (alembicIni != null || hasAlembicDirectory)
         {
@@ -1470,7 +1468,7 @@ public sealed class WorkspaceAnalysisService
             analysis.Hints.Add($"{workerName} scaffold: {recommendation.Name} - {recommendation.Description}");
             foreach (var command in recommendation.VerificationCommands.Take(3))
             {
-                AddUnique(analysis.VerificationCommands, command);
+                AddVerificationCommandIfAllowed(analysis, command);
             }
 
             foreach (var file in recommendation.Files.Take(4))
@@ -1666,7 +1664,8 @@ public sealed class WorkspaceAnalysisService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(current, pattern);
+                files = Directory.EnumerateFiles(current, pattern)
+                    .Where(file => WorkspacePathResolver.IsResolvedInsideWorkspace(root, file));
             }
             catch
             {
@@ -1690,7 +1689,7 @@ public sealed class WorkspaceAnalysisService
 
             foreach (var directory in directories)
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                if (CanTraverseDirectory(root, directory))
                 {
                     pending.Push(directory);
                 }
@@ -1702,25 +1701,38 @@ public sealed class WorkspaceAnalysisService
     {
         if (File.Exists(Path.Combine(analysis.WorkspaceRoot, fileName)))
         {
-            AddUnique(analysis.VerificationCommands, command);
+            AddVerificationCommandIfAllowed(analysis, command);
         }
     }
 
     private static void AddNodeCommand(WorkspaceAnalysis analysis, string projectRelativePath, string command)
     {
-        AddUnique(analysis.VerificationCommands, PrefixCommand(projectRelativePath, command));
+        AddVerificationCommandIfAllowed(analysis, PrefixCommand(projectRelativePath, command));
     }
 
     private static void AddPythonCommand(WorkspaceAnalysis analysis, string projectRelativePath, string command)
     {
-        AddUnique(analysis.VerificationCommands, PrefixCommand(projectRelativePath, command));
+        AddVerificationCommandIfAllowed(analysis, PrefixCommand(projectRelativePath, command));
     }
 
     private static string PrefixCommand(string projectRelativePath, string command)
     {
-        return string.IsNullOrWhiteSpace(projectRelativePath) || projectRelativePath == "."
-            ? command
-            : $"cmd /c cd {projectRelativePath} && {command}";
+        if (string.IsNullOrWhiteSpace(projectRelativePath) || projectRelativePath == ".")
+        {
+            return command;
+        }
+
+        var normalizedPath = NormalizeRelativePath(projectRelativePath);
+        var escapedPath = normalizedPath.Replace("\"", "\"\"");
+        return $"cmd /c cd /d \"{escapedPath}\" && {command}";
+    }
+
+    private static void AddVerificationCommandIfAllowed(WorkspaceAnalysis analysis, string command)
+    {
+        if (VerificationCommandPolicy.IsAllowed(command))
+        {
+            AddUnique(analysis.VerificationCommands, command);
+        }
     }
 
     private static string? FindProjectFile(string root, string fileName) =>
@@ -1738,7 +1750,7 @@ public sealed class WorkspaceAnalysisService
         try
         {
             directories = Directory.EnumerateDirectories(root)
-                .Where(directory => !ExcludedDirectories.Contains(Path.GetFileName(directory)));
+                .Where(directory => CanTraverseDirectory(root, directory));
         }
         catch
         {
@@ -1748,10 +1760,29 @@ public sealed class WorkspaceAnalysisService
         foreach (var directory in directories)
         {
             var candidate = Path.Combine(directory, fileName);
-            if (File.Exists(candidate))
+            if (File.Exists(candidate) &&
+                WorkspacePathResolver.IsResolvedInsideWorkspace(root, candidate))
             {
                 yield return candidate;
             }
+        }
+    }
+
+    private static bool CanTraverseDirectory(string root, string directory)
+    {
+        if (ExcludedDirectories.Contains(Path.GetFileName(directory)))
+        {
+            return false;
+        }
+
+        try
+        {
+            return !new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint) &&
+                   WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory);
+        }
+        catch
+        {
+            return false;
         }
     }
 

@@ -8,6 +8,8 @@ public static class ToolPermissionClassifier
 {
     private static readonly Regex[] DestructiveCommandPatterns =
     [
+        new(@"\brm\b(?=.*(?:-[a-z]*r[a-z]*|-recursive\b|--recursive\b))(?=.*(?:-[a-z]*f[a-z]*|-force\b|--force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\brmdir\b(?=.*(?:-[a-z]*r[a-z]*|-recursive\b|--recursive\b))(?=.*(?:-[a-z]*f[a-z]*|-force\b|--force\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\b(remove-item|ri|rm|del|erase)\b(?=.*(?:-r\b|-recurse\b|/s\b))(?=.*(?:-fo\b|-force\b|/q\b|/f\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\b(rmdir|rd)\b(?=.*(?:-r\b|-recurse\b|/s\b))(?=.*(?:-fo\b|-force\b|/q\b|/f\b))", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bgit\s+reset\s+--hard\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
@@ -43,11 +45,14 @@ public static class ToolPermissionClassifier
     {
         return toolName switch
         {
+            "list_directory" or "read_file" or "grep_search" or "glob_search" or "symbol_search" or "semantic_search" or "hybrid_search" => AssessSafeRead(toolName, input),
             "write_file" or "edit_file" => AssessFileMutation(toolName, input, workspaceRoot),
             "create_directory" => AssessDirectoryCreation(input, workspaceRoot),
             "delete_path" => AssessPathDeletion(input, workspaceRoot),
             "create_project_scaffold" => AssessProjectScaffoldCreation(input, workspaceRoot),
             "verify_project_scaffold" => AssessProjectScaffoldVerification(input),
+            "run_local_server" => AssessLocalServer(input, start: true),
+            "stop_local_server" => AssessLocalServer(input, start: false),
             "bash" => AssessShell(input),
             "web_search" => AssessWebSearch(input),
             _ => new ToolPermissionAssessment
@@ -56,6 +61,30 @@ public static class ToolPermissionClassifier
                 Operation = toolName,
                 Reason = "This tool can affect the local workspace."
             }
+        };
+    }
+
+    private static ToolPermissionAssessment AssessSafeRead(
+        string toolName,
+        IReadOnlyDictionary<string, object?> input)
+    {
+        var target = TryGetString(input, "path");
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            target = TryGetString(input, "pattern");
+        }
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            target = TryGetString(input, "query");
+        }
+
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.SafeRead,
+            Operation = toolName,
+            Target = string.IsNullOrWhiteSpace(target) ? "(workspace read)" : target,
+            Reason = "This inspects local workspace information without modifying files."
         };
     }
 
@@ -143,7 +172,7 @@ public static class ToolPermissionClassifier
     private static ToolPermissionAssessment AssessProjectScaffoldVerification(IReadOnlyDictionary<string, object?> input)
     {
         var commands = TryGetPlanStrings(input, "verificationCommands");
-        var command = input.TryGetValue("command", out var rawCommand) ? rawCommand as string : null;
+        var command = TryGetString(input, "command");
         var selectedCommand = string.IsNullOrWhiteSpace(command) ? commands.FirstOrDefault() : command;
         var target = string.IsNullOrWhiteSpace(selectedCommand)
             ? "(missing plan verification command)"
@@ -151,12 +180,69 @@ public static class ToolPermissionClassifier
         var allowedSummary = commands.Count == 0
             ? "plan contains no verification commands"
             : "plan allows: " + string.Join(", ", commands.Take(3)) + (commands.Count > 3 ? $", +{commands.Count - 3} more" : string.Empty);
+
+        if (string.IsNullOrWhiteSpace(selectedCommand))
+        {
+            return new ToolPermissionAssessment
+            {
+                RiskLevel = PermissionRiskLevel.ShellCommand,
+                Operation = "Verify project scaffold",
+                Target = target,
+                Reason = $"This scaffold verification request is missing an approved verification command; {allowedSummary}."
+            };
+        }
+
+        if (commands.Count == 0 ||
+            !commands.Contains(selectedCommand, StringComparer.Ordinal))
+        {
+            return new ToolPermissionAssessment
+            {
+                RiskLevel = PermissionRiskLevel.ShellCommand,
+                Operation = "Verify project scaffold",
+                Target = target,
+                Reason = $"This scaffold verification command is not listed in the approved plan; {allowedSummary}."
+            };
+        }
+
+        if (!VerificationCommandPolicy.IsAllowed(selectedCommand))
+        {
+            return new ToolPermissionAssessment
+            {
+                RiskLevel = PermissionRiskLevel.ShellCommand,
+                Operation = "Verify project scaffold",
+                Target = target,
+                Reason = $"This scaffold verification command is not allowed by the verification command policy; {allowedSummary}."
+            };
+        }
+
         return new ToolPermissionAssessment
         {
             RiskLevel = PermissionRiskLevel.VerificationCommand,
             Operation = "Verify project scaffold",
             Target = target,
             Reason = $"This will run a scaffold verification command in the selected workspace; {allowedSummary}."
+        };
+    }
+
+    private static ToolPermissionAssessment AssessLocalServer(
+        IReadOnlyDictionary<string, object?> input,
+        bool start)
+    {
+        var command = TryGetString(input, "command");
+        var url = TryGetString(input, "url");
+        var processId = TryGetString(input, "processId");
+        var target = start
+            ? string.IsNullOrWhiteSpace(command) ? url : command
+            : string.IsNullOrWhiteSpace(url) ? processId : url;
+
+        return new ToolPermissionAssessment
+        {
+            RiskLevel = PermissionRiskLevel.ShellCommand,
+            Operation = start ? "Start local development server" : "Stop local development server",
+            Target = string.IsNullOrWhiteSpace(target) ? "(local server)" : target,
+            Reason = start
+                ? "This starts a local development server process for the selected workspace."
+                : "This stops the recorded local development server process for the selected workspace."
         };
     }
 
@@ -359,7 +445,7 @@ public static class ToolPermissionClassifier
 
     private static ToolPermissionAssessment AssessShell(IReadOnlyDictionary<string, object?> input)
     {
-        var command = input.TryGetValue("command", out var rawCommand) ? rawCommand as string : null;
+        var command = TryGetString(input, "command");
         command = command?.Trim() ?? string.Empty;
         var lowered = command.ToLowerInvariant();
         var target = BuildShellCommandTarget(command);
@@ -388,17 +474,6 @@ public static class ToolPermissionClassifier
             };
         }
 
-        if (IsVerificationCommand(lowered))
-        {
-            return new ToolPermissionAssessment
-            {
-                RiskLevel = PermissionRiskLevel.VerificationCommand,
-                Operation = "Verification command",
-                Target = target,
-                Reason = "This appears to build or test the selected project."
-            };
-        }
-
         if (IsSafeReadShellCommand(command))
         {
             return new ToolPermissionAssessment
@@ -418,6 +493,17 @@ public static class ToolPermissionClassifier
                 Operation = "Network command",
                 Target = target,
                 Reason = "This command may access the network or install dependencies."
+            };
+        }
+
+        if (IsVerificationCommand(command))
+        {
+            return new ToolPermissionAssessment
+            {
+                RiskLevel = PermissionRiskLevel.VerificationCommand,
+                Operation = "Verification command",
+                Target = target,
+                Reason = "This appears to build or test the selected project."
             };
         }
 
@@ -480,7 +566,9 @@ public static class ToolPermissionClassifier
             : workspaceRoot;
         if (string.IsNullOrWhiteSpace(rootValue))
         {
-            return !Path.IsPathRooted(path);
+            return !Path.IsPathRooted(path) &&
+                   !path.Contains("..", StringComparison.Ordinal) &&
+                   path.IndexOfAny(Path.GetInvalidPathChars()) < 0;
         }
 
         try
@@ -493,13 +581,115 @@ public static class ToolPermissionClassifier
                 ? root
                 : root + Path.DirectorySeparatorChar;
 
-            return fullPath.Equals(root, StringComparison.OrdinalIgnoreCase) ||
-                   fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+            if (!fullPath.Equals(root, StringComparison.OrdinalIgnoreCase) &&
+                !fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return IsResolvedWorkspacePath(root, fullPath);
         }
         catch
         {
             return false;
         }
+    }
+
+    private static bool IsResolvedWorkspacePath(string workspaceRoot, string fullPath)
+    {
+        if (!TryResolveExistingPath(workspaceRoot, out var resolvedWorkspaceRoot))
+        {
+            return true;
+        }
+
+        if (File.Exists(fullPath) &&
+            TryResolveExistingPath(fullPath, out var resolvedFile) &&
+            !IsWithinRoot(resolvedWorkspaceRoot, resolvedFile))
+        {
+            return false;
+        }
+
+        var directoryToCheck = Directory.Exists(fullPath)
+            ? fullPath
+            : Path.GetDirectoryName(fullPath);
+        while (!string.IsNullOrWhiteSpace(directoryToCheck) &&
+               IsWithinRoot(workspaceRoot, directoryToCheck))
+        {
+            if (Directory.Exists(directoryToCheck) &&
+                TryResolveExistingPath(directoryToCheck, out var resolvedDirectory) &&
+                !IsWithinRoot(resolvedWorkspaceRoot, resolvedDirectory))
+            {
+                return false;
+            }
+
+            if (PathsEqual(workspaceRoot, directoryToCheck))
+            {
+                break;
+            }
+
+            directoryToCheck = Path.GetDirectoryName(directoryToCheck);
+        }
+
+        return true;
+    }
+
+    private static bool TryResolveExistingPath(string path, out string resolvedPath)
+    {
+        resolvedPath = Path.GetFullPath(path);
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                var directory = new DirectoryInfo(path);
+                var target = directory.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? directory.FullName);
+                return true;
+            }
+
+            if (File.Exists(path))
+            {
+                var file = new FileInfo(path);
+                var target = file.ResolveLinkTarget(returnFinalTarget: true);
+                resolvedPath = Path.GetFullPath(target?.FullName ?? file.FullName);
+                return true;
+            }
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsWithinRoot(string rootPath, string candidatePath)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
+            ? rootPath
+            : rootPath + Path.DirectorySeparatorChar;
+
+        return candidatePath.Equals(rootPath, comparison) ||
+               candidatePath.StartsWith(normalizedRoot, comparison);
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(left),
+            Path.TrimEndingDirectorySeparator(right),
+            comparison);
     }
 
     private static bool IsEmptyWrite(IReadOnlyDictionary<string, object?> input)
@@ -582,23 +772,8 @@ public static class ToolPermissionClassifier
         }
     }
 
-    private static bool IsVerificationCommand(string command)
-    {
-        return command.Contains("test.cmd", StringComparison.Ordinal) ||
-               command.Contains("build.cmd", StringComparison.Ordinal) ||
-               command.Contains("build.desktop.cmd", StringComparison.Ordinal) ||
-               command.Contains("dotnet test", StringComparison.Ordinal) ||
-               command.Contains("dotnet build", StringComparison.Ordinal) ||
-               command.Contains("npm test", StringComparison.Ordinal) ||
-               command.Contains("npm run build", StringComparison.Ordinal) ||
-               command.Contains("pnpm test", StringComparison.Ordinal) ||
-               command.Contains("pnpm build", StringComparison.Ordinal) ||
-               command.Contains("yarn test", StringComparison.Ordinal) ||
-               command.Contains("yarn build", StringComparison.Ordinal) ||
-               command.Contains("python -m pytest", StringComparison.Ordinal) ||
-               command.Contains("pytest", StringComparison.Ordinal) ||
-               command.Contains("docker compose config", StringComparison.Ordinal);
-    }
+    private static bool IsVerificationCommand(string command) =>
+        VerificationCommandPolicy.IsAllowed(command);
 
     private static bool IsSafeReadShellCommand(string command)
     {

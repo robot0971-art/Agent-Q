@@ -25,7 +25,12 @@ public sealed class TaskContextSelector
             sb.AppendLine("Relevant Files:");
             foreach (var file in step.RelevantFiles)
             {
-                var fullPath = Path.IsPathRooted(file) ? file : Path.Combine(workspaceRoot, file);
+                if (!TryResolveWorkspaceFile(workspaceRoot, file, out var fullPath, out var relativePath))
+                {
+                    sb.AppendLine($"[Skipped file outside workspace: {file}]");
+                    continue;
+                }
+
                 if (File.Exists(fullPath))
                 {
                     try
@@ -36,7 +41,7 @@ public sealed class TaskContextSelector
                         {
                             content = content.Substring(0, 10000) + "\n\n... [TRUNCATED] ...\n\n" + content.Substring(content.Length - 3000);
                         }
-                        sb.AppendLine($"\n--- File: {file} ---");
+                        sb.AppendLine($"\n--- File: {relativePath} ---");
                         sb.AppendLine(content);
                         sb.AppendLine("--------------------");
                     }
@@ -69,5 +74,40 @@ public sealed class TaskContextSelector
         }
 
         return sb.ToString();
+    }
+
+    private static bool TryResolveWorkspaceFile(
+        string workspaceRoot,
+        string file,
+        out string fullPath,
+        out string relativePath)
+    {
+        fullPath = string.Empty;
+        relativePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(workspaceRoot) || string.IsNullOrWhiteSpace(file))
+        {
+            return false;
+        }
+
+        string root;
+        try
+        {
+            root = Path.GetFullPath(workspaceRoot);
+            fullPath = Path.GetFullPath(Path.IsPathRooted(file) ? file : Path.Combine(root, file));
+        }
+        catch
+        {
+            fullPath = string.Empty;
+            return false;
+        }
+
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, fullPath))
+        {
+            fullPath = string.Empty;
+            return false;
+        }
+
+        relativePath = Path.GetRelativePath(root, fullPath).Replace('\\', '/');
+        return !relativePath.StartsWith("..", StringComparison.Ordinal);
     }
 }
