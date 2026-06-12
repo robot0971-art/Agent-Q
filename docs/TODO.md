@@ -619,6 +619,15 @@
   - [x] `ScreenshotEvidenceQuality`, `ScreenshotLlmVisionReviewModels`, `ScreenshotVisualReviewCandidate`, `ScreenshotVisualReviewResult`, `SourceFileEntry`, `CodeSymbol`, `WorkspaceDependencyEdge`, `WorkspaceDependencyGraph`, `WorkspaceAnalysis`, `WorkspaceSymbolIndex`, `VerificationRunResult`, `VerificationResultCard`, `VerificationFailureAnalysis`, `VerificationFailureKind`, `PermissionRiskLevel`, `ToolPermissionAssessment`, `ToolPermissionDecision`, `ToolPermissionPolicyResult`, `MultiAgentRolePlan`, `NativeWorkerModels`, `PythonWorkerModels`, `TypeScriptWorkerModels`, `DesktopTaskKind`, `DesktopTaskProfile`을 직접 읽었다.
   - [x] 해당 묶음은 DTO/표시 모델이며 직접 실행을 유발하지 않고, 기존 indexing/worker/verification service 경계에서 path/policy 검증을 수행한다.
 
+- [x] TODO 누락 Services 파일 묶음을 이어서 직접 읽었다.
+  - [x] `AgentWorkMode`, `DesktopProjectScaffoldPlanTool`, `DesktopProjectScaffoldVerifyTool`, `DesktopUiConstants`, `IDesktopLlmProviderFactory`, `IVerificationArtifactCollector`, `LineDiffBuilder`, `ModelReasoningTagFilter`, `ProjectScaffoldPlanRegistry`, `RecoveryStrategyRouter`, `VideoFrameExtractor`, `WorkerScaffoldExecution`을 직접 읽었다.
+  - [x] scaffold verify tool은 planId/planHash/workspace snapshot/approved command/policy를 확인하고, 실패 검증은 `succeeded=false` JSON으로 반환함을 재확인했다.
+  - [x] 이 묶음에서 새 코드 수정이 필요한 실행/완료 오인 경로는 발견하지 않았다.
+  - [x] `docs/TODO.md` 기준으로 `csharp/AgentQ.Desktop/Services` 파일명이 모두 감사 기록에 포함되는지 재계산했고, 누락 목록이 비어 있음을 확인했다.
+
+- [x] root project instruction 문서 오염 경계를 확인했다.
+  - [x] `AGENTS.md`가 mojibake 상태로 남아 있어 Agent Q 프로젝트 지침이 prompt context를 오염시킬 수 있던 문서 경로를 정상 UTF-8 한국어/영문 원문으로 복구했다.
+
 ### L. 핵심 guardrail coverage 대조
 
 - [x] 최신 사용자 요청 우선권 / embedded evidence 분리
@@ -642,7 +651,7 @@
 
 ### M. 최종 완료 조건
 
-- [ ] `csharp/AgentQ.Desktop/Services` 전체 파일을 직접 읽었다.
+- [x] `csharp/AgentQ.Desktop/Services` 전체 파일을 직접 읽었다.
 - [x] `csharp/AgentQ.Desktop` UI/event 흐름을 직접 읽었다.
 - [x] `csharp/AgentQ.Core` 전체 provider abstraction/message/tool-call core를 직접 읽었다.
 - [x] `csharp/AgentQ.Providers.OpenAi` 전체를 직접 읽었다.
