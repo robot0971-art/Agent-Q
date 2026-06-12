@@ -10,6 +10,7 @@ public static class DesktopProjectConfigBuilder
     {
         var commands = workspaceVerificationCommands
             .Where(command => !string.IsNullOrWhiteSpace(command))
+            .Where(command => VerificationCommandPolicy.IsAllowed(command))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 

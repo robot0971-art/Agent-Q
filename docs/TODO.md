@@ -587,6 +587,38 @@
   - [x] task decomposition 실패 문장을 `run_task_decomposition_failed`로 분류하고, 성공 문장과 분리했다.
   - [x] 관련 task decomposition/GitService focused test 11개, Tests build, Desktop build로 검증했다.
 
+- [x] UI helper / localizer / usage 표시 경계를 이어서 직접 읽었다.
+  - [x] `DesktopClipboardService`, `DesktopCodeHighlighter`, `DesktopCodePreviewWindowService`, `DesktopPanelEventBinder`, `DesktopText`, `DesktopLocalizer`, `DesktopUsageSnapshot`, `DesktopUsageTracker`를 직접 읽었다.
+  - [x] `DesktopUsageSnapshot.DisplayText`에 남아 있던 mojibake 사용량 표시를 정상 한글 문구로 복구했다.
+  - [x] 관련 usage/localizer/mojibake focused test 5개와 Tests build로 검증했다.
+  - [x] 이후 Desktop build는 WPF/MSBuild 단계에서 timeout되어 완료 evidence가 없으므로 성공으로 기록하지 않는다.
+
+- [x] plan/checkpoint 단순 모델 및 worker-plan adapter 경계를 이어서 직접 읽었다.
+  - [x] `AgentCheckpoint`, `AgentCheckpointMessage`, `AgentCheckpointPlanItem`, `AgentCheckpointRunStep`, `AgentPlanItem`, `AgentPlanItemStatus`, `AgentPlanWorkerPlanAdapter`, `AgentQSystemSkill`, `AgentRole`, `AgentRunState`, `AgentRunStep`, `AgentVerificationPlan`을 직접 읽었다.
+  - [x] `AgentPlanWorkerPlanAdapter`가 plan item 텍스트에서 unsafe shell command의 앞부분만 잘라 안전한 `RunCommand` step처럼 만들 수 있던 경로를 차단했다.
+  - [x] plan adapter는 `VerificationCommandPolicy`가 허용한 명령만 verification/run command로 변환한다.
+  - [x] 관련 AgentPlanWorkerPlanAdapter focused test 5개, Tests build, Desktop build로 검증했다.
+
+- [x] attachment/model routing/provider/config 보조 모델 경계를 이어서 직접 읽었다.
+  - [x] `DesktopAttachment`, `DesktopExecutionStrategy`, `DesktopGitPromptResult`, `DesktopGitSnapshot`, `DesktopModelRoutingRecommendation`, `DesktopModelRoutingTier`, `DesktopProviderFailureDescription`, `DesktopProviderModelCatalog`, `DesktopProviderModelDiscoveryService`, `DesktopProjectConfigBuilder`, `DesktopToolCapabilitySnapshot`, `DesktopVerificationWorkflowResult`를 직접 읽었다.
+  - [x] `DesktopProjectConfigBuilder`가 unsafe verification command를 `.agentq/config.json` 후보로 저장할 수 있던 경로를 차단했다.
+  - [x] project config builder도 `VerificationCommandPolicy`가 허용한 명령만 저장한다.
+  - [x] 관련 ProjectConfigBuilder/AgentPlanWorkerPlanAdapter focused test 7개, Tests build, Desktop build로 검증했다.
+
+- [x] tool callback / file-change / verification artifact 표시 경계를 이어서 직접 읽었다.
+  - [x] `DesktopToolCallbacks`, `DesktopToolCallbacksFactory`, `FileChangeRecord`, `FileChangeReviewStatus`, `FileMutationSnapshot`, `VerificationArtifact`를 직접 읽었다.
+  - [x] max tool step 연장 확인창에 남아 있던 mojibake 문구를 정상 한글로 복구했다.
+  - [x] 관련 mojibake/usage/config/adapter focused test 10개, Tests build, Desktop build로 검증했다.
+
+- [x] Git/MCP/replay/memory/embedding/worker scaffold 단순 모델 경계를 이어서 직접 읽었다.
+  - [x] `GitBranchRecoveryAnalyzer`, `GitBranchStatusAnalyzer`, `GitChangeReviewStatus`, `GitCommandResult`, `GitPullSafetyAnalysis`, `GitPullSafetyAnalyzer`, `McpServerConfig`, `McpToolInfo`, `McpToolName`, `ToolReplayEntry`, `ToolReplaySession`, `ProjectAgentConfig`, `ProjectMemory`, `ProjectMemoryGc`, `EmbeddingIndexBuildResult`, `EmbeddingIndexChunk`, `EmbeddingIndexManifest`, `LinkFetchResult`, `WorkerExecutionContext`, `WorkerPlan`, `WorkerPlanApprovalSummary`, `WorkerPlanPreview`, `WorkerPlanValidation`, `WorkerScaffoldContext`를 직접 읽었다.
+  - [x] `WorkerScaffoldContextBuilder`가 symlinked source root/package manifest를 scaffold hint로 사용할 수 있던 경로를 차단했다.
+  - [x] 관련 worker scaffold context focused test 3개, Tests build, Desktop build로 검증했다.
+
+- [x] screenshot/source/workspace/verification/multi-agent DTO 경계를 이어서 직접 읽었다.
+  - [x] `ScreenshotEvidenceQuality`, `ScreenshotLlmVisionReviewModels`, `ScreenshotVisualReviewCandidate`, `ScreenshotVisualReviewResult`, `SourceFileEntry`, `CodeSymbol`, `WorkspaceDependencyEdge`, `WorkspaceDependencyGraph`, `WorkspaceAnalysis`, `WorkspaceSymbolIndex`, `VerificationRunResult`, `VerificationResultCard`, `VerificationFailureAnalysis`, `VerificationFailureKind`, `PermissionRiskLevel`, `ToolPermissionAssessment`, `ToolPermissionDecision`, `ToolPermissionPolicyResult`, `MultiAgentRolePlan`, `NativeWorkerModels`, `PythonWorkerModels`, `TypeScriptWorkerModels`, `DesktopTaskKind`, `DesktopTaskProfile`을 직접 읽었다.
+  - [x] 해당 묶음은 DTO/표시 모델이며 직접 실행을 유발하지 않고, 기존 indexing/worker/verification service 경계에서 path/policy 검증을 수행한다.
+
 ### L. 핵심 guardrail coverage 대조
 
 - [x] 최신 사용자 요청 우선권 / embedded evidence 분리

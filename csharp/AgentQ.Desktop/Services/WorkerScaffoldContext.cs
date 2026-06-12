@@ -53,13 +53,19 @@ public sealed class WorkerScaffoldContextBuilder
     {
         return candidates
             .Select(Normalize)
-            .FirstOrDefault(candidate => Directory.Exists(Path.Combine(root, candidate)));
+            .FirstOrDefault(candidate =>
+            {
+                var path = Path.Combine(root, candidate);
+                return Directory.Exists(path) &&
+                       WorkspacePathResolver.IsResolvedInsideWorkspace(root, path);
+            });
     }
 
     private static bool FileContains(string root, string relativePath, string value)
     {
         var path = Path.Combine(root, relativePath);
         return File.Exists(path) &&
+               WorkspacePathResolver.IsResolvedInsideWorkspace(root, path) &&
                File.ReadAllText(path).Contains(value, StringComparison.OrdinalIgnoreCase);
     }
 

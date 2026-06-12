@@ -89,16 +89,43 @@ public sealed class AgentPlanWorkerPlanAdapter
     {
         foreach (var command in workspaceVerificationCommands.Where(command => !string.IsNullOrWhiteSpace(command)))
         {
-            if (text.Contains(command, StringComparison.OrdinalIgnoreCase))
+            if (VerificationCommandPolicy.IsAllowed(command) &&
+                text.Contains(command, StringComparison.OrdinalIgnoreCase))
             {
                 return command;
             }
         }
 
         var match = CommandRegex.Match(text);
-        return match.Success
-            ? match.Groups["command"].Value.Trim()
+        if (!match.Success)
+        {
+            return string.Empty;
+        }
+
+        if (IsFollowedByShellSeparator(text, match.Index + match.Length))
+        {
+            return string.Empty;
+        }
+
+        var extractedCommand = match.Groups["command"].Value.Trim();
+        return VerificationCommandPolicy.IsAllowed(extractedCommand)
+            ? extractedCommand
             : string.Empty;
+    }
+
+    private static bool IsFollowedByShellSeparator(string text, int start)
+    {
+        for (var index = start; index < text.Length; index++)
+        {
+            if (char.IsWhiteSpace(text[index]))
+            {
+                continue;
+            }
+
+            return text[index] is ';' or '&' or '|';
+        }
+
+        return false;
     }
 
     private static WorkerPlanStepKind InferStepKind(string text)
@@ -123,7 +150,8 @@ public sealed class AgentPlanWorkerPlanAdapter
         var text = string.Join(' ', items.Select(item => $"{item.Title} {item.Detail}"));
         foreach (var command in workspaceVerificationCommands)
         {
-            if (ShouldUseCommand(text, command))
+            if (VerificationCommandPolicy.IsAllowed(command) &&
+                ShouldUseCommand(text, command))
             {
                 yield return command;
             }

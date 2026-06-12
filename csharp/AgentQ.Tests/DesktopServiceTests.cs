@@ -10967,6 +10967,18 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void DesktopProjectConfigBuilder_DoesNotPersistUnsafeVerificationCommands()
+    {
+        var config = DesktopProjectConfigBuilder.Build(
+            AgentWorkMode.Coding,
+            ["dotnet test", "dotnet test; Remove-Item -Recurse ."],
+            ["hint"]);
+
+        Assert.Contains("dotnet test", config.VerificationCommands);
+        Assert.DoesNotContain(config.VerificationCommands, command => command.Contains("Remove-Item", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ToolReplayService_SavesAndLoadsLatestSession()
     {
         var root = CreateTempDirectory();
@@ -14024,6 +14036,28 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void AgentPlanWorkerPlanAdapter_DoesNotCreateRunCommandStepForUnsafeCommand()
+    {
+        var items = new List<AgentPlanItem>
+        {
+            new()
+            {
+                Title = "Run verification",
+                Detail = "Run dotnet test; Remove-Item -Recurse . after changes."
+            }
+        };
+
+        var plan = new AgentPlanWorkerPlanAdapter().Convert(
+            items,
+            "Verify",
+            ["dotnet test; Remove-Item -Recurse ."]);
+
+        var step = Assert.Single(plan.Steps);
+        Assert.Equal(WorkerPlanStepKind.Manual, step.Kind);
+        Assert.Empty(plan.VerificationCommands);
+    }
+
+    [Fact]
     public void WorkerPlanCandidateBuilder_MarksDatabaseScaffoldAsApprovalRequired()
     {
         var recommendation = new WorkerScaffoldRecommendation
@@ -15535,6 +15569,30 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.Contains(result.Issues, issue => issue.Contains("src/lib.rs was not found", StringComparison.OrdinalIgnoreCase));
         var outsideLib = await File.ReadAllTextAsync(Path.Combine(outside, "src", "lib.rs"));
         Assert.DoesNotContain("pub mod billing;", outsideLib);
+    }
+
+    [Fact]
+    public async Task WorkerScaffoldContextBuilder_IgnoresSymlinkedSourceRootAndPackageManifest()
+    {
+        var root = CreateTempDirectory();
+        var outside = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(outside, "src"));
+        await File.WriteAllTextAsync(Path.Combine(outside, "package.json"), """{"devDependencies":{"jest":"latest"}}""");
+
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(root, "src"), Path.Combine(outside, "src"));
+            File.CreateSymbolicLink(Path.Combine(root, "package.json"), Path.Combine(outside, "package.json"));
+        }
+        catch
+        {
+            return;
+        }
+
+        var context = new WorkerScaffoldContextBuilder().Build(root, new WorkerPlan());
+
+        Assert.Equal("src/features", context.FeatureRoot);
+        Assert.False(context.UsesJest);
     }
 
     [Fact]
