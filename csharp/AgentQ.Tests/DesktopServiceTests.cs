@@ -423,6 +423,8 @@ public sealed class DesktopServiceTests
     [InlineData("\uAC1C\uBC1C\uC790 \uAE30\uBCF8 \uB2E8\uC5B4\uC7A5 \uC6F9", DesktopTaskKind.Feature)]
     [InlineData("\uC5B8\uB9AC\uC5BC\uC5D4\uC9C4 PlayerController \uB85C\uC9C1\uC744 \uC791\uC131\uD574\uC918", DesktopTaskKind.Feature)]
     [InlineData("Unreal Engine\uC5D0\uC11C \uC0AC\uC6A9\uD560 PlayerController \uB85C\uC9C1\uC744 \uC791\uC131\uD574\uC918", DesktopTaskKind.Feature)]
+    [InlineData("\uB108\uC758 \uB204\uAC00 \uB9CC\uB4E4\uC5C8\uC744\uAE4C", DesktopTaskKind.General)]
+    [InlineData("\uB108\uB97C \uB204\uAC00 \uAC1C\uBC1C\uD588\uC5B4?", DesktopTaskKind.General)]
     public void DesktopTaskClassifier_ClassifiesCommonTaskTypes(string text, DesktopTaskKind expected)
     {
         Assert.Equal(expected, DesktopTaskClassifier.Classify(text));
@@ -624,6 +626,8 @@ public sealed class DesktopServiceTests
     [InlineData("개발자 용어집 웹사이트를 만들고 싶은데 어떤 방향이 좋을까?", TurnIntentType.Conversation)]
     [InlineData("쇼핑몰 만들어볼까 하는데 기능은 뭐가 좋을까?", TurnIntentType.Conversation)]
     [InlineData("이런 앱을 만들 수 있을까?", TurnIntentType.Conversation)]
+    [InlineData("너의 누가 만들었을까", TurnIntentType.Conversation)]
+    [InlineData("너를 누가 개발했어?", TurnIntentType.Conversation)]
     [InlineData("개발자 용어집 웹사이트 생성해줘", TurnIntentType.Action)]
     [InlineData("이 폴더에 test2 라는 폴더를 만들어줘 ?", TurnIntentType.Action)]
     [InlineData("\uB2E4\uC74C \uB85C\uADF8 \uC6D0\uC778\uC744 \uBD84\uC11D\uD574\uC918: `test2 \uD3F4\uB354\uB97C \uC0DD\uC131\uD574\uC918`", TurnIntentType.Conversation)]

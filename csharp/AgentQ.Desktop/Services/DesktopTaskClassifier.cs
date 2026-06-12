@@ -6,6 +6,11 @@ public static class DesktopTaskClassifier
     {
         var text = userText.ToLowerInvariant();
 
+        if (IsIdentityOrAuthorshipQuestion(text))
+        {
+            return DesktopTaskKind.General;
+        }
+
         if (IsCodeReviewRequest(text))
         {
             return DesktopTaskKind.CodeReview;
@@ -100,6 +105,51 @@ public static class DesktopTaskClassifier
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsIdentityOrAuthorshipQuestion(string text)
+    {
+        var compact = Compact(text);
+        var asksWho = ContainsAny(compact, "who", "\uB204\uAC00", "\uB204\uAD6C");
+        var asksAuthorship = ContainsAny(
+            compact,
+            "whomade",
+            "whocreated",
+            "whodeveloped",
+            "creator",
+            "developer",
+            "\uB9CC\uB4E4",
+            "\uAC1C\uBC1C",
+            "\uC81C\uC791",
+            "\uB9CC\uB4E0\uC0AC\uB78C",
+            "\uAC1C\uBC1C\uC790",
+            "\uC81C\uC791\uC790");
+        var identityTarget = ContainsAny(
+            compact,
+            "you",
+            "agentq",
+            "\uB108",
+            "\uB108\uB97C",
+            "\uB108\uC758",
+            "\uB2F9\uC2E0",
+            "\uB2F9\uC2E0\uC744",
+            "\uB2F9\uC2E0\uC758",
+            "\uC5D0\uC774\uC804\uD2B8q",
+            "\uC5D0\uC774\uC804\uD2B8\uD050");
+
+        return asksWho && asksAuthorship && identityTarget;
+    }
+
+    private static string Compact(string text)
+    {
+        var chars = text.Where(ch => !char.IsWhiteSpace(ch) &&
+                                     ch != '-' &&
+                                     ch != '_' &&
+                                     ch != '?' &&
+                                     ch != '!' &&
+                                     ch != '.' &&
+                                     ch != ',');
+        return new string(chars.ToArray());
+    }
 
     private static bool IsCodeReviewRequest(string text)
     {

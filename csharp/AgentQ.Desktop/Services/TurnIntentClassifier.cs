@@ -51,6 +51,13 @@ public static class TurnIntentClassifier
             return Conversation("Empty user turn.", confidence: 0.9);
         }
 
+        if (IsIdentityOrAuthorshipQuestion(normalized))
+        {
+            return Conversation(
+                "The turn asks about AgentQ identity or authorship rather than requesting workspace execution.",
+                confidence: 0.9);
+        }
+
         var asksForHowTo = HasHowToSignal(normalized);
         var asksAdvice = HasAdviceSignal(normalized);
         var asksInfo = HasInformationSignal(normalized);
@@ -434,7 +441,8 @@ public static class TurnIntentClassifier
     {
         return ContainsAny(normalized,
             "what", "why", "explain", "describe", "tellme", "summarize", "meaning", "difference", "principle",
-            "\uBB50\uC57C", "\uBB54\uAC00", "\uBB34\uC5C7", "\uC124\uBA85", "\uC54C\uB824", "\uC18C\uAC1C", "\uC815\uB9AC", "\uC694\uC57D", "\uC758\uBBF8", "\uCC28\uC774", "\uC65C", "\uC6D0\uB9AC");
+            "who", "whomade", "whocreated", "whodeveloped",
+            "\uBB50\uC57C", "\uBB54\uAC00", "\uBB34\uC5C7", "\uC124\uBA85", "\uC54C\uB824", "\uC18C\uAC1C", "\uC815\uB9AC", "\uC694\uC57D", "\uC758\uBBF8", "\uCC28\uC774", "\uC65C", "\uC6D0\uB9AC", "\uB204\uAC00", "\uB204\uAD6C");
     }
 
     private static bool HasAdviceSignal(string normalized)
@@ -534,6 +542,38 @@ public static class TurnIntentClassifier
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsIdentityOrAuthorshipQuestion(string normalized)
+    {
+        var asksWho = ContainsAny(normalized, "who", "\uB204\uAC00", "\uB204\uAD6C");
+        var asksAuthorship = ContainsAny(
+            normalized,
+            "whomade",
+            "whocreated",
+            "whodeveloped",
+            "creator",
+            "developer",
+            "\uB9CC\uB4E4",
+            "\uAC1C\uBC1C",
+            "\uC81C\uC791",
+            "\uB9CC\uB4E0\uC0AC\uB78C",
+            "\uAC1C\uBC1C\uC790",
+            "\uC81C\uC791\uC790");
+        var identityTarget = ContainsAny(
+            normalized,
+            "you",
+            "agentq",
+            "\uB108",
+            "\uB108\uB97C",
+            "\uB108\uC758",
+            "\uB2F9\uC2E0",
+            "\uB2F9\uC2E0\uC744",
+            "\uB2F9\uC2E0\uC758",
+            "\uC5D0\uC774\uC804\uD2B8q",
+            "\uC5D0\uC774\uC804\uD2B8\uD050");
+
+        return asksWho && asksAuthorship && identityTarget;
+    }
 
     private static string ExtractJsonObject(string responseText)
     {

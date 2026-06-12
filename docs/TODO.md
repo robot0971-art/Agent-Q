@@ -628,6 +628,11 @@
 - [x] root project instruction 문서 오염 경계를 확인했다.
   - [x] `AGENTS.md`가 mojibake 상태로 남아 있어 Agent Q 프로젝트 지침이 prompt context를 오염시킬 수 있던 문서 경로를 정상 UTF-8 한국어/영문 원문으로 복구했다.
 
+- [x] 후속 실사용 테스트에서 발견한 정체성 질문 오분류를 수정했다.
+  - [x] `너의 누가 만들었을까` 같은 AgentQ 저자/정체성 질문이 `만들` 어근 때문에 Feature task로 분류되고 no-tool guard 실패로 바뀌던 경로를 차단했다.
+  - [x] `TurnIntentClassifier`는 저자/정체성 질문을 Conversation으로, `DesktopTaskClassifier`는 General로 선분류한다.
+  - [x] 관련 한국어 회귀 테스트를 추가하고 classifier focused test 45개 및 Desktop build로 검증했다.
+
 ### L. 핵심 guardrail coverage 대조
 
 - [x] 최신 사용자 요청 우선권 / embedded evidence 분리
@@ -1079,6 +1084,12 @@ dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console
 
 dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-12 재시도 결과: 빌드 성공, 경고 4개(NU1900 package vulnerability metadata 조회 실패), 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~DesktopTaskClassifier_ClassifiesCommonTaskTypes|FullyQualifiedName~TurnIntentClassifier_ClassifiesConversationActionHybridAndAmbiguous" -v minimal
+# 2026-06-12 결과: 통과 45, 실패 0, 건너뜀 0, 전체 45. AgentQ 저자/정체성 질문 오분류 회귀 테스트 포함.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-12 결과: 빌드 성공, 경고 4개(NU1900 package vulnerability metadata 조회 실패), 오류 0.
 ```
 
 ## 다른 컴퓨터에서 이어가기
