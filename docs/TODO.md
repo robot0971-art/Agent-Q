@@ -136,6 +136,23 @@
 - [x] stale ignored `AgentQ.Desktop_*_wpftmp.csproj`로 WPF `.g.cs` missing build가 반복되던 문제를 확인하고 clean rebuild 절차를 기록했다.
 - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false`가 통과하는 상태를 여러 차례 확인했다.
 
+### 12. Conversation-first routing / no-tool guard 재설계
+
+- [x] “너를 누가 만들었어?” 같은 AgentQ 저자/정체성 질문은 `Conversation`으로 유지하고 no-tool guard가 실패 답변으로 바꾸지 않게 했다.
+- [x] “테스트 돌리는 방법 알려줘” 같은 how-to 요청은 shell 실행 없이 LLM 답변으로 끝나게 했다.
+- [x] “새 프로젝트 만들까 하는데 뭐가 좋을까?” 같은 consultative project 요청은 scaffold를 실행하지 않게 했다.
+- [x] task profile이 `Feature`로 기울어도 LLM/UserTurnUnderstanding이 consultative `Conversation`으로 판단하면 no-tool guard를 적용하지 않게 했다.
+- [x] no-tool guard retry/reject는 concrete `Action`/`Hybrid` intent일 때만 적용한다. `Conversation` intent에는 작업 도구를 쓰지 않았다는 이유로 실패 메시지를 내지 않는다.
+- [x] scaffold clarification/recovery도 `Action`/`Hybrid` intent에서만 개입하게 해서 feasibility/상담 답변을 scaffold 질문으로 덮지 않게 했다.
+- [x] `React 사이트 만들어줘`는 `CreateProject`/safe scaffold 경로를 유지한다.
+- [x] `현재 폴더에 test2 폴더 만들어줘`는 `CreateDirectory` 실행 계약을 유지한다.
+- [x] LLM이 concrete folder creation을 `Conversation`으로 오판해도 deterministic fallback action을 보존한다.
+- [x] 단, consultative wording 때문에 fallback이 action처럼 보이는 경우에는 LLM `Conversation` 판단을 우선한다.
+- [x] `=====` 뒤에 붙은 pasted answer의 “설명/할 수” 표현이 현재 실행 요청을 consultative 대화로 오염시키지 않게 했다.
+- [x] `test2 폴더를 생성해줘` 뒤에 붙여넣은 irrelevant answer가 와도 앞부분 current action을 보존하고 `create_directory` evidence를 요구한다.
+- [x] bad AgentQ response complaint / quoted log / fenced log 안의 실행 문장은 여전히 evidence로만 취급하고 실행하지 않는다.
+- [x] safe scaffold deterministic success lifecycle은 `turn_completed` diagnostics를 남기도록 테스트 기대를 정리했다.
+
 ## 앞으로 해야 할 일
 
 ### A. 전체 감사 진행 방식
@@ -1090,6 +1107,15 @@ dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName
 
 dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-12 결과: 빌드 성공, 경고 4개(NU1900 package vulnerability metadata 조회 실패), 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard|FullyQualifiedName~DesktopAgentService_AllowsHowToConversationWithoutShellExecution|FullyQualifiedName~DesktopAgentService_PrefersLlmConversationForConsultativeFeatureProfile|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopAgentService_DirectFallbackCreatesFolderWhenModelAnswersIrrelevantText|FullyQualifiedName~DesktopAgentService_E2eCreatesDirectoryFromExplicitCommand|FullyQualifiedName~DesktopAgentService_LlmFirstRegressionRetriesFalseSuccessThenExecutesContractTool|FullyQualifiedName~UserTurnUnderstanding_PrefersModelConversationForConsultativeFallbackAction|FullyQualifiedName~UserTurnUnderstanding_PreservesConcreteCreateDirectoryWhenModelSaysConversation|FullyQualifiedName~UserTurnUnderstanding_PreservesCurrentActionBeforePastedContext|FullyQualifiedName~UserIntentTranslator_RecognizesConcreteReactSiteProjectRequest|FullyQualifiedName~UserIntentTranslator_RecognizesCurrentFolderCreateDirectoryRequest|FullyQualifiedName~TurnIntentClassifier_ClassifiesConversationActionHybridAndAmbiguous|FullyQualifiedName~DesktopAgentService_DoesNotExecuteEmbeddedFolderCommandInBadResponseComplaint|FullyQualifiedName~DesktopAgentService_CreatesExplicitFolderWhenPastedIrrelevantAnswerFollowsRequest|FullyQualifiedName~DesktopAgentService_BlocksToolCallForEmbeddedCommandEvenWhenLlmIntentSaysAction" -v minimal
+# 2026-06-12 결과: 통과 42, 실패 0, 건너뜀 0, 전체 42.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-12 결과: 빌드 성공, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
+# 2026-06-12 결과: exit code 0. 콘솔 출력은 비어 있었지만 테스트 프로세스가 성공 종료했다.
 ```
 
 ## 다른 컴퓨터에서 이어가기

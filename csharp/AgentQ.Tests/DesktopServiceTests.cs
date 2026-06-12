@@ -620,6 +620,7 @@ public sealed class DesktopServiceTests
     [InlineData("\uAC80\uC99D \uBC29\uBC95 \uC54C\uB824\uC918", TurnIntentType.Conversation)]
     [InlineData("\uC774 \uBCC0\uACBD \uAC80\uC99D\uD574\uC918", TurnIntentType.Action)]
     [InlineData("그럼 웹사이트는 어떤걸 만들어 볼까", TurnIntentType.Conversation)]
+    [InlineData("새 프로젝트 만들까 하는데 뭐가 좋을까?", TurnIntentType.Conversation)]
     [InlineData("포트폴리오 사이트 만들까 하는데 괜찮을까?", TurnIntentType.Conversation)]
     [InlineData("포트폴리오 홈페이지를 만들어 볼 수 있는지 가능한가?", TurnIntentType.Conversation)]
     [InlineData("주식 분석 사이트를 만들어보면 어떨까?", TurnIntentType.Conversation)]
@@ -628,6 +629,8 @@ public sealed class DesktopServiceTests
     [InlineData("이런 앱을 만들 수 있을까?", TurnIntentType.Conversation)]
     [InlineData("너의 누가 만들었을까", TurnIntentType.Conversation)]
     [InlineData("너를 누가 개발했어?", TurnIntentType.Conversation)]
+    [InlineData("React 사이트 만들어줘", TurnIntentType.Action)]
+    [InlineData("현재 폴더에 test2 폴더 만들어줘", TurnIntentType.Action)]
     [InlineData("개발자 용어집 웹사이트 생성해줘", TurnIntentType.Action)]
     [InlineData("이 폴더에 test2 라는 폴더를 만들어줘 ?", TurnIntentType.Action)]
     [InlineData("\uB2E4\uC74C \uB85C\uADF8 \uC6D0\uC778\uC744 \uBD84\uC11D\uD574\uC918: `test2 \uD3F4\uB354\uB97C \uC0DD\uC131\uD574\uC918`", TurnIntentType.Conversation)]
@@ -1931,6 +1934,17 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesCurrentFolderCreateDirectoryRequest()
+    {
+        var contract = UserIntentTranslator.Translate("현재 폴더에 test2 폴더 만들어줘");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateDirectory, contract.Intent);
+        Assert.Contains("test2", contract.Goal, StringComparison.Ordinal);
+        Assert.Contains("create_directory", string.Join(" ", contract.RequiredActions), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UserIntentTranslator_RecognizesCreateDirectoryWithGenerateVerb()
     {
         var contract = UserIntentTranslator.Translate("test2 \uD3F4\uB354\uB97C \uC0DD\uC131\uD574\uC918");
@@ -1991,6 +2005,71 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesConcreteReactSiteProjectRequest()
+    {
+        var contract = UserIntentTranslator.Translate("React 사이트 만들어줘");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateProject, contract.Intent);
+    }
+
+    [Fact]
+    public void UserTurnUnderstanding_PrefersModelConversationForConsultativeFallbackAction()
+    {
+        var fallback = UserTurnUnderstandingService.Understand(
+            "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?");
+        var model = fallback with
+        {
+            PrimaryIntent = "Conversation",
+            ActualRequestedAction = new ExecutionDecision
+            {
+                ShouldExecute = false,
+                ActionKind = "none",
+                Reason = "The user asks if it is possible."
+            },
+            RequiresWrite = false,
+            RequiresShell = false,
+            RequiresNetwork = false,
+            IsConcreteEnough = true,
+            Confidence = 0.94
+        };
+
+        var effective = UserTurnUnderstandingService.ApplySafetyRules(fallback, model);
+
+        Assert.Equal("Conversation", effective.PrimaryIntent);
+        Assert.False(effective.ActualRequestedAction.ShouldExecute);
+        Assert.False(effective.RequiresWrite);
+    }
+
+    [Fact]
+    public void UserTurnUnderstanding_PreservesConcreteCreateDirectoryWhenModelSaysConversation()
+    {
+        var fallback = UserTurnUnderstandingService.Understand("현재 폴더에 test2 폴더 만들어줘");
+        var model = fallback with
+        {
+            PrimaryIntent = "Conversation",
+            ActualRequestedAction = new ExecutionDecision
+            {
+                ShouldExecute = false,
+                ActionKind = "none",
+                Reason = "The model incorrectly treated the command as conversation."
+            },
+            RequiresWrite = false,
+            RequiresShell = false,
+            RequiresNetwork = false,
+            IsConcreteEnough = true,
+            Confidence = 0.94
+        };
+
+        var effective = UserTurnUnderstandingService.ApplySafetyRules(fallback, model);
+
+        Assert.Equal("Action", effective.PrimaryIntent);
+        Assert.True(effective.ActualRequestedAction.ShouldExecute);
+        Assert.True(effective.RequiresWrite);
+        Assert.Equal(TaskContractIntent.CreateDirectory.ToString(), effective.ActualRequestedAction.ActionKind);
+    }
+
+    [Fact]
     public void UserTurnUnderstanding_DoesNotExecuteHowToQuestionWithActionWords()
     {
         var understanding = UserTurnUnderstandingService.Understand("\uB85C\uCEEC\uC11C\uBC84 \uC2E4\uD589 \uBC29\uBC95 \uC54C\uB824\uC918");
@@ -2013,6 +2092,22 @@ public sealed class DesktopServiceTests
         Assert.Equal(2, understanding.EmbeddedContent.Count);
         Assert.Contains(understanding.EmbeddedContent, item => item.Kind == "example_user_request" && item.Text.Contains("test2", StringComparison.Ordinal));
         Assert.Contains(understanding.EmbeddedContent, item => item.Kind == "bad_agent_response" && item.Text.Contains("\uB3C5\uC11C", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UserTurnUnderstanding_PreservesCurrentActionBeforePastedContext()
+    {
+        var understanding = UserTurnUnderstandingService.Understand(
+            "test2 \uD3F4\uB354\uB97C \uC0DD\uC131\uD574\uC918\n=====\n" +
+            "\uC800\uB294 \uC778\uACF5\uC9C0\uB2A5\uC774\uB77C \uC2E4\uC81C \uD65C\uB3D9\uC740 \uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+
+        Assert.Equal("Action", understanding.PrimaryIntent);
+        Assert.True(understanding.ActualRequestedAction.ShouldExecute);
+        Assert.Equal(TaskContractIntent.CreateDirectory.ToString(), understanding.ActualRequestedAction.ActionKind);
+        Assert.Contains("test2", understanding.RoutingText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(understanding.EmbeddedContent, item =>
+            item.Kind == "pasted_context_after_current_request" &&
+            !item.ShouldExecute);
     }
 
     [Fact]
@@ -2883,6 +2978,170 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Conversation",
+                  "userGoal": "너를 누가 만들었어?",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": false,
+                    "actionKind": "none",
+                    "target": "",
+                    "reason": "The user asks about AgentQ authorship, not workspace execution."
+                  },
+                  "requiresWrite": false,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.96
+                }
+                """),
+            StreamTextResponse("AgentQ는 robot0971-art가 개발했습니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Conversation turn must not request tool approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 2
+            },
+            "너를 누가 만들었어?",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Contains("robot0971-art", result, StringComparison.Ordinal);
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.DoesNotContain("Coding task did not use workspace tools", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(runSteps, step => step.Contains("No-tool guard", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(runSteps, step => step.Contains("Task contract:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_AllowsHowToConversationWithoutShellExecution()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Conversation",
+                  "userGoal": "테스트 돌리는 방법 알려줘",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": false,
+                    "actionKind": "none",
+                    "target": "",
+                    "reason": "The user asks for instructions rather than asking AgentQ to run tests."
+                  },
+                  "requiresWrite": false,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.95
+                }
+                """),
+            StreamTextResponse("테스트는 프로젝트 루트에서 dotnet test 명령으로 실행할 수 있습니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("How-to conversation must not run shell tools."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 2
+            },
+            "테스트 돌리는 방법 알려줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Contains("dotnet test", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.DoesNotContain(runSteps, step => step.Contains("Task contract:", StringComparison.Ordinal));
+        Assert.DoesNotContain(runSteps, step => step.Contains("No-tool guard", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_PrefersLlmConversationForConsultativeFeatureProfile()
+    {
+        var root = CreateTempDirectory();
+        var userText = "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?";
+        Assert.Equal(DesktopTaskKind.Feature, DesktopTaskClassifier.Classify(userText));
+
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Conversation",
+                  "userGoal": "이 폴더에 언리얼 엔진에 사용할 C++로직을 작성하려고 한다 player가 wasd로 움직일수 있는 Player Controller 로직을 작성 해줄수 있나 ?",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": false,
+                    "actionKind": "none",
+                    "target": "",
+                    "reason": "The user asks whether it is possible, not for immediate file creation."
+                  },
+                  "requiresWrite": false,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.94
+                }
+                """),
+            StreamTextResponse("가능합니다. Unreal 프로젝트 구조와 입력 바인딩 위치를 먼저 확인하면 됩니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Consultative conversation must not request tool approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "intent-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 2
+            },
+            userText,
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Contains("가능", result, StringComparison.Ordinal);
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains(runSteps, step => step.Contains("Turn intent: Conversation", StringComparison.Ordinal));
+        Assert.DoesNotContain(runSteps, step => step.Contains("No-tool guard", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(runSteps, step => step.Contains("Task contract:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task DesktopAgentService_RejectsRepeatedOffTopicAnswerForTaskContractWithoutDirectFallback()
     {
         var root = CreateTempDirectory();
@@ -3267,7 +3526,7 @@ public sealed class DesktopServiceTests
                 OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
             });
 
-        Assert.True(Directory.Exists(Path.Combine(root, "test2")), result);
+        Assert.True(Directory.Exists(Path.Combine(root, "test2")), result + Environment.NewLine + string.Join(Environment.NewLine, runSteps));
         Assert.Contains("create_directory", permissionEnforcer.RequestedTools);
         Assert.Contains("test2", result, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(runSteps, step => step.Contains("Task contract: direct tool fallback", StringComparison.Ordinal));
@@ -7118,7 +7377,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("tool_execution_starting", log, StringComparison.Ordinal);
         Assert.Contains("tool_execution_completed", log, StringComparison.Ordinal);
         Assert.Contains("file_change_recorded", log, StringComparison.Ordinal);
-        Assert.Contains("turn_failed", log, StringComparison.Ordinal);
+        Assert.Contains("turn_completed", log, StringComparison.Ordinal);
         Assert.Contains("tool_replay_saved", log, StringComparison.Ordinal);
         Assert.Contains("trace=", log, StringComparison.Ordinal);
     }

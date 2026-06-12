@@ -79,6 +79,11 @@ public static class UserTurnUnderstandingService
             return metaFeedback;
         }
 
+        if (TryUnderstandCurrentActionBeforeEmbeddedEvidence(userText, out var currentAction))
+        {
+            return currentAction;
+        }
+
         if (TryUnderstandEmbeddedEvidence(userText, out var embeddedEvidence))
         {
             return embeddedEvidence;
@@ -136,6 +141,20 @@ public static class UserTurnUnderstandingService
         if (safetyFallback.ActualRequestedAction.ShouldExecute &&
             !modelUnderstanding.ActualRequestedAction.ShouldExecute)
         {
+            if (IsConversationFirstRequest(safetyFallback.UserGoal))
+            {
+                return modelUnderstanding with
+                {
+                    Confidence = Math.Max(safetyFallback.Confidence, modelUnderstanding.Confidence),
+                    ActualRequestedAction = modelUnderstanding.ActualRequestedAction with
+                    {
+                        Reason = string.IsNullOrWhiteSpace(modelUnderstanding.ActualRequestedAction.Reason)
+                            ? $"Model classified this as {modelUnderstanding.PrimaryIntent}, and the current wording is consultative or informational rather than an execution command."
+                            : modelUnderstanding.ActualRequestedAction.Reason
+                    }
+                };
+            }
+
             return safetyFallback with
             {
                 Confidence = Math.Max(safetyFallback.Confidence, modelUnderstanding.Confidence),
@@ -449,6 +468,40 @@ public static class UserTurnUnderstandingService
         return true;
     }
 
+    private static bool TryUnderstandCurrentActionBeforeEmbeddedEvidence(string userText, out UserTurnUnderstanding understanding)
+    {
+        understanding = new UserTurnUnderstanding();
+        var parts = SplitLikelyEmbeddedSections(userText);
+        if (parts.Count < 2 || string.IsNullOrWhiteSpace(parts[0]))
+        {
+            return false;
+        }
+
+        var firstPart = parts[0].Trim();
+        var contract = UserIntentTranslator.Translate(firstPart);
+        if (!contract.IsActionable)
+        {
+            return false;
+        }
+
+        understanding = FromTaskContract(firstPart, contract) with
+        {
+            EmbeddedContent = parts
+                .Skip(1)
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => new EmbeddedContentItem
+                {
+                    Kind = "pasted_context_after_current_request",
+                    Text = part.Trim(),
+                    ShouldExecute = false,
+                    Reason = "This content appears after the current explicit request and is context only."
+                })
+                .ToList(),
+            Confidence = 0.88
+        };
+        return true;
+    }
+
     private static IReadOnlyList<string> SplitLikelyEmbeddedSections(string userText)
     {
         var normalizedNewLines = userText.Replace("\r\n", "\n").Replace('\r', '\n');
@@ -517,6 +570,56 @@ public static class UserTurnUnderstandingService
             "\uC778\uC6A9\uB41C\uBA85\uB839\uC2E4\uD589", "\uB530\uC634\uD45C\uC548\uBA85\uB839\uC2E4\uD589",
             "\uB85C\uADF8\uC5D0\uC788\uB294\uBA85\uB839\uC2E4\uD589", "\uC704\uBA85\uB839\uC2E4\uD589", "\uADF8\uBA85\uB839\uC2E4\uD589",
             "executequotedcommand", "runquotedcommand", "executethequotedcommand", "runthequotedcommand");
+    }
+
+    public static bool IsConversationFirstRequest(string userText)
+    {
+        var normalized = Normalize(userText);
+        return ContainsAny(
+            normalized,
+            "howto",
+            "method",
+            "possible",
+            "isitpossible",
+            "cani",
+            "canwe",
+            "shouldi",
+            "shouldwe",
+            "whatwouldbegood",
+            "whatabout",
+            "howabout",
+            "thinkingabout",
+            "wanttocreate",
+            "wanttomake",
+            "wanttobuild",
+            "\uBC29\uBC95",
+            "\uC5B4\uB5BB\uAC8C",
+            "\uC5B4\uB5A4\uAC8C",
+            "\uC5B4\uB5A4\uAC78",
+            "\uBB50\uAC00",
+            "\uBB34\uC5C7\uC744",
+            "\uC54C\uB824",
+            "\uC124\uBA85",
+            "\uC218\uC788\uC744\uAE4C",
+            "\uC218\uC788\uB294\uC9C0",
+            "\uC218\uC788\uB098",
+            "\uAC00\uB2A5\uD560\uAE4C",
+            "\uAC00\uB2A5\uD55C\uAC00",
+            "\uAC00\uB2A5\uD574",
+            "\uD560\uC218\uC788\uB098",
+            "\uD574\uC904\uC218\uC788\uB098",
+            "\uAD1C\uCC2E\uC744\uAE4C",
+            "\uC88B\uC744\uAE4C",
+            "\uC5B4\uB5A8\uAE4C",
+            "\uC5B4\uB54C",
+            "\uB9CC\uB4E4\uAE4C",
+            "\uB9CC\uB4E4\uACE0\uC2F6",
+            "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6",
+            "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74",
+            "\uB9CC\uB4E4\uC5B4\uBCFC\uC218",
+            "\uB9CC\uB4E4\uB824\uACE0",
+            "\uC791\uC131\uD558\uB824\uACE0",
+            "\uD558\uB824\uACE0\uD558\uB294\uB370");
     }
 
     private static IReadOnlyList<string> ExtractQuotedOrIndentedActionTexts(string userText)

@@ -288,6 +288,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         if (workMode != AgentWorkMode.Readonly &&
+            turnIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
             taskProfile.Kind == DesktopTaskKind.Feature &&
             projectScaffoldPlan.IsGreenfieldRequest &&
             !projectScaffoldPlan.CanProceed)
@@ -726,8 +727,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
+                var shouldApplyNoToolGuard = ShouldApplyNoToolGuard(turnIntent, workMode);
                 var shouldRetryNoToolCoding =
-                    turnIntent.Type != TurnIntentType.Conversation &&
+                    shouldApplyNoToolGuard &&
                     ShouldRetryNoToolCodingFallback(
                         userText,
                         candidateText,
@@ -738,7 +740,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         skillToolUseRequired,
                         replayEntries.Count > 0);
                 var shouldRetryGenericGreeting =
-                    turnIntent.Type != TurnIntentType.Conversation &&
+                    shouldApplyNoToolGuard &&
                     ShouldRetryGenericGreetingFallback(
                         userText,
                         candidateText,
@@ -943,7 +945,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
-                if (turnIntent.Type != TurnIntentType.Conversation &&
+                if (shouldApplyNoToolGuard &&
                     !(turnIntent.AllowsDeterministicExecution &&
                       ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode) &&
                       fileChanges.Count == 0) &&
@@ -1763,8 +1765,23 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return intent;
         }
 
-        if (!string.Equals(understanding.PrimaryIntent, "MetaFeedback", StringComparison.OrdinalIgnoreCase) &&
-            understanding.EmbeddedContent.Count == 0)
+        var isConversation = string.Equals(understanding.PrimaryIntent, "Conversation", StringComparison.OrdinalIgnoreCase);
+        var isMetaFeedback = string.Equals(understanding.PrimaryIntent, "MetaFeedback", StringComparison.OrdinalIgnoreCase);
+        if (!isConversation && !isMetaFeedback && understanding.EmbeddedContent.Count == 0)
+        {
+            return intent;
+        }
+
+        var intentRequiresExecution =
+            intent.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+            intent.IsConcreteEnough &&
+            (intent.RequiresWrite ||
+             intent.RequiresShell ||
+             intent.RequiresNetwork ||
+             !string.IsNullOrWhiteSpace(intent.ActionKind));
+        if (intentRequiresExecution &&
+            !isMetaFeedback &&
+            !UserTurnUnderstandingService.IsConversationFirstRequest(understanding.RoutingText))
         {
             return intent;
         }
@@ -1774,7 +1791,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             Type = TurnIntentType.Conversation,
             Confidence = Math.Min(intent.Confidence, Math.Max(understanding.Confidence, 0.7)),
             Rationale =
-                $"UserTurnUnderstanding classified this turn as {understanding.PrimaryIntent}; embedded commands or pasted responses are evidence, not current execution requests. Previous classifier result was {intent.Type}.",
+                $"UserTurnUnderstanding classified this turn as {understanding.PrimaryIntent} with no current execution request, so AgentQ keeps it as Conversation. Previous classifier result was {intent.Type}.",
             ActionKind = string.Empty,
             RequiresWrite = false,
             RequiresShell = false,
@@ -1900,6 +1917,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         return intent.Rationale.Contains("Model JSON parse failed", StringComparison.OrdinalIgnoreCase) ||
                intent.Rationale.Contains("Model classification call failed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldApplyNoToolGuard(TurnIntentClassification turnIntent, AgentWorkMode workMode)
+    {
+        return workMode != AgentWorkMode.Readonly &&
+               turnIntent.Type is TurnIntentType.Action or TurnIntentType.Hybrid &&
+               turnIntent.IsConcreteEnough;
     }
 
     private static bool HasConfiguredProviderEndpoint(ProviderConfiguration config)
