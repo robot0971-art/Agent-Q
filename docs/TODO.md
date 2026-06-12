@@ -1069,6 +1069,16 @@ dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseShar
 # 2026-06-11 시도: WPF generated .g.cs stale 상태를 정리한 뒤에도 5분 제한에서 timeout.
 # 의존 프로젝트 빌드 출력은 있었지만 AgentQ.Desktop 본체 완료 evidence는 없으므로 성공으로 취급하지 않는다.
 dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-12 결과: 빌드 성공, 경고 7개(NU1900 package vulnerability metadata 조회 실패), 오류 0. 의존 빌드로 AgentQ.Desktop.dll도 생성됨.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
+# 2026-06-12 첫 시도 결과: 640개 통과 뒤 테스트 호스트 종료 단계 중단으로 exit code 1. 성공 evidence로 취급하지 않고 단독 재시도함.
+# 2026-06-12 재시도 결과: 통과 1092, 실패 0, 건너뜀 0, 전체 1092, 기간 1 m 36 s.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-12 재시도 결과: 빌드 성공, 경고 4개(NU1900 package vulnerability metadata 조회 실패), 오류 0.
 ```
 
 ## 다른 컴퓨터에서 이어가기
