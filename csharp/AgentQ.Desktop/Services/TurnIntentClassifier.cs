@@ -58,6 +58,15 @@ public static class TurnIntentClassifier
         var hasAction = !string.IsNullOrWhiteSpace(action);
         var concrete = IsConcreteEnoughForAction(normalized, action);
 
+        if (hasAction &&
+            (asksAdvice || asksInfo) &&
+            LooksLikeEmbeddedActionEvidenceRequest(userText, normalized))
+        {
+            return Conversation(
+                "The turn asks to analyze or explain quoted/logged/example action text rather than execute that embedded action.",
+                confidence: 0.86);
+        }
+
         if (HasHybridSignal(normalized) && hasAction && concrete)
         {
             return new TurnIntentClassification
@@ -335,8 +344,8 @@ public static class TurnIntentClassifier
             return "create";
         }
 
-        if (ContainsAny(normalized, "run", "start", "execute", "build", "test", "install", "npmrundev",
-                "\uC2E4\uD589", "\uBE4C\uB4DC", "\uD14C\uC2A4\uD2B8", "\uB3CC\uB824", "\uB744\uC6CC", "\uC124\uCE58"))
+        if (ContainsAny(normalized, "run", "start", "execute", "build", "test", "install", "verify", "npmrundev",
+                "\uC2E4\uD589", "\uBE4C\uB4DC", "\uD14C\uC2A4\uD2B8", "\uAC80\uC99D", "\uB3CC\uB824", "\uB744\uC6CC", "\uC124\uCE58"))
         {
             return "shell";
         }
@@ -447,6 +456,33 @@ public static class TurnIntentClassifier
         return ContainsAny(normalized,
             "wanttocreate", "wanttomake", "wanttobuild", "thinkingaboutcreating", "whatwouldbegood", "possible",
             "\uB9CC\uB4E4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uACE0\uC2F6", "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74", "\uB9CC\uB4E4\uC5B4\uBCFC\uAE4C", "\uB9CC\uB4E4\uC5B4\uBCFC\uC218", "\uB9CC\uB4E4\uAE4C", "\uB9CC\uB4E4\uB824\uACE0", "\uD558\uB824\uACE0\uD558\uB294\uB370", "\uD574\uBCF4\uACE0\uC2F6", "\uC5B4\uB5BB\uAC8C\uC88B", "\uC5B4\uB5A4\uAC8C\uC88B", "\uC5B4\uB5A4\uAC78\uB9CC\uB4E4", "\uC5B4\uB5A4\uAC8C\uB9CC\uB4E4", "\uC218\uC788\uC744\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uAC00\uB2A5\uD560\uAE4C", "\uAC00\uB2A5\uD55C\uAC00", "\uB420\uAE4C");
+    }
+
+    private static bool LooksLikeEmbeddedActionEvidenceRequest(string userText, string normalized)
+    {
+        if (string.IsNullOrWhiteSpace(userText))
+        {
+            return false;
+        }
+
+        var hasEvidenceMarker = ContainsAny(
+            normalized,
+            "log", "logs", "example", "quoted", "quote", "transcript", "previousanswer", "wronganswer", "offtarget",
+            "\uB85C\uADF8", "\uC608\uC2DC", "\uC778\uC6A9", "\uC774\uC804\uB2F5\uBCC0", "\uC624\uB2F5", "\uC798\uBABB\uB41C\uB2F5\uBCC0", "\uC5C9\uB6B1\uD55C\uB2F5\uBCC0");
+        if (!hasEvidenceMarker)
+        {
+            return false;
+        }
+
+        var hasQuotedOrSeparatedText =
+            userText.Contains('`') ||
+            userText.Contains('"') ||
+            userText.Contains('\'') ||
+            userText.Contains("> ", StringComparison.Ordinal) ||
+            userText.Contains("====", StringComparison.Ordinal) ||
+            userText.Contains("-----", StringComparison.Ordinal) ||
+            userText.Contains("---", StringComparison.Ordinal);
+        return hasQuotedOrSeparatedText;
     }
 
     private static bool RequiresWrite(string action) => action is "create" or "edit" or "delete" or "file" or "git";

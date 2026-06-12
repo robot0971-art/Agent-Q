@@ -11,7 +11,7 @@ public static class DesktopTaskClassifier
             return DesktopTaskKind.CodeReview;
         }
 
-        if (ContainsAny(text, "readme", "docs", "document", "\uBB38\uC11C", "\uB9B4\uB9AC\uC988 \uB178\uD2B8", "\uC124\uBA85"))
+        if (ContainsAny(text, "readme", "docs", "document", "\uBB38\uC11C", "\uB9B4\uB9AC\uC988 \uB178\uD2B8"))
         {
             return DesktopTaskKind.Documentation;
         }
@@ -29,6 +29,11 @@ public static class DesktopTaskClassifier
         if (ContainsAny(text, "refactor", "\uB9AC\uD329\uD130", "\uB9AC\uD329\uD1A0", "\uC815\uB9AC", "\uAD6C\uC870 \uAC1C\uC120"))
         {
             return DesktopTaskKind.Refactor;
+        }
+
+        if (IsFeasibilityOrAdviceRequest(text) && HasFeatureTarget(text))
+        {
+            return DesktopTaskKind.Analysis;
         }
 
         var asksToCreate = ContainsAny(
@@ -110,6 +115,26 @@ public static class DesktopTaskClassifier
             "\uCF54\uB4DC", "\uB514\uD504", "\uBCC0\uACBD\uC0AC\uD56D", "\uCEE4\uBC0B", "\uD480\uB9AC\uD018\uC2A4\uD2B8", "\uD30C\uC77C");
 
         return hasReviewVerb && hasCodeTarget;
+    }
+
+    private static bool IsFeasibilityOrAdviceRequest(string text)
+    {
+        return ContainsAny(
+            text,
+            "can i", "can we", "could i", "could we", "possible", "is it possible", "should i", "should we", "how about", "what about",
+            "\uC218 \uC788\uC744\uAE4C", "\uC218 \uC788\uB294\uC9C0", "\uAC00\uB2A5\uD560\uAE4C", "\uAC00\uB2A5\uD55C\uAC00", "\uAC00\uB2A5\uD574",
+            "\uAD1C\uCC2E\uC744\uAE4C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB54C", "\uC88B\uC744\uAE4C", "\uB9CC\uB4E4\uAE4C", "\uB9CC\uB4E4\uC5B4\uBCF4\uBA74");
+    }
+
+    private static bool HasFeatureTarget(string text)
+    {
+        return ContainsAny(
+            text,
+            "project", "app", "feature", "portfolio", "website", "web site", "homepage", "landing page", "site", "webapp",
+            "react", "vite", "python", "data analysis", "data tool",
+            "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uAE30\uB2A5", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uC6F9\uC0AC\uC774\uD2B8", "\uC6F9 \uC0AC\uC774\uD2B8",
+            "\uD648\uD398\uC774\uC9C0", "\uB79C\uB529", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1",
+            "\uC8FC\uC2DD", "\uBD84\uC11D \uB3C4\uAD6C", "\uD30C\uC774\uC36C", "\uB370\uC774\uD130 \uBD84\uC11D");
     }
 }
 

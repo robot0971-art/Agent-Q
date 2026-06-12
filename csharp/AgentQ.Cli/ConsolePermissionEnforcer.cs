@@ -79,6 +79,12 @@ public class ConsolePermissionEnforcer : IPermissionEnforcer
                 return [];
             }
 
+            var riskSummary = GetRiskSummary(toolName);
+            if (!string.IsNullOrWhiteSpace(riskSummary))
+            {
+                summary.Add($"[bold yellow]Risk:[/] {riskSummary}");
+            }
+
             if (toolName == "bash" && root.TryGetProperty("command", out var commandProperty))
             {
                 var command = commandProperty.GetString() ?? string.Empty;
@@ -106,6 +112,20 @@ public class ConsolePermissionEnforcer : IPermissionEnforcer
         }
 
         return summary;
+    }
+
+    private static string? GetRiskSummary(string toolName)
+    {
+        return toolName.ToLowerInvariant() switch
+        {
+            "bash" => "shell command execution",
+            "write_file" => "project file write or overwrite",
+            "edit_file" => "project file edit",
+            "create_directory" => "project directory creation",
+            "delete_path" => "project file or directory deletion",
+            "web_search" => "network access",
+            _ => null
+        };
     }
 
     private static JsonElement NormalizeRootElement(JsonElement root)

@@ -132,7 +132,12 @@ public sealed class DesktopDiagnosticsService
         var paths = new List<string> { GetFallbackDiagnosticsPath() };
         if (!string.IsNullOrWhiteSpace(workspaceRoot))
         {
-            paths.Add(GetWorkspaceDiagnosticsPath(workspaceRoot));
+            var root = Path.GetFullPath(workspaceRoot);
+            var workspacePath = GetWorkspaceDiagnosticsPath(root);
+            if (WorkspacePathResolver.IsResolvedInsideWorkspace(root, workspacePath))
+            {
+                paths.Add(workspacePath);
+            }
         }
 
         return paths;

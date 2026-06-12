@@ -153,6 +153,11 @@ public static class DesktopConfidenceAssessor
     {
         return commands.Any(command =>
         {
+            if (!LooksSafeForExecutedVerificationEvidence(command))
+            {
+                return false;
+            }
+
             var normalized = command.Replace('/', '\\').ToLowerInvariant();
             return normalized.Contains("test.cmd", StringComparison.Ordinal) ||
                    normalized.Contains("build.cmd", StringComparison.Ordinal) ||
@@ -164,6 +169,33 @@ public static class DesktopConfidenceAssessor
                    normalized.Contains("pnpm test", StringComparison.Ordinal) ||
                    normalized.Contains("pnpm build", StringComparison.Ordinal);
         });
+    }
+
+    private static bool LooksSafeForExecutedVerificationEvidence(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        var lower = command.ToLowerInvariant();
+        return command.IndexOfAny([';', '|', '<', '>', '`']) < 0 &&
+               !command.Contains("&&", StringComparison.Ordinal) &&
+               !command.Contains("||", StringComparison.Ordinal) &&
+               !lower.Contains("remove-item", StringComparison.Ordinal) &&
+               !lower.Contains("git reset", StringComparison.Ordinal) &&
+               !lower.Contains("git clean", StringComparison.Ordinal) &&
+               !lower.Contains("git restore", StringComparison.Ordinal) &&
+               !lower.StartsWith("rm ", StringComparison.Ordinal) &&
+               !lower.Contains(" rm ", StringComparison.Ordinal) &&
+               !lower.StartsWith("del ", StringComparison.Ordinal) &&
+               !lower.Contains(" del ", StringComparison.Ordinal) &&
+               !lower.StartsWith("rmdir ", StringComparison.Ordinal) &&
+               !lower.Contains(" rmdir ", StringComparison.Ordinal) &&
+               !lower.StartsWith("rd ", StringComparison.Ordinal) &&
+               !lower.Contains(" rd ", StringComparison.Ordinal) &&
+               !lower.StartsWith("erase ", StringComparison.Ordinal) &&
+               !lower.Contains(" erase ", StringComparison.Ordinal);
     }
 
     private static bool IsDirectoryChange(FileChangeRecord change)

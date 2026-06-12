@@ -26,6 +26,9 @@ public sealed class DesktopHybridSearchTool(
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
         ".vs",
         "bin",
         "obj",
@@ -36,7 +39,7 @@ public sealed class DesktopHybridSearchTool(
         "venv",
         "env",
         "__pycache__",
-        ".agentq"
+        ".agentq-verify"
     };
 
     public string Name => "hybrid_search";
@@ -386,7 +389,10 @@ public sealed class DesktopHybridSearchTool(
         }
 
         var chunks = await embeddingIndexStore.LoadChunksAsync(workspaceRoot, ct);
-        var searchableChunks = chunks.Where(chunk => chunk.Vector.Length > 0).ToList();
+        var searchableChunks = chunks
+            .Where(chunk => chunk.Vector.Length > 0)
+            .Where(chunk => !IsExcludedRelativePath(chunk.RelativePath))
+            .ToList();
         if (searchableChunks.Count == 0)
         {
             warnings.Add("Semantic search skipped: no embedded chunks found.");
@@ -565,6 +571,12 @@ public sealed class DesktopHybridSearchTool(
         }
 
         return candidate;
+    }
+
+    private static bool IsExcludedRelativePath(string relativePath)
+    {
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Any(part => ExcludedDirectories.Contains(part));
     }
 
     private static double CosineSimilarity(IReadOnlyList<float> left, IReadOnlyList<float> right)

@@ -87,8 +87,14 @@ public sealed class VerificationResultCard
         var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Trim())
             .Where(line => line.Length > 0)
+            .Select(line => Truncate(SensitiveTextRedactor.Redact(line), 240))
             .Take(5);
         return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        return value.Length <= maxLength ? value : value[..maxLength] + "...";
     }
 
     private static string BuildVisualEvidenceSummary(IReadOnlyList<string> evidence)

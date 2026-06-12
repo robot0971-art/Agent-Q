@@ -114,6 +114,8 @@ public class AnthropicProvider : ILlmProvider
 
         var toolCallBuffer = new ToolCallDeltaBuffer();
         var completionSent = false;
+        UsageStats? latestUsage = null;
+        var usageSent = false;
         var eventType = string.Empty;
         var eventData = new StringBuilder();
 
@@ -122,7 +124,13 @@ public class AnthropicProvider : ILlmProvider
         {
             if (line.Length == 0)
             {
-                foreach (var chunk in ProcessAnthropicStreamEvent(eventType, eventData.ToString(), toolCallBuffer, ref completionSent))
+                foreach (var chunk in ProcessAnthropicStreamEvent(
+                    eventType,
+                    eventData.ToString(),
+                    toolCallBuffer,
+                    ref completionSent,
+                    ref latestUsage,
+                    ref usageSent))
                 {
                     yield return chunk;
                 }
@@ -149,7 +157,13 @@ public class AnthropicProvider : ILlmProvider
             }
         }
 
-        foreach (var chunk in ProcessAnthropicStreamEvent(eventType, eventData.ToString(), toolCallBuffer, ref completionSent))
+        foreach (var chunk in ProcessAnthropicStreamEvent(
+            eventType,
+            eventData.ToString(),
+            toolCallBuffer,
+            ref completionSent,
+            ref latestUsage,
+            ref usageSent))
         {
             yield return chunk;
         }
@@ -314,8 +328,8 @@ public class AnthropicProvider : ILlmProvider
         {
             chatResponse.Usage = new UsageStats
             {
-                InputTokens = (int)response.Usage.InputTokens,
-                OutputTokens = (int)response.Usage.OutputTokens
+                InputTokens = ToInt32TokenCount((ulong)response.Usage.InputTokens + response.Usage.CacheCreationInputTokens + response.Usage.CacheReadInputTokens),
+                OutputTokens = ToInt32TokenCount(response.Usage.OutputTokens)
             };
         }
 
@@ -389,7 +403,9 @@ public class AnthropicProvider : ILlmProvider
         string eventType,
         string data,
         ToolCallDeltaBuffer toolCallBuffer,
-        ref bool completionSent)
+        ref bool completionSent,
+        ref UsageStats? latestUsage,
+        ref bool usageSent)
     {
         if (string.IsNullOrWhiteSpace(eventType) || string.IsNullOrWhiteSpace(data))
         {
@@ -413,6 +429,23 @@ public class AnthropicProvider : ILlmProvider
 
             switch (eventType)
             {
+                case "message_start":
+                    if (root.TryGetProperty("message", out var messageStart) &&
+                        TryReadAnthropicUsage(messageStart, out var startUsage))
+                    {
+                        latestUsage = startUsage;
+                    }
+
+                    break;
+
+                case "message_delta":
+                    if (TryReadAnthropicUsage(root, out var deltaUsage))
+                    {
+                        latestUsage = MergeUsage(latestUsage, deltaUsage);
+                    }
+
+                    break;
+
                 case "content_block_start":
                     if (!TryGetInt32(root, "index", out var startIndex) ||
                         !root.TryGetProperty("content_block", out var contentBlock) ||
@@ -482,6 +515,12 @@ public class AnthropicProvider : ILlmProvider
                         chunks.Add(new StreamChunk { ToolUseDelta = toolCall });
                     }
 
+                    if (!usageSent && latestUsage != null)
+                    {
+                        usageSent = true;
+                        chunks.Add(new StreamChunk { Usage = latestUsage });
+                    }
+
                     if (!completionSent)
                     {
                         completionSent = true;
@@ -494,6 +533,62 @@ public class AnthropicProvider : ILlmProvider
             return chunks;
         }
     }
+
+    private static bool TryReadAnthropicUsage(JsonElement root, out UsageStats usage)
+    {
+        usage = new UsageStats();
+        if (!root.TryGetProperty("usage", out var usageElement) ||
+            usageElement.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var inputTokens = GetUInt64Property(usageElement, "input_tokens") +
+                          GetUInt64Property(usageElement, "cache_creation_input_tokens") +
+                          GetUInt64Property(usageElement, "cache_read_input_tokens");
+        var outputTokens = GetUInt64Property(usageElement, "output_tokens");
+
+        usage = new UsageStats
+        {
+            InputTokens = ToInt32TokenCount(inputTokens),
+            OutputTokens = ToInt32TokenCount(outputTokens)
+        };
+        return inputTokens > 0 || outputTokens > 0;
+    }
+
+    private static UsageStats MergeUsage(UsageStats? current, UsageStats next)
+    {
+        if (current == null)
+        {
+            return next;
+        }
+
+        return new UsageStats
+        {
+            InputTokens = next.InputTokens > 0 ? next.InputTokens : current.InputTokens,
+            OutputTokens = next.OutputTokens > 0 ? next.OutputTokens : current.OutputTokens
+        };
+    }
+
+    private static ulong GetUInt64Property(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return 0;
+        }
+
+        if (property.TryGetUInt64(out var uintValue))
+        {
+            return uintValue;
+        }
+
+        return property.TryGetInt64(out var intValue) && intValue > 0
+            ? (ulong)intValue
+            : 0;
+    }
+
+    private static int ToInt32TokenCount(ulong count) =>
+        count > int.MaxValue ? int.MaxValue : (int)count;
 
     private static async Task EnsureSuccessStatusCodeAsync(HttpResponseMessage response, CancellationToken ct)
     {

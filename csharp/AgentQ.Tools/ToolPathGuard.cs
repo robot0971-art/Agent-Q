@@ -1,17 +1,13 @@
 namespace AgentQ.Tools;
 
 /// <summary>
-/// 도구 경로 보안 검사
+/// Validates tool paths against the configured workspace root.
 /// </summary>
 internal static class ToolPathGuard
 {
     /// <summary>
-    /// 경로 확인 및 해석
+    /// Resolves a user-supplied path and verifies that both the lexical and resolved path stay inside the workspace.
     /// </summary>
-    /// <param name="path">입력 경로</param>
-    /// <param name="fullPath">전체 경로 (out)</param>
-    /// <param name="errorMessage">오류 메시지 (out)</param>
-    /// <returns>검사 통과 여부</returns>
     public static bool TryResolvePath(string path, out string fullPath, out string? errorMessage)
     {
         fullPath = string.Empty;
@@ -23,12 +19,19 @@ internal static class ToolPathGuard
             return false;
         }
 
-        var workspaceRoot = GetWorkspaceRoot();
-
-        // Resolve path relative to the workspace root if it's not absolute
-        fullPath = Path.IsPathRooted(path)
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(Path.Combine(workspaceRoot, path));
+        string workspaceRoot;
+        try
+        {
+            workspaceRoot = GetWorkspaceRoot();
+            fullPath = Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(workspaceRoot, path));
+        }
+        catch (Exception ex) when (IsPathResolutionException(ex))
+        {
+            errorMessage = $"Path could not be resolved: {path}";
+            return false;
+        }
 
         if (!IsWithinRoot(workspaceRoot, fullPath))
         {
@@ -46,9 +49,8 @@ internal static class ToolPathGuard
     }
 
     /// <summary>
-    /// 작업 공간 루트 경로 가져오기
+    /// Gets the workspace root used by local tools.
     /// </summary>
-    /// <returns>작업 공간 루트 경로</returns>
     private static string GetWorkspaceRoot()
     {
         var configuredRoot = Environment.GetEnvironmentVariable("AGENTQ_WORKSPACE_ROOT")
@@ -62,11 +64,8 @@ internal static class ToolPathGuard
     }
 
     /// <summary>
-    /// 경로가 루트 내에 있는지 확인
+    /// Returns true when the candidate path is the root itself or a child of the root.
     /// </summary>
-    /// <param name="rootPath">루트 경로</param>
-    /// <param name="candidatePath">검사할 경로</param>
-    /// <returns>루트 내 포함 여부</returns>
     private static bool IsWithinRoot(string rootPath, string candidatePath)
     {
         var comparison = OperatingSystem.IsWindows()
@@ -74,7 +73,6 @@ internal static class ToolPathGuard
             : StringComparison.Ordinal;
 
         var normalizedRoot = EnsureTrailingSeparator(rootPath);
-        // candidatePath is already absolute and normalized via Path.GetFullPath in TryResolvePath
 
         return candidatePath.Equals(rootPath, comparison) ||
                candidatePath.StartsWith(normalizedRoot, comparison);
@@ -146,11 +144,7 @@ internal static class ToolPathGuard
                 return true;
             }
         }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
+        catch (Exception ex) when (IsPathResolutionException(ex))
         {
             return false;
         }
@@ -170,11 +164,14 @@ internal static class ToolPathGuard
             comparison);
     }
 
+    private static bool IsPathResolutionException(Exception ex)
+    {
+        return ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
+    }
+
     /// <summary>
-    /// 경로 끝에 구분자 추가
+    /// Ensures a path ends with a directory separator before prefix comparison.
     /// </summary>
-    /// <param name="path">원본 경로</param>
-    /// <returns>구분자가 추가된 경로</returns>
     private static string EnsureTrailingSeparator(string path)
     {
         if (path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar))
@@ -185,4 +182,3 @@ internal static class ToolPathGuard
         return path + Path.DirectorySeparatorChar;
     }
 }
-

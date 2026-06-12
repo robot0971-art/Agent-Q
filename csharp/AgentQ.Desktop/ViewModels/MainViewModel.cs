@@ -255,7 +255,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string InputText
     {
         get => _inputText;
-        set => SetField(ref _inputText, value);
+        set
+        {
+            if (SetField(ref _inputText, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanStopLocalServer)));
+            }
+        }
     }
 
     public string StatusText
@@ -294,6 +300,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 StatusText.Contains("tool step limit", StringComparison.OrdinalIgnoreCase) ||
                 StatusText.Contains("step limit reached", StringComparison.OrdinalIgnoreCase) ||
                 StatusText.Contains("not created", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not complete", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not completed", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not saved", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not verified", StringComparison.OrdinalIgnoreCase) ||
+                StatusText.Contains("not executed", StringComparison.OrdinalIgnoreCase) ||
                 StatusText.Contains("incomplete", StringComparison.OrdinalIgnoreCase))
             {
                 return "#FBBF24";
@@ -342,6 +353,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanStopLocalServer)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanContinueLastRun)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanResumeCheckpoint)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanResumeSessionSummary)));
                 RefreshRunSummary();
             }
         }
@@ -431,7 +445,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanOpenLocalServer => HasRunningLocalServer && !string.IsNullOrWhiteSpace(LocalServerUrl);
 
-    public bool CanStopLocalServer => HasRunningLocalServer && !IsBusy;
+    public bool CanStopLocalServer => HasRunningLocalServer && !IsBusy && string.IsNullOrWhiteSpace(InputText);
 
     public double DesktopFontSize
     {
@@ -588,7 +602,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanContinueLastRun
     {
-        get => _canContinueLastRun;
+        get => _canContinueLastRun && !IsBusy;
         set => SetField(ref _canContinueLastRun, value);
     }
 
@@ -600,7 +614,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanResumeCheckpoint
     {
-        get => _canResumeCheckpoint;
+        get => _canResumeCheckpoint && !IsBusy;
         set => SetField(ref _canResumeCheckpoint, value);
     }
 
@@ -684,7 +698,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanResumeSessionSummary
     {
-        get => _canResumeSessionSummary;
+        get => _canResumeSessionSummary && !IsBusy;
         set => SetField(ref _canResumeSessionSummary, value);
     }
 
@@ -805,7 +819,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public WorkerExecutionContext? CurrentWorkerExecutionContext
     {
         get => _currentWorkerExecutionContext;
-        set => SetField(ref _currentWorkerExecutionContext, value);
+        set
+        {
+            if (SetField(ref _currentWorkerExecutionContext, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanExecuteWorkerScaffold)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRunWorkerRepair)));
+            }
+        }
     }
 
     public string EvalDashboardSummary

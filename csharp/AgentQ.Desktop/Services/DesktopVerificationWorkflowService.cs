@@ -113,7 +113,7 @@ public sealed class DesktopVerificationWorkflowService(
 
     private static string TrimForLog(string value)
     {
-        value = value.ReplaceLineEndings(" ");
+        value = SensitiveTextRedactor.Redact(value.ReplaceLineEndings(" "));
         return value.Length <= 180 ? value : value[..180] + "...";
     }
 

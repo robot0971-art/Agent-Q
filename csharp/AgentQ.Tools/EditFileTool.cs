@@ -85,7 +85,8 @@ public class EditFileTool : ITool
             if (!File.Exists(fullPath))
                 return Task.FromResult(ToolResult.Error($"File not found: {path}"));
 
-            var content = File.ReadAllText(fullPath);
+            var existingFile = TextFileIo.ReadAllTextPreservingEncoding(fullPath);
+            var content = existingFile.Content;
             var riskError = EditRiskGuard.ValidateReplacement(path, content, oldString, replaceAll, input);
             if (riskError != null)
             {
@@ -109,7 +110,7 @@ public class EditFileTool : ITool
                 content = content.Remove(index, oldString.Length).Insert(index, newString);
             }
 
-            File.WriteAllText(fullPath, content);
+            TextFileIo.WriteAllTextAtomically(fullPath, content, existingFile.Encoding);
 
             var output = new Dictionary<string, object?>
             {

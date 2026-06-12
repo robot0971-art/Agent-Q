@@ -201,11 +201,23 @@ public sealed class ProjectPanelViewModel : INotifyPropertyChanged
         AnalysisUpdatedText = DesktopLocalizer.UiText(DesktopText.ProjectAnalysisUpdatedEmpty, UseKoreanUi);
         DashboardSummary = DesktopLocalizer.UiText(DesktopText.ProjectDashboardEmpty, UseKoreanUi);
         HealthText = DesktopLocalizer.UiText(DesktopText.ProjectWaitingForAnalysis, UseKoreanUi);
+        HealthAccentBrush = "#B7C4D1";
+        SymbolCountText = "0 symbols";
+        DependencyCountText = "0 dependencies";
+        KeyFileCountText = "0 key files";
+        VerificationCommandCountText = "0 commands";
         ProjectMapEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectMapEmpty, UseKoreanUi);
         KeySymbolsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectSymbolsEmpty, UseKoreanUi);
         KeyDependenciesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectDependenciesEmpty, UseKoreanUi);
         KeyFilesEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectFilesEmpty, UseKoreanUi);
         VerificationCommandsEmptyText = DesktopLocalizer.UiText(DesktopText.ProjectVerificationEmpty, UseKoreanUi);
+        VerificationCommands.Clear();
+        ProjectMap.Clear();
+        KeySymbols.Clear();
+        KeyDependencies.Clear();
+        KeyFiles.Clear();
+        Hints.Clear();
+        ScaffoldRecommendations.Clear();
     }
 
     private void RefreshDefaultText(bool previousUseKoreanUi)

@@ -12,6 +12,32 @@ namespace AgentQ.Tests;
 /// </summary>
 public sealed class CliToolLoopRunnerTests
 {
+    [Fact]
+    public void ChatConversationHistory_CompactWithSummaryDoesNotSplitToolUseAndResultPair()
+    {
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("older context");
+        history.AddAssistantMessage([
+            ChatContent.CreateToolUse("tool_read", "read_file", "{\"path\":\"README.md\"}")
+        ]);
+        history.AddToolResults([
+            ChatContent.CreateToolResult("tool_read", "{\"content\":\"ok\"}", false)
+        ]);
+        history.AddUserMessage("tail 1");
+        history.AddUserMessage("tail 2");
+        history.AddUserMessage("tail 3");
+        history.AddUserMessage("tail 4");
+        history.AddUserMessage("tail 5");
+
+        var compacted = history.CompactWithSummary(ChatMessage.SystemText("summary"), keepLastMessages: 6);
+
+        Assert.Equal(1, compacted);
+        Assert.Equal(8, history.MessageCount);
+        Assert.Equal(ChatRole.System, history.Messages[0].Role);
+        Assert.Contains(history.Messages[1].Content, content => content.Type == ContentType.ToolUse && content.ToolId == "tool_read");
+        Assert.Contains(history.Messages[2].Content, content => content.Type == ContentType.ToolResult && content.ToolUseId == "tool_read");
+    }
+
     /// <summary>
     /// ExecuteConversationTurnAsync이 도구 라운드트립을 완료하는지 검증합니다.
     /// </summary>
@@ -78,6 +104,59 @@ public sealed class CliToolLoopRunnerTests
     }
 
     [Fact]
+    public async Task ExecuteConversationTurnAsync_BlocksMalformedToolInputBeforePermission()
+    {
+        var provider = new ScriptedProvider(context =>
+        {
+            var toolResult = context.Messages
+                .SelectMany(message => message.Content)
+                .FirstOrDefault(content => content.Type == ContentType.ToolResult);
+
+            return toolResult == null
+                ? StreamSequence(
+                    new StreamChunk
+                    {
+                        ToolUseDelta = new ToolUseChunk
+                        {
+                            ToolId = "tool_fake",
+                            ToolName = "fake_mutation",
+                            PartialInput = "{\"path\":\"test2\"",
+                            IsComplete = true
+                        }
+                    },
+                    new StreamChunk { IsComplete = true })
+                : StreamSequence(
+                    new StreamChunk { TextDelta = $"Final: {toolResult.ToolResult}" },
+                    new StreamChunk { IsComplete = true });
+        });
+        var history = new ChatConversationHistory();
+        history.AddUserMessage("run malformed tool");
+        var registry = new ToolRegistry();
+        var fakeTool = new FakeTool(
+            "fake_mutation",
+            requiresPermission: true,
+            _ => ToolResult.Success("should not execute"));
+        registry.Register(fakeTool);
+        var permissionEnforcer = new CapturingPermissionEnforcer(allowed: true);
+
+        var result = await new CliToolLoopRunner().ExecuteConversationTurnAsync(
+            provider,
+            "test-model",
+            history,
+            registry,
+            permissionEnforcer);
+
+        Assert.False(result.HitMaxSteps);
+        Assert.Equal(0, fakeTool.ExecutionCount);
+        Assert.Null(permissionEnforcer.LastToolName);
+        var toolResultsMessage = Assert.Single(history.Messages, message => message.Role == ChatRole.User && message.Content.Any(content => content.Type == ContentType.ToolResult));
+        var toolResult = Assert.Single(toolResultsMessage.Content, content => content.Type == ContentType.ToolResult);
+        Assert.True(toolResult.IsToolError);
+        Assert.Contains("Invalid tool input", toolResult.ToolResult, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("malformed", toolResult.ToolResult, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ExecuteConversationTurnAsync_ProvidesDefaultSystemPrompt()
     {
         ChatContext? capturedContext = null;
@@ -110,6 +189,7 @@ public sealed class CliToolLoopRunnerTests
         Assert.Contains("uname", capturedContext.SystemPrompt);
         Assert.Contains("Do not use Bash-only chaining", capturedContext.SystemPrompt);
         Assert.Contains("starts in the configured workspace root", capturedContext.SystemPrompt);
+        Assert.Contains("untrusted evidence", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("copy and paste", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("actually denied or failed", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("rerun the relevant verification command", capturedContext.SystemPrompt, StringComparison.OrdinalIgnoreCase);
@@ -903,16 +983,15 @@ public sealed class CliToolLoopRunnerTests
             registry,
             new AlwaysAllowPermissionEnforcer());
 
-        Assert.NotNull(capturedInput);
-        Assert.Empty(capturedInput!);
+        Assert.Null(capturedInput);
 
         var toolResultsMessage = Assert.Single(history.Messages, message => message.Role == ChatRole.User && message.Content.Any(content => content.Type == ContentType.ToolResult));
         var toolResult = Assert.Single(toolResultsMessage.Content, content => content.Type == ContentType.ToolResult);
-        Assert.False(toolResult.IsToolError);
-        Assert.Equal("{\"count\":0}", toolResult.ToolResult);
+        Assert.True(toolResult.IsToolError);
+        Assert.Contains("Invalid tool input", toolResult.ToolResult, StringComparison.OrdinalIgnoreCase);
 
         var finalAssistant = history.Messages.Last();
-        Assert.Equal("Recovered: {\"count\":0}", Assert.Single(finalAssistant.Content, content => content.Type == ContentType.Text).Text);
+        Assert.Contains("Recovered: Invalid tool input", Assert.Single(finalAssistant.Content, content => content.Type == ContentType.Text).Text);
     }
 
     [Fact]

@@ -17,13 +17,19 @@ public sealed class EmbeddingIndexStore
     public void EnsureStorage(string workspaceRoot)
     {
         var paths = GetPaths(workspaceRoot);
+        if (!IsSafe(paths))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(paths.EmbeddingsDirectory);
     }
 
     public async Task<EmbeddingIndexManifest?> LoadManifestAsync(string workspaceRoot, CancellationToken ct = default)
     {
         var paths = GetPaths(workspaceRoot);
-        if (!File.Exists(paths.IndexPath))
+        if (!IsSafe(paths) ||
+            !File.Exists(paths.IndexPath))
         {
             return null;
         }
@@ -42,6 +48,11 @@ public sealed class EmbeddingIndexStore
     public async Task SaveManifestAsync(string workspaceRoot, EmbeddingIndexManifest manifest, CancellationToken ct = default)
     {
         var paths = GetPaths(workspaceRoot);
+        if (!IsSafe(paths))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(paths.EmbeddingsDirectory);
         manifest.UpdatedAt = DateTime.UtcNow;
         await using var stream = File.Create(paths.IndexPath);
@@ -51,6 +62,11 @@ public sealed class EmbeddingIndexStore
     public async Task SaveChunksAsync(string workspaceRoot, IEnumerable<EmbeddingIndexChunk> chunks, CancellationToken ct = default)
     {
         var paths = GetPaths(workspaceRoot);
+        if (!IsSafe(paths))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(paths.EmbeddingsDirectory);
         await using var stream = File.Create(paths.ChunksPath);
         await using var writer = new StreamWriter(stream);
@@ -66,7 +82,8 @@ public sealed class EmbeddingIndexStore
     public async Task<IReadOnlyList<EmbeddingIndexChunk>> LoadChunksAsync(string workspaceRoot, CancellationToken ct = default)
     {
         var paths = GetPaths(workspaceRoot);
-        if (!File.Exists(paths.ChunksPath))
+        if (!IsSafe(paths) ||
+            !File.Exists(paths.ChunksPath))
         {
             return [];
         }
@@ -95,4 +112,9 @@ public sealed class EmbeddingIndexStore
 
         return chunks;
     }
+
+    private static bool IsSafe(EmbeddingIndexPaths paths) =>
+        WorkspacePathResolver.IsResolvedInsideWorkspace(paths.WorkspaceRoot, paths.EmbeddingsDirectory) &&
+        WorkspacePathResolver.IsResolvedInsideWorkspace(paths.WorkspaceRoot, paths.IndexPath) &&
+        WorkspacePathResolver.IsResolvedInsideWorkspace(paths.WorkspaceRoot, paths.ChunksPath);
 }

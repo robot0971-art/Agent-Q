@@ -12,6 +12,9 @@ public sealed class DesktopSourceBrowserService
     [
         ".git",
         ".agentq",
+        ".agents",
+        ".codex",
+        ".codex-build",
         ".vs",
         ".vscode",
         "bin",
@@ -19,6 +22,7 @@ public sealed class DesktopSourceBrowserService
         "Library",
         "Temp",
         "Logs",
+        "artifacts",
         "node_modules",
         "dist",
         "build"

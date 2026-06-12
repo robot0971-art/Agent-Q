@@ -88,10 +88,15 @@ public class GrepTool : ITool
             }
 
             var results = new List<GrepMatch>();
-            var files = EnumerateCandidateFiles(searchDir, include, targetFile).ToList();
+            var candidateFiles = EnumerateCandidateFiles(searchDir, include, targetFile)
+                .Take(MaximumFilesToScan + 1)
+                .ToList();
+            var fileLimitReached = candidateFiles.Count > MaximumFilesToScan;
+            var files = fileLimitReached
+                ? candidateFiles.Take(MaximumFilesToScan).ToList()
+                : candidateFiles;
             var scannedFiles = 0;
             var matchLimitReached = false;
-            var fileLimitReached = files.Count == MaximumFilesToScan;
 
             foreach (var file in files)
             {
@@ -189,8 +194,7 @@ public class GrepTool : ITool
         }
 
         return EnumerateFilesWithoutFollowingLinks(searchDir, include)
-            .Where(f => !IsBinaryFile(f) && !IsExcludedPath(f))
-            .Take(MaximumFilesToScan);
+            .Where(f => !IsBinaryFile(f) && !IsExcludedPath(f));
     }
 
     private static IEnumerable<string> EnumerateFilesWithoutFollowingLinks(string searchDir, string include)
@@ -260,7 +264,22 @@ public class GrepTool : ITool
     private static bool IsBinaryFile(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        return ext is ".dll" or ".exe" or ".png" or ".jpg" or ".gif" or ".ico" or ".zip" or ".rar" or ".bin" or ".pdb" or ".so" or ".dylib";
+        if (ext is ".dll" or ".exe" or ".png" or ".jpg" or ".gif" or ".ico" or ".zip" or ".rar" or ".bin" or ".pdb" or ".so" or ".dylib")
+        {
+            return true;
+        }
+
+        try
+        {
+            Span<byte> buffer = stackalloc byte[4096];
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var bytesRead = stream.Read(buffer);
+            return buffer[..bytesRead].Contains((byte)0);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     /// <summary>

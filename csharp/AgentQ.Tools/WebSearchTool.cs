@@ -8,6 +8,10 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
 {
     private const int DefaultMaxResults = 5;
     private const int MaximumMaxResults = 10;
+    private const int MaximumQueryLength = 500;
+    private const int MaximumTitleLength = 180;
+    private const int MaximumUrlLength = 2048;
+    private const int MaximumSnippetLength = 500;
     private static readonly Regex ResultRegex = new(
         "<a[^>]+class=\"result__a\"[^>]+href=\"(?<url>[^\"]+)\"[^>]*>(?<title>.*?)</a>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
@@ -40,6 +44,12 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
         if (string.IsNullOrWhiteSpace(query))
         {
             return ToolResult.Error("Missing required parameter: query");
+        }
+
+        query = query.Trim();
+        if (query.Length > MaximumQueryLength)
+        {
+            return ToolResult.Error($"query is too long; keep it under {MaximumQueryLength} characters and search the current request, not pasted logs.");
         }
 
         var maxResults = Math.Clamp(TryGetInt(input, "max_results") ?? DefaultMaxResults, 1, MaximumMaxResults);
@@ -76,15 +86,15 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
         for (var index = 0; index < titleMatches.Count && results.Count < maxResults; index++)
         {
             var titleMatch = titleMatches[index];
-            var title = CleanHtml(titleMatch.Groups["title"].Value);
-            var url = DecodeDuckDuckGoUrl(CleanHtml(titleMatch.Groups["url"].Value));
+            var title = Truncate(CleanHtml(titleMatch.Groups["title"].Value), MaximumTitleLength);
+            var url = Truncate(DecodeDuckDuckGoUrl(CleanHtml(titleMatch.Groups["url"].Value)), MaximumUrlLength);
             if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(url))
             {
                 continue;
             }
 
             var snippet = index < snippetMatches.Count
-                ? CleanHtml(snippetMatches[index].Groups["snippet"].Value)
+                ? Truncate(CleanHtml(snippetMatches[index].Groups["snippet"].Value), MaximumSnippetLength)
                 : string.Empty;
             results.Add(new WebSearchResult(title, url, snippet));
         }
@@ -117,6 +127,16 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
     {
         var withoutTags = Regex.Replace(value, "<.*?>", string.Empty, RegexOptions.Singleline);
         return WebUtility.HtmlDecode(withoutTags).Trim();
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength].TrimEnd() + "...";
     }
 
     private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
@@ -166,5 +186,8 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
             Timeout = TimeSpan.FromSeconds(15)
         };
 
-    private sealed record WebSearchResult(string Title, string Url, string Snippet);
+    private sealed record WebSearchResult(
+        string title,
+        string url,
+        string snippet);
 }

@@ -105,7 +105,7 @@ public sealed class PermissionApprovalDialog : Window
 
         body.Children.Add(new SWC.TextBlock
         {
-            Text = useKoreanUi ? "세부 입력" : "Raw input",
+            Text = useKoreanUi ? "원본 입력" : "Raw input",
             FontWeight = FontWeights.SemiBold,
             Foreground = SWM.Brushes.Black,
             Margin = new Thickness(0, 12, 0, 4)

@@ -555,6 +555,18 @@ public sealed class DesktopAgentRunWorkflowService(
             };
         }
 
+        if (fullText.Contains("Task decomposition failed before all steps completed.", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DesktopRunCompletionOutcome
+            {
+                TelemetryEventType = "run_task_decomposition_failed",
+                Succeeded = false,
+                IsError = true,
+                StatusText = "Task decomposition failed",
+                LogText = "Task decomposition stopped before all steps completed"
+            };
+        }
+
         if (fullText.Contains("Prepared project scaffold was not created.", StringComparison.OrdinalIgnoreCase) ||
             fullText.Contains("프로젝트 생성은 진행하지 않았습니다", StringComparison.OrdinalIgnoreCase))
         {

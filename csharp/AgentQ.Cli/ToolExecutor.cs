@@ -21,6 +21,13 @@ internal sealed class ToolExecutor(
             var toolId = toolUse.ToolId!;
             var input = toolUse.ToolInput;
             var inputJson = FormatToolInputJson(input);
+            if (!JsonArgumentParser.TryParseInput(input, out var parsedInput, out var parseError))
+            {
+                var message = $"Invalid tool input for {toolName}: {parseError}";
+                callbacks.OnToolError?.Invoke(toolName, message);
+                toolResults.Add(ChatContent.CreateToolResult(toolId, message, true));
+                continue;
+            }
 
             var tool = registry.Get(toolName);
             if (tool == null)
@@ -43,7 +50,7 @@ internal sealed class ToolExecutor(
 
             try
             {
-                var result = await tool.ExecuteAsync(JsonArgumentParser.ParseInput(input), ct);
+                var result = await tool.ExecuteAsync(parsedInput, ct);
                 if (result.IsError)
                 {
                     callbacks.OnToolError?.Invoke(toolName, result.Content);

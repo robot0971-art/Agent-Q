@@ -11,6 +11,8 @@ public sealed class CliConfigurationLoader(
         var initialConfig = commandLineParser.Parse(args);
         var persistedConfig = await configStore.LoadAsync();
         var config = initialConfig;
+        var timeoutSet = HasOption(args, "--timeout");
+        var maxTokensSet = HasOption(args, "--max-tokens");
 
         if (persistedConfig != null)
         {
@@ -18,8 +20,8 @@ public sealed class CliConfigurationLoader(
             if (string.IsNullOrEmpty(initialConfig.Model)) config.Model = persistedConfig.Model;
             if (string.IsNullOrEmpty(initialConfig.BaseUrl)) config.BaseUrl = persistedConfig.BaseUrl;
             if (string.IsNullOrEmpty(initialConfig.ApiKey)) config.ApiKey = persistedConfig.ApiKey;
-            if (initialConfig.TimeoutSeconds == 60) config.TimeoutSeconds = persistedConfig.TimeoutSeconds;
-            if (initialConfig.MaxTokens == 4096) config.MaxTokens = persistedConfig.MaxTokens;
+            if (!timeoutSet && initialConfig.TimeoutSeconds == 60) config.TimeoutSeconds = persistedConfig.TimeoutSeconds;
+            if (!maxTokensSet && initialConfig.MaxTokens == 4096) config.MaxTokens = persistedConfig.MaxTokens;
         }
 
         if (string.IsNullOrWhiteSpace(config.Provider))
@@ -33,5 +35,10 @@ public sealed class CliConfigurationLoader(
         }
 
         return config;
+    }
+
+    private static bool HasOption(string[] args, string option)
+    {
+        return args.Any(arg => string.Equals(arg, option, StringComparison.OrdinalIgnoreCase));
     }
 }

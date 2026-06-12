@@ -95,14 +95,20 @@ public static class UserIntentTranslator
 
         if (IsDeletePathRequest(normalized))
         {
+            var target = ExtractRequestedTarget(userText, "file", "folder", "directory", "path", "\uD30C\uC77C", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC", "\uACBD\uB85C");
+            var goal = string.IsNullOrWhiteSpace(target)
+                ? "Delete the explicit workspace file or folder requested by the user."
+                : $"Delete the explicit workspace file or folder requested by the user: {target}.";
             return new TaskContract
             {
                 Intent = TaskContractIntent.DeletePath,
                 Confidence = 0.88,
-                Goal = "Delete the explicit workspace file or folder requested by the user.",
+                Goal = goal,
                 RequiredActions =
                 [
-                    "identify the explicit workspace-relative path from the user request",
+                    string.IsNullOrWhiteSpace(target)
+                        ? "identify the explicit workspace-relative path from the user request"
+                        : $"use the requested workspace-relative target: {target}",
                     "inspect the workspace only if needed to confirm the target exists",
                     "call delete_path for the explicit target instead of using shell deletion commands",
                     "report success, missing target, or permission denial"
@@ -124,14 +130,20 @@ public static class UserIntentTranslator
 
         if (IsCreateDirectoryRequest(normalized))
         {
+            var target = ExtractRequestedTarget(userText, "folder", "directory", "dir", "\uD3F4\uB354", "\uB514\uB809\uD1A0\uB9AC");
+            var goal = string.IsNullOrWhiteSpace(target)
+                ? "Create the requested empty workspace folder."
+                : $"Create the requested empty workspace folder: {target}.";
             return new TaskContract
             {
                 Intent = TaskContractIntent.CreateDirectory,
                 Confidence = 0.86,
-                Goal = "Create the requested empty workspace folder.",
+                Goal = goal,
                 RequiredActions =
                 [
-                    "identify the explicit folder name or workspace-relative path",
+                    string.IsNullOrWhiteSpace(target)
+                        ? "identify the explicit folder name or workspace-relative path"
+                        : $"use the requested workspace-relative folder path: {target}",
                     "call create_directory for that target",
                     "report the created folder path or the concrete error"
                 ],
@@ -178,14 +190,20 @@ public static class UserIntentTranslator
 
         if (IsCreateFileRequest(normalized))
         {
+            var target = ExtractRequestedTarget(userText, "file", "\uD30C\uC77C");
+            var goal = string.IsNullOrWhiteSpace(target)
+                ? "Create the requested workspace file."
+                : $"Create the requested workspace file: {target}.";
             return new TaskContract
             {
                 Intent = TaskContractIntent.CreateFile,
                 Confidence = 0.86,
-                Goal = "Create the requested workspace file.",
+                Goal = goal,
                 RequiredActions =
                 [
-                    "identify the explicit file name or workspace-relative path",
+                    string.IsNullOrWhiteSpace(target)
+                        ? "identify the explicit file name or workspace-relative path"
+                        : $"use the requested workspace-relative file path: {target}",
                     "call write_file for the target file",
                     "report the created file path or the concrete error"
                 ],
@@ -296,7 +314,7 @@ public static class UserIntentTranslator
 
     private static bool IsRunLocalServerRequest(string normalized)
     {
-        if (IsConsultativeRequest(normalized))
+        if (IsConsultativeRequest(normalized) || IsExplanationOnlyRequest(normalized))
         {
             return false;
         }
@@ -337,7 +355,7 @@ public static class UserIntentTranslator
             "test", "build", "lint", "verify", "verification", "dotnettest", "npmtest", "npmrunbuild",
             "\uD14C\uC2A4\uD2B8", "\uBE4C\uB4DC", "\uAC80\uC99D", "\uD655\uC778");
         var asksHow = ContainsAny(normalized, "howto", "howcan", "\uBC29\uBC95", "\uC5B4\uB5BB\uAC8C");
-        return hasRunVerb && hasVerification && !asksHow;
+        return hasRunVerb && hasVerification && !asksHow && !IsExplanationOnlyRequest(normalized);
     }
 
     private static bool IsCreateDirectoryRequest(string normalized)
@@ -376,7 +394,7 @@ public static class UserIntentTranslator
     private static bool IsCreateProjectRequest(string normalized)
     {
         return HasExecutionCreateVerb(normalized) &&
-               ContainsAny(normalized, "project", "app", "website", "site", "web", "webapp", "react", "vite", "wordbook", "glossary", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1") &&
+               ContainsAny(normalized, "project", "app", "website", "site", "web", "webapp", "react", "vite", "wordbook", "glossary", "homepage", "portfolio", "landingpage", "blog", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uD648\uD398\uC774\uC9C0", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uB79C\uB529", "\uBE14\uB85C\uADF8", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1") &&
                !IsConsultativeRequest(normalized);
     }
 
@@ -396,6 +414,115 @@ public static class UserIntentTranslator
             "\uB9CC\uB4E4\uAE4C", "\uAD1C\uCC2E\uC744\uAE4C", "\uC5B4\uB5A8\uAE4C", "\uC5B4\uB5A4\uBC29\uD5A5", "\uC88B\uC744\uAE4C", "\uC5B4\uB5BB\uAC8C\uD560\uAE4C",
             "\uAC00\uB2A5\uD55C\uAC00", "\uAC00\uB2A5\uD560\uAE4C", "\uC218\uC788\uB294\uC9C0", "\uC218\uC788\uC744\uAE4C",
             "\uBC29\uBC95", "\uD558\uB294\uBC95", "\uC5B4\uB5BB\uAC8C");
+    }
+
+    private static bool IsExplanationOnlyRequest(string normalized)
+    {
+        return ContainsAny(
+            normalized,
+            "explain", "describe", "tellme", "meaning", "whatdoes", "whatis", "difference",
+            "\uC124\uBA85", "\uC54C\uB824", "\uBB50\uC57C", "\uBB34\uC5C7", "\uB73B", "\uC758\uBBF8", "\uCC28\uC774");
+    }
+
+    private static string ExtractRequestedTarget(string userText, params string[] markers)
+    {
+        if (string.IsNullOrWhiteSpace(userText))
+        {
+            return string.Empty;
+        }
+
+        foreach (var marker in markers)
+        {
+            var searchIndex = 0;
+            while (searchIndex < userText.Length)
+            {
+                var markerIndex = userText.IndexOf(marker, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (markerIndex <= 0)
+                {
+                    break;
+                }
+
+                searchIndex = markerIndex + marker.Length;
+                var beforeMarker = userText[..markerIndex].Trim();
+                if (string.IsNullOrWhiteSpace(beforeMarker))
+                {
+                    continue;
+                }
+
+                var tokens = beforeMarker
+                    .Split([' ', '\t', '\r', '\n', '"', '\'', '`'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (tokens.Length == 0)
+                {
+                    continue;
+                }
+
+                for (var i = tokens.Length - 1; i >= 0; i--)
+                {
+                    var candidate = TrimTargetToken(tokens[i]);
+                    if (LooksLikeTarget(candidate) && !LooksLikeDeicticOrFillerTarget(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string TrimTargetToken(string token)
+    {
+        var trimmed = token.Trim().Trim(',', '.', ':', ';', '!', '?', '(', ')', '[', ']', '{', '}', '<', '>');
+        foreach (var suffix in new[] { "\uC774\uB77C\uB294", "\uB77C\uB294", "\uC774\uB77C\uACE0", "\uB77C\uACE0", "\uB780", "\uC744", "\uB97C", "\uC5D0", "\uB85C" })
+        {
+            if (trimmed.Length > suffix.Length &&
+                trimmed.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                return trimmed[..^suffix.Length];
+            }
+        }
+
+        return trimmed;
+    }
+
+    private static bool LooksLikeTarget(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 120)
+        {
+            return false;
+        }
+
+        return token.Any(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' or '/' or '\\');
+    }
+
+    private static bool LooksLikeDeicticOrFillerTarget(string token)
+    {
+        var normalized = Normalize(token);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return true;
+        }
+
+        var exactFiller = new[]
+        {
+            "this", "that", "here", "there", "current", "workspace", "named", "called", "name", "new", "empty",
+            "thisfolder", "currentfolder", "thisfile", "currentfile",
+            "\uC774", "\uADF8", "\uC800", "\uC5EC\uAE30", "\uD604\uC7AC", "\uD574\uB2F9", "\uC774\uB984", "\uC0C8", "\uC0C8\uB85C\uC6B4", "\uBE48",
+            "\uB77C\uB294", "\uC774\uB77C\uB294", "\uB77C\uACE0", "\uC774\uB77C\uACE0", "\uB780", "\uD558\uB098"
+        };
+        if (exactFiller.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return normalized.StartsWith("folder", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("directory", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("file", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("path", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("\uD3F4\uB354", StringComparison.Ordinal) ||
+               normalized.StartsWith("\uD30C\uC77C", StringComparison.Ordinal) ||
+               normalized.StartsWith("\uB514\uB809\uD1A0\uB9AC", StringComparison.Ordinal) ||
+               normalized.StartsWith("\uACBD\uB85C", StringComparison.Ordinal);
     }
 
     private static string Normalize(string text)
@@ -594,73 +721,81 @@ public static class TaskContractCompletionChecker
 
     public static string BuildRetryInstruction(TaskContract contract)
     {
+        string WithGoal(string instruction)
+        {
+            var goal = string.IsNullOrWhiteSpace(contract.Goal)
+                ? "current user request"
+                : DesktopPromptBuilder.Truncate(contract.Goal.ReplaceLineEndings(" "), 500);
+            return $"Current user task goal: {goal}. {instruction}";
+        }
+
         if (contract.Intent == TaskContractIntent.RunLocalServer)
         {
-            return
+            return WithGoal(
                 "The current task contract is run_local_server. Do not complete with a project structure summary. " +
                 "Inspect package scripts if needed, start the local development server with the appropriate command, " +
-                "verify the reachable localhost URL, then report that URL. If startup fails, report the concrete command error.";
+                "verify the reachable localhost URL, then report that URL. If startup fails, report the concrete command error.");
         }
 
         if (contract.Intent == TaskContractIntent.StopLocalServer)
         {
-            return
+            return WithGoal(
                 "The current task contract is stop_local_server. Do not complete with a project structure summary. " +
-                "Find the active local server session for this workspace, stop it if present, then report the result.";
+                "Find the active local server session for this workspace, stop it if present, then report the result.");
         }
 
         if (contract.Intent == TaskContractIntent.DeletePath)
         {
-            return
+            return WithGoal(
                 "The current task contract is delete_path. Do not describe AgentQ and do not repeat directory listings. " +
                 "Identify the explicit target from the user's request, call delete_path for that target, then report the result. " +
-                "If the target is missing or unsafe, report that concrete delete_path result.";
+                "If the target is missing or unsafe, report that concrete delete_path result.");
         }
 
         if (contract.Intent == TaskContractIntent.CreateDirectory)
         {
-            return
+            return WithGoal(
                 "The current task contract is create_directory. Do not only say the folder can be created. " +
-                "Identify the requested workspace-relative folder path, call create_directory now, then report the created path or concrete error.";
+                "Identify the requested workspace-relative folder path, call create_directory now, then report the created path or concrete error.");
         }
 
         if (contract.Intent == TaskContractIntent.CreateFile)
         {
-            return
+            return WithGoal(
                 "The current task contract is create_file. Do not only show file contents in prose. " +
-                "Identify the requested workspace-relative file path, call write_file now, then report the created path or concrete error.";
+                "Identify the requested workspace-relative file path, call write_file now, then report the created path or concrete error.");
         }
 
         if (contract.Intent == TaskContractIntent.CreateProject)
         {
-            return
+            return WithGoal(
                 "The current task contract is create_project. Do not only describe the project. " +
-                "Use scaffold or workspace file creation tools now, honor the requested stack, then report created files and verification.";
+                "Use scaffold or workspace file creation tools now, honor the requested stack, then report created files and verification.");
         }
 
         if (contract.Intent == TaskContractIntent.ModifyCode)
         {
-            return
+            return WithGoal(
                 "The current task contract is modify_code. Do not only explain the change. " +
-                "Inspect/search the target file, apply the edit with workspace mutation tools, run focused verification when useful, then summarize the changed file.";
+                "Inspect/search the target file, apply the edit with workspace mutation tools, run focused verification when useful, then summarize the changed file.");
         }
 
         if (contract.Intent == TaskContractIntent.RunVerification)
         {
-            return
+            return WithGoal(
                 "The current task contract is run_verification. Do not only explain how to run verification. " +
-                "Run the requested build/test/lint command or the focused inferred verification command now, then report pass, fail, or the concrete command error.";
+                "Run the requested build/test/lint command or the focused inferred verification command now, then report pass, fail, or the concrete command error.");
         }
 
         if (contract.Intent == TaskContractIntent.SearchAndSummarize)
         {
-            return
+            return WithGoal(
                 "The current task contract is search_and_summarize. Do not answer from guesses. " +
                 "Use web_search or other available search/read/fetch tools to gather evidence first, then summarize the findings and limits. " +
-                "If no web search tool or source URL is available, say that concrete limitation instead of inventing findings.";
+                "If no web search tool or source URL is available, say that concrete limitation instead of inventing findings.");
         }
 
-        return "The previous answer did not satisfy the current task contract. Re-plan from the contract goal and perform the required actions before answering.";
+        return WithGoal("The previous answer did not satisfy the current task contract. Re-plan from the contract goal and perform the required actions before answering.");
     }
 
     private static bool LooksLikeInvalidRunServerCompletion(string assistantText)
@@ -809,7 +944,8 @@ public static class TaskContractCompletionChecker
             or TaskContractIntent.CreateFile
             or TaskContractIntent.CreateProject
             or TaskContractIntent.ModifyCode
-            or TaskContractIntent.RunVerification;
+            or TaskContractIntent.RunVerification
+            or TaskContractIntent.SearchAndSummarize;
 
     private static bool LooksLikeClarificationOrConcreteLimitation(string assistantText)
     {

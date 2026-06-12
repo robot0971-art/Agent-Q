@@ -75,11 +75,7 @@ public sealed class ScreenshotVisualReviewService
 
         var root = Path.GetFullPath(workspaceRoot);
         var fullPath = Path.GetFullPath(Path.Combine(root, artifactPath));
-        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-            ? root
-            : root + Path.DirectorySeparatorChar;
-
-        return fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(root, fullPath)
             ? fullPath
             : null;
     }

@@ -45,6 +45,8 @@ public sealed class CommandLineConfigurationParser(EnvironmentConfigurationLoade
     public ProviderConfiguration Parse(string[] args)
     {
         var config = new ProviderConfiguration();
+        var timeoutSet = false;
+        var maxTokensSet = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -63,10 +65,18 @@ public sealed class CommandLineConfigurationParser(EnvironmentConfigurationLoade
                     if (i + 1 < args.Length) config.ApiKey = args[++i];
                     break;
                 case "--timeout":
-                    if (i + 1 < args.Length && int.TryParse(args[++i], out var t) && t >= 0) config.TimeoutSeconds = t;
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var t) && t >= 0)
+                    {
+                        config.TimeoutSeconds = t;
+                        timeoutSet = true;
+                    }
                     break;
                 case "--max-tokens":
-                    if (i + 1 < args.Length && uint.TryParse(args[++i], out var maxTokens) && maxTokens > 0) config.MaxTokens = maxTokens;
+                    if (i + 1 < args.Length && uint.TryParse(args[++i], out var maxTokens) && maxTokens > 0)
+                    {
+                        config.MaxTokens = maxTokens;
+                        maxTokensSet = true;
+                    }
                     break;
                 case "--prompt":
                     if (i + 1 < args.Length) config.Prompt = args[++i];
@@ -100,19 +110,21 @@ public sealed class CommandLineConfigurationParser(EnvironmentConfigurationLoade
             }
         }
 
-        return MergeEnvironmentFallback(config, _environmentLoader.Load());
+        return MergeEnvironmentFallback(config, _environmentLoader.Load(), timeoutSet, maxTokensSet);
     }
 
     private static ProviderConfiguration MergeEnvironmentFallback(
         ProviderConfiguration config,
-        ProviderConfiguration envConfig)
+        ProviderConfiguration envConfig,
+        bool timeoutSet,
+        bool maxTokensSet)
     {
         if (string.IsNullOrWhiteSpace(config.Provider)) config.Provider = envConfig.Provider;
         if (string.IsNullOrEmpty(config.Model)) config.Model = envConfig.Model;
         if (string.IsNullOrEmpty(config.BaseUrl)) config.BaseUrl = envConfig.BaseUrl;
         if (string.IsNullOrEmpty(config.ApiKey)) config.ApiKey = envConfig.ApiKey;
-        if (config.TimeoutSeconds == 60 && envConfig.TimeoutSeconds != 60) config.TimeoutSeconds = envConfig.TimeoutSeconds;
-        if (config.MaxTokens == 4096 && envConfig.MaxTokens != 4096) config.MaxTokens = envConfig.MaxTokens;
+        if (!timeoutSet && config.TimeoutSeconds == 60 && envConfig.TimeoutSeconds != 60) config.TimeoutSeconds = envConfig.TimeoutSeconds;
+        if (!maxTokensSet && config.MaxTokens == 4096 && envConfig.MaxTokens != 4096) config.MaxTokens = envConfig.MaxTokens;
 
         return config;
     }

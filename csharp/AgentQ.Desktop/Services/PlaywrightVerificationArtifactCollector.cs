@@ -93,19 +93,30 @@ public sealed class PlaywrightVerificationArtifactCollector : IVerificationArtif
             return null;
         }
 
-        const string prefix = "cmd /c cd ";
-        if (!command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        var trimmed = command.Trim();
+        var prefix = trimmed.StartsWith("cmd.exe /c cd ", StringComparison.OrdinalIgnoreCase)
+            ? "cmd.exe /c cd "
+            : trimmed.StartsWith("cmd /c cd ", StringComparison.OrdinalIgnoreCase)
+                ? "cmd /c cd "
+                : string.Empty;
+        if (prefix.Length == 0)
         {
             return null;
         }
 
-        var separatorIndex = command.IndexOf(" && ", StringComparison.Ordinal);
+        var separatorIndex = trimmed.IndexOf("&&", StringComparison.Ordinal);
         if (separatorIndex <= prefix.Length)
         {
             return null;
         }
 
-        var directory = command[prefix.Length..separatorIndex];
+        var directory = trimmed[prefix.Length..separatorIndex].Trim();
+        if (directory.StartsWith("/d ", StringComparison.OrdinalIgnoreCase))
+        {
+            directory = directory[3..].Trim();
+        }
+
+        directory = Unquote(directory);
         if (string.IsNullOrWhiteSpace(directory) || Path.IsPathRooted(directory))
         {
             return null;
@@ -120,6 +131,18 @@ public sealed class PlaywrightVerificationArtifactCollector : IVerificationArtif
         return fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
             ? fullPath
             : null;
+    }
+
+    private static string Unquote(string value)
+    {
+        if (value.Length >= 2 &&
+            ((value[0] == '"' && value[^1] == '"') ||
+             (value[0] == '\'' && value[^1] == '\'')))
+        {
+            return value[1..^1].Trim();
+        }
+
+        return value;
     }
 
     private static bool IsScreenshot(string path)

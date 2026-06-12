@@ -11,12 +11,16 @@ public sealed partial class WorkspaceSymbolIndexService
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
         ".vs",
         "bin",
         "obj",
         "node_modules",
         "artifacts",
         ".codex-build",
+        ".agentq-verify",
         ".venv",
         "venv",
         "env",

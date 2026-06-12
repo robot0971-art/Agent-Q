@@ -85,10 +85,12 @@ public class WriteFileTool : ITool
                 return Task.FromResult(ToolResult.Error($"Refusing to overwrite existing file without overwrite=true: {path}"));
             }
 
+            var encoding = TextFileIo.DefaultEncoding;
             if (existedBeforeWrite)
             {
-                var existingContent = File.ReadAllText(fullPath);
-                var risk = EditRiskGuard.AssessExistingFile(fullPath, existingContent);
+                var existingFile = TextFileIo.ReadAllTextPreservingEncoding(fullPath);
+                encoding = existingFile.Encoding;
+                var risk = EditRiskGuard.AssessExistingFile(fullPath, existingFile.Content);
                 if (risk.IsHighRisk && !EditRiskGuard.IsRiskAcknowledged(input))
                 {
                     return Task.FromResult(ToolResult.Error(EditRiskGuard.BuildWriteBlockMessage(path, risk)));
@@ -101,13 +103,13 @@ public class WriteFileTool : ITool
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(fullPath, content);
+            TextFileIo.WriteAllTextAtomically(fullPath, content, encoding);
 
             var output = new Dictionary<string, object?>
             {
                 ["path"] = path,
                 ["filePath"] = fullPath,
-                ["bytesWritten"] = Encoding.UTF8.GetByteCount(content),
+                ["bytesWritten"] = new FileInfo(fullPath).Length,
                 ["overwroteExisting"] = existedBeforeWrite,
                 ["status"] = "success"
             };

@@ -283,7 +283,12 @@ public class OpenAiCompatibleProvider : ILlmProvider
         {
             if (msg.Content.Any(c => c.Type == ContentType.ToolResult))
             {
-                foreach (var toolResult in msg.Content.Where(c => c.Type == ContentType.ToolResult))
+                var toolResults = msg.Content
+                    .Where(c => c.Type == ContentType.ToolResult &&
+                                !string.IsNullOrWhiteSpace(c.ToolUseId))
+                    .ToList();
+
+                foreach (var toolResult in toolResults)
                 {
                     messages.Add(new OpenAiMessage
                     {
@@ -293,7 +298,10 @@ public class OpenAiCompatibleProvider : ILlmProvider
                     });
                 }
 
-                continue;
+                if (toolResults.Count > 0)
+                {
+                    continue;
+                }
             }
 
             var role = msg.Role switch
@@ -320,7 +328,12 @@ public class OpenAiCompatibleProvider : ILlmProvider
             }
             else if (msg.Content.Any(c => c.Type == ContentType.ToolUse))
             {
-                var toolUses = msg.Content.Where(c => c.Type == ContentType.ToolUse).ToList();
+                var toolUses = msg.Content
+                    .Where(c => c.Type == ContentType.ToolUse &&
+                                !string.IsNullOrWhiteSpace(c.ToolId) &&
+                                !string.IsNullOrWhiteSpace(c.ToolName))
+                    .ToList();
+                var textContent = msg.Content.Where(c => c.Type == ContentType.Text).Select(c => c.Text).FirstOrDefault();
                 if (toolUses.Any())
                 {
                     openAiMsg.ToolCalls = toolUses.Select(t => new OpenAiToolCall
@@ -330,7 +343,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
                         Function = new OpenAiFunctionCall
                         {
                             Name = t.ToolName,
-                            Arguments = SerializeToolArguments(t.ToolInput)
+                            Arguments = SerializeOutboundToolArguments(t.ToolInput)
                         }
                     }).ToList();
                 }
@@ -347,10 +360,15 @@ public class OpenAiCompatibleProvider : ILlmProvider
                     openAiMsg.ReasoningContent = " ";
                 }
 
-                var textContent = msg.Content.Where(c => c.Type == ContentType.Text).Select(c => c.Text).FirstOrDefault();
                 if (!string.IsNullOrEmpty(textContent))
                 {
                     openAiMsg.Content = textContent;
+                }
+
+                if (openAiMsg.ToolCalls is not { Count: > 0 } &&
+                    string.IsNullOrEmpty(textContent))
+                {
+                    continue;
                 }
             }
             else
@@ -459,15 +477,44 @@ public class OpenAiCompatibleProvider : ILlmProvider
     /// <summary>
     /// 도구 인수 직렬화
     /// </summary>
-    private static string SerializeToolArguments(object? toolInput)
+    private static string SerializeOutboundToolArguments(object? toolInput)
     {
-        return toolInput switch
+        if (toolInput == null)
         {
-            null => "{}",
-            string rawJson => rawJson,
-            JsonElement element => element.GetRawText(),
-            _ => JsonSerializer.Serialize(toolInput)
-        };
+            return "{}";
+        }
+
+        if (toolInput is string rawJson)
+        {
+            if (string.IsNullOrWhiteSpace(rawJson))
+            {
+                return "{}";
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(rawJson);
+                return doc.RootElement.ValueKind == JsonValueKind.Object
+                    ? doc.RootElement.GetRawText()
+                    : "{}";
+            }
+            catch (JsonException)
+            {
+                return "{}";
+            }
+        }
+
+        if (toolInput is JsonElement element)
+        {
+            return element.ValueKind == JsonValueKind.Object
+                ? element.GetRawText()
+                : "{}";
+        }
+
+        var serialized = JsonSerializer.SerializeToElement(toolInput);
+        return serialized.ValueKind == JsonValueKind.Object
+            ? serialized.GetRawText()
+            : "{}";
     }
 
     private static string NormalizeToolArguments(object? arguments)

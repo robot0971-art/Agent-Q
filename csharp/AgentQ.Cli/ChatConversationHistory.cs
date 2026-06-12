@@ -3,30 +3,28 @@ using AgentQ.Core.Models;
 namespace AgentQ.Cli;
 
 /// <summary>
-/// 대화 기록 관리
+/// Mutable CLI conversation history.
 /// </summary>
 public class ChatConversationHistory
 {
     private readonly List<ChatMessage> _messages = new();
 
     /// <summary>
-    /// 메시지 목록
+    /// Current conversation messages.
     /// </summary>
     public IReadOnlyList<ChatMessage> Messages => _messages.AsReadOnly();
 
     /// <summary>
-    /// 사용자 메시지 추가
+    /// Adds a user text message.
     /// </summary>
-    /// <param name="text">메시지 텍스트</param>
     public void AddUserMessage(string text)
     {
         _messages.Add(ChatMessage.UserText(text));
     }
 
     /// <summary>
-    /// 어시스턴트 메시지 추가
+    /// Adds an assistant message.
     /// </summary>
-    /// <param name="content">메시지 내용</param>
     public void AddAssistantMessage(List<ChatContent> content)
     {
         _messages.Add(new ChatMessage
@@ -37,9 +35,8 @@ public class ChatConversationHistory
     }
 
     /// <summary>
-    /// 도구 결과 추가
+    /// Adds tool result content as a user-role message.
     /// </summary>
-    /// <param name="results">결과 목록</param>
     public void AddToolResults(List<ChatContent> results)
     {
         _messages.Add(new ChatMessage
@@ -50,7 +47,7 @@ public class ChatConversationHistory
     }
 
     /// <summary>
-    /// 대화 기록 초기화
+    /// Clears the history.
     /// </summary>
     public void Clear()
     {
@@ -58,20 +55,16 @@ public class ChatConversationHistory
     }
 
     /// <summary>
-    /// 여러 메시지를 대화 기록에 추가
+    /// Appends multiple messages to the history.
     /// </summary>
-    /// <param name="messages">추가할 메시지 목록</param>
     public void AddRange(IEnumerable<ChatMessage> messages)
     {
         _messages.AddRange(messages);
     }
 
     /// <summary>
-    /// 오래된 메시지를 요약 메시지 하나로 압축하고 최근 메시지는 유지합니다.
+    /// Replaces older messages with one summary while preserving the recent tail.
     /// </summary>
-    /// <param name="summaryMessage">압축 요약 메시지</param>
-    /// <param name="keepLastMessages">뒤에서 유지할 메시지 수</param>
-    /// <returns>압축된 원본 메시지 수</returns>
     public int CompactWithSummary(ChatMessage summaryMessage, int keepLastMessages)
     {
         if (_messages.Count <= keepLastMessages)
@@ -82,6 +75,12 @@ public class ChatConversationHistory
         keepLastMessages = Math.Max(0, keepLastMessages);
         var preservedCount = Math.Min(keepLastMessages, _messages.Count);
         var compactedCount = _messages.Count - preservedCount;
+        compactedCount = MoveBoundaryBeforeToolProtocolPair(compactedCount);
+        if (compactedCount <= 0)
+        {
+            return 0;
+        }
+
         var tail = _messages.Skip(compactedCount).ToList();
 
         _messages.Clear();
@@ -92,8 +91,32 @@ public class ChatConversationHistory
     }
 
     /// <summary>
-    /// 메시지 개수
+    /// Number of messages in history.
     /// </summary>
     public int MessageCount => _messages.Count;
-}
 
+    private int MoveBoundaryBeforeToolProtocolPair(int compactedCount)
+    {
+        while (compactedCount > 0 &&
+               compactedCount < _messages.Count &&
+               IsUserToolResultMessage(_messages[compactedCount]) &&
+               IsAssistantToolUseMessage(_messages[compactedCount - 1]))
+        {
+            compactedCount--;
+        }
+
+        return compactedCount;
+    }
+
+    private static bool IsAssistantToolUseMessage(ChatMessage message)
+    {
+        return message.Role == ChatRole.Assistant &&
+               message.Content.Any(content => content.Type == ContentType.ToolUse);
+    }
+
+    private static bool IsUserToolResultMessage(ChatMessage message)
+    {
+        return message.Role == ChatRole.User &&
+               message.Content.Any(content => content.Type == ContentType.ToolResult);
+    }
+}

@@ -14,6 +14,9 @@ public sealed class CSharpRoslynAnalysisService
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
         ".vs",
         "bin",
         "obj",
@@ -212,7 +215,10 @@ public sealed class CSharpRoslynAnalysisService
 
             foreach (var file in files)
             {
-                yield return file;
+                if (WorkspacePathResolver.IsResolvedInsideWorkspace(root, file))
+                {
+                    yield return file;
+                }
             }
 
             IEnumerable<string> directories;
@@ -227,11 +233,25 @@ public sealed class CSharpRoslynAnalysisService
 
             foreach (var directory in directories)
             {
-                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)))
+                if (!ExcludedDirectories.Contains(Path.GetFileName(directory)) &&
+                    !IsReparseDirectory(directory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
                 {
                     pending.Push(directory);
                 }
             }
+        }
+    }
+
+    private static bool IsReparseDirectory(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch
+        {
+            return true;
         }
     }
 

@@ -254,6 +254,7 @@ public sealed partial class WorkspaceIndexer
         var name = Path.GetFileName(directory);
         return name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".agentq-verify", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
                name.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
@@ -291,6 +292,7 @@ public sealed partial class WorkspaceIndexer
         return parts.Any(part =>
             part.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".agentq-verify", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||

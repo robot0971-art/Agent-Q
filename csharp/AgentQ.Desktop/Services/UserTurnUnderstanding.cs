@@ -452,11 +452,13 @@ public static class UserTurnUnderstandingService
     private static IReadOnlyList<string> SplitLikelyEmbeddedSections(string userText)
     {
         var normalizedNewLines = userText.Replace("\r\n", "\n").Replace('\r', '\n');
-        var separatorIndex = normalizedNewLines.IndexOf("=====", StringComparison.Ordinal);
-        if (separatorIndex >= 0)
+        var separator = System.Text.RegularExpressions.Regex.Match(
+            normalizedNewLines,
+            @"(?m)^\s*(?:={3,}|-{3,})\s*$");
+        if (separator.Success)
         {
-            var first = normalizedNewLines[..separatorIndex];
-            var rest = normalizedNewLines[(separatorIndex + 5)..];
+            var first = normalizedNewLines[..separator.Index];
+            var rest = normalizedNewLines[(separator.Index + separator.Length)..];
             return [first, rest];
         }
 
@@ -494,7 +496,8 @@ public static class UserTurnUnderstandingService
             normalized,
             "\uB85C\uADF8", "\uC5D0\uB7EC", "\uC624\uB958", "\uCD9C\uB825", "\uC608\uC2DC", "\uC778\uC6A9", "\uB530\uC634\uD45C",
             "\uBD99\uC5EC\uB123", "\uB300\uD654", "\uC751\uB2F5", "\uB2F5\uBCC0", "\uC6D0\uC778", "\uBD84\uC11D",
-            "log", "error", "output", "example", "quoted", "quote", "pasted", "transcript", "response", "analyze", "analysis", "why");
+            "\uB73B", "\uC758\uBBF8", "\uC774\uBBF8\uC9C0", "\uC2A4\uD06C\uB9B0\uC0F7", "\uD654\uBA74",
+            "log", "error", "output", "example", "quoted", "quote", "pasted", "transcript", "response", "analyze", "analysis", "why", "meaning", "image", "screenshot");
         if (!hasEvidenceFrame)
         {
             return false;
@@ -531,6 +534,14 @@ public static class UserTurnUnderstandingService
                      userText,
                      "`(?<text>[^`]+)`|\"(?<text>[^\"]+)\"|'(?<text>[^']+)'|^\\s*>\\s*(?<text>.+)$",
                      System.Text.RegularExpressions.RegexOptions.Multiline))
+        {
+            AddActionTextCandidates(candidates, match.Groups["text"].Value);
+        }
+
+        var normalizedNewLines = userText.Replace("\r\n", "\n").Replace('\r', '\n');
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                     normalizedNewLines,
+                     @"(?ms)^\s*(?:={3,}|-{3,})\s*$\n(?<text>.*?)(?=^\s*(?:={3,}|-{3,})\s*$|\z)"))
         {
             AddActionTextCandidates(candidates, match.Groups["text"].Value);
         }

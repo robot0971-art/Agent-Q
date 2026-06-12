@@ -19,6 +19,11 @@ public sealed class FileMutationSnapshotService
         snapshot.CreatedAt = DateTime.Now;
 
         var directory = GetSnapshotDirectory(snapshot.WorkspaceRoot);
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(snapshot.WorkspaceRoot, directory))
+        {
+            throw new InvalidOperationException("File mutation snapshot path resolves outside the workspace.");
+        }
+
         Directory.CreateDirectory(directory);
 
         var path = Path.Combine(directory, $"{snapshot.CreatedAt:yyyyMMdd-HHmmss-fff}-{snapshot.Id}.json");

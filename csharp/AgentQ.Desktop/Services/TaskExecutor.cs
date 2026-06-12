@@ -106,6 +106,11 @@ public sealed class TaskExecutor
                 _symbolIndexService,
                 _workspaceAnalysisService);
 
+            var verificationCommand = GetAllowedVerificationCommand(step.VerificationCommand);
+            var verificationInstruction = string.IsNullOrWhiteSpace(verificationCommand)
+                ? "No allowed verification command is provided for this step."
+                : $"Verification Command to run if applicable: {verificationCommand}";
+
             var userPrompt = $"""
 Please perform this specific task:
 "{step.Description}"
@@ -113,7 +118,7 @@ Please perform this specific task:
 Context from files and symbols:
 {taskContext}
 
-Verification Command to run if applicable: {step.VerificationCommand}
+{verificationInstruction}
 """;
 
             try
@@ -165,4 +170,12 @@ Verification Command to run if applicable: {step.VerificationCommand}
 
     public static bool IsStepOutputSuccessful(string stepOutput) =>
         DesktopAgentRunWorkflowService.BuildRunCompletionOutcome(stepOutput).Succeeded;
+
+    public static string GetAllowedVerificationCommand(string? command)
+    {
+        var trimmed = command?.Trim();
+        return VerificationCommandPolicy.IsAllowed(trimmed)
+            ? trimmed!
+            : string.Empty;
+    }
 }

@@ -134,6 +134,39 @@ public sealed class DesktopConversationCompactorTests
     }
 
     [Fact]
+    public void Compact_ShouldNotSplitRecentToolUseAndToolResultProtocolPair()
+    {
+        var compactor = new ConversationCompactor();
+        var toolUseMsg = ChatMessage.AssistantToolUse("id-1", "read_file", new { path = "test.txt" });
+        var toolResultMsg = ChatMessage.UserToolResult("id-1", "{\"content\":\"ok\"}", false);
+
+        var messages = new List<ChatMessage>
+        {
+            ChatMessage.SystemText("System message"),
+            ChatMessage.UserText("old user " + new string('u', 200)),
+            ChatMessage.AssistantText("old assistant " + new string('a', 200)),
+            toolUseMsg,
+            toolResultMsg,
+            ChatMessage.AssistantText("final answer")
+        };
+
+        var result = compactor.Compact(messages, maxEstimatedTokens: 5, keepRecentTurns: 2);
+
+        Assert.Equal(6, result.Count);
+        var keptToolUse = Assert.Single(result, message =>
+            message.Role == ChatRole.Assistant &&
+            message.Content.Any(content => content.Type == ContentType.ToolUse));
+        var keptToolResult = Assert.Single(result, message =>
+            message.Role == ChatRole.User &&
+            message.Content.Any(content => content.Type == ContentType.ToolResult));
+
+        Assert.False(keptToolUse.IsCompacted);
+        Assert.False(keptToolResult.IsCompacted);
+        Assert.Equal("id-1", keptToolUse.Content.Single().ToolId);
+        Assert.Equal("id-1", keptToolResult.Content.Single().ToolUseId);
+    }
+
+    [Fact]
     public void Compact_ShouldPreserveImportantToolContextBeyondPreview()
     {
         var compactor = new ConversationCompactor();

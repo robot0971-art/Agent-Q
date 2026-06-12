@@ -3,362 +3,266 @@ using System.Text.Json.Serialization;
 namespace AgentQ.Core.Models;
 
 /// <summary>
-/// 채팅 역할 열거형
+/// Role of a chat message.
 /// </summary>
 public enum ChatRole
 {
-    /// <summary>시스템</summary>
+    /// <summary>System instruction.</summary>
     System,
-    /// <summary>사용자</summary>
+
+    /// <summary>User message.</summary>
     User,
-    /// <summary>어시스턴트</summary>
+
+    /// <summary>Assistant message.</summary>
     Assistant,
-    /// <summary>도구</summary>
+
+    /// <summary>Tool message.</summary>
     Tool
 }
 
 /// <summary>
-/// 채팅 메시지
+/// A chat message with one or more content blocks.
 /// </summary>
 public class ChatMessage
 {
-    /// <summary>
-    /// 메시지 역할
-    /// </summary>
+    /// <summary>Message role.</summary>
     public ChatRole Role { get; set; }
 
-    /// <summary>
-    /// 메시지 내용 목록
-    /// </summary>
+    /// <summary>Message content blocks.</summary>
     public List<ChatContent> Content { get; set; } = new();
 
-    /// <summary>
-    /// 압축 여부
-    /// </summary>
+    /// <summary>Whether this message was compacted from older history.</summary>
     public bool IsCompacted { get; set; }
 
-    /// <summary>
-    /// 압축 요약본
-    /// </summary>
+    /// <summary>Optional compaction summary.</summary>
     public string? CompactionSummary { get; set; }
 
-    /// <summary>
-    /// 시스템 텍스트 메시지 생성
-    /// </summary>
-    /// <param name="text">텍스트 내용</param>
-    /// <returns>시스템 메시지</returns>
+    /// <summary>Create a system text message.</summary>
     public static ChatMessage SystemText(string text) =>
         new() { Role = ChatRole.System, Content = new() { ChatContent.CreateText(text) } };
 
-    /// <summary>
-    /// 사용자 텍스트 메시지 생성
-    /// </summary>
-    /// <param name="text">텍스트 내용</param>
-    /// <returns>사용자 메시지</returns>
+    /// <summary>Create a user text message.</summary>
     public static ChatMessage UserText(string text) =>
         new() { Role = ChatRole.User, Content = new() { ChatContent.CreateText(text) } };
 
-    /// <summary>
-    /// 어시스턴트 텍스트 메시지 생성
-    /// </summary>
-    /// <param name="text">텍스트 내용</param>
-    /// <returns>어시스턴트 메시지</returns>
+    /// <summary>Create an assistant text message.</summary>
     public static ChatMessage AssistantText(string text) =>
         new() { Role = ChatRole.Assistant, Content = new() { ChatContent.CreateText(text) } };
 
-    /// <summary>
-    /// 어시스턴트 도구 사용 메시지 생성
-    /// </summary>
-    /// <param name="toolId">도구 ID</param>
-    /// <param name="toolName">도구 이름</param>
-    /// <param name="input">도구 입력</param>
-    /// <returns>도구 사용 메시지</returns>
+    /// <summary>Create an assistant tool-use message.</summary>
     public static ChatMessage AssistantToolUse(string toolId, string toolName, object input) =>
         new() { Role = ChatRole.Assistant, Content = new() { ChatContent.CreateToolUse(toolId, toolName, input) } };
 
-    /// <summary>
-    /// 사용자 도구 결과 메시지 생성
-    /// </summary>
-    /// <param name="toolUseId">도구 사용 ID</param>
-    /// <param name="result">결과 내용</param>
-    /// <param name="isError">오류 여부</param>
-    /// <returns>도구 결과 메시지</returns>
+    /// <summary>Create a user tool-result message.</summary>
     public static ChatMessage UserToolResult(string toolUseId, string result, bool isError) =>
         new() { Role = ChatRole.User, Content = new() { ChatContent.CreateToolResult(toolUseId, result, isError) } };
 }
 
 /// <summary>
-/// 콘텐츠 타입 열거형
+/// Type of a content block.
 /// </summary>
 public enum ContentType
 {
-    /// <summary>텍스트</summary>
+    /// <summary>Text block.</summary>
     Text,
-    /// <summary>이미지</summary>
+
+    /// <summary>Image block.</summary>
     Image,
-    /// <summary>도구 사용</summary>
+
+    /// <summary>Tool-use block.</summary>
     ToolUse,
-    /// <summary>도구 결과</summary>
+
+    /// <summary>Tool-result block.</summary>
     ToolResult
 }
 
 /// <summary>
-/// 채팅 콘텐츠
+/// A chat content block.
 /// </summary>
 public class ChatContent
 {
-    /// <summary>
-    /// 콘텐츠 타입
-    /// </summary>
+    /// <summary>Content block type.</summary>
     public ContentType Type { get; set; }
 
-    /// <summary>
-    /// 텍스트 내용 (Text 타입일 때)
-    /// </summary>
+    /// <summary>Text content for text blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Text { get; set; }
 
-    /// <summary>
-    /// 미디어 MIME 타입 (Image 타입일 때)
-    /// </summary>
+    /// <summary>Media MIME type for image blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MediaType { get; set; }
 
-    /// <summary>
-    /// Base64 인코딩된 미디어 데이터 (Image 타입일 때)
-    /// </summary>
+    /// <summary>Base64-encoded media data for image blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Base64Data { get; set; }
 
-    /// <summary>
-    /// 도구 ID (ToolUse 타입일 때)
-    /// </summary>
+    /// <summary>Tool id for tool-use blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToolId { get; set; }
 
-    /// <summary>
-    /// 도구 이름 (ToolUse 타입일 때)
-    /// </summary>
+    /// <summary>Tool name for tool-use blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToolName { get; set; }
 
-    /// <summary>
-    /// 도구 입력 (ToolUse 타입일 때)
-    /// </summary>
+    /// <summary>Tool input for tool-use blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public object? ToolInput { get; set; }
 
+    /// <summary>Reasoning text associated with a content block.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ReasoningContent { get; set; }
 
-    /// <summary>
-    /// 도구 사용 ID (ToolResult 타입일 때)
-    /// </summary>
+    /// <summary>Tool-use id for tool-result blocks.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToolUseId { get; set; }
 
-    /// <summary>
-    /// 도구 결과 (ToolResult 타입일 때)
-    /// </summary>
+    /// <summary>Tool result content.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToolResult { get; set; }
 
-    /// <summary>
-    /// 도구 오류 여부 (ToolResult 타입일 때)
-    /// </summary>
+    /// <summary>Whether the tool result represents an error.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? IsToolError { get; set; }
 
-    /// <summary>
-    /// 텍스트 콘텐츠 생성
-    /// </summary>
-    /// <param name="text">텍스트 내용</param>
-    /// <returns>텍스트 콘텐츠</returns>
+    /// <summary>Create a text content block.</summary>
     public static ChatContent CreateText(string text) =>
         new() { Type = ContentType.Text, Text = text };
 
-    /// <summary>
-    /// 이미지 콘텐츠 생성
-    /// </summary>
+    /// <summary>Create an image content block.</summary>
     public static ChatContent CreateImage(string mediaType, string base64Data) =>
         new() { Type = ContentType.Image, MediaType = mediaType, Base64Data = base64Data };
 
-    /// <summary>
-    /// 도구 사용 콘텐츠 생성
-    /// </summary>
-    /// <param name="toolId">도구 ID</param>
-    /// <param name="toolName">도구 이름</param>
-    /// <param name="input">도구 입력</param>
-    /// <returns>도구 사용 콘텐츠</returns>
+    /// <summary>Create a tool-use content block.</summary>
     public static ChatContent CreateToolUse(string toolId, string toolName, object input) =>
-        new() { Type = ContentType.ToolUse, ToolId = toolId, ToolName = toolName, ToolInput = input };
+        new()
+        {
+            Type = ContentType.ToolUse,
+            ToolId = NormalizeToolIdentifier(toolId),
+            ToolName = NormalizeToolIdentifier(toolName),
+            ToolInput = input
+        };
 
-    /// <summary>
-    /// 도구 결과 콘텐츠 생성
-    /// </summary>
-    /// <param name="toolUseId">도구 사용 ID</param>
-    /// <param name="result">결과 내용</param>
-    /// <param name="isError">오류 여부</param>
-    /// <returns>도구 결과 콘텐츠</returns>
+    /// <summary>Create a tool-result content block.</summary>
     public static ChatContent CreateToolResult(string toolUseId, string result, bool isError) =>
-        new() { Type = ContentType.ToolResult, ToolUseId = toolUseId, ToolResult = result, IsToolError = isError };
+        new()
+        {
+            Type = ContentType.ToolResult,
+            ToolUseId = NormalizeToolIdentifier(toolUseId),
+            ToolResult = result,
+            IsToolError = isError
+        };
+
+    private static string NormalizeToolIdentifier(string value) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
 }
 
 /// <summary>
-/// 채팅 컨텍스트
+/// Input context for a chat request.
 /// </summary>
 public class ChatContext
 {
-    /// <summary>
-    /// 사용할 모델
-    /// </summary>
+    /// <summary>Model name.</summary>
     public string Model { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 메시지 목록
-    /// </summary>
+    /// <summary>Messages to send.</summary>
     public List<ChatMessage> Messages { get; set; } = new();
 
-    /// <summary>
-    /// 시스템 프롬프트
-    /// </summary>
+    /// <summary>Optional system prompt.</summary>
     public string? SystemPrompt { get; set; }
 
-    /// <summary>
-    /// 최대 토큰 수
-    /// </summary>
+    /// <summary>Maximum output tokens.</summary>
     public uint MaxTokens { get; set; } = 1024;
 
-    /// <summary>
-    /// 스트리밍 사용 여부
-    /// </summary>
+    /// <summary>Whether streaming is requested.</summary>
     public bool Stream { get; set; } = true;
 
-    /// <summary>
-    /// 단일 대화 턴에서 허용되는 최대 tool loop 횟수
-    /// </summary>
+    /// <summary>Maximum tool-loop steps for a single turn.</summary>
     public int MaxSteps { get; set; } = 45;
 }
 
 /// <summary>
-/// 채팅 응답
+/// Model response.
 /// </summary>
 public class ChatResponse
 {
-    /// <summary>
-    /// 응답 ID
-    /// </summary>
+    /// <summary>Response id.</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 사용된 모델
-    /// </summary>
+    /// <summary>Model name.</summary>
     public string Model { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 응답 내용 목록
-    /// </summary>
+    /// <summary>Response content blocks.</summary>
     public List<ChatContent> Content { get; set; } = new();
 
-    /// <summary>
-    /// 토큰 사용량
-    /// </summary>
+    /// <summary>Usage statistics.</summary>
     public UsageStats? Usage { get; set; }
 }
 
 /// <summary>
-/// 토큰 사용량 통계
+/// Token usage statistics.
 /// </summary>
 public class UsageStats
 {
-    /// <summary>
-    /// 입력 토큰 수
-    /// </summary>
+    /// <summary>Input token count.</summary>
     public int InputTokens { get; set; }
 
-    /// <summary>
-    /// 출력 토큰 수
-    /// </summary>
+    /// <summary>Output token count.</summary>
     public int OutputTokens { get; set; }
 
-    /// <summary>
-    /// 총 토큰 수
-    /// </summary>
+    /// <summary>Total token count.</summary>
     public int TotalTokens => InputTokens + OutputTokens;
 }
 
 /// <summary>
-/// 스트리밍 청크
+/// A streamed response chunk.
 /// </summary>
 public class StreamChunk
 {
-    /// <summary>
-    /// 텍스트 델타 (스트리밍 중인 텍스트)
-    /// </summary>
+    /// <summary>Text delta.</summary>
     public string? TextDelta { get; set; }
 
+    /// <summary>Reasoning delta.</summary>
     public string? ReasoningDelta { get; set; }
 
-    /// <summary>
-    /// 도구 사용 델타
-    /// </summary>
+    /// <summary>Tool-use delta.</summary>
     public ToolUseChunk? ToolUseDelta { get; set; }
 
-    /// <summary>
-    /// 스트리밍 완료 여부
-    /// </summary>
+    /// <summary>Whether the stream is complete.</summary>
     public bool IsComplete { get; set; }
 
-    /// <summary>
-    /// 토큰 사용량
-    /// </summary>
+    /// <summary>Usage statistics.</summary>
     public UsageStats? Usage { get; set; }
 }
 
 /// <summary>
-/// 도구 사용 청크
+/// Tool-use data in a stream.
 /// </summary>
 public class ToolUseChunk
 {
-    /// <summary>
-    /// 도구 ID
-    /// </summary>
+    /// <summary>Tool id.</summary>
     public string ToolId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 도구 이름
-    /// </summary>
+    /// <summary>Tool name.</summary>
     public string ToolName { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 부분 입력 (스트리밍 중)
-    /// </summary>
+    /// <summary>Partial or complete tool input.</summary>
     public string? PartialInput { get; set; }
 
-    /// <summary>
-    /// 완료 여부
-    /// </summary>
+    /// <summary>Whether the tool-use chunk is complete.</summary>
     public bool IsComplete { get; set; }
 }
 
 /// <summary>
-/// 도구 정의
+/// Tool definition exposed to a provider.
 /// </summary>
 public class ToolDefinition
 {
-    /// <summary>
-    /// 도구 이름
-    /// </summary>
+    /// <summary>Tool name.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 도구 설명
-    /// </summary>
+    /// <summary>Tool description.</summary>
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 입력 스키마 (JSON Schema)
-    /// </summary>
+    /// <summary>Tool input schema.</summary>
     public object InputSchema { get; set; } = new();
 }
-

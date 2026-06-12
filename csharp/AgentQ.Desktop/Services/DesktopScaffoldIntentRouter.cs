@@ -4,6 +4,15 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopScaffoldIntentRouter
 {
+    private static readonly HashSet<string> IgnoredWorkspaceEntries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        ".agentq",
+        ".agents",
+        ".codex",
+        ".codex-build"
+    };
+
     public DesktopScaffoldIntent Analyze(string userText, string workspaceRoot)
     {
         var normalized = Normalize(userText);
@@ -221,9 +230,21 @@ public sealed class DesktopScaffoldIntentRouter
             return DesktopWorkspaceScaffoldState.PackageOnly;
         }
 
-        var hasFiles = Directory.EnumerateFileSystemEntries(root)
-            .Any(path => !string.Equals(Path.GetFileName(path), ".git", StringComparison.OrdinalIgnoreCase));
+        var hasFiles = SafeEnumerateFileSystemEntries(root)
+            .Any(path => !IgnoredWorkspaceEntries.Contains(Path.GetFileName(path)));
         return hasFiles ? DesktopWorkspaceScaffoldState.ExistingProject : DesktopWorkspaceScaffoldState.Empty;
+    }
+
+    private static IEnumerable<string> SafeEnumerateFileSystemEntries(string root)
+    {
+        try
+        {
+            return Directory.EnumerateFileSystemEntries(root);
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private static bool IsProjectScaffold(WorkerScaffoldRecommendation recommendation)

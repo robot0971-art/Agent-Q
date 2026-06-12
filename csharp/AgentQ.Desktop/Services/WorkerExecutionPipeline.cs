@@ -86,6 +86,12 @@ public sealed class WorkerExecutionPipeline(
         WorkerExecutionContext context,
         DesktopVerificationWorkflowResult verificationResult)
     {
+        if (!CanApplyVerificationResult(context.State))
+        {
+            context.StatusMessage = $"Worker verification result ignored because the worker plan is not in a verifiable state: {context.State}";
+            return;
+        }
+
         if (verificationResult.Succeeded)
         {
             context.State = WorkerExecutionState.Succeeded;
@@ -108,6 +114,11 @@ public sealed class WorkerExecutionPipeline(
         context.RepairPlan = BuildRepairPlan(context.Plan, verificationResult, signature, context.ProjectAllowedCommands);
         context.State = WorkerExecutionState.RepairRequired;
         context.StatusMessage = "Worker repair required after failed verification.";
+    }
+
+    private static bool CanApplyVerificationResult(WorkerExecutionState state)
+    {
+        return state is WorkerExecutionState.ScaffoldExecuted or WorkerExecutionState.RepairRequired;
     }
 
     private static WorkerExecutionState ToExecutionState(WorkerPlanApprovalState state)

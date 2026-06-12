@@ -287,6 +287,10 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
     {
         var name = Path.GetFileName(directory);
         return name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
@@ -314,6 +318,10 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
 
         return parts.Any(part =>
             part.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||

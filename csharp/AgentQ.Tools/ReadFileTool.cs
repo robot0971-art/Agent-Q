@@ -67,9 +67,8 @@ public class ReadFileTool : ITool
             if (!File.Exists(fullPath))
                 return Task.FromResult(ToolResult.Error($"File not found: {path}"));
 
-            var lines = File.ReadAllLines(fullPath);
             var offset = 0;
-            var limit = Math.Min(lines.Length, DefaultLineLimit);
+            var limit = DefaultLineLimit;
 
             if (TryGetInt32(input, "offset", out var parsedOffset)) offset = Math.Max(0, parsedOffset - 1);
             if (TryGetInt32(input, "limit", out var parsedLimit)) limit = parsedLimit;
@@ -77,12 +76,14 @@ public class ReadFileTool : ITool
             if (limit <= 0)
                 return Task.FromResult(ToolResult.Error("limit must be greater than 0"));
 
-            offset = Math.Min(offset, lines.Length);
             var requestedLimit = limit;
-            limit = Math.Min(Math.Min(limit, MaximumLineLimit), lines.Length - offset);
+            limit = Math.Min(limit, MaximumLineLimit);
 
-            var selectedLines = lines.Skip(offset).Take(limit).ToArray();
-            var content = string.Join("\n", selectedLines);
+            if (LooksLikeBinaryFile(fullPath))
+                return Task.FromResult(ToolResult.Error($"Binary file is not supported by read_file: {path}"));
+
+            var readResult = ReadSelectedLines(fullPath, offset, limit);
+            var content = string.Join("\n", readResult.SelectedLines);
             var contentTruncated = false;
             if (content.Length > MaximumContentLength)
             {
@@ -94,12 +95,12 @@ public class ReadFileTool : ITool
             {
                 ["path"] = path,
                 ["content"] = content,
-                ["totalLines"] = lines.Length,
-                ["readLines"] = selectedLines.Length,
-                ["offset"] = offset + 1,
-                ["limit"] = limit,
+                ["totalLines"] = readResult.TotalLines,
+                ["readLines"] = readResult.SelectedLines.Count,
+                ["offset"] = Math.Min(offset, readResult.TotalLines) + 1,
+                ["limit"] = Math.Min(limit, Math.Max(0, readResult.TotalLines - Math.Min(offset, readResult.TotalLines))),
                 ["requestedLimit"] = requestedLimit,
-                ["limitClamped"] = requestedLimit != limit,
+                ["limitClamped"] = requestedLimit != limit || limit > readResult.SelectedLines.Count,
                 ["contentTruncated"] = contentTruncated
             };
 
@@ -167,4 +168,34 @@ public class ReadFileTool : ITool
             _ => null
         };
     }
+
+    private static ReadLinesResult ReadSelectedLines(string fullPath, int offset, int limit)
+    {
+        var selectedLines = new List<string>(Math.Min(limit, MaximumLineLimit));
+        var totalLines = 0;
+
+        using var reader = new StreamReader(fullPath, detectEncodingFromByteOrderMarks: true);
+        while (reader.ReadLine() is { } line)
+        {
+            if (totalLines >= offset && selectedLines.Count < limit)
+            {
+                selectedLines.Add(line);
+            }
+
+            totalLines++;
+        }
+
+        return new ReadLinesResult(totalLines, selectedLines);
+    }
+
+    private static bool LooksLikeBinaryFile(string fullPath)
+    {
+        const int sampleSize = 4096;
+        Span<byte> buffer = stackalloc byte[sampleSize];
+        using var stream = File.OpenRead(fullPath);
+        var read = stream.Read(buffer);
+        return buffer[..read].Contains((byte)0);
+    }
+
+    private sealed record ReadLinesResult(int TotalLines, IReadOnlyList<string> SelectedLines);
 }

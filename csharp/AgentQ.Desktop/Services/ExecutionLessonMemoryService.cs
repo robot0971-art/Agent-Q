@@ -112,6 +112,7 @@ public sealed class ExecutionLessonMemoryService
         var matching = document.Lessons
             .Where(lesson => IsUseful(lesson))
             .Where(lesson => IntentMatches(lesson, contract))
+            .Where(lesson => lesson.AppliedCount > 0)
             .OrderByDescending(lesson => lesson.LastUsedAtUtc ?? lesson.CreatedAtUtc)
             .FirstOrDefault();
         if (matching == null)
@@ -146,7 +147,8 @@ public sealed class ExecutionLessonMemoryService
     public async Task<ExecutionLessonDocument> LoadAsync(string workspaceRoot, CancellationToken ct)
     {
         var path = GetLessonsPath(workspaceRoot);
-        if (!File.Exists(path))
+        if (!IsSafeWorkspacePath(workspaceRoot, path) ||
+            !File.Exists(path))
         {
             return new ExecutionLessonDocument();
         }
@@ -168,6 +170,11 @@ public sealed class ExecutionLessonMemoryService
     {
         document.Version = 1;
         var path = GetLessonsPath(workspaceRoot);
+        if (!IsSafeWorkspacePath(workspaceRoot, path))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         await File.WriteAllTextAsync(tempPath, JsonSerializer.Serialize(document, JsonOptions), ct);
@@ -280,6 +287,11 @@ public sealed class ExecutionLessonMemoryService
     private async Task AppendEventAsync(string workspaceRoot, string lessonId, string eventName, string intent, CancellationToken ct)
     {
         var path = GetEventsPath(workspaceRoot);
+        if (!IsSafeWorkspacePath(workspaceRoot, path))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = JsonSerializer.Serialize(new
         {
@@ -312,6 +324,14 @@ public sealed class ExecutionLessonMemoryService
 
     private static string GetEventsPath(string workspaceRoot) =>
         Path.Combine(Path.GetFullPath(workspaceRoot), ".agentq", "lessons", "execution-lesson-events.jsonl");
+
+    private static bool IsSafeWorkspacePath(string workspaceRoot, string path)
+    {
+        var root = string.IsNullOrWhiteSpace(workspaceRoot)
+            ? Environment.CurrentDirectory
+            : Path.GetFullPath(workspaceRoot);
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(root, path);
+    }
 }
 
 public sealed class ExecutionLessonDocument

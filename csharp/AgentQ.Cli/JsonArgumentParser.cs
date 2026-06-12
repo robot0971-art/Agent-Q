@@ -15,23 +15,59 @@ internal static class JsonArgumentParser
 
     public static Dictionary<string, object?> ParseInput(object? input)
     {
-        return input switch
-        {
-            JsonElement json when json.ValueKind == JsonValueKind.Object => ParseJsonObject(json),
-            string rawJson => TryParseJsonObject(rawJson),
-            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase),
-            _ => new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        };
+        return TryParseInput(input, out var parsed, out _)
+            ? parsed
+            : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
     }
 
-    private static Dictionary<string, object?> TryParseJsonObject(string rawJson)
+    public static bool TryParseInput(
+        object? input,
+        out Dictionary<string, object?> parsed,
+        out string error)
     {
+        parsed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        error = string.Empty;
+        switch (input)
+        {
+            case null:
+                return true;
+            case JsonElement json when json.ValueKind == JsonValueKind.Object:
+                parsed = ParseJsonObject(json);
+                return true;
+            case JsonElement json when json.ValueKind == JsonValueKind.String:
+                return TryParseJsonObject(json.GetString() ?? string.Empty, out parsed, out error);
+            case JsonElement json:
+                error = $"Tool input JSON must be an object; received {json.ValueKind}.";
+                return false;
+            case string rawJson:
+                return TryParseJsonObject(rawJson, out parsed, out error);
+            case IReadOnlyDictionary<string, object?> values:
+                parsed = new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private static bool TryParseJsonObject(
+        string rawJson,
+        out Dictionary<string, object?> parsed,
+        out string error)
+    {
+        parsed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return true;
+        }
+
         try
         {
             using var doc = JsonDocument.Parse(rawJson);
             if (doc.RootElement.ValueKind == JsonValueKind.Object)
             {
-                return ParseJsonObject(doc.RootElement);
+                parsed = ParseJsonObject(doc.RootElement);
+                return true;
             }
 
             if (doc.RootElement.ValueKind == JsonValueKind.String)
@@ -39,15 +75,20 @@ internal static class JsonArgumentParser
                 var nestedJson = doc.RootElement.GetString();
                 if (!string.IsNullOrWhiteSpace(nestedJson))
                 {
-                    return TryParseJsonObject(nestedJson);
+                    return TryParseJsonObject(nestedJson, out parsed, out error);
                 }
-            }
-        }
-        catch
-        {
-        }
 
-        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                return true;
+            }
+
+            error = $"Tool input JSON must be an object; received {doc.RootElement.ValueKind}.";
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            error = $"Tool input JSON is malformed: {ex.Message}";
+            return false;
+        }
     }
 
     private static Dictionary<string, object?> ParseJsonObject(JsonElement element)

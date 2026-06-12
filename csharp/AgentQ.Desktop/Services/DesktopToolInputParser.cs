@@ -6,23 +6,59 @@ internal static class DesktopToolInputParser
 {
     public static Dictionary<string, object?> Parse(object? input)
     {
-        return input switch
-        {
-            JsonElement json when json.ValueKind == JsonValueKind.Object => ParseObject(json),
-            string rawJson => ParseRawJson(rawJson),
-            IReadOnlyDictionary<string, object?> values => new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase),
-            _ => []
-        };
+        return TryParse(input, out var parsed, out _)
+            ? parsed
+            : [];
     }
 
-    private static Dictionary<string, object?> ParseRawJson(string rawJson)
+    public static bool TryParse(
+        object? input,
+        out Dictionary<string, object?> parsed,
+        out string error)
     {
+        parsed = [];
+        error = string.Empty;
+        switch (input)
+        {
+            case null:
+                return true;
+            case JsonElement json when json.ValueKind == JsonValueKind.Object:
+                parsed = ParseObject(json);
+                return true;
+            case JsonElement json when json.ValueKind == JsonValueKind.String:
+                return TryParseRawJson(json.GetString() ?? string.Empty, out parsed, out error);
+            case JsonElement json:
+                error = $"Tool input JSON must be an object; received {json.ValueKind}.";
+                return false;
+            case string rawJson:
+                return TryParseRawJson(rawJson, out parsed, out error);
+            case IReadOnlyDictionary<string, object?> values:
+                parsed = new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private static bool TryParseRawJson(
+        string rawJson,
+        out Dictionary<string, object?> parsed,
+        out string error)
+    {
+        parsed = [];
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return true;
+        }
+
         try
         {
             using var document = JsonDocument.Parse(rawJson);
             if (document.RootElement.ValueKind == JsonValueKind.Object)
             {
-                return ParseObject(document.RootElement);
+                parsed = ParseObject(document.RootElement);
+                return true;
             }
 
             if (document.RootElement.ValueKind == JsonValueKind.String)
@@ -30,15 +66,20 @@ internal static class DesktopToolInputParser
                 var nestedJson = document.RootElement.GetString();
                 if (!string.IsNullOrWhiteSpace(nestedJson))
                 {
-                    return ParseRawJson(nestedJson);
+                    return TryParseRawJson(nestedJson, out parsed, out error);
                 }
-            }
-        }
-        catch
-        {
-        }
 
-        return [];
+                return true;
+            }
+
+            error = $"Tool input JSON must be an object; received {document.RootElement.ValueKind}.";
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            error = $"Tool input JSON is malformed: {ex.Message}";
+            return false;
+        }
     }
 
     private static Dictionary<string, object?> ParseObject(JsonElement element)

@@ -129,7 +129,8 @@ Coder Output/Summary:
 
             // Run Tester Agent to verify step if VerificationCommand is provided
             var stepSucceeded = true;
-            if (!string.IsNullOrWhiteSpace(step.VerificationCommand))
+            var verificationCommand = TaskExecutor.GetAllowedVerificationCommand(step.VerificationCommand);
+            if (!string.IsNullOrWhiteSpace(verificationCommand))
             {
                 var testerRole = AgentRoleCatalog.Tester;
                 var testerConfig = CopyConfig(config, testerRole.AllowedTools);
@@ -140,7 +141,7 @@ Coder Output/Summary:
 {testerRole.SystemPromptOverride}
 
 Run this verification command to confirm the step:
-Command: {step.VerificationCommand}
+Command: {verificationCommand}
 """;
                 var testerOutput = await testerAgent.SendAsync(
                     testerConfig,

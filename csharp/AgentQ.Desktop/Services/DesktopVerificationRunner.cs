@@ -121,6 +121,13 @@ public sealed class DesktopVerificationRunner(IEnumerable<IVerificationArtifactC
             if (target.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase) &&
                 Directory.Exists(target))
             {
+                var targetInfo = new DirectoryInfo(target);
+                if ((targetInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                    !WorkspacePathResolver.IsResolvedInsideWorkspace(root, target))
+                {
+                    return;
+                }
+
                 Directory.Delete(target, recursive: true);
             }
         }

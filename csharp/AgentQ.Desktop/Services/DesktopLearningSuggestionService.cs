@@ -1,4 +1,6 @@
 using AgentQ.Desktop.ViewModels;
+using System.Text.RegularExpressions;
+using System;
 
 namespace AgentQ.Desktop.Services;
 
@@ -133,13 +135,13 @@ public sealed class DesktopLearningSuggestionService
         var modelText = string.IsNullOrWhiteSpace(model) ? "unknown model" : model;
         var detailText = string.IsNullOrWhiteSpace(detail)
             ? "No detail was captured."
-            : Trim(detail, 220);
+            : Trim(RedactSensitiveText(detail), 220);
 
         return CreateLesson(
-            $"Failure pattern: {Trim(title, 72)}",
-            $"A previous failure happened with {providerText}/{modelText}. Detail: {detailText}",
+            $"Failure pattern: {Trim(RedactSensitiveText(title), 72)}",
+            $"A previous failure happened with {RedactSensitiveText(providerText)}/{RedactSensitiveText(modelText)}. Detail: {detailText}",
             tags,
-            source,
+            RedactSensitiveText(source),
             FailureFingerprintService.Create(title, detailText));
     }
 
@@ -174,6 +176,20 @@ public sealed class DesktopLearningSuggestionService
     {
         value = value.ReplaceLineEndings(" ").Trim();
         return value.Length <= maxLength ? value : value[..maxLength] + "...";
+    }
+
+    private static string RedactSensitiveText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var redacted = Regex.Replace(value, @"sk-[A-Za-z0-9_-]{8,}", "[REDACTED]", RegexOptions.IgnoreCase);
+        redacted = Regex.Replace(redacted, @"bearer\s+[A-Za-z0-9._-]{8,}", "Bearer [REDACTED]", RegexOptions.IgnoreCase);
+        redacted = Regex.Replace(redacted, @"(?i)(api[-_\s]?key|access[-_\s]?token|refresh[-_\s]?token|private[-_\s]?key|password|secret)\s*[:=]\s*\S+", "$1=[REDACTED]");
+        redacted = Regex.Replace(redacted, @"postgres(?:ql)?://[^@\s]+:[^@\s]+@", "postgres://[REDACTED]@", RegexOptions.IgnoreCase);
+        return redacted;
     }
 
     private static IReadOnlyList<string> ClassifyFailureTags(string title, string? detail)

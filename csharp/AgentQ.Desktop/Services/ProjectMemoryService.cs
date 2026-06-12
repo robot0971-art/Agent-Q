@@ -238,7 +238,7 @@ public sealed class ProjectMemoryService
         }
 
         var root = Path.GetFullPath(workspaceRoot);
-        var document = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct) ?? new ProjectMemoryFile();
+        var document = await LoadWorkspaceMemoryFileAsync(root, GetLocalMemoryPath(root), ct) ?? new ProjectMemoryFile();
         if (string.IsNullOrWhiteSpace(lesson.Id))
         {
             lesson.Id = CreateMemoryId(lesson.Title, lesson.Content);
@@ -272,13 +272,13 @@ public sealed class ProjectMemoryService
             string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase) ||
             LessonsMatch(existing, lesson));
         document.Lessons.Add(lesson);
-        await SaveWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), document, ct);
+        await SaveWorkspaceMemoryFileAsync(root, GetLocalMemoryPath(root), document, ct);
     }
 
     public async Task<IReadOnlyList<ProjectMemoryLesson>> LoadLocalLessonsAsync(string workspaceRoot, CancellationToken ct)
     {
         var root = Path.GetFullPath(workspaceRoot);
-        var document = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct);
+        var document = await LoadWorkspaceMemoryFileAsync(root, GetLocalMemoryPath(root), ct);
         return document?.Lessons
             .OrderByDescending(lesson => lesson.LastUsedAt ?? lesson.CreatedAt)
             .ToList() ?? [];
@@ -290,7 +290,7 @@ public sealed class ProjectMemoryService
         CancellationToken ct)
     {
         var root = Path.GetFullPath(workspaceRoot);
-        var document = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct);
+        var document = await LoadWorkspaceMemoryFileAsync(root, GetLocalMemoryPath(root), ct);
         return _gcService.Preview(document?.Lessons ?? [], options);
     }
 
@@ -301,11 +301,11 @@ public sealed class ProjectMemoryService
     {
         var root = Path.GetFullPath(workspaceRoot);
         var path = GetLocalMemoryPath(root);
-        var document = await LoadWorkspaceMemoryFileAsync(path, ct) ?? new ProjectMemoryFile();
+        var document = await LoadWorkspaceMemoryFileAsync(root, path, ct) ?? new ProjectMemoryFile();
         var report = _gcService.Apply(document.Lessons, options);
         if (report.RemovedCount > 0)
         {
-            await SaveWorkspaceMemoryFileAsync(path, document, ct);
+            await SaveWorkspaceMemoryFileAsync(root, path, document, ct);
         }
 
         return report;
@@ -320,7 +320,7 @@ public sealed class ProjectMemoryService
     {
         var root = Path.GetFullPath(workspaceRoot);
         var path = GetLocalMemoryPath(root);
-        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        var document = await LoadWorkspaceMemoryFileAsync(root, path, ct);
         if (document == null)
         {
             return false;
@@ -332,7 +332,7 @@ public sealed class ProjectMemoryService
             return false;
         }
 
-        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        await SaveWorkspaceMemoryFileAsync(root, path, document, ct);
         return true;
     }
 
@@ -344,7 +344,7 @@ public sealed class ProjectMemoryService
     {
         var root = Path.GetFullPath(workspaceRoot);
         var path = GetLocalMemoryPath(root);
-        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        var document = await LoadWorkspaceMemoryFileAsync(root, path, ct);
         if (document == null)
         {
             return [];
@@ -375,7 +375,7 @@ public sealed class ProjectMemoryService
             lesson.LastUsedAt = now;
         }
 
-        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        await SaveWorkspaceMemoryFileAsync(root, path, document, ct);
         return touched;
     }
 
@@ -387,7 +387,7 @@ public sealed class ProjectMemoryService
     {
         var root = Path.GetFullPath(workspaceRoot);
         var path = GetLocalMemoryPath(root);
-        var document = await LoadWorkspaceMemoryFileAsync(path, ct);
+        var document = await LoadWorkspaceMemoryFileAsync(root, path, ct);
         if (document == null)
         {
             return false;
@@ -400,7 +400,7 @@ public sealed class ProjectMemoryService
         }
 
         update(lesson);
-        await SaveWorkspaceMemoryFileAsync(path, document, ct);
+        await SaveWorkspaceMemoryFileAsync(root, path, document, ct);
         return true;
     }
 
@@ -471,22 +471,22 @@ public sealed class ProjectMemoryService
 
     private static async Task ApplyWorkspaceMemoryAsync(string root, ProjectMemory memory, CancellationToken ct)
     {
-        var shared = await LoadWorkspaceMemoryFileAsync(GetSharedMemoryPath(root), ct);
+        var shared = await LoadWorkspaceMemoryFileAsync(root, GetSharedMemoryPath(root), ct);
         if (shared != null)
         {
-            ApplyWorkspaceMemoryFile(memory, shared);
+            ApplyWorkspaceMemoryFile(memory, shared, replaceExisting: false);
             AddUnique(memory.ProjectHints, "Project .agentq/memory.shared.json loaded.");
         }
 
-        var local = await LoadWorkspaceMemoryFileAsync(GetLocalMemoryPath(root), ct);
+        var local = await LoadWorkspaceMemoryFileAsync(root, GetLocalMemoryPath(root), ct);
         if (local != null)
         {
-            ApplyWorkspaceMemoryFile(memory, local);
+            ApplyWorkspaceMemoryFile(memory, local, replaceExisting: true);
             AddUnique(memory.ProjectHints, "Project .agentq/memory.local.json loaded.");
         }
     }
 
-    private static void ApplyWorkspaceMemoryFile(ProjectMemory memory, ProjectMemoryFile file)
+    private static void ApplyWorkspaceMemoryFile(ProjectMemory memory, ProjectMemoryFile file, bool replaceExisting)
     {
         AddUniqueRange(memory.ProjectHints, file.ProjectHints);
         AddUniqueRange(memory.WorkspaceRules, file.WorkspaceRules);
@@ -494,44 +494,61 @@ public sealed class ProjectMemoryService
 
         foreach (var lesson in (file.Lessons ?? []).Where(IsUsefulLesson))
         {
-            AddUnique(memory.Lessons, lesson, existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase));
+            AddOrReplace(
+                memory.Lessons,
+                lesson,
+                existing => string.Equals(existing.Id, lesson.Id, StringComparison.OrdinalIgnoreCase),
+                replaceExisting);
         }
 
         foreach (var preference in (file.Preferences ?? []).Where(IsUsefulPreference))
         {
-            AddUnique(memory.Preferences, preference, existing => string.Equals(existing.Key, preference.Key, StringComparison.OrdinalIgnoreCase));
+            AddOrReplace(
+                memory.Preferences,
+                preference,
+                existing => string.Equals(existing.Key, preference.Key, StringComparison.OrdinalIgnoreCase),
+                replaceExisting);
         }
 
         foreach (var check in (file.Checks ?? []).Where(IsUsefulCheck))
         {
-            AddUnique(memory.Checks, check, existing => string.Equals(existing.Name, check.Name, StringComparison.OrdinalIgnoreCase));
+            AddOrReplace(
+                memory.Checks,
+                check,
+                existing => string.Equals(existing.Name, check.Name, StringComparison.OrdinalIgnoreCase),
+                replaceExisting);
         }
 
         if (file.ContextBank != null)
         {
-            ApplyContextBank(memory.ContextBank, file.ContextBank);
+            ApplyContextBank(memory.ContextBank, file.ContextBank, replaceExisting);
         }
     }
 
-    private static void ApplyContextBank(ProjectContextBank target, ProjectContextBank source)
+    private static void ApplyContextBank(ProjectContextBank target, ProjectContextBank source, bool replaceExisting)
     {
-        AddUniqueFacts(target.Stack, source.Stack);
-        AddUniqueFacts(target.Rules, source.Rules);
-        AddUniqueFacts(target.Preferences, source.Preferences);
-        AddUniqueFacts(target.ForbiddenPatterns, source.ForbiddenPatterns);
-        AddUniqueFacts(target.KeyCommands, source.KeyCommands);
-        AddUniqueFacts(target.KeyFiles, source.KeyFiles);
-        AddUniqueFacts(target.KeySymbols, source.KeySymbols);
-        AddUniqueFacts(target.RecurringErrors, source.RecurringErrors);
+        AddUniqueFacts(target.Stack, source.Stack, replaceExisting);
+        AddUniqueFacts(target.Rules, source.Rules, replaceExisting);
+        AddUniqueFacts(target.Preferences, source.Preferences, replaceExisting);
+        AddUniqueFacts(target.ForbiddenPatterns, source.ForbiddenPatterns, replaceExisting);
+        AddUniqueFacts(target.KeyCommands, source.KeyCommands, replaceExisting);
+        AddUniqueFacts(target.KeyFiles, source.KeyFiles, replaceExisting);
+        AddUniqueFacts(target.KeySymbols, source.KeySymbols, replaceExisting);
+        AddUniqueFacts(target.RecurringErrors, source.RecurringErrors, replaceExisting);
     }
 
-    private static void AddUniqueFacts(List<ProjectMemoryFact> target, IEnumerable<ProjectMemoryFact> additions)
+    private static void AddUniqueFacts(
+        List<ProjectMemoryFact> target,
+        IEnumerable<ProjectMemoryFact> additions,
+        bool replaceExisting)
     {
         foreach (var fact in (additions ?? []).Where(IsUsefulFact))
         {
-            AddUnique(target, fact, existing =>
+            AddOrReplace(target, fact, existing =>
                 string.Equals(existing.Key, fact.Key, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(existing.Value, fact.Value, StringComparison.OrdinalIgnoreCase));
+                (replaceExisting ||
+                 string.Equals(existing.Value, fact.Value, StringComparison.OrdinalIgnoreCase)),
+                replaceExisting);
         }
     }
 
@@ -613,9 +630,10 @@ public sealed class ProjectMemoryService
             string.Equals(existing.Value, fact.Value, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<ProjectMemoryFile?> LoadWorkspaceMemoryFileAsync(string path, CancellationToken ct)
+    private static async Task<ProjectMemoryFile?> LoadWorkspaceMemoryFileAsync(string workspaceRoot, string path, CancellationToken ct)
     {
-        if (!File.Exists(path))
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path) ||
+            !File.Exists(path))
         {
             return null;
         }
@@ -631,8 +649,13 @@ public sealed class ProjectMemoryService
         }
     }
 
-    private static async Task SaveWorkspaceMemoryFileAsync(string path, ProjectMemoryFile document, CancellationToken ct)
+    private static async Task SaveWorkspaceMemoryFileAsync(string workspaceRoot, string path, ProjectMemoryFile document, CancellationToken ct)
     {
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path))
+        {
+            throw new InvalidOperationException("Project memory path resolves outside the workspace.");
+        }
+
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directory))
         {
@@ -700,6 +723,25 @@ public sealed class ProjectMemoryService
         if (!values.Any(exists))
         {
             values.Add(value);
+        }
+    }
+
+    private static void AddOrReplace<T>(
+        List<T> values,
+        T value,
+        Func<T, bool> matches,
+        bool replaceExisting)
+    {
+        var index = values.FindIndex(item => matches(item));
+        if (index < 0)
+        {
+            values.Add(value);
+            return;
+        }
+
+        if (replaceExisting)
+        {
+            values[index] = value;
         }
     }
 
@@ -783,6 +825,12 @@ public sealed class ProjectMemoryService
     {
         return Regex.IsMatch(value, @"sk-[A-Za-z0-9_-]{12,}", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(value, @"bearer\s+[A-Za-z0-9._-]{12,}", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"api[-_\s]?key", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"access[-_\s]?token", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"refresh[-_\s]?token", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"private[-_\s]?key", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"database[-_\s]?url", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"postgres(?:ql)?://[^@\s]+:[^@\s]+@", RegexOptions.IgnoreCase) ||
                value.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("apikey", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("password", StringComparison.OrdinalIgnoreCase) ||

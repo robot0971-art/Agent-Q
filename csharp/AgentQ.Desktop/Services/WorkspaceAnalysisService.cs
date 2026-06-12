@@ -875,7 +875,7 @@ public sealed class WorkspaceAnalysisService
             ["Domain logic"] = ["domain", "core", "services", "features", "logic"],
             ["Tests"] = ["test", "tests", "__tests__", "spec", "specs"],
             ["Assets"] = ["assets", "public", "static", "wwwroot"],
-            ["Configuration"] = [".github", ".agentq", "config", "settings"]
+            ["Configuration"] = [".github", "config", "settings"]
         };
 
         if (detectedTypes.Contains("C++", StringComparer.OrdinalIgnoreCase))
@@ -946,9 +946,7 @@ public sealed class WorkspaceAnalysisService
             "Dockerfile",
             "Program.cs",
             "App.xaml",
-            "ProjectSettings/ProjectVersion.txt",
-            ".agentq/config.json",
-            ".agentq/memory.shared.json"
+            "ProjectSettings/ProjectVersion.txt"
         };
 
         foreach (var fileName in fileNames)

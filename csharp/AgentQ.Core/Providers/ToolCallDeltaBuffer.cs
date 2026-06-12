@@ -17,7 +17,7 @@ public sealed class ToolCallDeltaBuffer
     {
         if (!string.IsNullOrWhiteSpace(toolId))
         {
-            GetOrCreate(index).ToolId = toolId;
+            GetOrCreate(index).ToolId = toolId.Trim();
         }
     }
 
@@ -28,7 +28,7 @@ public sealed class ToolCallDeltaBuffer
     {
         if (!string.IsNullOrWhiteSpace(toolName))
         {
-            GetOrCreate(index).ToolName = toolName;
+            GetOrCreate(index).ToolName = toolName.Trim();
         }
     }
 

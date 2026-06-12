@@ -274,6 +274,20 @@ public sealed class TaskDecompositionTests
         Assert.True(TaskExecutor.IsStepOutputSuccessful("Created the requested folder."));
     }
 
+    [Fact]
+    public void TaskExecutor_DropsUnsafeVerificationCommandBeforePromptingAgent()
+    {
+        Assert.Equal(string.Empty, TaskExecutor.GetAllowedVerificationCommand("Remove-Item -Recurse C:\\"));
+        Assert.Equal(string.Empty, TaskExecutor.GetAllowedVerificationCommand("npm run build; echo still-running"));
+    }
+
+    [Fact]
+    public void TaskExecutor_PreservesAllowedVerificationCommandBeforePromptingAgent()
+    {
+        Assert.Equal("dotnet test", TaskExecutor.GetAllowedVerificationCommand(" dotnet test "));
+        Assert.Equal("cmd /c cd /d \"front end\" && npm run build", TaskExecutor.GetAllowedVerificationCommand("cmd /c cd /d \"front end\" && npm run build"));
+    }
+
     private sealed class TestLlmProvider(string content) : ILlmProvider
     {
         public string Name => "test-llm-provider";

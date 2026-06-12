@@ -32,9 +32,9 @@ public static class McpServerRegistry
             .ToList() ?? [];
     }
 
-    public static string BuildContext(ProjectAgentConfig? config)
+    public static string BuildContext(ProjectAgentConfig? config, string? workspaceRoot = null)
     {
-        var servers = EnabledServers(config);
+        var servers = EnabledServers(config, workspaceRoot);
         if (servers.Count == 0)
         {
             return string.Empty;

@@ -301,6 +301,80 @@ public sealed class AutomationSupportTests
     }
 
     [Fact]
+    public async Task CliNonInteractiveRunner_FailsNoToolCompletionClaimForActionPrompt()
+    {
+        var providerCallCount = 0;
+        var provider = new ScriptedProvider(_ =>
+        {
+            providerCallCount++;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "Done, I updated the file." },
+                new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "fix the broken file"
+        };
+        config.AllowedToolNames.Add("edit_file");
+
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool("edit_file", ToolResult.Success("{\"status\":\"success\"}")));
+
+        var result = await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames),
+            new CliToolLoopRunner(),
+            "fix the broken file");
+
+        Assert.Equal(2, providerCallCount);
+        Assert.DoesNotContain("edit_file", result.ExecutedTools);
+        Assert.Equal(ProcessExitCode.ToolFailure, result.ExitCode);
+        Assert.Equal("tool_error", result.TerminationReason);
+        Assert.Contains(result.ToolErrors, error => error.Contains("claimed the requested change was complete", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CliNonInteractiveRunner_FailsKoreanNoToolCompletionClaimForActionPrompt()
+    {
+        var providerCallCount = 0;
+        var provider = new ScriptedProvider(_ =>
+        {
+            providerCallCount++;
+            return StreamSequence(
+                new StreamChunk { TextDelta = "수정했습니다. 완료됐습니다." },
+                new StreamChunk { IsComplete = true });
+        });
+        var config = new ProviderConfiguration
+        {
+            Model = "test-model",
+            Prompt = "깨진 파일 수정해줘"
+        };
+        config.AllowedToolNames.Add("edit_file");
+
+        var registry = new ToolRegistry();
+        registry.Register(new FakeTool("edit_file", ToolResult.Success("{\"status\":\"success\"}")));
+
+        var result = await new CliNonInteractiveRunner(new CapturingAutomationOutput()).RunAsync(
+            provider,
+            config,
+            new ChatConversationHistory(),
+            registry,
+            new NonInteractivePermissionEnforcer(allowedToolNames: config.AllowedToolNames),
+            new CliToolLoopRunner(),
+            "깨진 파일 수정해줘");
+
+        Assert.Equal(2, providerCallCount);
+        Assert.DoesNotContain("edit_file", result.ExecutedTools);
+        Assert.Equal(ProcessExitCode.ToolFailure, result.ExitCode);
+        Assert.Equal("tool_error", result.TerminationReason);
+        Assert.Contains(result.ToolErrors, error => error.Contains("claimed the requested change was complete", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CliNonInteractiveRunner_IncludesToolCapabilitySnapshotInPrompt()
     {
         ChatContext? capturedContext = null;

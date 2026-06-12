@@ -40,11 +40,9 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
             hitMaxSteps = ApplyLoopResult(loopResult, toolErrors);
 
             var finalText = AutomationSupport.GetLatestAssistantText(history);
-            if (!hitMaxSteps && ShouldRetryManualFallback(finalText, executedTools, config))
+            if (!hitMaxSteps && ShouldRetryNoToolFallback(prompt, finalText, executedTools, config))
             {
-                history.AddUserMessage(
-                    "Your previous answer gave manual copy/paste or permission instructions without using the allowed tools. " +
-                    "This is non-interactive automation mode. Use the allowed tools now to make the requested change yourself, then verify it when a shell tool is allowed.");
+                history.AddUserMessage(BuildNoToolRetryInstruction(finalText));
                 loopResult = await ExecuteWithAutomationPromptAsync(
                     provider,
                     config,
@@ -60,9 +58,15 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
                 hitMaxSteps = ApplyLoopResult(loopResult, toolErrors);
             }
 
+            finalText = AutomationSupport.GetLatestAssistantText(history);
+            if (!hitMaxSteps && ShouldRejectNoToolCompletion(prompt, finalText, executedTools, config))
+            {
+                toolErrors.Add("The model claimed the requested change was complete without using an allowed mutation tool. Treating the run as failed.");
+            }
+
             var result = new NonInteractiveRunResult
             {
-                FinalText = AutomationSupport.GetLatestAssistantText(history),
+                FinalText = finalText,
                 MessageCount = history.MessageCount,
                 Provider = provider.Name,
                 Model = config.Model,
@@ -114,30 +118,30 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         CancellationToken ct)
     {
         return await loopRunner.ExecuteConversationTurnAsync(
-                provider,
-                config.Model,
-                history,
-                registry,
-                enforcer,
-                maxTokens: config.MaxTokens,
-                onToolExecution: toolName => executedTools.Add(toolName),
-                onToolOutput: (toolName, toolOutput) =>
+            provider,
+            config.Model,
+            history,
+            registry,
+            enforcer,
+            maxTokens: config.MaxTokens,
+            onToolExecution: toolName => executedTools.Add(toolName),
+            onToolOutput: (toolName, toolOutput) =>
+            {
+                var failedShellCommand = IsFailedShellOutput(toolName, toolOutput, out var shellFailure);
+                toolOutputs.Add(ToolExecutionRecord.Create(toolName, toolOutput, isError: failedShellCommand));
+                if (failedShellCommand)
                 {
-                    var failedShellCommand = IsFailedShellOutput(toolName, toolOutput, out var shellFailure);
-                    toolOutputs.Add(ToolExecutionRecord.Create(toolName, toolOutput, isError: failedShellCommand));
-                    if (failedShellCommand)
-                    {
-                        toolErrors.Add(shellFailure);
-                    }
-                },
-                onToolError: (toolName, error) =>
-                {
-                    toolOutputs.Add(ToolExecutionRecord.Create(toolName, error, isError: true));
-                    toolErrors.Add(error);
-                },
-                onPermissionDenied: toolName => deniedTools.Add(toolName),
-                systemPromptAddendum: BuildAutomationPrompt(config, registry),
-                ct: ct);
+                    toolErrors.Add(shellFailure);
+                }
+            },
+            onToolError: (toolName, error) =>
+            {
+                toolOutputs.Add(ToolExecutionRecord.Create(toolName, error, isError: true));
+                toolErrors.Add(error);
+            },
+            onPermissionDenied: toolName => deniedTools.Add(toolName),
+            systemPromptAddendum: BuildAutomationPrompt(config, registry),
+            ct: ct);
     }
 
     private static bool ApplyLoopResult(CliToolLoopRunResult loopResult, List<string> toolErrors)
@@ -227,17 +231,18 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
             """;
     }
 
-    private static bool ShouldRetryManualFallback(
+    private static bool ShouldRetryNoToolFallback(
+        string prompt,
         string finalText,
         IReadOnlySet<string> executedTools,
         ProviderConfiguration config)
     {
-        if (!HasAllowedMutationTool(config) || executedTools.Overlaps(["edit_file", "write_file"]))
+        if (!HasAllowedMutationTool(config) || HasExecutedMutationTool(executedTools))
         {
             return false;
         }
 
-        return LooksLikeManualFallback(finalText);
+        return LooksLikeManualFallback(finalText) || LooksLikeNoToolCompletionForAction(prompt, finalText);
     }
 
     private static bool HasAllowedMutationTool(ProviderConfiguration config)
@@ -245,7 +250,91 @@ public sealed class CliNonInteractiveRunner(ICliAutomationOutput output)
         return config.AllowToolsWithoutPrompt ||
                config.AllowedToolNames.Any(tool =>
                    tool.Equals("edit_file", StringComparison.OrdinalIgnoreCase) ||
-                   tool.Equals("write_file", StringComparison.OrdinalIgnoreCase));
+                   tool.Equals("write_file", StringComparison.OrdinalIgnoreCase) ||
+                   tool.Equals("create_directory", StringComparison.OrdinalIgnoreCase) ||
+                   tool.Equals("delete_path", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasExecutedMutationTool(IReadOnlySet<string> executedTools)
+    {
+        return executedTools.Overlaps([
+            "edit_file",
+            "write_file",
+            "create_directory",
+            "delete_path"
+        ]);
+    }
+
+    private static bool ShouldRejectNoToolCompletion(
+        string prompt,
+        string finalText,
+        IReadOnlySet<string> executedTools,
+        ProviderConfiguration config)
+    {
+        return HasAllowedMutationTool(config) &&
+               !HasExecutedMutationTool(executedTools) &&
+               LooksLikeNoToolCompletionForAction(prompt, finalText);
+    }
+
+    private static bool LooksLikeNoToolCompletionForAction(string prompt, string finalText)
+    {
+        return LooksLikeActionRequest(prompt) && LooksLikeCompletionClaim(finalText);
+    }
+
+    private static bool LooksLikeActionRequest(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains("fix", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("update", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("edit", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("create", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("delete", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("write", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("implement", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("수정", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("고쳐", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("만들", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("생성", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("삭제", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("작성", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("구현", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeCompletionClaim(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains("done", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("created", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("implemented", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("완료", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("수정했", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("고쳤", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("생성했", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("만들었", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("구현했", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildNoToolRetryInstruction(string finalText)
+    {
+        if (LooksLikeManualFallback(finalText))
+        {
+            return "Your previous answer gave manual copy/paste or permission instructions without using the allowed tools. " +
+                   "This is non-interactive automation mode. Use the allowed tools now to make the requested change yourself, then verify it when a shell tool is allowed.";
+        }
+
+        return "Your previous answer claimed the requested change was complete without using an allowed mutation tool. " +
+               "This is non-interactive automation mode. Use the allowed tools now to perform the requested change, then report only what the tools actually did.";
     }
 
     private static bool LooksLikeManualFallback(string value)

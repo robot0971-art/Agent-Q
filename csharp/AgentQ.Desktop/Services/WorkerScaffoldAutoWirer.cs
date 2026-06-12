@@ -95,7 +95,7 @@ public sealed class WorkerScaffoldAutoWirer
             return;
         }
 
-        var appFile = FindFirstExisting(workspaceRoot, ["app/main.py", $"{context.PythonAppRoot}/main.py", "main.py"]);
+        var appFile = FindFirstExisting(workspaceRoot, BuildFastApiEntrypointCandidates(context));
         if (appFile == null)
         {
             issues.Add("FastAPI router created but no main.py was found for include_router wiring.");
@@ -203,6 +203,25 @@ public sealed class WorkerScaffoldAutoWirer
                 : string.Empty)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .FirstOrDefault(File.Exists);
+    }
+
+    private static IEnumerable<string> BuildFastApiEntrypointCandidates(WorkerScaffoldContext context)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in new[]
+                 {
+                     $"{context.PythonAppRoot}/main.py",
+                     "app/main.py",
+                     "main.py"
+                 })
+        {
+            var normalized = candidate.Replace('\\', '/').Trim('/');
+            if (!string.IsNullOrWhiteSpace(normalized) &&
+                seen.Add(normalized))
+            {
+                yield return normalized;
+            }
+        }
     }
 
     private static bool TryResolveInsideWorkspace(

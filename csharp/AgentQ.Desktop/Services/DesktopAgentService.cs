@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -47,7 +47,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         Do not invent exact dependencies, package names, indexing strategies, release state, or implementation details when you have not inspected supporting files or command output.
         For URL questions only: AgentQ Desktop can attempt to read HTTP/HTTPS links when link auto-read is enabled. Do not claim categorical inability to access external URLs; describe the current link auto-read setting, fetch result, or fallback instead.
         """;
-
+    //private const int MaxContextChars = 220000;
+    //private const int MaxContextChars = 160000;
+    
     private const int DefaultMaxToolSteps = 50;
     private const int ReadonlyMaxToolSteps = 20;
     private const int MaxConfiguredToolSteps = 100;
@@ -365,7 +367,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 toolCallbacks,
                 ct);
 
-            return $"Task Decomposition Execution Completed. All Succeeded: {runResult.AllSucceeded}.";
+            return runResult.AllSucceeded
+                ? "Task decomposition completed successfully."
+                : "Task decomposition failed before all steps completed.";
         }
 
         _messages.Add(await CreateRoutedUserMessageAsync(userText, routingText, turnUnderstanding, attachments ?? [], ct));
@@ -479,6 +483,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, localServerSummary, ct);
             }
 
+            var localServerRunState = localServerSucceeded ? AgentRunState.Done : AgentRunState.Failed;
             ReportConfidence(
                 builder.ToString(),
                 executedToolCount + 1,
@@ -488,8 +493,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 relevantLocalLessons.Count,
                 replayEntries,
                 toolCallbacks);
+            toolCallbacks?.OnRunStep?.Invoke(
+                localServerRunState,
+                "Run complete",
+                localServerSucceeded
+                    ? "Local server action finished successfully."
+                    : "Local server action failed; reporting the deterministic Desktop service result.");
             RecordDiagnostic(
-                "turn_completed",
+                localServerSucceeded ? "turn_completed" : "turn_failed",
                 effectiveWorkspaceRoot,
                 config,
                 $"trace={turnTraceId}; path=local_server_direct; succeeded={localServerSucceeded}; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
@@ -542,15 +553,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 relevantLocalLessons.Count,
                 replayEntries,
                 toolCallbacks);
+            var scaffoldFailed = HasFailedProjectScaffoldEvidence(replayEntries);
             toolCallbacks?.OnRunStep?.Invoke(
-                AgentRunState.Done,
+                scaffoldFailed ? AgentRunState.Failed : AgentRunState.Done,
                 "Run complete",
-                "Safe scaffold mode finished after deterministic project creation.");
+                scaffoldFailed
+                    ? "Safe scaffold mode stopped with failed scaffold or verification evidence."
+                    : "Safe scaffold mode finished after deterministic project creation.");
             RecordDiagnostic(
-                "turn_completed",
+                scaffoldFailed ? "turn_failed" : "turn_completed",
                 effectiveWorkspaceRoot,
                 config,
-                $"trace={turnTraceId}; path=safe_scaffold_direct; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
+                $"trace={turnTraceId}; path=safe_scaffold_direct; succeeded={!scaffoldFailed}; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
             await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
             return builder.ToString();
         }
@@ -741,7 +755,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 if (!genericGreetingRetryUsed &&
                     TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
-                    if (TryBuildDirectContractToolUse(taskContract, routingText, out var directToolUse))
+                    if (TryBuildDirectContractToolUse(taskContract, routingText, userText, out var directToolUse))
                     {
                         toolCallbacks?.OnRunStep?.Invoke(
                             AgentRunState.RunningTool,
@@ -784,12 +798,18 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             relevantLocalLessons.Count,
                             replayEntries,
                             toolCallbacks);
-                        toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Task contract direct tool fallback finished.");
+                        var directFailed = directResults.Any(result => result.IsToolError == true);
+                        toolCallbacks?.OnRunStep?.Invoke(
+                            directFailed ? AgentRunState.Failed : AgentRunState.Done,
+                            "Run complete",
+                            directFailed
+                                ? "Task contract direct tool fallback failed; reporting the concrete tool result."
+                                : "Task contract direct tool fallback finished.");
                         RecordDiagnostic(
-                            "turn_completed",
+                            directFailed ? "turn_failed" : "turn_completed",
                             effectiveWorkspaceRoot,
                             config,
-                            $"trace={turnTraceId}; outcome=task_contract_direct_tool_fallback; step={step}; taskContract={taskContract.Intent}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
+                            $"trace={turnTraceId}; outcome={(directFailed ? "task_contract_direct_tool_fallback_failed" : "task_contract_direct_tool_fallback")}; step={step}; taskContract={taskContract.Intent}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                         await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                         return builder.ToString();
                     }
@@ -1087,6 +1107,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
+                var finalRunState = AgentRunState.Done;
                 if (ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
                 {
                     var replacementText = BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans);
@@ -1099,6 +1120,24 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "Final answer guard: replaced",
                         "The model's final answer did not match the recorded file changes, so AgentQ replaced it with a deterministic change summary.");
                 }
+                else if (TryBuildFailedEvidenceFinalReplacement(
+                             builder.ToString(),
+                             fileChanges,
+                             executedCommands,
+                             verificationPlans,
+                             replayEntries,
+                             out var failedEvidenceReplacement))
+                {
+                    finalRunState = AgentRunState.Failed;
+                    builder.Clear();
+                    builder.Append(failedEvidenceReplacement);
+                    onDelta?.Invoke(failedEvidenceReplacement);
+                    _messages.Add(ChatMessage.AssistantText(failedEvidenceReplacement));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "Final answer guard: failed verification",
+                        "The model's final answer looked successful, but tool replay evidence recorded a failed verification.");
+                }
 
                 ReportConfidence(
                     builder.ToString(),
@@ -1109,12 +1148,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     relevantLocalLessons.Count,
                     replayEntries,
                     toolCallbacks);
-                toolCallbacks?.OnRunStep?.Invoke(AgentRunState.Done, "Run complete", "Assistant finished without more tool calls.");
+                toolCallbacks?.OnRunStep?.Invoke(finalRunState, "Run complete", finalRunState == AgentRunState.Failed
+                    ? "Assistant stopped with failed verification evidence."
+                    : "Assistant finished without more tool calls.");
                 RecordDiagnostic(
-                    "turn_completed",
+                    finalRunState == AgentRunState.Failed ? "turn_failed" : "turn_completed",
                     effectiveWorkspaceRoot,
                     config,
-                    $"trace={turnTraceId}; outcome=no_more_tool_calls; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
+                    $"trace={turnTraceId}; outcome={(finalRunState == AgentRunState.Failed ? "failed_verification_final_guard" : "no_more_tool_calls")}; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
@@ -2188,7 +2229,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var lower = assistantText.ToLowerInvariant();
         if (LooksLikeWorkspaceActionSummary(lower))
         {
-            return false;
+            return !MentionsRecordedFileChange(lower, fileChanges);
         }
 
         return ContainsAny(
@@ -2228,6 +2269,42 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694",
             "cors(cross-origin",
             "same-origin policy");
+    }
+
+    private static bool MentionsRecordedFileChange(string assistantLower, IReadOnlyList<FileChangeRecord> fileChanges)
+    {
+        if (ContainsAny(
+                assistantLower,
+                "changed files",
+                "created files",
+                "modified files",
+                "updated files",
+                "\uBCC0\uACBD\uB41C \uD30C\uC77C",
+                "\uC0DD\uC131\uB41C \uD30C\uC77C",
+                "\uC218\uC815\uB41C \uD30C\uC77C"))
+        {
+            return true;
+        }
+
+        foreach (var change in fileChanges)
+        {
+            var relativePath = (change.RelativePath ?? string.Empty).Trim().TrimEnd('/', '\\').ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(relativePath) &&
+                assistantLower.Contains(relativePath.Replace('\\', '/'), StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var fileName = Path.GetFileName(relativePath);
+            if (!string.IsNullOrWhiteSpace(fileName) &&
+                fileName.Length > 2 &&
+                assistantLower.Contains(fileName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static string BuildFileChangeCompletionSummary(
@@ -2276,6 +2353,77 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return summary.ToString().TrimEnd();
     }
 
+    public static bool TryBuildFailedEvidenceFinalReplacement(
+        string assistantText,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        IReadOnlyList<string> executedCommands,
+        IReadOnlyList<AgentVerificationPlan> verificationPlans,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        out string replacement)
+    {
+        replacement = string.Empty;
+        if (string.IsNullOrWhiteSpace(assistantText) ||
+            replayEntries.Count == 0 ||
+            !LooksLikeUnsupportedSuccessClaim(assistantText) ||
+            MentionsFailure(assistantText))
+        {
+            return false;
+        }
+
+        var failedEntries = replayEntries
+            .Where(IsFailedVerificationEvidence)
+            .Take(6)
+            .ToList();
+        if (failedEntries.Count == 0)
+        {
+            return false;
+        }
+
+        var summary = new StringBuilder();
+        summary.AppendLine("\uAC80\uC99D \uC2E4\uD328\uAC00 \uAE30\uB85D\uB418\uC5B4 \uC644\uB8CC\uB85C \uBCF4\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+        summary.AppendLine("\uBAA8\uB378 \uCD5C\uC885 \uB2F5\uBCC0\uC774 \uC131\uACF5\uCC98\uB7FC \uBCF4\uC600\uC9C0\uB9CC, Agent Q\uB294 \uB3C4\uAD6C \uC2E4\uD589 \uC99D\uAC70\uB97C \uAE30\uC900\uC73C\uB85C \uC694\uC57D\uD588\uC2B5\uB2C8\uB2E4.");
+        if (fileChanges.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("\uAE30\uB85D\uB41C \uBCC0\uACBD:");
+            foreach (var change in fileChanges.Take(12))
+            {
+                summary.AppendLine($"- {change.RelativePath} ({change.Summary})");
+            }
+        }
+
+        summary.AppendLine();
+        summary.AppendLine("\uC2E4\uD328\uD55C \uAC80\uC99D/\uB3C4\uAD6C \uC99D\uAC70:");
+        foreach (var entry in failedEntries)
+        {
+            summary.AppendLine($"- {entry.ToolName}: {DesktopPromptBuilder.Truncate(entry.ResultPreview.ReplaceLineEndings(" "), 240)}");
+        }
+
+        if (executedCommands.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("\uC131\uACF5\uC73C\uB85C \uAE30\uB85D\uB41C \uBA85\uB839:");
+            foreach (var command in executedCommands.Take(6))
+            {
+                summary.AppendLine($"- {command}");
+            }
+        }
+        else if (verificationPlans.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("\uC81C\uC548\uB41C \uCD94\uAC00 \uAC80\uC99D:");
+            foreach (var plan in verificationPlans.Take(6))
+            {
+                summary.AppendLine(string.IsNullOrWhiteSpace(plan.Command)
+                    ? $"- {plan.Title}"
+                    : $"- {plan.Command}");
+            }
+        }
+
+        replacement = summary.ToString().TrimEnd();
+        return true;
+    }
+
     public static string BuildFileChangeStepLimitSummary(
         IReadOnlyList<FileChangeRecord> fileChanges,
         IReadOnlyList<string> executedCommands,
@@ -2286,6 +2434,83 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             Environment.NewLine + Environment.NewLine,
             BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans),
             $"Stopped after reaching the maximum tool steps ({maxToolSteps}).");
+    }
+
+    private static bool IsFailedVerificationEvidence(ToolReplayEntry entry)
+    {
+        if (string.Equals(entry.ToolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase))
+        {
+            return entry.IsError || ReplayJsonSucceededFalse(entry.ResultPreview);
+        }
+
+        return string.Equals(entry.ToolName, "bash", StringComparison.OrdinalIgnoreCase) &&
+               entry.IsError &&
+               ContainsAny(entry.ResultPreview.ToLowerInvariant(), "exitcode", "exit code", "failed", "\uC2E4\uD328", "error");
+    }
+
+    private static bool HasFailedProjectScaffoldEvidence(IReadOnlyList<ToolReplayEntry> replayEntries) =>
+        replayEntries.Any(entry =>
+            IsProjectScaffoldTool(entry.ToolName) &&
+            (entry.IsError || ReplayJsonSucceededFalse(entry.ResultPreview)));
+
+    private static bool IsProjectScaffoldTool(string toolName) =>
+        string.Equals(toolName, "create_project_scaffold", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(toolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ReplayJsonSucceededFalse(string resultPreview)
+    {
+        if (string.IsNullOrWhiteSpace(resultPreview))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(resultPreview);
+            return document.RootElement.TryGetProperty("succeeded", out var succeeded) &&
+                   succeeded.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                   !succeeded.GetBoolean();
+        }
+        catch (JsonException)
+        {
+            return resultPreview.Contains("\"succeeded\":false", StringComparison.OrdinalIgnoreCase) ||
+                   resultPreview.Contains("\"succeeded\": false", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static bool LooksLikeUnsupportedSuccessClaim(string assistantText)
+    {
+        var lower = assistantText.ToLowerInvariant();
+        return ContainsAny(
+            lower,
+            "completed",
+            "finished",
+            "succeeded",
+            "success",
+            "passed",
+            "created",
+            "done",
+            "\uC644\uB8CC",
+            "\uC131\uACF5",
+            "\uD1B5\uACFC",
+            "\uC0DD\uC131\uD588",
+            "\uC2E4\uD589\uD588");
+    }
+
+    private static bool MentionsFailure(string assistantText)
+    {
+        var lower = assistantText.ToLowerInvariant();
+        return ContainsAny(
+            lower,
+            "failed",
+            "failure",
+            "error",
+            "not completed",
+            "did not complete",
+            "\uC2E4\uD328",
+            "\uC624\uB958",
+            "\uC644\uB8CC\uD558\uC9C0 \uBABB",
+            "\uD1B5\uACFC\uD558\uC9C0 \uBABB");
     }
 
     public static bool ShouldStopAfterReadOnlyLoopGuard(
@@ -2359,7 +2584,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private static string BuildProjectScaffoldCollisionSummary(ProjectScaffoldToolSummary scaffold)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("\uD504\uB85C\uC81D\uD2B8 \uC0DD\uC131\uC744 \uC9C4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+        builder.AppendLine("\uD504\uB85C\uC81D\uD2B8 \uC0DD\uC131\uC740 \uC9C4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
         builder.AppendLine();
         builder.AppendLine("\uB300\uC0C1 \uD30C\uC77C\uC774 \uC774\uBBF8 \uC788\uC5B4 \uB36E\uC5B4\uC4F0\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
         foreach (var file in scaffold.SkippedFiles.Take(12))
@@ -2393,7 +2618,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
         message =
             "\uC0C8 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uB2E4\uB9CC \uC544\uC9C1 \uC5B4\uB5A4 \uD504\uB85C\uC81D\uD2B8\uC778\uC9C0 \uC815\uD574\uC9C0\uC9C0 \uC54A\uC558\uAE30 \uB54C\uBB38\uC5D0 \uBC14\uB85C \uC2A4\uCE90\uD3F4\uB4DC\uB098 \uD30C\uC77C\uC744 \uACE0\uB974\uC9C0\uB294 \uC54A\uACA0\uC2B5\uB2C8\uB2E4.\n\n" +
-            "\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694? \uC608: \uD504\uB860\uD2B8\uC5D4\uB4DC \uC6F9\uD398\uC774\uC9C0, Python \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C, \uAC8C\uC784, API \uC11C\uBC84, \uAE30\uD0C0.";
+            "\uC5B4\uB5A4 \uC885\uB958\uC758 \uD504\uB85C\uC81D\uD2B8\uB97C \uC6D0\uD558\uC2DC\uB098\uC694? \uC608: \uD3EC\uD2B8\uD3F4\uB9AC\uC624 \uD648\uD398\uC774\uC9C0, Python \uB370\uC774\uD130 \uBD84\uC11D \uB3C4\uAD6C, \uAC8C\uC784, API \uC11C\uBC84, \uAE30\uD0C0.";
         return true;
     }
 
@@ -3358,11 +3583,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var mentionsReadingAndGames =
             value.Contains("독서", StringComparison.OrdinalIgnoreCase) &&
             value.Contains("게임", StringComparison.OrdinalIgnoreCase);
-        var mentionsMojibakeReadingOrGames =
-            value.Contains("?놓까", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("寃뭯엫", StringComparison.OrdinalIgnoreCase);
 
-        if (mentionsReadingAndGames || mentionsMojibakeReadingOrGames)
+        if (mentionsReadingAndGames)
         {
             return true;
         }
@@ -3371,7 +3593,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                value.Contains("what can I help", StringComparison.OrdinalIgnoreCase) ||
                value.Contains("reading", StringComparison.OrdinalIgnoreCase) && value.Contains("games", StringComparison.OrdinalIgnoreCase);
     }
-
     private async Task<string> BuildContextOnlyAsync(
         ProviderConfiguration config,
         string userText,
@@ -3390,7 +3611,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             ? await _linkContentFetcher.BuildContextAsync(userText, ct)
             : string.Empty;
         var memoryContext = _projectMemoryService.BuildContext(projectMemory, userText);
-        var mcpContext = McpServerRegistry.BuildContext(projectConfig);
+        var mcpContext = McpServerRegistry.BuildContext(projectConfig, workspaceRoot);
         var hasLinkIntent = HasLinkIntentV2(userText);
         var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
@@ -3921,13 +4142,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         TaskContract? taskContract = null)
     {
         var results = new List<ChatContent>();
+        var seenToolIds = new HashSet<string>(StringComparer.Ordinal);
 
         using (new WorkspaceRootEnvironmentScope(workspaceRoot))
         {
             foreach (var toolUse in toolUses)
             {
                 var toolName = toolUse.ToolName ?? string.Empty;
-                var toolId = toolUse.ToolId ?? string.Empty;
+                var toolId = NormalizeToolUseId(toolUse, seenToolIds);
                 var tool = toolRegistry.Get(toolName);
                 if (tool == null)
                 {
@@ -3942,7 +4164,21 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
-                var parsedInput = DesktopToolInputParser.Parse(toolUse.ToolInput);
+                if (!DesktopToolInputParser.TryParse(toolUse.ToolInput, out var parsedInput, out var parseError))
+                {
+                    var message = $"Invalid tool input for {tool.Name}: {parseError}";
+                    RecordDiagnostic(
+                        "tool_input_parse_failed",
+                        workspaceRoot,
+                        new ProviderConfiguration(),
+                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; error=\"{DesktopPromptBuilder.Truncate(parseError.ReplaceLineEndings(" "), 500)}\"");
+                    callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool input parse failed", message);
+                    callbacks?.OnToolError?.Invoke(tool.Name, message);
+                    replayEntries.Add(CreateReplayEntry(tool.Name, toolId, "{}", message, isError: true, DateTime.UtcNow));
+                    results.Add(ChatContent.CreateToolResult(toolId, message, true));
+                    continue;
+                }
+
                 RecordDiagnostic(
                     "tool_use_received",
                     workspaceRoot,
@@ -4163,6 +4399,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return results;
     }
 
+    private static string NormalizeToolUseId(ChatContent toolUse, ISet<string> seenToolIds)
+    {
+        var toolId = toolUse.ToolId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(toolId) || seenToolIds.Contains(toolId))
+        {
+            toolId = $"toolu_{Guid.NewGuid():N}";
+            toolUse.ToolId = toolId;
+        }
+
+        seenToolIds.Add(toolId);
+        return toolId;
+    }
+
     private static bool ShouldStopRepeatedReadOnlyToolCall(
         string toolName,
         Dictionary<string, object?> input,
@@ -4380,6 +4629,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private static bool TryBuildDirectContractToolUse(
         TaskContract taskContract,
         string userText,
+        string fallbackUserText,
         out ChatContent toolUse)
     {
         toolUse = ChatContent.CreateText(string.Empty);
@@ -4389,7 +4639,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return false;
         }
 
-        if (!TryExtractExplicitWorkspacePath(userText, out var path))
+        if (!TryExtractExplicitWorkspacePath(userText, out var path) &&
+            !TryExtractExplicitWorkspacePath(fallbackUserText, out path))
         {
             return false;
         }
@@ -4604,6 +4855,11 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return false;
         }
 
+        if (!IsSuccessfulProjectScaffoldVerificationResult(resultContent))
+        {
+            return false;
+        }
+
         if (TryGetString(input, "command", out command))
         {
             return true;
@@ -4616,6 +4872,26 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
 
         return false;
+    }
+
+    private static bool IsSuccessfulProjectScaffoldVerificationResult(string resultContent)
+    {
+        if (string.IsNullOrWhiteSpace(resultContent))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(resultContent);
+            return document.RootElement.TryGetProperty("succeeded", out var succeededElement) &&
+                   succeededElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                   succeededElement.GetBoolean();
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static bool TryParseShellExitCode(string resultContent, out int exitCode)
@@ -5032,8 +5308,15 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         try
         {
-            var root = string.IsNullOrWhiteSpace(workspaceRoot) ? Environment.CurrentDirectory : workspaceRoot;
+            var root = string.IsNullOrWhiteSpace(workspaceRoot)
+                ? Environment.CurrentDirectory
+                : Path.GetFullPath(workspaceRoot);
             var directory = Path.Combine(root, ".agentq", ToolOutputDirectoryName);
+            if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
+            {
+                return null;
+            }
+
             Directory.CreateDirectory(directory);
             var fileName = $"tool_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.txt";
             var path = Path.Combine(directory, fileName);
@@ -5228,3 +5511,4 @@ internal sealed class WorkspaceRootEnvironmentScope : IDisposable
 }
 
 internal sealed record FileSnapshot(string FullPath, bool ExistedBefore, string Before);
+

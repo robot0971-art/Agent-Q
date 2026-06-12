@@ -116,13 +116,22 @@ public sealed class WorkerScaffoldExecutor
             }
         }
 
+        if (result.SkippedFiles.Count > 0)
+        {
+            result.Issues.Add($"Scaffold skipped existing file(s): {string.Join(", ", result.SkippedFiles.Take(5))}");
+        }
+
         if (result.Issues.Count == 0 &&
             result.CreatedFiles.Count == 0 &&
             result.WiringChanges.Count == 0)
         {
-            result.Issues.Add(result.SkippedFiles.Count > 0
-                ? "No scaffold changes were applied because every target file already exists."
-                : "No scaffold changes were applied because the worker plan did not include creatable files.");
+            result.Issues.Add("No scaffold changes were applied because the worker plan did not include creatable files.");
+        }
+        else if (result.SkippedFiles.Count > 0 &&
+                 result.CreatedFiles.Count == 0 &&
+                 result.WiringChanges.Count == 0)
+        {
+            result.Issues.Add("No scaffold changes were applied because every target file already exists.");
         }
 
         result.Succeeded = result.Issues.Count == 0;

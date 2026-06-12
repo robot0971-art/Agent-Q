@@ -86,8 +86,27 @@ public sealed class DesktopAutoFixWorkflowService(
             "Approved Auto Fix changes",
             retryPlan.Command);
         var verificationResult = await runVerificationPlanAsync(retryPlan);
+        if (verificationResult == null)
+        {
+            viewModel.AddRunStep(
+                AgentRunState.Cancelled,
+                "Auto fix verification did not run",
+                "Verification returned no result, so Auto Fix stopped without starting another attempt.");
+            viewModel.StatusText = "Auto fix verification did not run";
+            return;
+        }
 
-        if (verificationResult?.Succeeded == true)
+        if (verificationResult.RunState == AgentRunState.Cancelled)
+        {
+            viewModel.AddRunStep(
+                AgentRunState.Cancelled,
+                "Auto fix verification cancelled",
+                "Verification was cancelled, so Auto Fix stopped without starting another attempt.");
+            viewModel.StatusText = "Auto fix verification cancelled";
+            return;
+        }
+
+        if (verificationResult.Succeeded)
         {
             viewModel.AddRunStep(AgentRunState.Done, "Auto fix succeeded", retryPlan.Command);
             viewModel.StatusText = "Auto fix succeeded";

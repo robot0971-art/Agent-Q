@@ -44,8 +44,14 @@ public sealed class ConversationCompactor
         // Let's determine how many turns we have. Each turn might consist of multiple messages (e.g. User and Assistant, or Tool uses).
         // For simplicity, we can just keep the last N messages of non-system messages.
         var keepCount = Math.Min(nonSystemMessages.Count, keepRecentTurns);
-        var messagesToCompact = nonSystemMessages.Take(nonSystemMessages.Count - keepCount).ToList();
-        var messagesToKeep = nonSystemMessages.Skip(nonSystemMessages.Count - keepCount).ToList();
+        var splitIndex = nonSystemMessages.Count - keepCount;
+        while (splitIndex > 0 && ContainsToolResult(nonSystemMessages[splitIndex]))
+        {
+            splitIndex--;
+        }
+
+        var messagesToCompact = nonSystemMessages.Take(splitIndex).ToList();
+        var messagesToKeep = nonSystemMessages.Skip(splitIndex).ToList();
 
         // Compact the messages to compact
         var summarizedTools = new List<ChatMessage>();
@@ -118,6 +124,9 @@ public sealed class ConversationCompactor
 
         return newMsg;
     }
+
+    private static bool ContainsToolResult(ChatMessage message) =>
+        message.Content.Any(content => content.Type == ContentType.ToolResult);
 
     private ChatMessage SummarizeToolUse(ChatMessage msg)
     {

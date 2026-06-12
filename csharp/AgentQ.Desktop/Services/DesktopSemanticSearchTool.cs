@@ -47,7 +47,10 @@ public sealed class DesktopSemanticSearchTool(
 
         limit = Math.Clamp(limit, 1, 20);
         var chunks = await store.LoadChunksAsync(workspaceRoot, ct);
-        var searchableChunks = chunks.Where(chunk => chunk.Vector.Length > 0).ToList();
+        var searchableChunks = chunks
+            .Where(chunk => chunk.Vector.Length > 0)
+            .Where(chunk => !IsAgentMetadataPath(chunk.RelativePath))
+            .ToList();
         if (searchableChunks.Count == 0)
         {
             return ToolResult.Error("No embedded chunks found. Build the embedding vector index before using semantic_search.");
@@ -110,6 +113,16 @@ public sealed class DesktopSemanticSearchTool(
     {
         var preview = content.ReplaceLineEndings(" ").Trim();
         return preview.Length <= 240 ? preview : preview[..240] + "...";
+    }
+
+    private static bool IsAgentMetadataPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/').TrimStart('/');
+        return normalized.StartsWith(".agentq/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".agents/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".codex/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".codex-build/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".agentq-verify/", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record SemanticSearchResult(

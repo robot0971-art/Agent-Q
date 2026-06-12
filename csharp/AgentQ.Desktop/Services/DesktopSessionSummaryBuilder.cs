@@ -1,4 +1,4 @@
-using AgentQ.Desktop.ViewModels;
+﻿using AgentQ.Desktop.ViewModels;
 
 namespace AgentQ.Desktop.Services;
 
@@ -124,11 +124,8 @@ public static class DesktopSessionSummaryBuilder
         var mentionsReadingAndGames =
             value.Contains("독서", StringComparison.OrdinalIgnoreCase) &&
             value.Contains("게임", StringComparison.OrdinalIgnoreCase);
-        var mentionsMojibakeReadingOrGames =
-            value.Contains("?놓까", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains("寃뭯엫", StringComparison.OrdinalIgnoreCase);
 
-        if (mentionsReadingAndGames || mentionsMojibakeReadingOrGames)
+        if (mentionsReadingAndGames)
         {
             return true;
         }
@@ -138,3 +135,4 @@ public static class DesktopSessionSummaryBuilder
                value.Contains("reading", StringComparison.OrdinalIgnoreCase) && value.Contains("games", StringComparison.OrdinalIgnoreCase);
     }
 }
+

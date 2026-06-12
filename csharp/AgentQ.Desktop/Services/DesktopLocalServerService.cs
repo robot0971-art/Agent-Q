@@ -72,6 +72,14 @@ public sealed class DesktopLocalServerService
             $"{plan.DisplayCommand} -> {plan.Url}");
 
         var logDirectory = Path.Combine(Path.GetFullPath(workspaceRoot), ".agentq", "local-server");
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceKey, logDirectory))
+        {
+            return LocalServerStartResult.Failed(
+                "Local server log path resolves outside the workspace.",
+                command: plan.DisplayCommand,
+                url: plan.Url);
+        }
+
         Directory.CreateDirectory(logDirectory);
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff");
         var stdoutPath = Path.Combine(logDirectory, $"{stamp}-stdout.log");
@@ -469,7 +477,7 @@ public sealed class DesktopLocalServerService
                 continue;
             }
 
-            var text = await File.ReadAllTextAsync(path, ct);
+            var text = await TryReadAllTextSharedAsync(path, ct);
             if (!string.IsNullOrWhiteSpace(text))
             {
                 return DesktopPromptBuilder.Truncate(text.ReplaceLineEndings(" "), 500);
@@ -477,6 +485,30 @@ public sealed class DesktopLocalServerService
         }
 
         return string.Empty;
+    }
+
+    private static async Task<string> TryReadAllTextSharedAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            await using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 4096,
+                useAsync: true);
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync(ct);
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     private static int FindFreePort()
@@ -563,6 +595,11 @@ public sealed class DesktopLocalServerService
     private static async Task SaveSessionAsync(LocalServerSession session, CancellationToken ct)
     {
         var path = GetSessionFilePath(session.WorkspaceRoot);
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(session.WorkspaceRoot, path))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(
             path,
@@ -573,7 +610,8 @@ public sealed class DesktopLocalServerService
     private static async Task<LocalServerSession?> LoadSessionAsync(string workspaceRoot, CancellationToken ct)
     {
         var path = GetSessionFilePath(workspaceRoot);
-        if (!File.Exists(path))
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path) ||
+            !File.Exists(path))
         {
             return null;
         }
@@ -594,7 +632,8 @@ public sealed class DesktopLocalServerService
         var path = GetSessionFilePath(workspaceRoot);
         try
         {
-            if (File.Exists(path))
+            if (WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, path) &&
+                File.Exists(path))
             {
                 File.Delete(path);
             }

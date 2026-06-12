@@ -1,243 +1,199 @@
-# Agent Q 아키텍처 및 설계 구조 분석
+# Agent Q Architecture Notes
 
-> 분석일: 2026-06-05  
-> 대상: Agent Q (C# 기반 AI 코딩 에이전트)
+> Updated: 2026-06-12  
+> Scope: C#/.NET desktop coding agent runtime
 
-## 검토 결과
+Agent Q is a desktop agent runtime for real development work. It is not intended to be a thin chat UI around an LLM.
 
-`C:\Users\admin\Desktop\Agent Q.md`의 큰 구조 분석은 대체로 맞다. 다만 현재 푸쉬 가능한 코드 기준으로는 몇 가지를 보정해야 한다.
+The model is used for understanding intent, reasoning, code generation, explanations, and repair suggestions. Actions that must reliably happen are owned by deterministic Desktop services: scaffold execution, local server start/stop, file mutation tracking, verification, recovery, and run-state reporting.
 
-- `EvidenceTrailPanel`이라는 View 이름은 현재 코드 기준으로는 `RunTimelinePanel`이 맞다.
-- `AgentCouncilPanel`, `AgentCouncilPanelViewModel`, `DesktopDiagnosticsService`는 현재 워킹트리에는 있으나 별도 미커밋 변경으로 남아 있으므로, 이 문서에서는 푸쉬 대상 구조로 확정하지 않는다.
-- 새 프로젝트 생성은 이제 단순한 “모델이 `create_project_scaffold` 도구를 호출하면 생성” 흐름이 아니다. 승인 가능한 scaffold plan이 있으면 Desktop 서비스가 primary path로 직접 실행하는 구조가 핵심이다.
-- 로컬 서버 실행도 모델 도구 루프가 아니라 `TaskContract`가 감지한 `RunLocalServer` / `StopLocalServer` 요청을 Desktop 서비스가 직접 처리하는 primary path가 추가되었다.
-- `ExecutionLessonMemoryService`는 긴 대화 저장이 아니라 실패/성공에서 뽑은 행동 규칙과 실행 교훈을 `.agentq/lessons`에 저장하는 구조다.
+## Core Principles
 
-## 1. 프로젝트 전체 구조
+1. Deterministic execution first
+
+   Greenfield scaffold creation, local server lifecycle, verification workflows, file mutation snapshots, and recovery must not depend on whether the model happened to call the right tool.
+
+2. Latest user request wins
+
+   Past conversation, session summaries, checkpoints, execution lessons, scaffold hints, verification hints, logs, and pasted examples are historical evidence. They must not override the newest user request.
+
+3. Conversation and action are separate
+
+   Conversation turns answer with explanation or advice. They must not trigger file writes, shell commands, scaffold execution, installs, commits, or local server actions. Action and hybrid turns require concrete targets, policy checks, approvals, deterministic execution, and verification where appropriate.
+
+4. No hidden fallback
+
+   Fallback never means silently creating files. Scaffold execution requires an approved plan, valid `planId` and `planHash`, validated workspace path, and respected overwrite rules.
+
+5. Completion requires evidence
+
+   Agent Q must not treat "done" prose as completion when the requested mutation, command, verification, scaffold, or server action did not actually run. Tool replay, file-change records, verification results, and task-contract evidence are the authoritative sources.
+
+6. Lessons are behavior rules
+
+   Execution lesson memory stores compact failure/success rules, not long conversations or private content. It should reduce repeated execution mistakes without becoming another source of stale user intent.
+
+## Project Layout
 
 ```text
 csharp/
-├── AgentQ.Api                    계약 계층: DTO, 메시지, 도구 정의
-├── AgentQ.Core                   공통 핵심: Provider 추상화, 설정, Chat 모델
-├── AgentQ.Providers.Anthropic    Anthropic provider 구현
-├── AgentQ.Providers.OpenAi       OpenAI/OpenCode Go 호환 provider 구현
-├── AgentQ.Tools                  공통 도구: bash, read_file, write_file, edit_file 등
-├── AgentQ.Cli                    콘솔 CLI: REPL, 자동화, 도구 루프
-├── AgentQ.Desktop                WPF 데스크톱 앱과 에이전트 orchestration 계층
-├── AgentQ.MockService            provider parity 테스트용 mock 서버
-└── AgentQ.Tests                  단위/통합/데스크톱 서비스 테스트
+  AgentQ.Api                  Shared DTOs, content blocks, stream/tool contracts
+  AgentQ.Core                 Provider abstractions, configuration, chat models
+  AgentQ.Providers.OpenAi     OpenAI-compatible provider implementation
+  AgentQ.Providers.Anthropic  Anthropic provider implementation
+  AgentQ.Tools                Shared deterministic tools
+  AgentQ.Cli                  Interactive and non-interactive CLI runtime
+  AgentQ.Desktop              WPF desktop runtime and orchestration services
+  AgentQ.Tests                Unit and integration tests
 ```
 
-## 2. 계층별 구조
-
-### AgentQ.Api
-
-공유 계약 계층이다. 메시지 요청/응답, content block, stream event, tool definition 같은 DTO를 정의한다.
-
-### AgentQ.Core
-
-provider 추상화와 공통 모델 계층이다. `ILlmProvider`, `IStreamingLlmProvider`, `ProviderFactory`, `ProviderConfiguration`, `ToolCallDeltaBuffer`, `ChatMessage`/`ChatContent` 계열 모델이 이쪽에 있다.
-
-### AgentQ.Providers
-
-실제 LLM provider 구현체다. 현재는 Anthropic 계열과 OpenAI-compatible 계열이 분리되어 있고, OpenAI-compatible provider가 OpenCode Go 호환 흐름도 담당한다.
-
-### AgentQ.Tools
-
-공통 도구 계층이다. `ITool`, `ToolRegistry`, `ToolResult`, `IPermissionEnforcer`가 있고, `BashTool`, `ReadFileTool`, `WriteFileTool`, `EditFileTool`, `GrepTool`, `GlobTool`, `ListDirectoryTool` 같은 기본 도구가 있다.
-
-### AgentQ.Cli
-
-콘솔 실행 계층이다. `CliApplication`, `CliInteractiveConversationRunner`, `CliToolLoopRunner`, `StreamingProcessor`, `ToolExecutor`, `ConversationTurnBuilder`, `ChatConversationHistory`, `SessionStore`, `ConfigStore` 등이 REPL과 non-interactive 실행을 담당한다.
-
-### AgentQ.Desktop
-
-WPF UI와 데스크톱 전용 에이전트 runtime 계층이다.
-
-주요 View/ViewModel:
-
-- `MainWindow`
-- `ChatPanel`
-- `ProjectPanel`
-- `VerificationPanel`
-- `PlanPanel`
-- `MemoryPanel`
-- `GitPanel`
-- `RunTimelinePanel`
-- `EvalReplayDashboardPanel`
-- `MainViewModel`
-- `ProjectPanelViewModel`
-- `GitPanelViewModel`
-- `VerificationPanelViewModel`
-- `RunSummaryViewModel`
-
-주요 Service:
-
-- `DesktopAgentService`: 에이전트 핵심 루프, 컨텍스트 조립, provider 호출, 도구 실행, scaffold/local-server primary path 처리
-- `DesktopAgentRunWorkflowService`: UI 실행 흐름, 중지, telemetry, permission event 연결, 최종 메시지 처리
-- `DesktopPromptAssemblyService`: task profile과 동적 prompt context 조립
-- `WorkspaceAnalysisService`: C#, JS/TS, Python, Unity, Unreal, Go, Rust, Docker 등 workspace 분석
-- `WorkspaceIndexer` / `WorkspaceSymbolIndexService`: 프로젝트 맵, 키 파일, 심볼 검색 컨텍스트
-- `ProjectMemoryService`: `.agentq/memory` 기반 프로젝트 메모리
-- `ExecutionLessonMemoryService`: `.agentq/lessons` 기반 실행 교훈 메모리
-- `DesktopLocalServerService`: 로컬 dev server 시작/재사용/중지/세션 복구
-- `ProjectScaffoldPlanner` / `ProjectScaffoldPlanRegistry`: scaffold plan 생성과 승인 가능한 plan 등록
-- `DesktopProjectScaffoldCreateTool` / `DesktopProjectScaffoldVerifyTool`: scaffold 생성 및 검증 도구
-- `WorkerScaffoldExecutor`: 승인된 worker scaffold plan의 결정적 파일 생성
-- `DesktopVerificationWorkflowService` / `DesktopVerificationRunner`: 검증 명령 실행과 결과 카드 생성
-- `DesktopGitService` / `DesktopGitPanelWorkflowService`: git 상태, diff, branch, commit workflow
-- `FileMutationSnapshotService`: 변경 전 파일 스냅샷 저장 및 revert 기반
-- `ToolReplayService`: 도구 실행 replay 기록
-- `DesktopPermissionEnforcer`: WPF 기반 human-in-the-loop 권한 확인
-
-## 3. Desktop 실행 흐름
+## Desktop Runtime Flow
 
 ```text
-사용자 입력
-↓
-DesktopAgentRunWorkflowService.SendCurrentMessageAsync()
-↓
-MainViewModel에 User/Assistant placeholder 추가
-↓
-DesktopPermissionEnforcer 생성
-↓
-DesktopAgentService.SendAsync()
-↓
-Workspace/Memory/Skill/TaskContract/Scaffold context 조립
-↓
-TaskContract primary path 확인
-├─ RunLocalServer/StopLocalServer → DesktopLocalServerService 직접 실행
-├─ 승인된 Safe Scaffold plan → deterministic scaffold executor 직접 실행
-└─ 그 외 요청 → provider stream + tool loop
-↓
-도구 실행, 파일 변경 기록, 검증 계획/결과 수집
-↓
-confidence/replay/lesson 기록
-↓
-UI 최종 메시지와 run summary 갱신
+User input
+-> UserTurnUnderstanding
+-> effective intent and task contract
+-> deterministic primary path when applicable
+   -> local server service
+   -> scaffold executor
+   -> verification workflow
+-> otherwise provider stream + tool loop
+-> file-change snapshots and tool replay
+-> verification and confidence assessment
+-> final-answer consistency guard
+-> UI run summary and optional execution lessons
 ```
 
-## 4. 새 프로젝트 생성 구조
+The transient context starts with a latest-request priority block. Memory, workspace snapshots, skills, scaffold recommendations, verification hints, and execution lessons are appended as supporting evidence only.
 
-현재 설계의 핵심은 Safe Scaffold를 fallback이 아니라 primary path로 승격한 점이다.
+## Safe Scaffold Mode
+
+Safe Scaffold Mode is a primary deterministic path:
 
 ```text
-사용자 요청
-↓
-ProjectScaffoldPlanner가 greenfield 의도와 scaffold plan 생성
-↓
-planId / planHash / workspace 검증
-↓
-사용자 승인
-↓
-Desktop 서비스가 deterministic executor로 파일 생성
-↓
-검증 명령 실행
-↓
-LLM은 설명, 후속 수정, 실패 복구를 담당
+User asks for a concrete new project
+-> ScaffoldPlanner creates a plan
+-> UI shows files and verification commands
+-> user approves
+-> DesktopScaffoldService / worker executor creates files
+-> file mutation snapshots are recorded
+-> verification runs
+-> model explains, repairs, or continues
 ```
 
-중요한 점:
+If the model misses a scaffold tool call but an approved scaffold plan exists, the Desktop service is responsible for executing the plan through the deterministic executor. The model is not the source of truth for whether scaffold files were created.
 
-- 파일 생성 책임은 모델이 아니라 Desktop 서비스에 있다.
-- plan, approval, workspace 검증이 모두 있을 때만 실행한다.
-- 모델이 `create_project_scaffold` 호출을 놓쳐도 승인된 plan이 있으면 Desktop service가 생성 경로를 보장한다.
+## Local Server Mode
 
-## 5. 로컬 서버 실행 구조
-
-로컬 서버 요청도 `TaskContract` 기반 primary path다.
+Local server requests use `TaskContract` and `DesktopLocalServerService`:
 
 ```text
-"로컬 서버 띄워줘" / "서버 꺼줘"
-↓
-UserIntentTranslator
-↓
-TaskContractIntent.RunLocalServer 또는 StopLocalServer
-↓
-DesktopLocalServerService
-├─ package.json scripts에서 dev/start/preview 선택
-├─ 사용 가능한 localhost port 선택
-├─ Vite/Astro/SvelteKit: npm run <script> -- --host 127.0.0.1 --port <port>
-├─ Next.js: npm run <script> -- -H 127.0.0.1 -p <port>
-├─ 기타 스크립트: npm run <script> + PORT/HOST 환경변수
-├─ URL 응답 검증
-├─ .agentq/local-server/session.json 저장
-└─ 기존 세션 생존 + URL 응답 시 재사용
+User asks to start or stop a local server
+-> UserIntentTranslator creates a RunLocalServer or StopLocalServer contract
+-> DesktopLocalServerService starts, reuses, verifies, or stops the server
+-> session state is stored under .agentq/local-server/session.json
+-> UI displays URL/status and Open/Stop actions
 ```
 
-UI는 `DesktopLocalServerState` 콜백으로 서버 상태를 받아 하단 바에 표시한다. `Open`은 URL을 브라우저로 열고, `Stop`은 기존 AgentQ 실행 흐름을 통해 deterministic stop path로 들어간다.
+The service prefers package scripts in this order: `dev`, `start`, `preview`. A reported server URL is success evidence only after the URL responds. Stale PID/session reuse must be rejected.
 
-## 6. Execution Lesson Memory
+## Tool And Permission Model
 
-`ExecutionLessonMemoryService`는 긴 대화 로그를 저장하지 않는다. 목적은 “행동 규칙”과 “실패 회피 교훈”만 저장하는 것이다.
+Tools are deterministic execution units. They must validate workspace boundaries, avoid following unsafe symlink/reparse paths, return structured errors, and preserve evidence.
 
-저장 위치:
+Important tool rules:
+
+- `read_file` streams requested line windows and rejects binary/NUL files.
+- `write_file` and `edit_file` preserve existing text encoding, reject binary targets, and write through same-directory temporary files.
+- `grep_search` and `glob_search` avoid reparse traversal and cap large outputs.
+- `list_directory` reports reparse entries without following target metadata.
+- `web_search` requires permission, validates query size, and caps result text.
+- `bash` requires permission, blocks dangerous command patterns, reports exit code/stdout/stderr, and treats output as untrusted evidence.
+
+Desktop and CLI permission prompts should make shell, network, project write/edit/create/delete, and destructive risks visible. Session-reusable approval is intentionally narrow.
+
+## Provider Boundary
+
+Providers convert between Agent Q chat/tool content and provider-specific APIs. They must not forward malformed historical tool calls back to providers.
+
+Key invariants:
+
+- Blank or malformed tool-use IDs/names are not sent as valid provider tool calls.
+- Tool arguments sent to OpenAI-compatible APIs are normalized to object JSON.
+- Tool result messages are not kept without their corresponding assistant tool-use context after compaction.
+- Streaming usage and tool deltas are merged into accurate final chunks.
+
+## Context, Memory, And Lessons
+
+Session summaries, checkpoints, project memory, execution lessons, and pasted logs are historical evidence. They are not fresh instructions.
+
+Execution lessons live under:
 
 ```text
 .agentq/lessons/execution-lessons.json
 .agentq/lessons/execution-lesson-events.jsonl
 ```
 
-기록 대상:
+They should store:
 
-- task contract intent
-- 실패 요약
-- 다음 실행에서 지켜야 할 교훈
-- 적용 횟수
-- 성공/실패 기반 confidence 조정
+- intent type
+- failure pattern
+- correct next behavior
+- confidence and success/failure counters
 
-이 구조는 “AgentQ가 긴 대화를 외운다”가 아니라 “반복 실수를 줄이는 작은 실행 사전”에 가깝다.
+They should not store long conversations, private unrelated user content, secrets, or large tool outputs.
 
-## 7. Guardrail 구조
+## Verification And Final Answers
 
-AgentQ는 LLM 응답만 믿지 않고 코드 레벨 guardrail을 둔다.
+Verification results, file mutation snapshots, tool replay, local-server state, and scaffold execution records determine whether a run can be reported as complete.
 
-- Empty response guard
-- No-tool coding guard
-- Generic greeting guard
-- Manual fallback guard
-- Read-only loop guard
-- TaskContract completion checker
-- Irrelevant final response guard
-- Safe Scaffold primary executor
-- Local server primary executor
+Final-answer guards must replace or block unsupported success claims when:
 
-이 때문에 사용자가 “로컬 서버 띄워줘”라고 했을 때 단순 구조 설명으로 끝나는 반응을 줄이고, 실제 실행이 필요한 요청은 Desktop 서비스가 직접 처리할 수 있다.
+- requested file changes have no mutation evidence
+- verification failed or was cancelled
+- scaffold execution failed or did not create files
+- local server startup failed
+- max tool steps or no-tool guard stopped the run
+- the model claims completion without tool evidence
 
-## 8. 상태 관리
+## UI State
 
-AgentQ는 하나의 거대한 상태 기계라기보다 UI 상태, 실행 이벤트, 파일 변경 기록, 검증 기록이 결합된 event-driven 구조다.
+The UI should make run truth visible:
 
-- 대화 상태: `DesktopAgentService._messages`, CLI `ChatConversationHistory`
-- 실행 상태: `AgentRunState`
-- UI 상태: `MainViewModel` + `ObservableCollection<T>` + `INotifyPropertyChanged`
-- 파일 변경 상태: `FileChangeRecord`
-- 검증 상태: `VerificationResultCard`
-- 계획 상태: `AgentPlanItem`, `WorkerExecutionContext`
-- 로컬 서버 상태: `DesktopLocalServerState`, `LocalServerSession`
+- failure and guard-stop states must not look green
+- "not complete", "not saved", "not verified", and similar negated status text must not be styled as success
+- draft input must not be overwritten by continue, resume, stop-server, checkpoint, or verification-fix actions
+- busy state disables stale continue/resume actions
+- project panel reset must clear stale Ready/green analysis state
 
-## 8.1. LLM-first 실행 보강
+## Current Refactor Direction
 
-현재 Desktop 실행 흐름은 기존 deterministic primary path 위에 LLM-first 보강을 얹은 상태다.
+The desired direction is a shared turn-state boundary:
 
-핵심 변화:
+```text
+Raw user text
+-> TurnState
+-> route decision
+-> plan or answer
+-> permission
+-> execute
+-> verify
+-> final answer
+```
 
-- Provider endpoint가 설정된 실행에서는 LLM이 최신 사용자 요청의 의미와 도구 경로를 먼저 판단한다.
-- Desktop은 workspace 경계, 위험 명령, 삭제, 네트워크/Git 위험, 승인, 증거 기록을 담당하는 최소 안전층으로 남는다.
-- transient context는 `Latest user request priority` 블록으로 시작하며, workspace snapshot, memory, scaffold hint, skill, execution lesson은 최신 요청을 대체할 수 없는 보조 자료로 명시된다.
-- `TaskContract`는 `CreateDirectory`, `CreateFile`, `RunVerification`, `SearchAndSummarize` 같은 일반 요청까지 포함한다.
-- `SearchAndSummarize`는 `web_search` 또는 read/fetch/search evidence를 요구한다.
-- 최종 답변 guard는 replay evidence를 확인한다. 예를 들어 `create_directory` 호출 없이 “폴더를 생성했습니다”라고 답하면 retry 대상이다.
-- conversation compaction은 최신 요청, 현재 task contract, required evidence, verification, error, next action 같은 줄을 보존한다.
+After a turn state is created, downstream services should use that state instead of independently reinterpreting raw user text for execution decisions.
 
-이 구조의 목표는 Desktop이 너무 이른 단계에서 LLM 판단을 막아 답변이 엉뚱하게 튀는 문제를 줄이면서도, 실제 파일 변경/삭제/명령 실행의 안전성과 검증 가능성은 유지하는 것이다.
+## Audit Checklist
 
-## 9. 설계 철학
+Preserve these guardrails:
 
-Agent Q의 방향은 단순한 ChatGPT wrapper가 아니라, 실제 개발 workflow를 보조하는 데스크톱 에이전트 runtime에 가깝다.
+- workspace path validation
+- explicit approval before risky actions
+- plan id/hash validation for scaffold execution
+- permission checks for shell/server/network/write/delete/commit actions
+- verification after scaffold or meaningful code changes
+- file mutation snapshots before edits
+- read-only loop detection
+- task-contract completion checks
+- final-answer consistency checks after changes
 
-핵심 철학은 세 가지다.
-
-1. 결정적 실행 경로: 새 프로젝트 생성, 로컬 서버 실행처럼 성공 경로가 명확해야 하는 작업은 Desktop service가 책임진다.
-2. 관찰 가능성: run step, replay, verification, confidence, lesson memory로 행동 근거를 남긴다.
-3. 반복 실수 감소: 긴 대화 저장보다 실행 교훈을 저장해 같은 실패 패턴을 줄인다.

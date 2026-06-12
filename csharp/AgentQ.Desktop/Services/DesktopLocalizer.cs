@@ -448,6 +448,11 @@ public static class DesktopLocalizer
                statusText.Contains("tool step limit", StringComparison.OrdinalIgnoreCase) ||
                statusText.Contains("step limit reached", StringComparison.OrdinalIgnoreCase) ||
                statusText.Contains("not created", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not complete", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not completed", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not saved", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not verified", StringComparison.OrdinalIgnoreCase) ||
+               statusText.Contains("not executed", StringComparison.OrdinalIgnoreCase) ||
                statusText.Contains("incomplete", StringComparison.OrdinalIgnoreCase);
     }
 }

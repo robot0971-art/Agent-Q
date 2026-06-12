@@ -215,8 +215,10 @@ public sealed class SystemSkillService
             yield break;
         }
 
-        var skillsDirectory = Path.Combine(workspaceRoot, ".agentq", "skills");
-        if (!Directory.Exists(skillsDirectory))
+        var root = Path.GetFullPath(workspaceRoot);
+        var skillsDirectory = Path.Combine(root, ".agentq", "skills");
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, skillsDirectory) ||
+            !Directory.Exists(skillsDirectory))
         {
             yield break;
         }

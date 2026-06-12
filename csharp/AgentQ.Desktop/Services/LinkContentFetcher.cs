@@ -64,7 +64,19 @@ public sealed class LinkContentFetcher
         var results = new List<LinkFetchResult>();
         foreach (var url in urls)
         {
-            results.Add(await FetchAsync(new Uri(url), ct));
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                results.Add(new LinkFetchResult
+                {
+                    Url = url,
+                    Status = LinkFetchStatus.InvalidUrl,
+                    FailureReason = "invalid URL"
+                });
+                continue;
+            }
+
+            results.Add(await FetchAsync(uri, ct));
         }
 
         return results;

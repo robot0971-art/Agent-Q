@@ -9,17 +9,17 @@ public sealed class DesktopGitService
 {
     public Task<GitCommandResult> GetStatusAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["status", "--short", "--branch", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, BuildPathScopedArguments(["status", "--short", "--branch"]), TimeSpan.FromSeconds(30), ct);
     }
 
     public Task<GitCommandResult> GetDiffStatAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["diff", "--stat", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, BuildPathScopedArguments(["diff", "--stat"]), TimeSpan.FromSeconds(30), ct);
     }
 
     public Task<GitCommandResult> GetFullDiffAsync(string workingDirectory, CancellationToken ct = default)
     {
-        return RunGitAsync(workingDirectory, ["diff", "HEAD", "--", ".", ":(exclude).agentq"], TimeSpan.FromSeconds(30), ct);
+        return RunGitAsync(workingDirectory, BuildPathScopedArguments(["diff", "HEAD"]), TimeSpan.FromSeconds(30), ct);
     }
 
     public async Task<IReadOnlyList<GitChangedFile>> GetChangedFilesAsync(
@@ -28,7 +28,7 @@ public sealed class DesktopGitService
     {
         var result = await RunGitAsync(
             workingDirectory,
-            ["status", "--porcelain=v1", "--untracked-files=normal", "--", ".", ":(exclude).agentq"],
+            BuildPathScopedArguments(["status", "--porcelain=v1", "--untracked-files=normal"]),
             TimeSpan.FromSeconds(30),
             ct);
 
@@ -45,6 +45,11 @@ public sealed class DesktopGitService
         GitChangedFile file,
         CancellationToken ct = default)
     {
+        if (IsBlockedAgentMetadataPath(file))
+        {
+            return Task.FromResult(BlockedAgentMetadataResult());
+        }
+
         if (file.Status.Contains("??", StringComparison.Ordinal))
         {
             return Task.FromResult(new GitCommandResult
@@ -66,6 +71,11 @@ public sealed class DesktopGitService
         GitChangedFile file,
         CancellationToken ct = default)
     {
+        if (IsBlockedAgentMetadataPath(file))
+        {
+            return Task.FromResult(BlockedAgentMetadataResult());
+        }
+
         return RunGitAsync(
             workingDirectory,
             ["add", "--", file.Path],
@@ -87,6 +97,11 @@ public sealed class DesktopGitService
             };
         }
 
+        if (files.Any(IsBlockedAgentMetadataPath))
+        {
+            return BlockedAgentMetadataResult();
+        }
+
         var arguments = new List<string> { "add", "--" };
         arguments.AddRange(files.Select(file => file.Path));
         return await RunGitAsync(workingDirectory, arguments, TimeSpan.FromSeconds(30), ct);
@@ -97,6 +112,11 @@ public sealed class DesktopGitService
         GitChangedFile file,
         CancellationToken ct = default)
     {
+        if (IsBlockedAgentMetadataPath(file))
+        {
+            return Task.FromResult(BlockedAgentMetadataResult());
+        }
+
         return RunGitAsync(
             workingDirectory,
             ["restore", "--staged", "--", file.Path],
@@ -240,11 +260,6 @@ public sealed class DesktopGitService
 
             var status = rawLine[..2];
             var path = rawLine[3..].Trim();
-            if (IsAgentQInternalPath(path))
-            {
-                continue;
-            }
-
             string? originalPath = null;
 
             const string renameMarker = " -> ";
@@ -253,6 +268,12 @@ public sealed class DesktopGitService
             {
                 originalPath = path[..renameIndex];
                 path = path[(renameIndex + renameMarker.Length)..];
+            }
+
+            if (IsAgentQInternalPath(path) ||
+                (originalPath != null && IsAgentQInternalPath(originalPath)))
+            {
+                continue;
             }
 
             files.Add(new GitChangedFile
@@ -270,6 +291,36 @@ public sealed class DesktopGitService
     {
         var normalized = path.Replace('\\', '/').TrimStart('/');
         return normalized.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".agentq/", StringComparison.OrdinalIgnoreCase);
+               normalized.StartsWith(".agentq/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(".agents", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".agents/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(".codex", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".codex/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals(".codex-build", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".codex-build/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBlockedAgentMetadataPath(GitChangedFile file) =>
+        IsAgentQInternalPath(file.Path) ||
+        (!string.IsNullOrWhiteSpace(file.OriginalPath) && IsAgentQInternalPath(file.OriginalPath));
+
+    private static GitCommandResult BlockedAgentMetadataResult() => new()
+    {
+        ExitCode = 1,
+        StandardError = "AgentQ internal metadata paths cannot be staged, unstaged, or diffed from the git panel."
+    };
+
+    private static IReadOnlyList<string> BuildPathScopedArguments(IReadOnlyList<string> prefix)
+    {
+        var arguments = new List<string>(prefix)
+        {
+            "--",
+            ".",
+            ":(exclude).agentq",
+            ":(exclude).agents",
+            ":(exclude).codex",
+            ":(exclude).codex-build"
+        };
+        return arguments;
     }
 }

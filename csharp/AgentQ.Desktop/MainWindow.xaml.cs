@@ -347,6 +347,12 @@ public partial class MainWindow : Window
     {
         if (!_viewModel.CanStopLocalServer)
         {
+            if (!string.IsNullOrWhiteSpace(_viewModel.InputText))
+            {
+                _viewModel.StatusText = "Draft preserved; send or clear the current input before stopping the local server.";
+                _viewModel.AddLog("Stop local server skipped because the input draft is not empty.");
+            }
+
             return;
         }
 

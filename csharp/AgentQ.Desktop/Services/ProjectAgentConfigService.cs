@@ -14,7 +14,8 @@ public sealed class ProjectAgentConfigService
     public async Task<ProjectAgentConfig?> LoadAsync(string workspaceRoot, CancellationToken ct = default)
     {
         var path = GetConfigPath(workspaceRoot);
-        if (!File.Exists(path))
+        if (!IsSafeConfigPath(workspaceRoot, path) ||
+            !File.Exists(path))
         {
             return null;
         }
@@ -34,6 +35,11 @@ public sealed class ProjectAgentConfigService
     {
         config.UpdatedAt = DateTime.Now;
         var path = GetConfigPath(workspaceRoot);
+        if (!IsSafeConfigPath(workspaceRoot, path))
+        {
+            throw new InvalidOperationException("Project config path resolves outside the workspace.");
+        }
+
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directory))
         {
@@ -59,7 +65,8 @@ public sealed class ProjectAgentConfigService
     public static ProjectAgentConfig? LoadLocal(string workspaceRoot)
     {
         var path = GetConfigPath(workspaceRoot);
-        if (!File.Exists(path))
+        if (!IsSafeConfigPath(workspaceRoot, path) ||
+            !File.Exists(path))
         {
             return null;
         }
@@ -81,5 +88,13 @@ public sealed class ProjectAgentConfigService
             ? Environment.CurrentDirectory
             : Path.GetFullPath(workspaceRoot);
         return Path.Combine(root, ".agentq", "config.json");
+    }
+
+    private static bool IsSafeConfigPath(string workspaceRoot, string path)
+    {
+        var root = string.IsNullOrWhiteSpace(workspaceRoot)
+            ? Environment.CurrentDirectory
+            : Path.GetFullPath(workspaceRoot);
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(root, path);
     }
 }

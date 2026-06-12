@@ -22,6 +22,11 @@ public sealed class ToolReplayService
         session.CreatedAt = DateTime.Now;
 
         var directory = Path.Combine(session.WorkspaceRoot, ".agentq", "replay");
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(session.WorkspaceRoot, directory))
+        {
+            return null;
+        }
+
         Directory.CreateDirectory(directory);
 
         var path = Path.Combine(directory, $"{session.CreatedAt:yyyyMMdd-HHmmss-fff}-{session.Id}.json");
@@ -59,8 +64,10 @@ public sealed class ToolReplayService
         int maxSessions = 10,
         CancellationToken ct = default)
     {
-        var directory = Path.Combine(Path.GetFullPath(workspaceRoot), ".agentq", "replay");
-        if (!Directory.Exists(directory))
+        var root = Path.GetFullPath(workspaceRoot);
+        var directory = Path.Combine(root, ".agentq", "replay");
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory) ||
+            !Directory.Exists(directory))
         {
             return [];
         }

@@ -1,71 +1,63 @@
 namespace AgentQ.Tools;
 
 /// <summary>
-/// 도구 인터페이스
+/// Common interface for tools that can be exposed to an agent loop.
 /// </summary>
 public interface ITool
 {
     /// <summary>
-    /// 도구 이름
+    /// Tool name used in provider tool calls.
     /// </summary>
     string Name { get; }
 
     /// <summary>
-    /// 도구 설명
+    /// Human-readable tool description.
     /// </summary>
     string Description { get; }
 
     /// <summary>
-    /// 입력 스키마 (JSON Schema)
+    /// Tool input JSON schema.
     /// </summary>
     object InputSchema { get; }
 
     /// <summary>
-    /// 권한 확인 필요 여부
+    /// True when the tool requires user permission before execution.
     /// </summary>
     bool RequiresPermission { get; }
 
     /// <summary>
-    /// 도구 실행
+    /// Executes the tool.
     /// </summary>
-    /// <param name="input">입력 파라미터</param>
-    /// <param name="ct">취소 토큰</param>
-    /// <returns>도구 실행 결과</returns>
     Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default);
 }
 
 /// <summary>
-/// 도구 실행 결과
+/// Result returned by a tool execution.
 /// </summary>
 public class ToolResult
 {
     /// <summary>
-    /// 결과 내용
+    /// Tool result content.
     /// </summary>
     public string Content { get; init; } = string.Empty;
 
     /// <summary>
-    /// 오류 발생 여부
+    /// True when the tool failed.
     /// </summary>
     public bool IsError { get; init; }
 
     /// <summary>
-    /// 오류 메시지
+    /// Structured error message when the tool failed.
     /// </summary>
     public string? ErrorMessage { get; init; }
 
     /// <summary>
-    /// 성공 결과 생성
+    /// Creates a successful tool result.
     /// </summary>
-    /// <param name="content">결과 내용</param>
-    /// <returns>성공 도구 결과</returns>
     public static ToolResult Success(string content) => new() { Content = content };
 
     /// <summary>
-    /// 오류 결과 생성
+    /// Creates a failed tool result.
     /// </summary>
-    /// <param name="message">오류 메시지</param>
-    /// <returns>오류 도구 결과</returns>
     public static ToolResult Error(string message) => new() { Content = message, IsError = true, ErrorMessage = message };
 }
-

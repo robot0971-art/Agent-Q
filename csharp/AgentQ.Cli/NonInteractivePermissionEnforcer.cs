@@ -3,7 +3,7 @@ using AgentQ.Tools;
 namespace AgentQ.Cli;
 
 /// <summary>
-/// 비대화형 실행에서 도구 권한을 자동으로 판정합니다.
+/// Resolves tool permission decisions for non-interactive CLI runs.
 /// </summary>
 public sealed class NonInteractivePermissionEnforcer : IPermissionEnforcer
 {
@@ -26,7 +26,7 @@ public sealed class NonInteractivePermissionEnforcer : IPermissionEnforcer
     }
 
     /// <summary>
-    /// 비대화형 정책에 따라 도구 실행 허용 여부를 반환합니다.
+    /// Returns whether a tool is allowed under the non-interactive permission policy.
     /// </summary>
     public Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
     {

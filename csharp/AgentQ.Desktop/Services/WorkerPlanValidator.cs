@@ -166,6 +166,18 @@ public sealed class WorkerPlanValidator
                 Message = $"Plan path is outside the workspace: {step.Path}",
                 Path = step.Path
             });
+            return;
+        }
+
+        if (!WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, fullPath))
+        {
+            issues.Add(new WorkerPlanValidationIssue
+            {
+                Severity = WorkerPlanValidationSeverity.Blocker,
+                Code = "path_resolves_outside_workspace",
+                Message = $"Plan path resolves outside the workspace: {step.Path}",
+                Path = step.Path
+            });
         }
     }
 

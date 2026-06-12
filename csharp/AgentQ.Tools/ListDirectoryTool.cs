@@ -56,7 +56,7 @@ public sealed class ListDirectoryTool : ITool
             var limit = Math.Min(requestedLimit, MaximumLimit);
             var entries = Directory.EnumerateFileSystemEntries(fullPath)
                 .Where(entry => includeHidden || !IsHidden(entry))
-                .OrderBy(entry => !Directory.Exists(entry))
+                .OrderBy(entry => !IsDirectory(entry))
                 .ThenBy(entry => Path.GetFileName(entry), StringComparer.OrdinalIgnoreCase)
                 .Take(limit + 1)
                 .ToList();
@@ -68,14 +68,8 @@ public sealed class ListDirectoryTool : ITool
             }
 
             var entryItems = entries
-                .Select(entry => new Dictionary<string, object?>
-                {
-                    ["name"] = Path.GetFileName(entry),
-                    ["path"] = entry,
-                    ["relativePath"] = Path.GetRelativePath(fullPath, entry).Replace('\\', '/'),
-                    ["type"] = Directory.Exists(entry) ? "directory" : "file",
-                    ["sizeBytes"] = Directory.Exists(entry) ? null : new FileInfo(entry).Length
-                })
+                .Select(entry => CreateEntryItem(fullPath, entry))
+                .Where(entry => entry != null)
                 .ToList();
 
             var output = new Dictionary<string, object?>
@@ -113,6 +107,46 @@ public sealed class ListDirectoryTool : ITool
         }
         catch
         {
+            return false;
+        }
+    }
+
+    private static Dictionary<string, object?>? CreateEntryItem(string rootPath, string entry)
+    {
+        if (!TryGetAttributes(entry, out var attributes))
+        {
+            return null;
+        }
+
+        var isDirectory = attributes.HasFlag(FileAttributes.Directory);
+        var isReparsePoint = attributes.HasFlag(FileAttributes.ReparsePoint);
+
+        return new Dictionary<string, object?>
+        {
+            ["name"] = Path.GetFileName(entry),
+            ["path"] = entry,
+            ["relativePath"] = Path.GetRelativePath(rootPath, entry).Replace('\\', '/'),
+            ["type"] = isDirectory ? "directory" : "file",
+            ["isReparsePoint"] = isReparsePoint,
+            ["sizeBytes"] = isDirectory || isReparsePoint ? null : new FileInfo(entry).Length
+        };
+    }
+
+    private static bool IsDirectory(string path)
+    {
+        return TryGetAttributes(path, out var attributes) && attributes.HasFlag(FileAttributes.Directory);
+    }
+
+    private static bool TryGetAttributes(string path, out FileAttributes attributes)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            return true;
+        }
+        catch
+        {
+            attributes = default;
             return false;
         }
     }

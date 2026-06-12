@@ -95,6 +95,85 @@ public sealed class OpenAiProviderTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task GenerateResponseAsync_NormalizesInvalidHistoricalToolMessages()
+    {
+        JsonDocument? capturedRequest = null;
+
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_tool_history",
+              "model": "gpt-4o-mini",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "Recovered."
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        await using var server = await OpenAiTestServer.StartAsync(request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            capturedRequest = JsonDocument.Parse(reader.ReadToEnd());
+            return new StaticResponse(responseBody, "application/json");
+        });
+
+        var provider = new OpenAiCompatibleProvider(server.BaseUrl, "test-key", "gpt-4o-mini");
+        var context = new ChatContext
+        {
+            Model = "gpt-4o-mini",
+            Messages =
+            [
+                ChatMessage.UserText("Create the file."),
+                new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content =
+                    [
+                        ChatContent.CreateToolUse("call_bad", "write_file", "{\"path\":\"test2\""),
+                        ChatContent.CreateToolUse("   ", "read_file", "{\"path\":\"ignored.txt\"}"),
+                        ChatContent.CreateToolUse("call_blank_name", "   ", "{\"path\":\"ignored.txt\"}")
+                    ]
+                },
+                new ChatMessage
+                {
+                    Role = ChatRole.User,
+                    Content =
+                    [
+                        ChatContent.CreateToolResult("   ", "ignored blank tool result", true),
+                        ChatContent.CreateToolResult("call_bad", "Invalid tool input for write_file: malformed JSON.", true)
+                    ]
+                }
+            ],
+            MaxTokens = 256
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("write_file", "read_file"));
+
+        Assert.NotNull(capturedRequest);
+        var messages = capturedRequest!.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal(3, messages.Length);
+        Assert.Equal("user", messages[0].GetProperty("role").GetString());
+
+        Assert.Equal("assistant", messages[1].GetProperty("role").GetString());
+        var toolCall = Assert.Single(messages[1].GetProperty("tool_calls").EnumerateArray());
+        Assert.Equal("call_bad", toolCall.GetProperty("id").GetString());
+        Assert.Equal("write_file", toolCall.GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("{}", toolCall.GetProperty("function").GetProperty("arguments").GetString());
+
+        Assert.Equal("tool", messages[2].GetProperty("role").GetString());
+        Assert.Equal("call_bad", messages[2].GetProperty("tool_call_id").GetString());
+        Assert.Equal("Invalid tool input for write_file: malformed JSON.", messages[2].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task GenerateResponseAsync_ClampsHugeMaxTokens()
     {
         JsonDocument? capturedRequest = null;
