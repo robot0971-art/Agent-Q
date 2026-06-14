@@ -189,7 +189,8 @@ Current implementation status:
 - It carries raw user text, routing text, `UserTurnUnderstanding`, rule intent, effective intent, task profile, task contract, scaffold plan, selected skills, and context/tool/memory/verification/final-answer policies.
 - Context assembly, routed user messages, task decomposition, direct local-server execution, direct scaffold execution, provider tool batches, and task-contract direct fallback now consume `AgentTurnState`.
 - Worker execution receives `AgentTurnParentContext`, a compact parent trace/policy projection, so worker step prompts stay scoped to the parent turn instead of becoming a fresh raw-text authority.
-- Remaining refactor work is the final requirement audit across scaffold, local server, verification, worker, tool loop, and final-answer paths before marking the TurnState refactor complete.
+- Scaffold, local server, verification fallback, worker execution, provider tool loop, and final-answer guards have been audited against TurnState policies and tool/service replay evidence.
+- The final TurnState refactor was verified with focused routing/worker/context/verification tests, `AgentQ.Tests` build, `AgentQ.Desktop` build, and a full `AgentQ.Tests` run with 1120 passed / 0 failed.
 
 ## Audit Checklist
 

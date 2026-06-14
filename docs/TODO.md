@@ -228,7 +228,13 @@
 - [x] `ToolPolicy`, `VerificationPolicy`, `FinalAnswerPolicy`가 현재는 명시 상태 기록과 일부 소비에 머무르므로, 남은 helper들이 정책 객체를 직접 읽도록 추가 전환한다.
   - [x] tool execution conversation block은 `ToolPolicy.BlockWriteShellAndScaffoldForConversation`를 직접 읽고, legacy reflection 테스트 경로에서는 기존 conversation intent fallback을 유지한다.
   - [x] worker prompt는 verification/final-answer policy를 parent TurnState evidence로 전달해 worker step이 독립 성공 판정을 만들지 않게 한다.
-- [ ] 전체 TurnState 완료 판정 전에 scaffold/local server/verification/worker/tool loop/final answer 경로별 requirement audit을 다시 수행한다.
+- [x] 전체 TurnState 완료 판정 전에 scaffold/local server/verification/worker/tool loop/final answer 경로별 requirement audit을 다시 수행했다.
+  - [x] scaffold: direct safe-scaffold path, model no-tool fallback, permission fallback, verification fallback이 `turnState.AllowsDeterministicExecution`, approved scaffold plan, replay/file-change evidence를 사용한다.
+  - [x] local server: `turnState.TaskContract`가 actionable run/stop local-server contract일 때만 deterministic Desktop service가 실행되고 replay evidence를 남긴다.
+  - [x] verification: project scaffold verification fallback과 final failed-verification replacement가 `turnState.VerificationPolicy`/`FinalAnswerPolicy` gate를 통과한다.
+  - [x] worker: `TaskExecutor`는 parent `AgentTurnParentContext`를 받아 worker step prompt가 독립 raw-text authority가 되지 않게 한다.
+  - [x] tool loop: provider tool batch와 task-contract direct fallback이 `ExecuteToolsAsync(..., turnState)`로 trace/effective intent/task contract/tool policy를 공유한다.
+  - [x] final answer: unsupported action completion, irrelevant final answer, failed verification success claim이 `FinalAnswerPolicy`와 tool/service replay evidence로 차단된다.
 
 ### A. 전체 감사 진행 방식
 
@@ -1237,6 +1243,28 @@ dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseShar
 
 dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
 # 2026-06-14 시도: 180초 제한에서 timeout. 성공 evidence로 취급하지 않는다. 직후 잔류 dotnet 프로세스는 없었다.
+
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 첫 시도: 120초 제한에서 timeout. 성공 evidence로 취급하지 않았다. `dotnet build-server shutdown`으로 MSBuild/VB/C# 컴파일러 서버를 정리했다.
+# 2026-06-14 재시도 결과: 빌드 성공, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopAgentService_SourceGatesCompletionAndVerificationWithTurnStatePolicies|FullyQualifiedName~DesktopAgentService_BlocksWriteToolForConversationBeforePermissionRequest|FullyQualifiedName~DesktopAgentService_AllowsSafeReadToolWhenIntentIsConversation|FullyQualifiedName~DesktopAgentService_AttachesTurnStateAsRoutingAnchorForConversationContext|FullyQualifiedName~AgentTurnParentContext_FormatForWorkerPromptPreservesParentPolicy|FullyQualifiedName~TaskContractCompletionChecker_" --logger "console;verbosity=minimal"
+# 2026-06-14 결과: 통과 22, 실패 0, 건너뜀 0, 전체 22.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 빌드 성공, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-full-turnstate.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal
+# 2026-06-14 결과: 실패 10, 통과 1110, 전체 1120. 실패 원인은 `BuildContextOnlyAsync` private signature가 TurnState 기반으로 바뀐 뒤 reflection 테스트 helper가 옛 인자를 넘긴 `TargetParameterCountException`이었다.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopAgentService_ContextForUnrealFeasibilityQuestionAvoidsSessionAndLinkDrift|FullyQualifiedName~DesktopAgentService_BuildContextReportsLinkFetchFailureWithoutCategoricalNoAccess|FullyQualifiedName~DesktopAgentService_BuildContextDoesNotTouchExecutionLessonMemory|FullyQualifiedName~DesktopAgentService_BuildContextDoesNotTouchLocalProjectMemoryLessons|FullyQualifiedName~DesktopAgentService_BuildContextOmitsExecutionLessonsForConversationOnlyTurn|FullyQualifiedName~DesktopAgentService_BuildContextUsesRouterContractInsteadOfRetranslatingRagLikeText|FullyQualifiedName~DesktopAgentService_ContextStartsWithLatestUserRequestPriority|FullyQualifiedName~DesktopAgentService_ContextForEmptyGreenfieldProjectBlocksWorkflowAnalysis|FullyQualifiedName~DesktopAgentService_ContextIncludesRunLocalServerTaskContract|FullyQualifiedName~DesktopAgentService_AttachesRelevantSystemSkillContext" --logger "console;verbosity=minimal"
+# 2026-06-14 결과: 테스트 helper가 `AgentTurnState`를 생성해 `BuildContextOnlyAsync`에 넘기도록 수정한 뒤 통과 10, 실패 0, 건너뜀 0, 전체 10.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-full-turnstate-fixed.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal
+# 2026-06-14 결과: exit code 0. TRX counters: total 1120, executed 1120, passed 1120, failed 0, error 0, timeout 0, aborted 0, notExecuted 0.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 최종 재확인 결과: 빌드 성공, 경고 0, 오류 0.
 ```
 
 ## 다른 컴퓨터에서 이어가기

@@ -97,6 +97,30 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_SourceGatesCompletionAndVerificationWithTurnStatePolicies()
+    {
+        var servicePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "AgentQ.Desktop",
+            "Services",
+            "DesktopAgentService.cs"));
+        var text = System.IO.File.ReadAllText(servicePath);
+
+        Assert.Contains("var toolPolicy = turnState.ToolPolicy;", text, StringComparison.Ordinal);
+        Assert.Contains("var verificationPolicy = turnState.VerificationPolicy;", text, StringComparison.Ordinal);
+        Assert.Contains("var finalAnswerPolicy = turnState.FinalAnswerPolicy;", text, StringComparison.Ordinal);
+        Assert.Contains("finalAnswerPolicy.RequireEvidenceForCompletionClaims &&", text, StringComparison.Ordinal);
+        Assert.Contains("finalAnswerPolicy.RejectUnsupportedSuccess &&", text, StringComparison.Ordinal);
+        Assert.Contains("toolPolicy.RequireEvidenceForActionCompletion &&", text, StringComparison.Ordinal);
+        Assert.Contains("verificationPolicy.AllowVerification &&", text, StringComparison.Ordinal);
+        Assert.Contains("policy=ToolPolicy.BlockWriteShellAndScaffoldForConversation", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DesktopVerificationRunner_DoesNotDeleteVerificationOutputSymlinkTarget()
     {
         var workspace = CreateTempDirectory();
@@ -19254,16 +19278,69 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
 
+        var contract = taskContract ?? UserIntentTranslator.Translate(userText);
+        var ruleIntent = TurnIntentClassifier.Classify(userText);
+        var understanding = UserTurnUnderstandingService.Understand(userText);
+        var routingText = string.IsNullOrWhiteSpace(understanding.RoutingText)
+            ? userText
+            : understanding.RoutingText;
+        var hasActionableContract = contract.IsActionable;
+        var isConversation = ruleIntent.Type == TurnIntentType.Conversation;
+        var isAmbiguous = ruleIntent.Type == TurnIntentType.Ambiguous;
+        var turnState = new AgentTurnState
+        {
+            TraceId = "test-context-turn",
+            RawUserText = userText,
+            RoutingText = routingText,
+            WorkspaceRoot = workspaceRoot,
+            WorkMode = AgentWorkMode.Coding,
+            Understanding = understanding,
+            RuleIntent = ruleIntent,
+            EffectiveIntent = ruleIntent,
+            TaskProfile = taskProfile,
+            TaskContract = contract,
+            ProjectScaffoldPlan = projectScaffoldPlan,
+            SelectedSystemSkills = selectedSystemSkills,
+            ProjectConfig = projectConfig,
+            ContextPolicy = new AgentTurnContextPolicy
+            {
+                AttachWorkspaceContext = config.DesktopAutoAttachWorkspaceContext,
+                FetchLinks = config.DesktopAutoFetchLinks,
+                IncludeScaffoldContext = hasActionableContract,
+                IncludeExecutionLessons = hasActionableContract,
+                TreatSupplementalContextAsEvidenceOnly = true
+            },
+            ToolPolicy = new AgentTurnToolPolicy
+            {
+                AllowToolLoop = !isAmbiguous,
+                BlockWriteShellAndScaffoldForConversation = isConversation,
+                RequirePermissionForRiskyTools = true,
+                RequireEvidenceForActionCompletion = hasActionableContract
+            },
+            MemoryPolicy = new AgentTurnMemoryPolicy
+            {
+                SelectReadOnlyContext = true,
+                RecordOnlyAfterExecutionEvidence = hasActionableContract,
+                TreatMemoryAsSupplementalEvidence = true
+            },
+            VerificationPolicy = new AgentTurnVerificationPolicy
+            {
+                AllowVerification = !isConversation && !isAmbiguous,
+                RequireAllowedCommand = true,
+                RequireEvidenceBeforeSuccess = true
+            },
+            FinalAnswerPolicy = new AgentTurnFinalAnswerPolicy
+            {
+                RequireEvidenceForCompletionClaims = hasActionableContract,
+                RejectUnsupportedSuccess = hasActionableContract,
+                AskClarifyingQuestionForAmbiguous = isAmbiguous
+            }
+        };
+
         var task = (Task<string>)method.Invoke(service, [
             config,
-            userText,
-            workspaceRoot,
+            turnState,
             projectMemory,
-            projectConfig,
-            taskProfile,
-            projectScaffoldPlan,
-            taskContract ?? UserIntentTranslator.Translate(userText),
-            selectedSystemSkills,
             CancellationToken.None
         ])!;
         return await task;

@@ -6,7 +6,7 @@ This file separates current design sources from historical notes so automatic co
 
 - `AGENTS.md` - project operating rules and architectural principles.
 - `docs/TODO.md` - active audit checklist and verification history.
-- `docs/Agent Q.md` - current runtime architecture summary.
+- `docs/Agent Q.md` - current runtime architecture summary, including completed TurnState routing boundary status and verification evidence.
 - `docs/llm-first-agent-milestones.ko.md` - current LLM-first routing milestones and remaining smoke-test notes.
 - `docs/DOCUMENT_STATUS.md` - this document-status map.
 

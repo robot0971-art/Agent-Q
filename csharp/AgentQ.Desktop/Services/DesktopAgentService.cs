@@ -411,6 +411,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
         var sessionMemoryDeflectionRetryUsed = false;
+        var toolPolicy = turnState.ToolPolicy;
+        var verificationPolicy = turnState.VerificationPolicy;
+        var finalAnswerPolicy = turnState.FinalAnswerPolicy;
 
         var shouldExecuteLocalServerDirectly = turnState.HasActionableContract &&
             ShouldExecuteLocalServerDirectly(turnState.TaskContract, turnState.WorkMode);
@@ -773,7 +776,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         userText,
                         candidateText);
 
-                if (!genericGreetingRetryUsed &&
+                if (finalAnswerPolicy.RequireEvidenceForCompletionClaims &&
+                    !genericGreetingRetryUsed &&
                     TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     if (TryBuildDirectContractToolUse(taskContract, routingText, userText, out var directToolUse))
@@ -884,7 +888,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
-                if (TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
+                if (finalAnswerPolicy.RejectUnsupportedSuccess &&
+                    TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     var message = $"The answer did not satisfy the current task contract ({taskContract.Intent}). Please retry; AgentQ should {taskContract.Goal}";
                     await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
@@ -965,7 +970,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
-                if (shouldApplyNoToolGuard &&
+                if (toolPolicy.RequireEvidenceForActionCompletion &&
+                    shouldApplyNoToolGuard &&
                     !(turnIntent.AllowsDeterministicExecution &&
                       ShouldExecuteSafeScaffoldDirectly(projectScaffoldPlan, workMode) &&
                       fileChanges.Count == 0) &&
@@ -1108,7 +1114,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     onDelta?.Invoke(candidateText);
                 }
 
-                if (ShouldRunProjectScaffoldVerificationFallback(
+                if (verificationPolicy.AllowVerification &&
+                    ShouldRunProjectScaffoldVerificationFallback(
                         projectScaffoldPlan,
                         fileChanges,
                         replayEntries,
@@ -1130,7 +1137,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
                 var finalRunState = AgentRunState.Done;
-                if (ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
+                if (finalAnswerPolicy.RejectUnsupportedSuccess &&
+                    ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
                 {
                     var replacementText = BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans);
                     builder.Clear();
@@ -1142,7 +1150,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "Final answer guard: replaced",
                         "The model's final answer did not match the recorded file changes, so AgentQ replaced it with a deterministic change summary.");
                 }
-                else if (TryBuildFailedEvidenceFinalReplacement(
+                else if (finalAnswerPolicy.RequireEvidenceForCompletionClaims &&
+                         TryBuildFailedEvidenceFinalReplacement(
                              builder.ToString(),
                              fileChanges,
                              executedCommands,
@@ -1300,7 +1309,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     fileChanges,
                     turnIntent.AllowsDeterministicExecution && HasProceedableProjectScaffoldPlan(projectScaffoldPlan)))
             {
-                if (ShouldRunProjectScaffoldVerificationFallback(
+                if (verificationPolicy.AllowVerification &&
+                    ShouldRunProjectScaffoldVerificationFallback(
                         projectScaffoldPlan,
                         fileChanges,
                         replayEntries,
