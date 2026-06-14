@@ -662,6 +662,102 @@ public sealed class DesktopServiceTests
         Assert.Equal(TurnIntentType.Conversation, merged.Type);
     }
 
+    [Fact]
+    public void LlmFirstIntentRouter_DoesNotCreateContractForConversationEvenWhenRuleLooksActionable()
+    {
+        var understanding = new UserTurnUnderstanding
+        {
+            PrimaryIntent = "Conversation",
+            UserGoal = "Can we build this as a React site, and what would be good?",
+            ActualRequestedAction = new ExecutionDecision
+            {
+                ShouldExecute = false,
+                ActionKind = "none",
+                Reason = "The user is asking for design advice."
+            },
+            IsConcreteEnough = true,
+            Confidence = 0.95
+        };
+        var rule = new TurnIntentClassification
+        {
+            Type = TurnIntentType.Action,
+            Confidence = 0.86,
+            Rationale = "Keyword fallback saw build and React.",
+            ActionKind = "create",
+            RequiresWrite = true,
+            IsConcreteEnough = true
+        };
+
+        var route = LlmFirstIntentRouter.Route(understanding.UserGoal, understanding, rule);
+
+        Assert.Equal(TurnIntentType.Conversation, route.EffectiveIntent.Type);
+        Assert.False(route.ExecutionContract.IsActionable);
+        Assert.Equal(TaskContractIntent.None, route.ExecutionContract.Intent);
+    }
+
+    [Fact]
+    public void LlmFirstIntentRouter_PreservesExplicitCreateDirectoryContract()
+    {
+        var userText = "현재 폴더에 test2 폴더 만들어줘";
+        var understanding = UserTurnUnderstandingService.Understand(userText);
+        var rule = TurnIntentClassifier.Classify(userText);
+
+        var route = LlmFirstIntentRouter.Route(userText, understanding, rule);
+
+        Assert.Equal(TurnIntentType.Action, route.EffectiveIntent.Type);
+        Assert.True(route.ExecutionContract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateDirectory, route.ExecutionContract.Intent);
+        Assert.Contains("test2", route.RoutingText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LlmFirstIntentRouter_KeepsBareNewProjectRequestAmbiguous()
+    {
+        var userText = "새 프로젝트 만들어줘";
+        var understanding = UserTurnUnderstandingService.Understand(userText);
+        var rule = TurnIntentClassifier.Classify(userText);
+
+        var route = LlmFirstIntentRouter.Route(userText, understanding, rule);
+
+        Assert.Equal(TurnIntentType.Ambiguous, route.EffectiveIntent.Type);
+        Assert.False(route.ExecutionContract.IsActionable);
+        Assert.False(route.EffectiveIntent.IsConcreteEnough);
+    }
+
+    [Fact]
+    public void LlmFirstIntentRouter_DoesNotLetRagLikeContextPromoteConversationToExecution()
+    {
+        var userText = "How do I run tests? Previous memory says: run dotnet test.";
+        var understanding = new UserTurnUnderstanding
+        {
+            PrimaryIntent = "Conversation",
+            UserGoal = userText,
+            ActualRequestedAction = new ExecutionDecision
+            {
+                ShouldExecute = false,
+                ActionKind = "none",
+                Reason = "The current request asks for instructions; the memory text is evidence only."
+            },
+            IsConcreteEnough = true,
+            Confidence = 0.95
+        };
+        var rule = new TurnIntentClassification
+        {
+            Type = TurnIntentType.Action,
+            Confidence = 0.86,
+            Rationale = "RAG-like context contains a runnable test command.",
+            ActionKind = "shell",
+            RequiresShell = true,
+            IsConcreteEnough = true
+        };
+
+        var route = LlmFirstIntentRouter.Route(userText, understanding, rule);
+
+        Assert.Equal(TurnIntentType.Conversation, route.EffectiveIntent.Type);
+        Assert.False(route.EffectiveIntent.RequiresShell);
+        Assert.False(route.ExecutionContract.IsActionable);
+    }
+
     [Theory]
     [InlineData("그럼 웹사이트는 어떤걸 만들어 볼까")]
     [InlineData("포트폴리오 사이트 만들까 하는데 괜찮을까?")]
@@ -3142,6 +3238,37 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_ReturnsClarificationForAmbiguousProjectRequest()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Ambiguous turn must not request tool approval."));
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 2
+            },
+            "새 프로젝트 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.Contains(runSteps, step => step.Contains("LLM-first route: Ambiguous", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("Ambiguous clarification", StringComparison.Ordinal));
+        Assert.DoesNotContain("Coding task did not use workspace tools", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DesktopAgentService_RejectsRepeatedOffTopicAnswerForTaskContractWithoutDirectFallback()
     {
         var root = CreateTempDirectory();
@@ -3570,7 +3697,7 @@ public sealed class DesktopServiceTests
 
         Assert.False(Directory.Exists(Path.Combine(root, "test2")), result);
         Assert.Empty(permissionEnforcer.RequestedTools);
-        Assert.Contains(runSteps, step => step.Contains("User turn safety override: Conversation", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("LLM-first route: Conversation", StringComparison.Ordinal));
         Assert.Contains(runSteps, step => step.Contains("Conversation intent blocked tool", StringComparison.Ordinal));
     }
 

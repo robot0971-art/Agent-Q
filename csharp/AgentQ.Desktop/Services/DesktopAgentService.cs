@@ -173,22 +173,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             config,
             ruleTurnIntent,
             $"taskKind={taskProfile.Kind}; workMode={workMode}; prompt=\"{DesktopPromptBuilder.Truncate(routingText.ReplaceLineEndings(" "), 240)}\"");
-        var modelTurnIntent = UserTurnUnderstandingService.ToTurnIntentClassification(turnUnderstanding);
-        var classifiedTurnIntent = TurnIntentClassifier.ApplySafetyRules(ruleTurnIntent, modelTurnIntent);
-        var turnIntent = ApplyUserTurnUnderstandingSafety(turnUnderstanding, classifiedTurnIntent);
-        if (!Equals(turnIntent, classifiedTurnIntent))
-        {
-            RecordIntentDiagnostic(
-                "user_turn_understanding_safety_override",
-                effectiveWorkspaceRoot,
-                config,
-                turnIntent,
-                $"previous={classifiedTurnIntent.Type}; primaryIntent={turnUnderstanding.PrimaryIntent}; embeddedCount={turnUnderstanding.EmbeddedContent.Count}; reason=\"{DesktopPromptBuilder.Truncate(turnUnderstanding.ActualRequestedAction.Reason.ReplaceLineEndings(" "), 500)}\"");
-            toolCallbacks?.OnRunStep?.Invoke(
-                AgentRunState.Planning,
-                $"User turn safety override: {turnIntent.Type}",
-                $"UserTurnUnderstanding prevented a non-executing turn from being routed as {classifiedTurnIntent.Type}.");
-        }
+        var routingDecision = LlmFirstIntentRouter.Route(userText, turnUnderstanding, ruleTurnIntent);
+        var turnIntent = routingDecision.EffectiveIntent;
+        var taskContract = routingDecision.ExecutionContract;
+        routingText = routingDecision.RoutingText;
+        RecordDiagnostic(
+            "llm_first_intent_route",
+            effectiveWorkspaceRoot,
+            config,
+            $"trace={turnTraceId}; {routingDecision.Reason}; routingText=\"{DesktopPromptBuilder.Truncate(routingText.ReplaceLineEndings(" "), 500)}\"");
+        toolCallbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            $"LLM-first route: {turnIntent.Type}",
+            $"{routingDecision.Reason}; concrete={turnIntent.IsConcreteEnough}");
         RecordIntentDiagnostic(
             "turn_intent_effective",
             effectiveWorkspaceRoot,
@@ -199,9 +196,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             AgentRunState.Planning,
             $"Turn intent: {turnIntent.Type}",
             $"{turnIntent.Rationale} action={turnIntent.ActionKind}; confidence={turnIntent.Confidence:0.00}; concrete={turnIntent.IsConcreteEnough}");
-        var taskContract = turnIntent.AllowsDeterministicExecution && turnUnderstanding.ActualRequestedAction.ShouldExecute
-            ? UserIntentTranslator.Translate(routingText)
-            : UserIntentTranslator.Translate(string.Empty);
         RecordDiagnostic(
             "task_contract_translated",
             effectiveWorkspaceRoot,

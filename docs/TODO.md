@@ -153,6 +153,16 @@
 - [x] bad AgentQ response complaint / quoted log / fenced log 안의 실행 문장은 여전히 evidence로만 취급하고 실행하지 않는다.
 - [x] safe scaffold deterministic success lifecycle은 `turn_completed` diagnostics를 남기도록 테스트 기대를 정리했다.
 
+### 13. LLM-first intent router 1차 구현
+
+- [x] `LlmFirstIntentRouter`를 추가해 `UserTurnUnderstanding`의 effective result를 DesktopAgentService의 실제 intent route로 사용하게 했다.
+- [x] `TurnIntent` 결정과 `TaskContract` 생성을 한 단계 안에서 섞지 않고, 라우터가 effective intent를 만든 뒤 `Action`/`Hybrid`일 때만 execution contract를 별도로 생성하게 했다.
+- [x] rule/fallback이 단독으로 Conversation turn을 실행형으로 끌고 가지 못하게 하고, non-executing UserTurnUnderstanding은 `Conversation` route와 empty contract로 고정했다.
+- [x] 명확한 `CreateDirectory` 요청은 `CreateDirectory` contract를 계속 생성한다.
+- [x] bare “새 프로젝트 만들어줘” 요청은 fallback contract가 Action처럼 보여도 rule guard가 `Ambiguous`로 유지해 확인 질문으로 끝나게 했다.
+- [x] RAG/memory처럼 보이는 실행 문구가 현재 how-to `Conversation`을 shell `Action`으로 승격하지 않는 synthetic router 회귀 테스트를 추가했다.
+- [x] embedded bad-response complaint에서 LLM이 tool-call을 시도해도 `LLM-first route: Conversation`과 conversation tool block으로 실행을 막는 회귀 테스트를 갱신했다.
+
 ## 앞으로 해야 할 일
 
 ### A0. LLM-first intent router 완성형 리팩터링
@@ -161,17 +171,30 @@
 > 완성형은 `LLM-first / guard-enforced / contract-executed` 구조로 한 번 더 재설계해야 한다.  
 > 예상 작업량은 회귀 테스트와 빌드/전체 테스트까지 포함해 약 6~10시간이다.
 
-- [ ] LLM intent 판단을 1차 의미 판단 주체로 올린다.
-- [ ] rule/fallback은 실행 결정자가 아니라 safety brake와 LLM 실패 fallback으로 권한을 낮춘다.
-- [ ] `Conversation` / `Action` / `Hybrid` / `Ambiguous` 판단과 `ExecutionContract` 생성을 분리한다.
-- [ ] no-tool guard를 일반 coding-task guard가 아니라 `Action`/`Hybrid` execution contract의 evidence completion guard로 재정의한다.
+#### A0 필수 범위
+
+- [x] LLM intent 판단을 1차 의미 판단 주체로 올린다.
+- [x] rule/fallback은 실행 결정자가 아니라 safety brake와 LLM 실패 fallback으로 권한을 낮춘다.
+- [x] `Conversation` / `Action` / `Hybrid` / `Ambiguous` 판단과 `ExecutionContract` 생성을 분리한다.
+- [x] no-tool guard를 일반 coding-task guard가 아니라 `Action`/`Hybrid` execution contract의 evidence completion guard로 재정의한다.
 - [ ] 명확한 명령형 실행 표면, 예를 들어 “만들어줘”, “생성해줘”, “실행해줘”, “테스트 돌려줘”만 deterministic fallback이 실행 요청으로 보존하게 한다.
 - [ ] 상담형/방법형/가능성 질문, 예를 들어 “만들 수 있을까”, “뭐가 좋을까”, “how do I”, “what would be good”은 LLM `Conversation` 판단을 우선하게 한다.
-- [ ] `Ambiguous` turn은 no-tool 실패 메시지가 아니라 한 가지 확인 질문 또는 구체 옵션 제시로 끝나게 한다.
+- [x] `Ambiguous` turn은 no-tool 실패 메시지가 아니라 한 가지 확인 질문 또는 구체 옵션 제시로 끝나게 한다.
 - [ ] 새 프로젝트 생성, 폴더 생성, 파일 수정, 빌드, 테스트, 로컬 서버 실행은 기존 deterministic Desktop service 경로를 유지한다.
-- [ ] 실행형 요청에서 LLM이 말로만 “완료했습니다”라고 답하는 경로는 계속 실패/재시도 처리하고 tool/service replay evidence를 요구한다.
+- [x] 실행형 요청에서 LLM이 말로만 “완료했습니다”라고 답하는 경로는 계속 실패/재시도 처리하고 tool/service replay evidence를 요구한다.
 - [ ] 과거 대화, session summary, checkpoint, memory, scaffold hint, verification hint, pasted log/example이 최신 사용자 요청을 덮지 않는지 router 단계에서 다시 검증한다.
-- [ ] 기존 Conversation-first 회귀 테스트 42개를 유지하고, LLM-first router 전용 테스트를 추가한다.
+- [ ] RAG 계열 context, 즉 `WorkspaceIndexer`, `EmbeddingIndexBuilder`/`EmbeddingIndexStore`, `semantic_search`, `hybrid_search`, `ProjectMemory`, `ExecutionLessonMemory`가 최신 사용자 요청보다 위에 서거나 실행 intent를 부당하게 밀어붙이지 않는지 다시 검증한다.
+- [ ] embedding index stale chunk, 오래된 memory lesson, hybrid search ranking 결과가 `Conversation` turn을 `Action`처럼 오염시키지 않는 실제 RAG 구성요소 회귀 테스트를 추가한다.
+- [x] 기존 Conversation-first 회귀 테스트 42개를 유지하고, LLM-first router 전용 테스트를 추가한다.
+
+#### A0 이후 후속 범위
+
+- [ ] UI permission flow가 LLM-first router/effectiveIntent를 우회해서 Conversation turn에 권한창을 띄우지 않는지 전체 경로를 확인한다.
+- [ ] scaffold plan lifecycle 전체, 즉 planId/planHash/approval/overwrite/verification command가 contract-executed 원칙과 일치하는지 재검증한다.
+- [ ] local server lifecycle 전체, 즉 start/reuse/stop/session.json/URL verification이 deterministic service evidence를 끝까지 남기는지 재검증한다.
+- [ ] verification repair loop에서 auto-fix/manual-fix/retry가 최신 사용자 요청과 실패 원인을 섞지 않는지 재검증한다.
+- [ ] multi-agent/worker plan이 메인 router/guard를 우회해서 파일 생성, shell command, scaffold 실행을 하지 않는지 확인한다.
+- [ ] 오래된 docs/MD 설계 문서가 RAG/context에 들어가 최신 설계와 충돌하지 않도록 최신/보관/삭제 후보를 분리한다.
 
 ### A. 전체 감사 진행 방식
 
@@ -1134,6 +1157,15 @@ dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseShar
 
 dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
 # 2026-06-12 결과: exit code 0. 콘솔 출력은 비어 있었지만 테스트 프로세스가 성공 종료했다.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard|FullyQualifiedName~DesktopAgentService_AllowsHowToConversationWithoutShellExecution|FullyQualifiedName~DesktopAgentService_PrefersLlmConversationForConsultativeFeatureProfile|FullyQualifiedName~DesktopAgentService_ReturnsClarificationForAmbiguousProjectRequest|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopAgentService_DirectFallbackCreatesFolderWhenModelAnswersIrrelevantText|FullyQualifiedName~DesktopAgentService_E2eCreatesDirectoryFromExplicitCommand|FullyQualifiedName~DesktopAgentService_LlmFirstRegressionRetriesFalseSuccessThenExecutesContractTool|FullyQualifiedName~UserTurnUnderstanding_PrefersModelConversationForConsultativeFallbackAction|FullyQualifiedName~UserTurnUnderstanding_PreservesConcreteCreateDirectoryWhenModelSaysConversation|FullyQualifiedName~UserTurnUnderstanding_PreservesCurrentActionBeforePastedContext|FullyQualifiedName~UserIntentTranslator_RecognizesConcreteReactSiteProjectRequest|FullyQualifiedName~UserIntentTranslator_RecognizesCurrentFolderCreateDirectoryRequest|FullyQualifiedName~TurnIntentClassifier_ClassifiesConversationActionHybridAndAmbiguous|FullyQualifiedName~DesktopAgentService_DoesNotExecuteEmbeddedFolderCommandInBadResponseComplaint|FullyQualifiedName~DesktopAgentService_CreatesExplicitFolderWhenPastedIrrelevantAnswerFollowsRequest|FullyQualifiedName~DesktopAgentService_BlocksToolCallForEmbeddedCommandEvenWhenLlmIntentSaysAction|FullyQualifiedName~LlmFirstIntentRouter_" -v minimal
+# 2026-06-14 결과: 통과 47, 실패 0, 건너뜀 0, 전체 47.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 빌드 성공, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
+# 2026-06-14 결과: exit code 0. 콘솔 출력은 비어 있었지만 테스트 프로세스가 성공 종료했다.
 ```
 
 ## 다른 컴퓨터에서 이어가기
