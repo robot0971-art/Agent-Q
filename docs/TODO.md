@@ -211,6 +211,19 @@
   - [x] `WorkspaceIndexer`와 `EmbeddingIndexBuilder`가 `docs/archive/`를 자동 workspace context/embedding index에서 제외하도록 수정했다.
   - [x] `WorkspaceIndexer_DoesNotAttachArchivedDesignDocsByDefault`와 `EmbeddingIndexBuilder_DoesNotIndexArchivedDesignDocs` 회귀 테스트를 추가했다.
 
+#### 최종 TurnState 리팩토링 범위
+
+- [x] `AgentTurnState` 또는 동등한 단일 turn execution state의 1차 모델을 추가한다.
+  - [x] `RawUserText`, `RoutingText`, `UserTurnUnderstanding`, rule/effective intent, `TaskProfile`, `TaskContract`, scaffold plan, selected skills를 한 객체에 묶었다.
+  - [x] `ContextPolicy`, `ToolPolicy`, `MemoryPolicy`, `VerificationPolicy`, `FinalAnswerPolicy`를 `AgentTurnState`에 포함했다.
+- [x] `DesktopAgentService.SendAsync`가 provider/tool loop 전에 `AgentTurnState`를 생성하고 run step/diagnostics에 남기게 한다.
+- [x] context assembly, routed user message, task decomposition, direct local-server path, direct safe-scaffold path가 `AgentTurnState`를 소비하게 한다.
+- [x] Conversation `AgentTurnState`가 quoted/log command를 포함해도 permission/task-contract 실행으로 승격되지 않는 focused 회귀 테스트를 추가했다.
+- [ ] provider tool loop 내부 retry/fallback/final-answer guard의 남은 지역 변수 인자를 `AgentTurnState` 중심으로 더 줄인다.
+- [ ] `TaskExecutor`/worker step 실행에도 부모 `AgentTurnState` 또는 parent trace/policy를 전달해 step prompt가 독립 raw text 권위가 되지 않게 한다.
+- [ ] `ToolPolicy`, `VerificationPolicy`, `FinalAnswerPolicy`가 현재는 명시 상태 기록과 일부 소비에 머무르므로, 남은 helper들이 정책 객체를 직접 읽도록 추가 전환한다.
+- [ ] 전체 TurnState 완료 판정 전에 scaffold/local server/verification/worker/tool loop/final answer 경로별 requirement audit을 다시 수행한다.
+
 ### A. 전체 감사 진행 방식
 
 - [ ] 새 컴퓨터에서 먼저 현재 WIP 브랜치 또는 압축본을 받아온다.
@@ -747,6 +760,15 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 통과, 경고 0, 오류 0. AgentTurnState 1차 도입 후 재확인.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopAgentService_AttachesTurnStateAsRoutingAnchorForConversationContext|FullyQualifiedName~LlmFirstIntentRouter_|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard" --logger "console;verbosity=minimal"
+# 2026-06-14 결과: 통과 7, 실패 0, 건너뜀 0, 전체 7. TurnState routing anchor 및 Conversation non-execution 회귀 확인.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 통과, 경고 0, 오류 0. AgentTurnState 1차 도입 후 Desktop 빌드 재확인.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-14 결과: 통과, 경고 0, 오류 0. A0 이후 docs/archive RAG 제외 테스트 추가 후 재확인.
 

@@ -183,6 +183,13 @@ Raw user text
 
 After a turn state is created, downstream services should use that state instead of independently reinterpreting raw user text for execution decisions.
 
+Current implementation status:
+
+- `AgentTurnState` is now the per-turn routing boundary in the primary `DesktopAgentService.SendAsync` path.
+- It carries raw user text, routing text, `UserTurnUnderstanding`, rule intent, effective intent, task profile, task contract, scaffold plan, selected skills, and context/tool/memory/verification/final-answer policies.
+- Context assembly, routed user messages, task decomposition, direct local-server execution, and direct scaffold execution now consume `AgentTurnState`.
+- Remaining refactor work is to continue replacing older local variable/raw-text plumbing inside the later provider tool loop, retry/fallback helpers, replay saving, and final-answer guards with explicit `AgentTurnState` parameters where practical.
+
 ## Audit Checklist
 
 Preserve these guardrails:
@@ -196,4 +203,3 @@ Preserve these guardrails:
 - read-only loop detection
 - task-contract completion checks
 - final-answer consistency checks after changes
-

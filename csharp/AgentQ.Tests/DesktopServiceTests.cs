@@ -758,6 +758,69 @@ public sealed class DesktopServiceTests
         Assert.False(route.ExecutionContract.IsActionable);
     }
 
+    [Fact]
+    public async Task DesktopAgentService_AttachesTurnStateAsRoutingAnchorForConversationContext()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "README.md"), "# AgentQ");
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Conversation",
+                  "userGoal": "Explain this log output.",
+                  "embeddedContent": [
+                    {
+                      "kind": "log",
+                      "text": "dotnet test",
+                      "shouldExecute": false,
+                      "reason": "The command is quoted log evidence."
+                    }
+                  ],
+                  "actualRequestedAction": {
+                    "shouldExecute": false,
+                    "actionKind": "none",
+                    "target": "",
+                    "reason": "The user asks for log explanation, not execution."
+                  },
+                  "requiresWrite": false,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.94
+                }
+                """),
+            StreamTextResponse("That log references the `dotnet test` command."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var permissionEnforcer = new RecordingPermissionEnforcer(_ => throw new InvalidOperationException("Conversation TurnState must not request permission."));
+
+        await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "turn-state-test",
+                DesktopAutoAttachWorkspaceContext = true,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 2
+            },
+            "Explain this log output, do not run it: `dotnet test`",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+            });
+
+        Assert.Contains(runSteps, step =>
+            step.StartsWith("TurnState:", StringComparison.Ordinal) &&
+            step.Contains("intent=Conversation", StringComparison.Ordinal) &&
+            step.Contains("contract=None", StringComparison.Ordinal));
+        Assert.Empty(permissionEnforcer.RequestedTools);
+        Assert.DoesNotContain(runSteps, step => step.Contains("Task contract:", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("그럼 웹사이트는 어떤걸 만들어 볼까")]
     [InlineData("포트폴리오 사이트 만들까 하는데 괜찮을까?")]
