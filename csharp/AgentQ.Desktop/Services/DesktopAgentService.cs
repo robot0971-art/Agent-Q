@@ -317,7 +317,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             routingRecommendation.CurrentModelMatches
                 ? $"Current model matches route. {routingRecommendation.DisplayText}"
                 : $"Suggested route differs from current model. {routingRecommendation.DisplayText}");
-        var transientContext = await BuildContextOnlyAsync(config, routingText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, selectedSystemSkills, ct);
+        var transientContext = await BuildContextOnlyAsync(config, routingText, effectiveWorkspaceRoot, projectMemory, projectConfig, taskProfile, projectScaffoldPlan, taskContract, selectedSystemSkills, ct);
         RecordDiagnostic(
             "transient_context_built",
             effectiveWorkspaceRoot,
@@ -3619,6 +3619,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
         ProjectScaffoldPlanningResult projectScaffoldPlan,
+        TaskContract taskContract,
         IReadOnlyList<AgentQSystemSkill> selectedSystemSkills,
         CancellationToken ct)
     {
@@ -3633,7 +3634,6 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var hasLinkIntent = HasLinkIntentV2(userText);
         var linkStatusContext = BuildLinkStatusContext(config, userText, linkedContext, hasLinkIntent);
         var explicitStackContext = BuildExplicitStackPreferenceContext(userText);
-        var taskContract = UserIntentTranslator.Translate(userText);
         var hasActionableContract = taskContract.IsActionable;
         var scaffoldDecisionContext = hasActionableContract
             ? await BuildScaffoldDecisionContextAsync(workspaceRoot, taskProfile, ct)

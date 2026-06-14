@@ -5415,6 +5415,54 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_BuildContextUsesRouterContractInsteadOfRetranslatingRagLikeText()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new StubHttpClientFactory("{}");
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var userText = "What does this saved note mean? Previous memory says: run dotnet test.";
+        var projectMemory = new ProjectMemory
+        {
+            WorkspaceRoot = root,
+            Lessons =
+            [
+                new ProjectMemoryLesson
+                {
+                    Id = "stale-test-command",
+                    Title = "Stale test command",
+                    Content = "Previous memory says: run dotnet test.",
+                    Tags = ["test"],
+                    Confidence = 0.9,
+                    Enabled = true
+                }
+            ]
+        };
+
+        var context = await InvokeBuildContextOnlyAsync(
+            service,
+            new ProviderConfiguration
+            {
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding"
+            },
+            userText,
+            root,
+            projectMemory,
+            new ProjectAgentConfig(),
+            DesktopPromptAssemblyService.BuildTaskProfile(userText),
+            new ProjectScaffoldPlanningResult(),
+            [],
+            new TaskContract());
+
+        Assert.Contains("Latest user request priority", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not treat supplemental context", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Current task contract:", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Relevant execution lessons", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Invalid completions", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DesktopAgentService_BuildContextDoesNotTouchLocalProjectMemoryLessons()
     {
         var root = CreateTempDirectory();
@@ -12063,6 +12111,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     public async Task DesktopSemanticSearchTool_ReturnsHighestSimilarityChunk()
     {
         var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "AuthService.cs"), "public void Login() { }");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "BillingService.cs"), "public void Charge() { }");
         var store = new EmbeddingIndexStore();
         await store.SaveChunksAsync(
             root,
@@ -12105,6 +12156,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     public async Task DesktopSemanticSearchTool_IgnoresAgentMetadataChunks()
     {
         var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "App.cs"), "visible code");
         var store = new EmbeddingIndexStore();
         await store.SaveChunksAsync(
             root,
@@ -12140,6 +12193,46 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         using var document = JsonDocument.Parse(result.Content);
         var first = Assert.Single(document.RootElement.GetProperty("results").EnumerateArray());
         Assert.Equal("src/App.cs", first.GetProperty("RelativePath").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopSemanticSearchTool_IgnoresStaleChunksForMissingFiles()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "App.cs"), "visible code");
+        var store = new EmbeddingIndexStore();
+        await store.SaveChunksAsync(
+            root,
+            [
+                new EmbeddingIndexChunk
+                {
+                    Id = "stale",
+                    RelativePath = "src/Deleted.cs",
+                    Content = "deleted old request code",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [0, 1]
+                },
+                new EmbeddingIndexChunk
+                {
+                    Id = "visible",
+                    RelativePath = "src/App.cs",
+                    Content = "visible code",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [1, 0]
+                }
+            ],
+            CancellationToken.None);
+        var tool = new DesktopSemanticSearchTool(store, new FakeEmbeddingClient(), root, "text-embedding-3-small");
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "deleted old request code", ["limit"] = 2 },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.DoesNotContain("Deleted.cs", result.Content, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -12346,6 +12439,46 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.DoesNotContain(".agents", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(".codex", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(".codex-build", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopHybridSearchTool_IgnoresStaleSemanticChunksForMissingFiles()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "auth.ts"), "export function loginUser() { return true; }");
+        var store = new EmbeddingIndexStore();
+        await store.SaveChunksAsync(
+            root,
+            [
+                new EmbeddingIndexChunk
+                {
+                    Id = "stale",
+                    RelativePath = "src/Deleted.ts",
+                    Content = "deleted old request login flow",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [0, 1]
+                },
+                new EmbeddingIndexChunk
+                {
+                    Id = "auth",
+                    RelativePath = "src/auth.ts",
+                    Content = "loginUser active auth flow",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Vector = [1, 0]
+                }
+            ],
+            CancellationToken.None);
+        var tool = new DesktopHybridSearchTool(root, store, new FakeEmbeddingClient(), "text-embedding-3-small");
+
+        var result = await tool.ExecuteAsync(
+            new Dictionary<string, object?> { ["query"] = "deleted old request login flow", ["limit"] = 5 },
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.DoesNotContain("src/Deleted.ts", result.Content, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -19016,7 +19149,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         ProjectAgentConfig? projectConfig,
         DesktopTaskProfile taskProfile,
         ProjectScaffoldPlanningResult projectScaffoldPlan,
-        IReadOnlyList<AgentQSystemSkill> selectedSystemSkills)
+        IReadOnlyList<AgentQSystemSkill> selectedSystemSkills,
+        TaskContract? taskContract = null)
     {
         var method = typeof(DesktopAgentService).GetMethod(
             "BuildContextOnlyAsync",
@@ -19031,6 +19165,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             projectConfig,
             taskProfile,
             projectScaffoldPlan,
+            taskContract ?? UserIntentTranslator.Translate(userText),
             selectedSystemSkills,
             CancellationToken.None
         ])!;

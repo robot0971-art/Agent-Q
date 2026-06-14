@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO;
 using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
@@ -50,6 +51,7 @@ public sealed class DesktopSemanticSearchTool(
         var searchableChunks = chunks
             .Where(chunk => chunk.Vector.Length > 0)
             .Where(chunk => !IsAgentMetadataPath(chunk.RelativePath))
+            .Where(chunk => IsExistingWorkspaceFile(chunk.RelativePath))
             .ToList();
         if (searchableChunks.Count == 0)
         {
@@ -113,6 +115,18 @@ public sealed class DesktopSemanticSearchTool(
     {
         var preview = content.ReplaceLineEndings(" ").Trim();
         return preview.Length <= 240 ? preview : preview[..240] + "...";
+    }
+
+    private bool IsExistingWorkspaceFile(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return false;
+        }
+
+        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, fullPath) &&
+               File.Exists(fullPath);
     }
 
     private static bool IsAgentMetadataPath(string relativePath)

@@ -392,6 +392,7 @@ public sealed class DesktopHybridSearchTool(
         var searchableChunks = chunks
             .Where(chunk => chunk.Vector.Length > 0)
             .Where(chunk => !IsExcludedRelativePath(chunk.RelativePath))
+            .Where(chunk => IsExistingWorkspaceFile(chunk.RelativePath))
             .ToList();
         if (searchableChunks.Count == 0)
         {
@@ -577,6 +578,18 @@ public sealed class DesktopHybridSearchTool(
     {
         var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         return parts.Any(part => ExcludedDirectories.Contains(part));
+    }
+
+    private bool IsExistingWorkspaceFile(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return false;
+        }
+
+        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
+        return WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, fullPath) &&
+               File.Exists(fullPath);
     }
 
     private static double CosineSimilarity(IReadOnlyList<float> left, IReadOnlyList<float> right)
