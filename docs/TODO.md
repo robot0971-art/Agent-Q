@@ -177,8 +177,8 @@
 - [x] rule/fallback은 실행 결정자가 아니라 safety brake와 LLM 실패 fallback으로 권한을 낮춘다.
 - [x] `Conversation` / `Action` / `Hybrid` / `Ambiguous` 판단과 `ExecutionContract` 생성을 분리한다.
 - [x] no-tool guard를 일반 coding-task guard가 아니라 `Action`/`Hybrid` execution contract의 evidence completion guard로 재정의한다.
-- [ ] 명확한 명령형 실행 표면, 예를 들어 “만들어줘”, “생성해줘”, “실행해줘”, “테스트 돌려줘”만 deterministic fallback이 실행 요청으로 보존하게 한다.
-- [ ] 상담형/방법형/가능성 질문, 예를 들어 “만들 수 있을까”, “뭐가 좋을까”, “how do I”, “what would be good”은 LLM `Conversation` 판단을 우선하게 한다.
+- [x] 명확한 명령형 실행 표면, 예를 들어 “만들어줘”, “생성해줘”, “실행해줘”, “테스트 돌려줘”만 deterministic fallback이 실행 요청으로 보존하게 한다.
+- [x] 상담형/방법형/가능성 질문, 예를 들어 “만들 수 있을까”, “뭐가 좋을까”, “how do I”, “what would be good”은 LLM `Conversation` 판단을 우선하게 한다.
 - [x] `Ambiguous` turn은 no-tool 실패 메시지가 아니라 한 가지 확인 질문 또는 구체 옵션 제시로 끝나게 한다.
 - [x] 새 프로젝트 생성, 폴더 생성, 파일 수정, 빌드, 테스트, 로컬 서버 실행은 기존 deterministic Desktop service 경로를 유지한다.
 - [x] 실행형 요청에서 LLM이 말로만 “완료했습니다”라고 답하는 경로는 계속 실패/재시도 처리하고 tool/service replay evidence를 요구한다.
