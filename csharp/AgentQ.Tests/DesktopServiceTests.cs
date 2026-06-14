@@ -19084,7 +19084,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             CancellationToken.None,
             turnIntent,
             null,
-            taskContract
+            taskContract,
+            null
         ])!;
         return await task;
     }

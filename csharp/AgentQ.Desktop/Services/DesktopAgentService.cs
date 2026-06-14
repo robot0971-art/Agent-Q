@@ -384,7 +384,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 effectiveWorkspaceRoot,
                 permissionEnforcer ?? new DenyByDefaultPermissionEnforcer(),
                 toolCallbacks,
-                ct);
+                ct,
+                AgentTurnParentContext.From(turnState));
 
             return runResult.AllSucceeded
                 ? "Task decomposition completed successfully."
@@ -801,7 +802,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             ct,
                             turnIntent,
                             turnTraceId,
-                            taskContract);
+                            taskContract,
+                            turnState);
                         var directText = BuildDirectContractToolFallbackSummary(taskContract, directResults.FirstOrDefault());
                         builder.Clear();
                         builder.Append(directText);
@@ -1200,7 +1202,8 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 ct,
                 turnIntent,
                 turnTraceId,
-                taskContract);
+                taskContract,
+                turnState);
             executedToolCount += toolResults.Count(result => result.IsToolError != true);
             RecordDiagnostic(
                 "tool_batch_completed",
@@ -4265,8 +4268,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         CancellationToken ct,
         TurnIntentClassification? turnIntent = null,
         string? turnTraceId = null,
-        TaskContract? taskContract = null)
+        TaskContract? taskContract = null,
+        AgentTurnState? turnState = null)
     {
+        var effectiveTurnIntent = turnState?.EffectiveIntent ?? turnIntent;
+        var effectiveTraceId = turnState?.TraceId ?? turnTraceId;
+        var effectiveTaskContract = turnState?.TaskContract ?? taskContract;
+        var toolPolicy = turnState?.ToolPolicy;
         var results = new List<ChatContent>();
         var seenToolIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -4283,7 +4291,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_lookup_failed",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={toolName}; toolId={toolId}");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={toolName}; toolId={toolId}");
                     callbacks?.OnToolError?.Invoke(toolName, $"Tool not found: {toolName}");
                     replayEntries.Add(CreateReplayEntry(toolName, toolId, "{}", $"Tool not found: {toolName}", isError: true, DateTime.UtcNow));
                     results.Add(ChatContent.CreateToolResult(toolId, $"Tool not found: {toolName}", true));
@@ -4297,7 +4305,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_input_parse_failed",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; error=\"{DesktopPromptBuilder.Truncate(parseError.ReplaceLineEndings(" "), 500)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; toolId={toolId}; error=\"{DesktopPromptBuilder.Truncate(parseError.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Tool input parse failed", message);
                     callbacks?.OnToolError?.Invoke(tool.Name, message);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, "{}", message, isError: true, DateTime.UtcNow));
@@ -4309,15 +4317,19 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     "tool_use_received",
                     workspaceRoot,
                     new ProviderConfiguration(),
-                    $"trace={SafeValue(turnTraceId)}; tool={toolName}; toolId={toolId}; parsedKeys=\"{string.Join(",", parsedInput.Keys)}\"; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 700)}\"");
+                    $"trace={SafeValue(effectiveTraceId)}; tool={toolName}; toolId={toolId}; parsedKeys=\"{string.Join(",", parsedInput.Keys)}\"; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 700)}\"");
                 var permissionAssessment = ToolPermissionClassifier.Assess(tool.Name, parsedInput, workspaceRoot);
-                if (ShouldBlockToolForConversationIntent(turnIntent, permissionAssessment, out var conversationBlockReason))
+                var shouldApplyConversationToolBlock =
+                    toolPolicy?.BlockWriteShellAndScaffoldForConversation ??
+                    effectiveTurnIntent?.Type == TurnIntentType.Conversation;
+                if (shouldApplyConversationToolBlock &&
+                    ShouldBlockToolForConversationIntent(effectiveTurnIntent, permissionAssessment, out var conversationBlockReason))
                 {
                     RecordDiagnostic(
                         "tool_blocked_by_conversation_intent",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; intent={turnIntent?.Type}; risk={permissionAssessment.RiskLevel}; reason=\"{DesktopPromptBuilder.Truncate(conversationBlockReason.ReplaceLineEndings(" "), 500)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; intent={effectiveTurnIntent?.Type}; policy=ToolPolicy.BlockWriteShellAndScaffoldForConversation; risk={permissionAssessment.RiskLevel}; reason=\"{DesktopPromptBuilder.Truncate(conversationBlockReason.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(
                         AgentRunState.Failed,
                         "Conversation intent blocked tool",
@@ -4335,7 +4347,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_blocked_by_read_only_loop_guard",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(loopInputJson.ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(loopMessage.ReplaceLineEndings(" "), 500)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(loopInputJson.ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(loopMessage.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Read-only tool loop guard", loopMessage);
                     callbacks?.OnToolError?.Invoke(tool.Name, loopMessage);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, loopInputJson, loopMessage, isError: true, DateTime.UtcNow));
@@ -4349,7 +4361,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_blocked_by_edit_recovery_guard",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(recoveryMessage.ReplaceLineEndings(" "), 500)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; inputPreview=\"{DesktopPromptBuilder.Truncate(JsonSerializer.Serialize(parsedInput).ReplaceLineEndings(" "), 500)}\"; message=\"{DesktopPromptBuilder.Truncate(recoveryMessage.ReplaceLineEndings(" "), 500)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, "Edit recovery guard", recoveryMessage);
                     callbacks?.OnToolError?.Invoke(tool.Name, recoveryMessage);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, JsonSerializer.Serialize(parsedInput), recoveryMessage, isError: true, DateTime.UtcNow));
@@ -4373,7 +4385,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             "tool_permission_denied",
                             workspaceRoot,
                             new ProviderConfiguration(),
-                            $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 500)}\"");
+                            $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 500)}\"");
                         callbacks?.OnPermissionDenied?.Invoke(tool.Name);
                         replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, permissionResult.Message, isError: true, DateTime.UtcNow));
                         results.Add(ChatContent.CreateToolResult(toolId, permissionResult.Message, true));
@@ -4387,7 +4399,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_permission_approved",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; workMode={workMode}");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; workMode={workMode}");
                 }
 
                 callbacks?.OnToolExecution?.Invoke(tool.Name);
@@ -4396,7 +4408,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     "tool_execution_starting",
                     workspaceRoot,
                     new ProviderConfiguration(),
-                    $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; requiresPermission={tool.RequiresPermission}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 700)}\"");
+                    $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; toolId={toolId}; requiresPermission={tool.RequiresPermission}; workMode={workMode}; inputPreview=\"{DesktopPromptBuilder.Truncate(inputJson.ReplaceLineEndings(" "), 700)}\"");
 
                 try
                 {
@@ -4424,9 +4436,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     else
                     {
                         callbacks?.OnToolOutput?.Invoke(tool.Name, result.Content);
-                        if (TryDescribeTaskContractEvidence(taskContract, tool.Name, parsedInput, result.Content, out var contractEvidence))
+                        if (TryDescribeTaskContractEvidence(effectiveTaskContract, tool.Name, parsedInput, result.Content, out var contractEvidence))
                         {
-                            var contractIntent = taskContract?.Intent.ToString() ?? "Unknown";
+                            var contractIntent = effectiveTaskContract?.Intent.ToString() ?? "Unknown";
                             callbacks?.OnRunStep?.Invoke(
                                 AgentRunState.RunningTool,
                                 $"Contract evidence: {contractIntent}",
@@ -4435,7 +4447,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                                 "task_contract_evidence",
                                 workspaceRoot,
                                 new ProviderConfiguration(),
-                                $"trace={SafeValue(turnTraceId)}; intent={contractIntent}; tool={tool.Name}; evidence=\"{DesktopPromptBuilder.Truncate(contractEvidence.ReplaceLineEndings(" "), 700)}\"");
+                                $"trace={SafeValue(effectiveTraceId)}; intent={contractIntent}; tool={tool.Name}; evidence=\"{DesktopPromptBuilder.Truncate(contractEvidence.ReplaceLineEndings(" "), 700)}\"");
                         }
 
                         if (ShellVerificationResultDetector.TryCreate(tool.Name, parsedInput, result.Content, out var verificationResult))
@@ -4451,7 +4463,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         result.IsError ? "tool_execution_failed" : "tool_execution_completed",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; toolId={toolId}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
 
                     if (string.Equals(tool.Name, "create_project_scaffold", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(tool.Name, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase))
@@ -4460,7 +4472,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             result.IsError ? "project_scaffold_tool_failed" : "project_scaffold_tool_completed",
                             workspaceRoot,
                             new ProviderConfiguration(),
-                            $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
+                            $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; isError={result.IsError}; resultPreview=\"{DesktopPromptBuilder.Truncate(result.Content.ReplaceLineEndings(" "), 900)}\"");
                     }
 
                     if (!result.IsError)
@@ -4473,7 +4485,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                                 "file_change_recorded",
                                 workspaceRoot,
                                 new ProviderConfiguration(),
-                                $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; relativePath={change.RelativePath}; summary=\"{DesktopPromptBuilder.Truncate(change.Summary.ReplaceLineEndings(" "), 500)}\"");
+                                $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; relativePath={change.RelativePath}; summary=\"{DesktopPromptBuilder.Truncate(change.Summary.ReplaceLineEndings(" "), 500)}\"");
                             callbacks?.OnRunStep?.Invoke(
                                 AgentRunState.RecordingChanges,
                                 "Evidence: file changed",
@@ -4488,7 +4500,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                             fileChanges,
                             callbacks,
                             ct,
-                            turnTraceId);
+                            effectiveTraceId);
                     }
 
                     results.Add(ChatContent.CreateToolResult(
@@ -4513,7 +4525,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "tool_execution_exception",
                         workspaceRoot,
                         new ProviderConfiguration(),
-                        $"trace={SafeValue(turnTraceId)}; tool={tool.Name}; toolId={toolId}; exception={ex.GetType().Name}; message=\"{DesktopPromptBuilder.Truncate(ex.Message.ReplaceLineEndings(" "), 700)}\"");
+                        $"trace={SafeValue(effectiveTraceId)}; tool={tool.Name}; toolId={toolId}; exception={ex.GetType().Name}; message=\"{DesktopPromptBuilder.Truncate(ex.Message.ReplaceLineEndings(" "), 700)}\"");
                     callbacks?.OnRunStep?.Invoke(AgentRunState.Failed, $"Tool failed: {tool.Name}", message);
                     callbacks?.OnToolError?.Invoke(tool.Name, message);
                     replayEntries.Add(CreateReplayEntry(tool.Name, toolId, inputJson, message, isError: true, startedAt));

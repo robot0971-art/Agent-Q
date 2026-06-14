@@ -187,8 +187,9 @@ Current implementation status:
 
 - `AgentTurnState` is now the per-turn routing boundary in the primary `DesktopAgentService.SendAsync` path.
 - It carries raw user text, routing text, `UserTurnUnderstanding`, rule intent, effective intent, task profile, task contract, scaffold plan, selected skills, and context/tool/memory/verification/final-answer policies.
-- Context assembly, routed user messages, task decomposition, direct local-server execution, and direct scaffold execution now consume `AgentTurnState`.
-- Remaining refactor work is to continue replacing older local variable/raw-text plumbing inside the later provider tool loop, retry/fallback helpers, replay saving, and final-answer guards with explicit `AgentTurnState` parameters where practical.
+- Context assembly, routed user messages, task decomposition, direct local-server execution, direct scaffold execution, provider tool batches, and task-contract direct fallback now consume `AgentTurnState`.
+- Worker execution receives `AgentTurnParentContext`, a compact parent trace/policy projection, so worker step prompts stay scoped to the parent turn instead of becoming a fresh raw-text authority.
+- Remaining refactor work is the final requirement audit across scaffold, local server, verification, worker, tool loop, and final-answer paths before marking the TurnState refactor complete.
 
 ## Audit Checklist
 

@@ -219,9 +219,15 @@
 - [x] `DesktopAgentService.SendAsync`가 provider/tool loop 전에 `AgentTurnState`를 생성하고 run step/diagnostics에 남기게 한다.
 - [x] context assembly, routed user message, task decomposition, direct local-server path, direct safe-scaffold path가 `AgentTurnState`를 소비하게 한다.
 - [x] Conversation `AgentTurnState`가 quoted/log command를 포함해도 permission/task-contract 실행으로 승격되지 않는 focused 회귀 테스트를 추가했다.
-- [ ] provider tool loop 내부 retry/fallback/final-answer guard의 남은 지역 변수 인자를 `AgentTurnState` 중심으로 더 줄인다.
-- [ ] `TaskExecutor`/worker step 실행에도 부모 `AgentTurnState` 또는 parent trace/policy를 전달해 step prompt가 독립 raw text 권위가 되지 않게 한다.
-- [ ] `ToolPolicy`, `VerificationPolicy`, `FinalAnswerPolicy`가 현재는 명시 상태 기록과 일부 소비에 머무르므로, 남은 helper들이 정책 객체를 직접 읽도록 추가 전환한다.
+- [x] provider tool loop 내부 tool execution 경로의 남은 지역 변수 인자를 `AgentTurnState` 중심으로 더 줄였다.
+  - [x] `ExecuteToolsAsync`가 optional `AgentTurnState`를 받아 trace/effective intent/task contract/tool policy를 우선 소비한다.
+  - [x] main provider tool batch와 task-contract direct fallback이 같은 `AgentTurnState`를 전달한다.
+- [x] `TaskExecutor`/worker step 실행에도 부모 `AgentTurnState` 또는 parent trace/policy를 전달해 step prompt가 독립 raw text 권위가 되지 않게 한다.
+  - [x] `AgentTurnParentContext`를 추가하고 parent trace, latest routing text, effective intent, task contract, tool/verification/final-answer policy를 worker prompt에 포함한다.
+  - [x] worker step prompt는 step description/context가 실행 scope일 뿐 pasted log, summary, memory, example을 최신 사용자 요청으로 재해석하는 권위가 아니라고 명시한다.
+- [x] `ToolPolicy`, `VerificationPolicy`, `FinalAnswerPolicy`가 현재는 명시 상태 기록과 일부 소비에 머무르므로, 남은 helper들이 정책 객체를 직접 읽도록 추가 전환한다.
+  - [x] tool execution conversation block은 `ToolPolicy.BlockWriteShellAndScaffoldForConversation`를 직접 읽고, legacy reflection 테스트 경로에서는 기존 conversation intent fallback을 유지한다.
+  - [x] worker prompt는 verification/final-answer policy를 parent TurnState evidence로 전달해 worker step이 독립 성공 판정을 만들지 않게 한다.
 - [ ] 전체 TurnState 완료 판정 전에 scaffold/local server/verification/worker/tool loop/final answer 경로별 requirement audit을 다시 수행한다.
 
 ### A. 전체 감사 진행 방식
@@ -1218,6 +1224,19 @@ dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseShar
 
 dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
 # 2026-06-14 결과: exit code 0. 콘솔 출력은 비어 있었지만 테스트 프로세스가 성공 종료했다.
+
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 빌드 성공, 경고 0, 오류 0. TurnState parent worker/tool-loop policy 전환 후 재확인.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~AgentTurnParentContext_FormatForWorkerPromptPreservesParentPolicy|FullyQualifiedName~TaskExecutor_|FullyQualifiedName~DesktopAgentService_BlocksWriteToolForConversationBeforePermissionRequest|FullyQualifiedName~DesktopAgentService_AllowsSafeReadToolWhenIntentIsConversation|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard" --logger "console;verbosity=minimal"
+# 2026-06-14 첫 시도 결과: reflection helper 인자 수 불일치로 2개 실패. `ExecuteToolsAsync` private signature 변경에 맞춰 테스트 helper를 갱신한 뒤 재실행했다.
+# 2026-06-14 재시도 결과: 통과 13, 실패 0, 건너뜀 0, 전체 13.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 빌드 성공, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
+# 2026-06-14 시도: 180초 제한에서 timeout. 성공 evidence로 취급하지 않는다. 직후 잔류 dotnet 프로세스는 없었다.
 ```
 
 ## 다른 컴퓨터에서 이어가기

@@ -288,6 +288,47 @@ public sealed class TaskDecompositionTests
         Assert.Equal("cmd /c cd /d \"front end\" && npm run build", TaskExecutor.GetAllowedVerificationCommand("cmd /c cd /d \"front end\" && npm run build"));
     }
 
+    [Fact]
+    public void AgentTurnParentContext_FormatForWorkerPromptPreservesParentPolicy()
+    {
+        var parent = new AgentTurnParentContext
+        {
+            TraceId = "turn-123",
+            RoutingText = "React 주식 분석 사이트 만들어줘\n====\n이전 로그는 예시",
+            EffectiveIntentType = TurnIntentType.Action,
+            TaskContractIntent = TaskContractIntent.CreateProject,
+            ToolPolicy = new AgentTurnToolPolicy
+            {
+                AllowToolLoop = true,
+                BlockWriteShellAndScaffoldForConversation = false,
+                RequirePermissionForRiskyTools = true,
+                RequireEvidenceForActionCompletion = true
+            },
+            VerificationPolicy = new AgentTurnVerificationPolicy
+            {
+                AllowVerification = true,
+                RequireAllowedCommand = true,
+                RequireEvidenceBeforeSuccess = true
+            },
+            FinalAnswerPolicy = new AgentTurnFinalAnswerPolicy
+            {
+                RequireEvidenceForCompletionClaims = true,
+                RejectUnsupportedSuccess = true,
+                AskClarifyingQuestionForAmbiguous = false
+            }
+        };
+
+        var prompt = parent.FormatForWorkerPrompt();
+
+        Assert.Contains("Parent TurnState:", prompt);
+        Assert.Contains("Trace: turn-123", prompt);
+        Assert.Contains("Effective intent: Action", prompt);
+        Assert.Contains("Task contract: CreateProject", prompt);
+        Assert.Contains("requireEvidenceForActionCompletion=True", prompt);
+        Assert.Contains("rejectUnsupportedSuccess=True", prompt);
+        Assert.Contains("not a new authority", prompt);
+    }
+
     private sealed class TestLlmProvider(string content) : ILlmProvider
     {
         public string Name => "test-llm-provider";
