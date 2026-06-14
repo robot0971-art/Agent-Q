@@ -189,12 +189,27 @@
 
 #### A0 이후 후속 범위
 
-- [ ] UI permission flow가 LLM-first router/effectiveIntent를 우회해서 Conversation turn에 권한창을 띄우지 않는지 전체 경로를 확인한다.
-- [ ] scaffold plan lifecycle 전체, 즉 planId/planHash/approval/overwrite/verification command가 contract-executed 원칙과 일치하는지 재검증한다.
-- [ ] local server lifecycle 전체, 즉 start/reuse/stop/session.json/URL verification이 deterministic service evidence를 끝까지 남기는지 재검증한다.
-- [ ] verification repair loop에서 auto-fix/manual-fix/retry가 최신 사용자 요청과 실패 원인을 섞지 않는지 재검증한다.
-- [ ] multi-agent/worker plan이 메인 router/guard를 우회해서 파일 생성, shell command, scaffold 실행을 하지 않는지 확인한다.
-- [ ] 오래된 docs/MD 설계 문서가 RAG/context에 들어가 최신 설계와 충돌하지 않도록 최신/보관/삭제 후보를 분리한다.
+- [x] UI permission flow가 LLM-first router/effectiveIntent를 우회해서 Conversation turn에 권한창을 띄우지 않는지 전체 경로를 확인한다.
+  - [x] `DesktopAgentService.ExecuteToolsAsync`가 permission dialog 전에 `ShouldBlockToolForConversationIntent`로 write/shell/scaffold/verification/git 계열 tool-call을 차단하는 것을 재확인했다.
+  - [x] `DesktopAgentRunWorkflowService`는 run별 `DesktopPermissionEnforcer`를 주입하지만 실제 권한 요청은 routed `turnIntent`가 붙은 tool execution 경로 뒤에서만 열린다.
+  - [x] `DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard`와 `DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction` focused 회귀 테스트로 Conversation turn이 permission/no-tool/task-contract 경로로 빠지지 않음을 재확인했다.
+- [x] scaffold plan lifecycle 전체, 즉 planId/planHash/approval/overwrite/verification command가 contract-executed 원칙과 일치하는지 재검증한다.
+  - [x] `DesktopProjectScaffoldCreateTool`/`DesktopProjectScaffoldVerifyTool`가 planId, planHash, workspace match, intent/plan snapshot hash, relative workspace path, overwrite flag, verification command allowlist를 확인하는 것을 재확인했다.
+  - [x] scaffold direct primary path는 `turnIntent.AllowsDeterministicExecution`과 proceedable registered plan이 있을 때만 실행된다.
+- [x] local server lifecycle 전체, 즉 start/reuse/stop/session.json/URL verification이 deterministic service evidence를 끝까지 남기는지 재검증한다.
+  - [x] `DesktopLocalServerService`가 permission approval 뒤 process start, localhost URL reachability 확인, `.agentq/local-server/session.json` 저장, live/reachable session reuse, stop/delete session flow를 갖는 것을 확인했다.
+  - [x] 실패 start, permission denied, symlinked `.agentq`, stale process-start-time session 회귀 테스트를 focused 묶음으로 재확인했다.
+- [x] verification repair loop에서 auto-fix/manual-fix/retry가 최신 사용자 요청과 실패 원인을 섞지 않는지 재검증한다.
+  - [x] `DesktopVerificationPanelWorkflowService`는 cancelled verification을 fixable failure로 저장하지 않고, failed verification만 failure signature/fix prompt로 보존한다.
+  - [x] `DesktopAutoFixWorkflowService`는 fix prompt를 generated prompt guard로 주입하고, 파일 변경 evidence가 없거나 review verification이 null/cancelled이면 다음 attempt를 시작하지 않는 것을 재확인했다.
+- [x] multi-agent/worker plan이 메인 router/guard를 우회해서 파일 생성, shell command, scaffold 실행을 하지 않는지 확인한다.
+  - [x] `TaskExecutor`는 원래 turn이 deterministic execution 허용일 때만 호출되고 각 step은 다시 `DesktopAgentService.SendAsync` routed path를 통과한다.
+  - [x] `WorkerPlanValidator`/`WorkerExecutionPipeline`/`DesktopPlanCommandService`가 workspace path, allowed command, approval state, scaffold-ready state를 확인한 뒤 worker scaffold를 실행하는 것을 재확인했다.
+- [x] 오래된 docs/MD 설계 문서가 RAG/context에 들어가 최신 설계와 충돌하지 않도록 최신/보관/삭제 후보를 분리한다.
+  - [x] 최신 소스는 `AGENTS.md`, `docs/TODO.md`, `docs/Agent Q.md`, `docs/llm-first-agent-milestones.ko.md`, `docs/DOCUMENT_STATUS.md`로 분리했다.
+  - [x] 오래된 설계/릴리스/데모/RAG/worker 문서는 `docs/archive/`로 이동하고 README 링크를 보관 경로로 갱신했다.
+  - [x] `WorkspaceIndexer`와 `EmbeddingIndexBuilder`가 `docs/archive/`를 자동 workspace context/embedding index에서 제외하도록 수정했다.
+  - [x] `WorkspaceIndexer_DoesNotAttachArchivedDesignDocsByDefault`와 `EmbeddingIndexBuilder_DoesNotIndexArchivedDesignDocs` 회귀 테스트를 추가했다.
 
 ### A. 전체 감사 진행 방식
 
@@ -732,6 +747,18 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 통과, 경고 0, 오류 0. A0 이후 docs/archive RAG 제외 테스트 추가 후 재확인.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~WorkspaceIndexer_DoesNotAttachArchivedDesignDocsByDefault|FullyQualifiedName~EmbeddingIndexBuilder_DoesNotIndexArchivedDesignDocs|FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopLocalServerService_|FullyQualifiedName~DesktopVerificationCommandService_BlocksNetworkInstallVerificationInCodingMode|FullyQualifiedName~DesktopAutoFixWorkflowService_|FullyQualifiedName~WorkerExecutionPipeline|FullyQualifiedName~DesktopPlanCommandService_" --logger "console;verbosity=minimal"
+# 2026-06-14 결과: 통과, exit code 0. A0 이후 permission/scaffold/local-server/verification/worker/RAG 후속 범위 focused 묶음.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-14 결과: 통과, 경고 0, 오류 0. A0 이후 후속 범위 수정 후 재확인.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "console;verbosity=minimal"
+# 2026-06-14 결과: 통과, exit code 0. 전체 테스트 재확인.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-12 결과: 통과, 경고 0, 오류 0. 한국어 UI 문구 복원 후 재확인.
 

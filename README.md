@@ -161,7 +161,7 @@ The desktop Project panel builds a lightweight project map during workspace anal
 
 ## Demo Scenarios
 
-Repeatable desktop demo flows are documented in [docs/demo-scenarios.md](docs/demo-scenarios.md). They cover a C# bug fix with verification, a React/TypeScript feature change with project-aware search, and Unity project analysis with visual/game evidence.
+Repeatable desktop demo flows are archived in [docs/archive/demo-scenarios.md](docs/archive/demo-scenarios.md). They cover a C# bug fix with verification, a React/TypeScript feature change with project-aware search, and Unity project analysis with visual/game evidence.
 
 ## Desktop Beta Workflow And Limits
 
@@ -181,7 +181,7 @@ Current beta limitations:
 - Unity verification may require manual Unity Editor or batchmode checks unless the target project provides command-line tests.
 - Broader MCP hardening, cross-platform desktop support, and release signing are later roadmap items.
 
-Release QA details are tracked in [docs/release-readiness.md](docs/release-readiness.md).
+Release QA details are archived in [docs/archive/release-readiness.md](docs/archive/release-readiness.md).
 
 ## Search Retry
 
@@ -189,7 +189,7 @@ When a text or file search returns no results, AgentQ can automatically retry wi
 
 ## Embedding and RAG Design
 
-AgentQ's planned semantic retrieval system is documented in [docs/embedding-rag-design.md](docs/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
+AgentQ's planned semantic retrieval system is archived in [docs/archive/embedding-rag-design.md](docs/archive/embedding-rag-design.md). The design keeps keyword search, project map signals, evidence, confidence scoring, and future embedding search working together as a hybrid retrieval system.
 
 The desktop app includes an initial `semantic_search` tool for OpenAI embedding indexes. It searches `.agentq/embeddings/chunks.jsonl` by cosine similarity after an embedding vector index has been built. Chat provider and embedding provider settings are separate, so you can use OpenCode Go for chat while using OpenAI for embeddings. Use the Project panel's `Build embedding index` button to create the local vector index with the configured embedding provider.
 
@@ -474,7 +474,7 @@ The installer and desktop executable are not code-signed yet. Windows SmartScree
 
 Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, optional embeddings, and desktop workflow stability.
 
-Before publishing a beta release, use [docs/release-readiness.md](docs/release-readiness.md) for the installer, portable ZIP, CLI package, checksum, smoke-test, and release-notes checklist.
+Before publishing a beta release, use [docs/archive/release-readiness.md](docs/archive/release-readiness.md) for the installer, portable ZIP, CLI package, checksum, smoke-test, and release-notes checklist.
 
 ## OpenCode Go
 
@@ -524,11 +524,11 @@ Near-term priorities:
 - expand language workers and dependency graph support
 - continue improving release trust, including code signing
 
-See [docs/language-worker-architecture.md](docs/language-worker-architecture.md) for the planned C# core plus language worker design.
+See [docs/archive/language-worker-architecture.md](docs/archive/language-worker-architecture.md) for the planned C# core plus language worker design.
 
 ## Current Priority
 
-1. run the release readiness checklist in [docs/release-readiness.md](docs/release-readiness.md)
+1. run the release readiness checklist in [docs/archive/release-readiness.md](docs/archive/release-readiness.md)
 2. publish `v0.1.0-beta.8` release artifacts
 3. QA installer, portable ZIP, provider setup, optional embeddings, memory, verification, snapshots, telemetry, and replay
 4. add code signing before broader Windows distribution

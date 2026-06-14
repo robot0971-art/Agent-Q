@@ -316,6 +316,11 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
         var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
         var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
+        if (IsArchivedDocumentationPath(parts))
+        {
+            return true;
+        }
+
         return parts.Any(part =>
             part.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
             part.Equals(".agentq", StringComparison.OrdinalIgnoreCase) ||
@@ -329,4 +334,9 @@ public sealed class EmbeddingIndexBuilder(EmbeddingIndexStore store)
             part.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("embeddings", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static bool IsArchivedDocumentationPath(IReadOnlyList<string> parts) =>
+        parts.Count >= 2 &&
+        parts[0].Equals("docs", StringComparison.OrdinalIgnoreCase) &&
+        parts[1].Equals("archive", StringComparison.OrdinalIgnoreCase);
 }

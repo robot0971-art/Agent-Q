@@ -9254,6 +9254,22 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceIndexer_DoesNotAttachArchivedDesignDocsByDefault()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "docs", "archive"));
+        await File.WriteAllTextAsync(Path.Combine(root, "docs", "Agent Q.md"), "Current design: LLM-first router.");
+        await File.WriteAllTextAsync(Path.Combine(root, "docs", "archive", "DEVELOPMENT_PLAN.md"), "Old design: raw text is the execution authority.");
+
+        var context = await new WorkspaceIndexer().BuildContextAsync(root, "Agent Q design", CancellationToken.None);
+
+        Assert.Contains("docs/Agent Q.md", context);
+        Assert.Contains("Current design", context);
+        Assert.DoesNotContain("docs/archive/DEVELOPMENT_PLAN.md", context);
+        Assert.DoesNotContain("raw text is the execution authority", context);
+    }
+
+    [Fact]
     public async Task WorkspaceIndexer_DoesNotReadFilesThroughSymlinkedDirectory()
     {
         var root = CreateTempDirectory();
@@ -12001,6 +12017,23 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         Assert.DoesNotContain(result.Chunks, chunk => chunk.RelativePath.StartsWith(".codex-build/", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(result.Chunks, chunk => chunk.Content.Contains("old user request", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(result.Chunks, chunk => chunk.Content.Contains("checkpoint", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task EmbeddingIndexBuilder_DoesNotIndexArchivedDesignDocs()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "docs", "archive"));
+        await File.WriteAllTextAsync(Path.Combine(root, "docs", "Agent Q.md"), "Current design: contract-executed.");
+        await File.WriteAllTextAsync(Path.Combine(root, "docs", "archive", "DEVELOPMENT_PLAN.md"), "Old design: independent raw-text routing.");
+
+        var store = new EmbeddingIndexStore();
+        var builder = new EmbeddingIndexBuilder(store);
+        var result = await builder.BuildTextChunkIndexAsync(root, ct: CancellationToken.None);
+
+        Assert.Contains(result.Chunks, chunk => chunk.RelativePath == "docs/Agent Q.md");
+        Assert.DoesNotContain(result.Chunks, chunk => chunk.RelativePath.StartsWith("docs/archive/", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.Chunks, chunk => chunk.Content.Contains("independent raw-text routing", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

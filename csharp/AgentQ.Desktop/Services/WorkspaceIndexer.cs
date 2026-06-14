@@ -282,6 +282,11 @@ public sealed partial class WorkspaceIndexer
         var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
         var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
+        if (IsArchivedDocumentationPath(parts))
+        {
+            return true;
+        }
+
         if (parts.Length == 1 &&
             IgnoredEmptyWorkspaceFileNames.Contains(parts[0]) &&
             new FileInfo(file).Length == 0)
@@ -302,6 +307,11 @@ public sealed partial class WorkspaceIndexer
             part.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
             part.Equals("artifacts", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static bool IsArchivedDocumentationPath(IReadOnlyList<string> parts) =>
+        parts.Count >= 2 &&
+        parts[0].Equals("docs", StringComparison.OrdinalIgnoreCase) &&
+        parts[1].Equals("archive", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildEmptyWorkspaceContext(string root, string query)
     {
