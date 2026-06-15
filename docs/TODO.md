@@ -236,6 +236,17 @@
   - [x] tool loop: provider tool batch와 task-contract direct fallback이 `ExecuteToolsAsync(..., turnState)`로 trace/effective intent/task contract/tool policy를 공유한다.
   - [x] final answer: unsupported action completion, irrelevant final answer, failed verification success claim이 `FinalAnswerPolicy`와 tool/service replay evidence로 차단된다.
 
+#### 실사용 UX / Tool recovery 후속 TODO
+
+- [ ] malformed tool input JSON 복구 경로를 추가한다.
+  - [ ] `write_file`/`edit_file` tool input JSON이 중간에 끊기면 실행하지 않고 failed tool result를 남기는 현재 방어는 유지한다.
+  - [ ] 같은 turn 안에서 모델에게 "tool input JSON이 malformed였으니 더 작은 chunk/file 단위로 다시 호출하라"는 자동 retry instruction을 주입한다.
+  - [ ] 2회 이상 같은 파일/도구에서 JSON parse failure가 반복되면 사용자에게 명확한 실패와 재시도 옵션을 보여준다.
+- [ ] scaffold UX smoke test를 추가한다.
+  - [ ] "럭셔리 의류 쇼핑몰"처럼 구체적인 greenfield 요청에서 Vite 껍데기만 만들고 `ShoppingCart is ready` 수준으로 멈추지 않게 한다.
+  - [ ] scaffold 후 provider implementation loop 또는 worker step이 실제 `src/App.jsx`/style 구현까지 이어지는지 확인한다.
+  - [ ] build success만으로 "사용자 요청 구현 완료"라고 보지 않고, 주요 UI 요구사항이 파일 내용에 반영됐는지 evidence를 요구한다.
+
 ### A. 전체 감사 진행 방식
 
 - [ ] 새 컴퓨터에서 먼저 현재 WIP 브랜치 또는 압축본을 받아온다.
