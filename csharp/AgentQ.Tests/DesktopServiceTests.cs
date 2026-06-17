@@ -1343,7 +1343,7 @@ public sealed class DesktopServiceTests
     public void DesktopAgentRunWorkflowService_ClassifiesNoToolGuardAsIncomplete()
     {
         var outcome = DesktopAgentRunWorkflowService.BuildRunCompletionOutcome(
-            "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion.");
+            "코딩 작업인데 재시도 후에도 workspace 도구 실행 증거가 없었습니다. Agent Q가 지원되지 않는 완료 답변을 보여주지 않도록 중단했습니다.");
 
         Assert.Equal("run_guard_stopped", outcome.TelemetryEventType);
         Assert.False(outcome.Succeeded);
@@ -1355,7 +1355,7 @@ public sealed class DesktopServiceTests
     public void DesktopAgentRunWorkflowService_ClassifiesTaskContractRejectionAsIncomplete()
     {
         var outcome = DesktopAgentRunWorkflowService.BuildRunCompletionOutcome(
-            "The answer did not satisfy the current task contract (CreateDirectory). Please retry; AgentQ should create the requested empty workspace folder.");
+            "폴더 생성이 아직 실제 생성 증거로 확인되지 않았습니다. Agent Q가 말로만 생성했다고 답하지 않도록 중단했습니다.");
 
         Assert.Equal("run_guard_stopped", outcome.TelemetryEventType);
         Assert.False(outcome.Succeeded);
@@ -1713,7 +1713,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("create_project_scaffold", retryInstruction, StringComparison.Ordinal);
         Assert.Contains("verify_project_scaffold", retryInstruction, StringComparison.Ordinal);
         Assert.DoesNotContain("list_directory first", retryInstruction, StringComparison.Ordinal);
-        Assert.Contains("model did not call create_project_scaffold", rejectMessage, StringComparison.Ordinal);
+        Assert.Contains("실제 생성 도구가 실행되지 않았습니다", rejectMessage, StringComparison.Ordinal);
+        Assert.Contains("create_project_scaffold", rejectMessage, StringComparison.Ordinal);
         Assert.Contains("planId", retryInstruction, StringComparison.Ordinal);
     }
 
@@ -1729,7 +1730,7 @@ public sealed class DesktopServiceTests
 
         Assert.Contains("active AgentQ system skill requires tool use", retryInstruction, StringComparison.Ordinal);
         Assert.Contains("workspace/scaffold tools", retryInstruction, StringComparison.Ordinal);
-        Assert.Contains("active AgentQ system skill required workspace/scaffold tool use", rejectMessage, StringComparison.Ordinal);
+        Assert.Contains("workspace/scaffold 도구 사용을 요구", rejectMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3405,7 +3406,8 @@ public sealed class DesktopServiceTests
             });
 
         Assert.DoesNotContain("probably positive", result, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("did not satisfy the current task contract", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("did not satisfy the current task contract", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("실행 증거", result, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("search", result, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(runSteps, step => step.Contains("Task contract: retry", StringComparison.Ordinal));
         Assert.Contains(runSteps, step => step.Contains("Task contract: rejected", StringComparison.Ordinal));
@@ -5026,8 +5028,8 @@ public sealed class DesktopServiceTests
     public async Task DesktopAgentService_ReturnsDeterministicGuardMessageAfterRepeatedNoToolCompletion()
     {
         var root = CreateTempDirectory();
-        var userText = "App.jsx \uCF54\uB4DC \uAD6C\uD604\uD574\uC918";
-        var promise = "App.jsx \uCF54\uB4DC\uB97C \uAD6C\uD604\uD574 \uB4DC\uB9AC\uACA0\uC2B5\uB2C8\uB2E4.";
+        var userText = "App.jsx \uAE30\uC874 \uCF54\uB4DC \uC218\uC815\uD574\uC918";
+        var promise = "App.jsx \uCF54\uB4DC\uB97C \uC218\uC815\uD574 \uB4DC\uB9AC\uACA0\uC2B5\uB2C8\uB2E4.";
         using var httpClientFactory = new SequentialStubHttpClientFactory(
             ChatResponse("""
                 {
@@ -5073,10 +5075,177 @@ public sealed class DesktopServiceTests
                 OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
             });
 
-        Assert.Contains("The answer did not satisfy the current task contract", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("The answer did not satisfy the current task contract", result, StringComparison.Ordinal);
+        Assert.Contains("코드 수정이 아직 실제 파일 변경 증거로 확인되지 않았습니다", result, StringComparison.Ordinal);
         Assert.DoesNotContain("App.jsx \uCF54\uB4DC\uB97C \uAD6C\uD604\uD574", result, StringComparison.Ordinal);
         Assert.Contains(runSteps, step => step.Contains("Task contract: retry", StringComparison.Ordinal));
         Assert.Contains(runSteps, step => step.Contains("Task contract: rejected", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PendingPlanResolver_CarriesImmediateProceedRequest()
+    {
+        var root = CreateTempDirectory();
+        var conversationIntent = new TurnIntentClassification
+        {
+            Type = TurnIntentType.Conversation,
+            Confidence = 0.96,
+            Rationale = "planning discussion",
+            ActionKind = "chat",
+            IsConcreteEnough = false
+        };
+        var turnState = CreateTestTurnState(
+            "럭셔리 쇼핑몰 로그인 회원가입을 만들고 싶다",
+            root,
+            TaskContractIntent.None,
+            new ProjectScaffoldPlanningResult()) with
+        {
+            EffectiveIntent = conversationIntent,
+            RuleIntent = conversationIntent,
+            TaskContract = new TaskContract(),
+            RoutingText = "럭셔리 쇼핑몰 로그인 회원가입을 만들고 싶다"
+        };
+        var assistantText = """
+            ## 구현 계획: 럭셔리 쇼핑몰 로그인/회원가입
+            기술 스택은 Vite + React + JavaScript입니다.
+            파일 구조와 주요 기능을 구성하겠습니다.
+            "진행해줘" 라고 해주시면 바로 프로젝트를 생성하고 구현하겠습니다.
+            """;
+
+        Assert.True(PendingPlanResolver.TryCapture(assistantText, turnState, DateTimeOffset.UtcNow, out var plan));
+
+        var resolution = PendingPlanResolver.Resolve("이대로 진행해줘", plan, root, DateTimeOffset.UtcNow);
+
+        Assert.True(resolution.Resolved);
+        Assert.True(resolution.ClearPendingPlan);
+        Assert.Contains("럭셔리 쇼핑몰", resolution.RoutingText, StringComparison.Ordinal);
+        Assert.Contains("immediately previous execution plan", resolution.RoutingText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PendingPlanResolver_DoesNotCarryStaleOrDifferentTopicPlan()
+    {
+        var root = CreateTempDirectory();
+        var plan = new PendingExecutionPlan
+        {
+            Id = "pending-test",
+            WorkspaceRoot = root,
+            Goal = "React 쇼핑몰 프로젝트를 생성하고 구현한다.",
+            SourceAssistantText = "진행해줘라고 하면 만들겠습니다.",
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+            RemainingUserTurns = 1
+        };
+
+        var stale = PendingPlanResolver.Resolve("이대로 진행해줘", plan, root, DateTimeOffset.UtcNow);
+        Assert.False(stale.Resolved);
+        Assert.True(stale.ClearPendingPlan);
+
+        var fresh = plan with { CreatedAtUtc = DateTimeOffset.UtcNow };
+        var topicChange = PendingPlanResolver.Resolve("그거 말고 테스트 결과 설명해줘", fresh, root, DateTimeOffset.UtcNow);
+        Assert.False(topicChange.Resolved);
+        Assert.True(topicChange.ClearPendingPlan);
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_UsesPendingPlanForImmediateProceedRequest()
+    {
+        var root = CreateTempDirectory();
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Conversation",
+                  "userGoal": "Discuss a luxury shopping mall login/signup implementation.",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": false,
+                    "actionKind": "none",
+                    "target": "",
+                    "reason": "The user is discussing a plan, not approving execution yet."
+                  },
+                  "requiresWrite": false,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.93
+                }
+                """),
+            StreamTextResponse("""
+                ## 구현 계획: 럭셔리 쇼핑몰 로그인/회원가입
+                Vite + React + JavaScript로 파일 구조와 인증 화면을 구성하겠습니다.
+                "진행해줘" 라고 해주시면 바로 프로젝트를 생성하고 구현하겠습니다.
+                """),
+            ChatResponse("""
+                {
+                  "primaryIntent": "Action",
+                  "userGoal": "Create and implement the luxury shopping mall login/signup project from the immediately previous plan.",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": true,
+                    "actionKind": "createProject",
+                    "target": "럭셔리 쇼핑몰 로그인/회원가입",
+                    "reason": "The user approved the immediately previous execution plan."
+                  },
+                  "requiresWrite": true,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.95
+                }
+                """),
+            StreamTextResponse("프로젝트를 만들 수 있습니다."),
+            StreamTextResponse("프로젝트를 만들 수 있습니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var runSteps = new List<string>();
+        var config = new ProviderConfiguration
+        {
+            Provider = "openai",
+            BaseUrl = "http://localhost/v1",
+            Model = "intent-test",
+            DesktopAutoAttachWorkspaceContext = false,
+            DesktopAutoFetchLinks = false,
+            DesktopWorkMode = "Coding",
+            DesktopMaxToolSteps = 2
+        };
+        var callbacks = new DesktopToolCallbacks
+        {
+            OnRunStep = (_, title, detail) => runSteps.Add($"{title}: {detail}")
+        };
+
+        await service.SendAsync(
+            config,
+            "럭셔리 쇼핑몰 로그인 회원가입을 만들고 싶은데 어떻게 생각해?",
+            workspaceRoot: root,
+            permissionEnforcer: new AllowAllPermissionEnforcer(),
+            toolCallbacks: callbacks);
+
+        var result = await service.SendAsync(
+            config,
+            "이대로 진행해줘",
+            workspaceRoot: root,
+            permissionEnforcer: new AllowAllPermissionEnforcer(),
+            toolCallbacks: callbacks);
+
+        Assert.Contains(runSteps, step => step.Contains("Pending plan captured", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("Pending plan approved", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step => step.Contains("Task contract:", StringComparison.Ordinal));
+        Assert.Contains("immediately previous execution plan", string.Join("\n", httpClientFactory.RequestBodies), StringComparison.Ordinal);
+        Assert.DoesNotContain("이전 대화의 맥락이 보이지", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GuardMessageHumanizer_HidesInternalTaskContractTerms()
+    {
+        var message = GuardMessageHumanizer.BuildTaskContractRejectedMessage(new TaskContract
+        {
+            Intent = TaskContractIntent.ModifyCode,
+            Goal = "Modify the requested workspace code or file and report what changed."
+        });
+
+        Assert.Contains("코드 수정이 아직 실제 파일 변경 증거로 확인되지 않았습니다", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("TaskContract", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ModifyCode", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Please retry", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AgentQ should", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

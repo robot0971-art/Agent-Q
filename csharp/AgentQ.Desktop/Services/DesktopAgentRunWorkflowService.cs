@@ -532,7 +532,10 @@ public sealed class DesktopAgentRunWorkflowService(
         if (fullText.Contains("stopped this answer instead of showing an unsupported completion", StringComparison.OrdinalIgnoreCase) ||
             fullText.Contains("the model did not call create_project_scaffold", StringComparison.OrdinalIgnoreCase) ||
             fullText.Contains("the model did not call tools after retry", StringComparison.OrdinalIgnoreCase) ||
-            fullText.Contains("did not satisfy the current task contract", StringComparison.OrdinalIgnoreCase))
+            fullText.Contains("did not satisfy the current task contract", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("완료라고 말하지 않도록 중단했습니다", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("말로만 생성했다고 답하지 않도록 중단했습니다", StringComparison.OrdinalIgnoreCase) ||
+            fullText.Contains("지원되지 않는 완료 답변을 보여주지 않도록 중단했습니다", StringComparison.OrdinalIgnoreCase))
         {
             return new DesktopRunCompletionOutcome
             {

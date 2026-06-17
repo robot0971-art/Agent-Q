@@ -82,6 +82,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly DesktopDiagnosticsService _diagnosticsService;
     private readonly ITool? _webSearchTool;
     private readonly TaskExecutor _taskExecutor;
+    private PendingExecutionPlan? _pendingExecutionPlan;
 
     public DesktopAgentService(
         IHttpClientFactory httpClientFactory,
@@ -153,10 +154,30 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         toolCallbacks?.OnRunStep?.Invoke(AgentRunState.GatheringContext, "Gathering context", effectiveWorkspaceRoot);
         var projectMemory = await _projectMemoryService.LoadOrDiscoverAsync(effectiveWorkspaceRoot, ct);
         var projectConfig = ProjectAgentConfigService.LoadLocal(effectiveWorkspaceRoot);
-        var safetyTurnUnderstanding = UserTurnUnderstandingService.Understand(userText);
-        var turnUnderstanding = await ClassifyUserTurnUnderstandingWithModelAsync(config, userText, safetyTurnUnderstanding, toolCallbacks, ct);
+        var pendingPlanResolution = PendingPlanResolver.Resolve(userText, _pendingExecutionPlan, effectiveWorkspaceRoot, DateTimeOffset.UtcNow);
+        if (pendingPlanResolution.ClearPendingPlan)
+        {
+            _pendingExecutionPlan = null;
+        }
+
+        var routingSeedText = pendingPlanResolution.Resolved ? pendingPlanResolution.RoutingText : userText;
+        if (pendingPlanResolution.Resolved)
+        {
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "Pending plan approved",
+                pendingPlanResolution.Reason);
+            RecordDiagnostic(
+                "pending_execution_plan_resolved",
+                effectiveWorkspaceRoot,
+                config,
+                $"trace={turnTraceId}; reason=\"{pendingPlanResolution.Reason}\"; routingText=\"{DesktopPromptBuilder.Truncate(routingSeedText.ReplaceLineEndings(" "), 500)}\"");
+        }
+
+        var safetyTurnUnderstanding = UserTurnUnderstandingService.Understand(routingSeedText);
+        var turnUnderstanding = await ClassifyUserTurnUnderstandingWithModelAsync(config, routingSeedText, safetyTurnUnderstanding, toolCallbacks, ct);
         var routingText = string.IsNullOrWhiteSpace(turnUnderstanding.RoutingText)
-            ? userText
+            ? routingSeedText
             : turnUnderstanding.RoutingText;
         RecordDiagnostic(
             "user_turn_understanding",
@@ -176,7 +197,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             config,
             ruleTurnIntent,
             $"taskKind={taskProfile.Kind}; workMode={workMode}; prompt=\"{DesktopPromptBuilder.Truncate(routingText.ReplaceLineEndings(" "), 240)}\"");
-        var routingDecision = LlmFirstIntentRouter.Route(userText, turnUnderstanding, ruleTurnIntent);
+        var routingDecision = LlmFirstIntentRouter.Route(routingSeedText, turnUnderstanding, ruleTurnIntent);
         var turnIntent = routingDecision.EffectiveIntent;
         var taskContract = routingDecision.ExecutionContract;
         routingText = routingDecision.RoutingText;
@@ -935,7 +956,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 if (finalAnswerPolicy.RejectUnsupportedSuccess &&
                     TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
-                    var message = $"The answer did not satisfy the current task contract ({taskContract.Intent}). Please retry; AgentQ should {taskContract.Goal}";
+                    var message = GuardMessageHumanizer.BuildTaskContractRejectedMessage(taskContract);
                     await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.Failed,
@@ -1293,6 +1314,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     effectiveWorkspaceRoot,
                     config,
                     $"trace={turnTraceId}; outcome={(finalRunState == AgentRunState.Failed ? "failed_verification_final_guard" : "no_more_tool_calls")}; step={step}; intent={turnIntent.Type}; action={turnIntent.ActionKind}; executedTools={executedToolCount}; fileChanges={fileChanges.Count}; executedCommands={executedCommands.Count}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
+                UpdatePendingExecutionPlanAfterAssistantTurn(
+                    builder.ToString(),
+                    turnState,
+                    finalRunState,
+                    fileChanges.Count,
+                    executedCommands.Count,
+                    replayEntries.Count,
+                    toolCallbacks,
+                    effectiveWorkspaceRoot,
+                    config);
                 await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
                 return builder.ToString();
             }
@@ -3101,12 +3132,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     {
         if (HasProceedableProjectScaffoldPlan(projectScaffoldPlan))
         {
-            return "Project scaffold plan was prepared, but the model did not call create_project_scaffold. Please retry; AgentQ should call create_project_scaffold with the approved planId and planHash, then verify_project_scaffold.";
+            return "프로젝트 생성 계획은 준비됐지만 실제 생성 도구가 실행되지 않았습니다. Agent Q가 말로만 완료했다고 답하지 않도록 중단했습니다. 승인된 planId/planHash로 create_project_scaffold를 실행하고 verify_project_scaffold로 검증해야 합니다.";
         }
 
         return skillToolUseRequired
-            ? "An active AgentQ system skill required workspace/scaffold tool use for this file-producing task, but the model did not call tools after retry. Please retry; AgentQ should use the requested skill flow with workspace/scaffold tools instead of answering in prose."
-            : "Coding task did not use workspace tools after retry, so AgentQ stopped this answer instead of showing an unsupported completion. Please retry; AgentQ should use list_directory/read_file/search tools before answering workspace tasks.";
+            ? "활성화된 Agent Q 시스템 스킬이 파일 생성 작업에 workspace/scaffold 도구 사용을 요구했지만, 재시도 후에도 도구 실행 증거가 없었습니다. Agent Q가 말로만 완료했다고 답하지 않도록 중단했습니다. 스킬 흐름에 맞춰 workspace/scaffold 도구를 실제로 실행해야 합니다."
+            : "코딩 작업인데 재시도 후에도 workspace 도구 실행 증거가 없었습니다. Agent Q가 지원되지 않는 완료 답변을 보여주지 않도록 중단했습니다. 필요한 경우 list_directory/read_file/search로 확인한 뒤 실제 파일 작업을 실행해야 합니다.";
     }
 
     private static string BuildNoToolGuardDetail(
@@ -3584,6 +3615,44 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     public static bool ShouldRetryEmptyResponse(string assistantText, int toolUseCount) =>
         toolUseCount == 0 && string.IsNullOrWhiteSpace(assistantText);
+
+    private void UpdatePendingExecutionPlanAfterAssistantTurn(
+        string assistantText,
+        AgentTurnState turnState,
+        AgentRunState finalRunState,
+        int fileChangeCount,
+        int executedCommandCount,
+        int replayEntryCount,
+        DesktopToolCallbacks? toolCallbacks,
+        string workspaceRoot,
+        ProviderConfiguration config)
+    {
+        if (finalRunState != AgentRunState.Done ||
+            fileChangeCount > 0 ||
+            executedCommandCount > 0 ||
+            replayEntryCount > 0)
+        {
+            _pendingExecutionPlan = null;
+            return;
+        }
+
+        if (PendingPlanResolver.TryCapture(assistantText, turnState, DateTimeOffset.UtcNow, out var pendingPlan))
+        {
+            _pendingExecutionPlan = pendingPlan;
+            toolCallbacks?.OnRunStep?.Invoke(
+                AgentRunState.Planning,
+                "Pending plan captured",
+                "The assistant offered an execution plan and is waiting for immediate user approval.");
+            RecordDiagnostic(
+                "pending_execution_plan_captured",
+                workspaceRoot,
+                config,
+                $"trace={turnState.TraceId}; pendingPlan={pendingPlan.Id}; goal=\"{DesktopPromptBuilder.Truncate(pendingPlan.Goal.ReplaceLineEndings(" "), 360)}\"");
+            return;
+        }
+
+        _pendingExecutionPlan = null;
+    }
 
     private static AgentTurnState BuildTurnState(
         string traceId,

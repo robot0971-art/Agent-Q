@@ -66,6 +66,21 @@ User input
 
 The transient context starts with a latest-request priority block. Memory, workspace snapshots, skills, scaffold recommendations, verification hints, and execution lessons are appended as supporting evidence only.
 
+## Pending Plan Continuity
+
+Agent Q may carry only one immediate execution-awaiting plan across turns.
+
+```text
+Assistant gives a concrete implementation/scaffold plan
+-> assistant explicitly asks for immediate approval such as "진행해줘"
+-> Desktop captures a short PendingExecutionPlan in memory
+-> next user turn approves the immediately previous plan
+-> routing text becomes the pending plan goal
+-> normal intent, approval, deterministic execution, and evidence guards still apply
+```
+
+This is not long-term memory. It must not read old session summaries, checkpoints, RAG results, or execution lessons as approval. The pending plan expires after the next user turn, workspace changes, stale age, topic change, cancellation, or a new requirement that is not a direct approval.
+
 ## Safe Scaffold Mode
 
 Safe Scaffold Mode is a primary deterministic path:
@@ -167,6 +182,8 @@ Final-answer guards must replace or block unsupported success claims when:
 - local server startup failed
 - max tool steps or no-tool guard stopped the run
 - the model claims completion without tool evidence
+
+User-visible guard failures should be humanized. Internal terms such as `TaskContract`, `ModifyCode`, `CreateProject`, `RunVerification`, and "Please retry; AgentQ should ..." belong in diagnostics or retry prompts, not as the final text shown to the user.
 
 ## UI State
 

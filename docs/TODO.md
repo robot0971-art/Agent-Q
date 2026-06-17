@@ -272,6 +272,34 @@
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationRuntimePreviewService_StartsServerAndVerifiesDomEvidence|FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeUsesDesktopServiceEvenWhenProviderConfigured|FullyQualifiedName~DesktopAgentService_WritesDiagnosticsForSafeScaffoldLifecycle" --logger "trx;LogFileName=agentq-a1-preview-focused.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 10, 실패 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a1-runtime-preview-full.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1127, 실패 0, 건너뜀 0.
 
+### A2. Pending Plan / Guard UX 연속성
+
+> 목표: 직전 assistant가 실행 대기 계획을 제시한 경우, 바로 다음 사용자 승인 문장을 stale memory가 아니라 해당 계획의 실행 승인으로 처리한다. 내부 TaskContract/guard 문구는 사용자에게 그대로 노출하지 않는다.
+
+- [x] `PendingExecutionPlan` / `PendingPlanResolver`를 추가했다.
+  - [x] 직전 `Conversation` 답변이 실행 계획, proceed instruction, 실행 promise를 모두 포함할 때만 pending plan으로 캡처한다.
+  - [x] 같은 workspace의 바로 다음 승인 문장(`진행해줘`, `이대로 진행해줘`, `go ahead`, `continue` 등)만 pending plan을 실행 routing text로 변환한다.
+  - [x] 오래된 plan, 다른 workspace, 새 주제/취소/설명 요청은 pending plan을 실행으로 carry하지 않고 clear한다.
+  - [x] pending plan은 long-term memory/RAG/session summary가 아니라 `DesktopAgentService`의 짧은 in-memory 직전 계획 상태로만 유지한다.
+- [x] `DesktopAgentService.SendAsync`가 intent classification 전에 pending plan approval을 해석하게 했다.
+  - [x] raw user text는 보존하고, routing seed만 직전 plan goal로 교체한다.
+  - [x] run step/diagnostics에 `Pending plan captured`와 `Pending plan approved`를 남긴다.
+- [x] `GuardMessageHumanizer`를 추가했다.
+  - [x] `ModifyCode`, `CreateProject`, `RunVerification`, `CreateDirectory`, `CreateFile` task-contract reject 문구를 사용자 친화적인 한국어로 바꿨다.
+  - [x] no-tool completion reject 문구도 내부 “Please retry; AgentQ should ...” 대신 실행 증거 부족과 다음 필요 행동을 설명하는 한국어로 바꿨다.
+  - [x] run workflow guard classification이 새 한국어 중단 문구도 성공이 아닌 `run_guard_stopped`로 처리하게 했다.
+- [x] 회귀 테스트
+  - [x] `PendingPlanResolver_CarriesImmediateProceedRequest`
+  - [x] `PendingPlanResolver_DoesNotCarryStaleOrDifferentTopicPlan`
+  - [x] `DesktopAgentService_UsesPendingPlanForImmediateProceedRequest`
+  - [x] `GuardMessageHumanizer_HidesInternalTaskContractTerms`
+  - [x] 기존 no-tool/task-contract guard workflow 테스트를 새 문구에 맞춰 갱신했다.
+- [x] 2026-06-17 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~PendingPlanResolver_|FullyQualifiedName~GuardMessageHumanizer_|FullyQualifiedName~DesktopAgentService_UsesPendingPlanForImmediateProceedRequest|FullyQualifiedName~DesktopAgentService_BuildsScaffoldAwareNoToolRetryInstruction|FullyQualifiedName~DesktopAgentService_BuildsSkillAwareNoToolRetryAndRejectMessages|FullyQualifiedName~DesktopAgentRunWorkflowService_ClassifiesNoToolGuardAsIncomplete|FullyQualifiedName~DesktopAgentRunWorkflowService_ClassifiesTaskContractRejectionAsIncomplete|FullyQualifiedName~DesktopAgentService_RetriesSearchSummaryWithoutSearchEvidence|FullyQualifiedName~DesktopAgentService_ReturnsFriendlyTaskContractFailureForModifyCode" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과 8, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a2-full-fixed.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1131, 실패 0, 건너뜀 0.
+
 #### 실사용 UX / Tool recovery 후속 TODO
 
 - [x] malformed tool input JSON 복구 경로를 추가한다.
