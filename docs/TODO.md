@@ -236,12 +236,43 @@
   - [x] tool loop: provider tool batch와 task-contract direct fallback이 `ExecuteToolsAsync(..., turnState)`로 trace/effective intent/task contract/tool policy를 공유한다.
   - [x] final answer: unsupported action completion, irrelevant final answer, failed verification success claim이 `FinalAnswerPolicy`와 tool/service replay evidence로 차단된다.
 
+### A1. Implementation Completion Pipeline 1차~3차
+
+> 목표: scaffold 성공을 task 완료로 취급하지 않고, 실제 구현/검증/evidence가 있을 때만 완료로 보고한다.
+
+- [x] 1차 `ScaffoldComplete != TaskComplete`
+  - [x] `ImplementationContract`, `ImplementationRequirement`, `ImplementationVerificationResult`를 추가했다.
+  - [x] concrete greenfield frontend scaffold가 생성되면 `ScaffoldReady` 후 `ImplementationContract`를 검증하고, placeholder/요구사항 누락이 있으면 provider code loop로 이어지게 했다.
+  - [x] `ShoppingCart is ready`, `Hello World`, `Vite + React`, `App is ready`, `Lorem ipsum`, `TODO`, `is ready.` placeholder를 완료 금지 evidence로 감지한다.
+  - [x] luxury clothing shop 요청은 상품 catalog/card/price, cart/bag, wishlist/save, lookbook/hero/editorial, luxury visual language 요구사항을 포함한다.
+  - [x] final answer guard가 구현 계약 실패 상태를 "완료"로 말하지 못하게 `Final answer guard: implementation incomplete`로 차단한다.
+- [x] 2차 Tool Recovery / Repair
+  - [x] malformed `write_file`/`edit_file` tool input JSON tool result를 감지해 같은 turn 안에서 valid JSON, smaller chunk/file, component/CSS split retry instruction을 자동 주입한다.
+  - [x] 같은 tool의 malformed JSON 실패가 2회 반복되면 unsafe/incomplete input 실행 없이 실패로 멈추고 재시도 옵션을 보고한다.
+  - [x] malformed tool input은 permission/request 실행 전에 failed tool result로 남는 기존 parser guard와 연결된다.
+- [x] 3차 Preview / DOM / Screenshot / Visual QA 1차 게이트
+  - [x] `ImplementationPreviewVerificationResult`와 DOM/console/visual finding 검증 helper를 추가했다.
+  - [x] frontend implementation source check가 통과해도 localhost preview, DOM, screenshot/visual evidence가 없으면 `Final answer guard: preview evidence missing`으로 완료를 금지한다.
+  - [x] preview evidence는 local server replay, localhost URL, Playwright/e2e/screenshot evidence, preview/dev command evidence로 판정한다.
+  - [ ] 실제 브라우저 자동 실행으로 desktop/mobile screenshot artifact를 생성하고 DOM query/console error를 직접 수집하는 완전 자동 preview runner는 후속 강화가 필요하다.
+- [x] 회귀 테스트
+  - [x] scaffold-only가 task complete로 처리되지 않는 테스트를 갱신했다.
+  - [x] luxury clothing shop placeholder scaffold 실패 테스트를 추가했다.
+  - [x] ImplementationContract 생성/검증, placeholder detector, requirement verifier 테스트를 추가했다.
+  - [x] malformed tool input retry/exhaustion 테스트를 추가했다.
+  - [x] preview DOM/console/visual finding verifier와 runtime preview evidence guard 테스트를 추가했다.
+- [x] 2026-06-16 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall" --logger "console;verbosity=minimal"` 통과 7, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a1-full-fixed.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1126, 실패 0, 건너뜀 0.
+
 #### 실사용 UX / Tool recovery 후속 TODO
 
-- [ ] malformed tool input JSON 복구 경로를 추가한다.
-  - [ ] `write_file`/`edit_file` tool input JSON이 중간에 끊기면 실행하지 않고 failed tool result를 남기는 현재 방어는 유지한다.
-  - [ ] 같은 turn 안에서 모델에게 "tool input JSON이 malformed였으니 더 작은 chunk/file 단위로 다시 호출하라"는 자동 retry instruction을 주입한다.
-  - [ ] 2회 이상 같은 파일/도구에서 JSON parse failure가 반복되면 사용자에게 명확한 실패와 재시도 옵션을 보여준다.
+- [x] malformed tool input JSON 복구 경로를 추가한다.
+  - [x] `write_file`/`edit_file` tool input JSON이 중간에 끊기면 실행하지 않고 failed tool result를 남기는 현재 방어는 유지한다.
+  - [x] 같은 turn 안에서 모델에게 "tool input JSON이 malformed였으니 더 작은 chunk/file 단위로 다시 호출하라"는 자동 retry instruction을 주입한다.
+  - [x] 2회 이상 같은 파일/도구에서 JSON parse failure가 반복되면 사용자에게 명확한 실패와 재시도 옵션을 보여준다.
 - [ ] scaffold UX smoke test를 추가한다.
   - [ ] "럭셔리 의류 쇼핑몰"처럼 구체적인 greenfield 요청에서 Vite 껍데기만 만들고 `ShoppingCart is ready` 수준으로 멈추지 않게 한다.
   - [ ] scaffold 후 provider implementation loop 또는 worker step이 실제 `src/App.jsx`/style 구현까지 이어지는지 확인한다.

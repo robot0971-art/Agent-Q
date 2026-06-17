@@ -76,12 +76,20 @@ User asks for a concrete new project
 -> UI shows files and verification commands
 -> user approves
 -> DesktopScaffoldService / worker executor creates files
+-> ScaffoldReady
+-> ImplementationContract checks requested UI/features and forbidden placeholders
+-> provider code loop continues implementation when required
+-> build, preview, DOM, and visual evidence are required for frontend completion
 -> file mutation snapshots are recorded
 -> verification runs
 -> model explains, repairs, or continues
 ```
 
 If the model misses a scaffold tool call but an approved scaffold plan exists, the Desktop service is responsible for executing the plan through the deterministic executor. The model is not the source of truth for whether scaffold files were created.
+
+Scaffold success is not task completion. Frontend greenfield runs create an implementation contract after scaffold execution. The contract rejects placeholder-only output such as `ShoppingCart is ready`, `Hello World`, `Vite + React`, `App is ready`, `Lorem ipsum`, or `TODO`. Domain-specific requests, such as a luxury clothing shop, must show matching evidence in source and runtime checks: product cards/catalog, prices, cart/bag actions, wishlist/save actions, hero/lookbook/editorial sections, and luxury visual language.
+
+The final-answer guard blocks completion when the implementation contract is still missing requirements. If source checks pass but frontend runtime evidence is absent, the guard also blocks completion until localhost preview, DOM, and screenshot/visual evidence exists.
 
 ## Local Server Mode
 
@@ -152,6 +160,8 @@ Final-answer guards must replace or block unsupported success claims when:
 - requested file changes have no mutation evidence
 - verification failed or was cancelled
 - scaffold execution failed or did not create files
+- scaffold succeeded but the implementation contract still has placeholders or missing requirements
+- frontend implementation lacks localhost preview, DOM, or screenshot/visual evidence
 - local server startup failed
 - max tool steps or no-tool guard stopped the run
 - the model claims completion without tool evidence

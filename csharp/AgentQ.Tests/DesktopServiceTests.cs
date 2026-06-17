@@ -7491,7 +7491,7 @@ public sealed class DesktopServiceTests
     public async Task DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall()
     {
         var root = CreateTempDirectory();
-        using var httpClientFactory = new StubHttpClientFactory("{}");
+        using var httpClientFactory = new StubHttpClientFactory(ChatResponse("Implementation phase acknowledged."));
         var service = CreateDesktopAgentService(httpClientFactory);
         var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
             toolName is "create_project_scaffold" or "verify_project_scaffold");
@@ -7500,6 +7500,9 @@ public sealed class DesktopServiceTests
         var result = await service.SendAsync(
             new ProviderConfiguration
             {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "implementation-test",
                 DesktopAutoAttachWorkspaceContext = false,
                 DesktopAutoFetchLinks = false,
                 DesktopWorkMode = "Coding"
@@ -7514,17 +7517,220 @@ public sealed class DesktopServiceTests
 
         Assert.True(File.Exists(Path.Combine(root, "package.json")));
         Assert.True(File.Exists(Path.Combine(root, "src", "App.jsx")));
-        Assert.Contains("Prepared project scaffold was created", result, StringComparison.Ordinal);
-        Assert.Contains("Verification:", result, StringComparison.Ordinal);
+        Assert.Contains("Implementation is not complete yet", result, StringComparison.Ordinal);
+        Assert.Contains("ScaffoldReady is not task completion", result, StringComparison.Ordinal);
         Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
         Assert.Contains("verify_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.NotNull(httpClientFactory.LastRequest);
+        Assert.Contains("ScaffoldReady is not task completion", httpClientFactory.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains(runSteps, step =>
+            step.Contains("Scaffold ready: implementation required", StringComparison.Ordinal));
+        Assert.Contains(runSteps, step =>
+            step.Contains("Final answer guard: implementation incomplete", StringComparison.Ordinal));
         Assert.Contains(runSteps, step =>
             step.Contains("Confidence:", StringComparison.Ordinal) &&
             step.Contains("tool call(s) used as evidence", StringComparison.Ordinal));
         Assert.DoesNotContain(runSteps, step =>
             step.Contains("Confidence:", StringComparison.Ordinal) &&
             step.Contains("No tool evidence was gathered", StringComparison.Ordinal));
-        Assert.Null(httpClientFactory.LastRequest);
+    }
+
+    [Fact]
+    public void ImplementationCompletionService_FailsLuxuryShopPlaceholderScaffold()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        File.WriteAllText(
+            Path.Combine(root, "src", "App.jsx"),
+            """
+            export function App() {
+              return <p>ShoppingCart is ready.</p>;
+            }
+            """);
+        File.WriteAllText(Path.Combine(root, "src", "styles.css"), ".app { color: black; }");
+        var scaffoldPlan = new ProjectScaffoldPlanner().Plan(
+            "React + Vite로 럭셔리 의류 쇼핑몰 사이트 만들어줘",
+            root);
+        var turnState = CreateTestTurnState(
+            "React + Vite로 럭셔리 의류 쇼핑몰 사이트 만들어줘",
+            root,
+            TaskContractIntent.CreateProject,
+            scaffoldPlan);
+
+        var contract = ImplementationCompletionService.BuildContract(turnState);
+        var verification = ImplementationCompletionService.Verify(root, contract);
+
+        Assert.True(ImplementationCompletionService.ShouldRequireImplementation(turnState));
+        Assert.False(verification.Succeeded);
+        Assert.Contains(verification.PlaceholderFindings, finding => finding.Contains("ShoppingCart is ready", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(verification.MissingRequirements, item => item.Contains("product-catalog", StringComparison.Ordinal));
+        Assert.Contains(verification.MissingRequirements, item => item.Contains("wishlist", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ImplementationCompletionService_PassesImplementedLuxuryShopShell()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        File.WriteAllText(
+            Path.Combine(root, "src", "App.jsx"),
+            """
+            export function App() {
+              const products = ["Atelier Coat", "Silk Dress", "Leather Bag"];
+              return (
+                <main className="luxury atelier">
+                  <section className="hero lookbook">VIP editorial collection</section>
+                  <section className="product collection">
+                    {products.map(product => <article className="product card"><h2>{product}</h2><p className="price">$1,280</p><button>Add to cart</button><button>Wishlist</button></article>)}
+                  </section>
+                </main>
+              );
+            }
+            """);
+        File.WriteAllText(Path.Combine(root, "src", "styles.css"), ".luxury { min-height: 100vh; } .product { display: grid; }");
+        var scaffoldPlan = new ProjectScaffoldPlanner().Plan(
+            "React + Vite로 럭셔리 의류 쇼핑몰 사이트 만들어줘",
+            root);
+        var turnState = CreateTestTurnState(
+            "React + Vite로 럭셔리 의류 쇼핑몰 사이트 만들어줘",
+            root,
+            TaskContractIntent.CreateProject,
+            scaffoldPlan);
+
+        var contract = ImplementationCompletionService.BuildContract(turnState);
+        var verification = ImplementationCompletionService.Verify(root, contract);
+
+        Assert.True(verification.Succeeded, verification.Summary);
+        Assert.Empty(verification.PlaceholderFindings);
+        Assert.Empty(verification.MissingRequirements);
+        Assert.True(verification.RuntimePreviewRequired);
+        Assert.True(verification.VisualEvidenceRequired);
+    }
+
+    [Fact]
+    public void ImplementationCompletionService_DetectsForbiddenPlaceholders()
+    {
+        var findings = ImplementationCompletionService.DetectPlaceholders(
+            "<main><h1>Vite + React</h1><p>Lorem ipsum</p><p>TODO</p></main>");
+
+        Assert.Contains("Vite + React", findings);
+        Assert.Contains("Lorem ipsum", findings);
+        Assert.Contains("TODO", findings);
+    }
+
+    [Fact]
+    public void ImplementationCompletionService_VerifiesPreviewDomAndVisualEvidence()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        File.WriteAllText(
+            Path.Combine(root, "src", "App.jsx"),
+            """
+            export function App() {
+              return <main data-agentq-root><section className="hero lookbook">Luxury editorial collection</section><article className="product card"><p className="price">$1,280</p><button>Add to cart</button><button>Wishlist</button></article></main>;
+            }
+            """);
+        File.WriteAllText(Path.Combine(root, "src", "styles.css"), ".product { display: grid; }");
+        var contract = new ImplementationContract
+        {
+            Goal = "React luxury clothing shop website",
+            RequiredFiles = ["src/App.jsx", "src/styles.css"],
+            ForbiddenPlaceholders = ["Hello World", "Vite + React", "ShoppingCart is ready", "App is ready", "Lorem ipsum", "TODO", "is ready."],
+            RequiresRuntimePreview = true,
+            RequiresVisualEvidence = true,
+            Requirements =
+            [
+                new ImplementationRequirement { Id = "product-catalog", Description = "Product catalog/cards are rendered.", AnyKeywords = ["product", "card", "price"] },
+                new ImplementationRequirement { Id = "cart", Description = "Cart or bag interaction exists.", AnyKeywords = ["cart", "bag", "add to"] },
+                new ImplementationRequirement { Id = "wishlist", Description = "Wishlist/save interaction exists.", AnyKeywords = ["wishlist", "save"] },
+                new ImplementationRequirement { Id = "lookbook", Description = "Hero/lookbook/editorial section exists.", AnyKeywords = ["lookbook", "hero", "editorial"] },
+                new ImplementationRequirement { Id = "luxury-style", Description = "Luxury visual language is represented.", AnyKeywords = ["luxury", "atelier", "premium"] }
+            ]
+        };
+
+        var failed = ImplementationCompletionService.VerifyPreviewEvidence(
+            "<div id=\"root\"></div>",
+            contract,
+            consoleErrors: ["Uncaught Error: render failed"],
+            visualFindings: ["Screenshot appears almost entirely dark or blank."]);
+        var passed = ImplementationCompletionService.VerifyPreviewEvidence(
+            """
+            <div id="root" data-agentq-root>
+              <main class="luxury atelier">
+                <section class="hero lookbook">Luxury editorial collection</section>
+                <article class="product card"><p class="price">$1,280</p><button>Add to cart</button><button>Wishlist</button></article>
+              </main>
+            </div>
+            """,
+            contract,
+            url: "http://127.0.0.1:5173/",
+            screenshotDirectory: ".agentq/preview");
+
+        Assert.False(failed.Succeeded);
+        Assert.Contains(failed.ConsoleErrors, error => error.Contains("render failed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failed.VisualFindings, finding => finding.Contains("blank", StringComparison.OrdinalIgnoreCase));
+        Assert.True(passed.Succeeded, passed.Summary);
+        Assert.True(passed.RequiresPreviewEvidence);
+        Assert.True(passed.RootRendered);
+        Assert.Equal("http://127.0.0.1:5173/", passed.Url);
+    }
+
+    [Fact]
+    public void DesktopAgentService_BuildsRetryInstructionForMalformedToolInput()
+    {
+        var tracker = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var malformed = ChatContent.CreateToolResult(
+            "tool-write",
+            "Invalid tool input for write_file: Tool input JSON is malformed: Expected end of string.",
+            true);
+
+        var shouldRetry = DesktopAgentService.TryBuildMalformedToolInputRetryInstruction(
+            [malformed],
+            tracker,
+            out var instruction,
+            out var exhausted);
+
+        Assert.True(shouldRetry);
+        Assert.False(exhausted);
+        Assert.Contains("write_file", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("smaller", instruction, StringComparison.OrdinalIgnoreCase);
+
+        var shouldStop = DesktopAgentService.TryBuildMalformedToolInputRetryInstruction(
+            [malformed],
+            tracker,
+            out var stopInstruction,
+            out var stopExhausted);
+
+        Assert.True(shouldStop);
+        Assert.True(stopExhausted);
+        Assert.Contains("stopped", stopInstruction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion()
+    {
+        Assert.False(DesktopAgentService.HasRuntimePreviewEvidence([], [], []));
+
+        Assert.True(DesktopAgentService.HasRuntimePreviewEvidence(
+            ["npm run preview -- --host 127.0.0.1 --port 5173"],
+            [],
+            []));
+
+        Assert.True(DesktopAgentService.HasRuntimePreviewEvidence(
+            [],
+            [
+                new ToolReplayEntry
+                {
+                    ToolName = "run_local_server",
+                    ToolUseId = "tool-local-server",
+                    InputJson = "{}",
+                    ResultPreview = """{"url":"http://127.0.0.1:5173/","succeeded":true}""",
+                    IsError = false,
+                    StartedAt = DateTime.Now,
+                    CompletedAt = DateTime.Now
+                }
+            ],
+            []));
     }
 
     [Fact]
@@ -7607,9 +7813,10 @@ public sealed class DesktopServiceTests
 
         Assert.True(File.Exists(Path.Combine(root, "package.json")));
         Assert.True(File.Exists(Path.Combine(root, "src", "App.jsx")));
-        Assert.Contains("Prepared project scaffold was created", result, StringComparison.Ordinal);
+        Assert.Contains("Implementation is not complete yet", result, StringComparison.Ordinal);
+        Assert.Contains("ScaffoldReady is not task completion", result, StringComparison.Ordinal);
         Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
-        Assert.Single(httpClientFactory.RequestBodies, body => !string.IsNullOrWhiteSpace(body));
+        Assert.True(httpClientFactory.RequestBodies.Count(body => !string.IsNullOrWhiteSpace(body)) >= 2);
     }
 
     [Fact]
@@ -7624,6 +7831,9 @@ public sealed class DesktopServiceTests
         await service.SendAsync(
             new ProviderConfiguration
             {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "diagnostics-test",
                 DesktopAutoAttachWorkspaceContext = false,
                 DesktopAutoFetchLinks = false,
                 DesktopWorkMode = "Coding"
@@ -7639,7 +7849,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("tool_execution_starting", log, StringComparison.Ordinal);
         Assert.Contains("tool_execution_completed", log, StringComparison.Ordinal);
         Assert.Contains("file_change_recorded", log, StringComparison.Ordinal);
-        Assert.Contains("turn_completed", log, StringComparison.Ordinal);
+        Assert.Contains("implementation_contract_required", log, StringComparison.Ordinal);
+        Assert.Contains("turn_failed", log, StringComparison.Ordinal);
         Assert.Contains("tool_replay_saved", log, StringComparison.Ordinal);
         Assert.Contains("trace=", log, StringComparison.Ordinal);
     }
@@ -18928,6 +19139,79 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         }
 
         return input;
+    }
+
+    private static AgentTurnState CreateTestTurnState(
+        string userText,
+        string workspaceRoot,
+        TaskContractIntent taskContractIntent,
+        ProjectScaffoldPlanningResult scaffoldPlan)
+    {
+        var ruleIntent = new TurnIntentClassification
+        {
+            Type = TurnIntentType.Action,
+            Confidence = 0.95,
+            Rationale = "test action",
+            ActionKind = taskContractIntent.ToString(),
+            RequiresWrite = true,
+            IsConcreteEnough = true
+        };
+        var contract = new TaskContract
+        {
+            Intent = taskContractIntent,
+            Confidence = 0.95,
+            Goal = userText
+        };
+
+        return new AgentTurnState
+        {
+            TraceId = "test-turn",
+            RawUserText = userText,
+            RoutingText = userText,
+            WorkspaceRoot = workspaceRoot,
+            WorkMode = AgentWorkMode.Coding,
+            Understanding = UserTurnUnderstandingService.Understand(userText),
+            RuleIntent = ruleIntent,
+            EffectiveIntent = ruleIntent,
+            TaskProfile = DesktopPromptAssemblyService.BuildTaskProfile(userText),
+            TaskContract = contract,
+            ProjectScaffoldPlan = scaffoldPlan,
+            SelectedSystemSkills = [],
+            ProjectConfig = null,
+            ContextPolicy = new AgentTurnContextPolicy
+            {
+                AttachWorkspaceContext = false,
+                FetchLinks = false,
+                IncludeScaffoldContext = true,
+                IncludeExecutionLessons = true,
+                TreatSupplementalContextAsEvidenceOnly = true
+            },
+            ToolPolicy = new AgentTurnToolPolicy
+            {
+                AllowToolLoop = true,
+                BlockWriteShellAndScaffoldForConversation = false,
+                RequirePermissionForRiskyTools = true,
+                RequireEvidenceForActionCompletion = true
+            },
+            MemoryPolicy = new AgentTurnMemoryPolicy
+            {
+                SelectReadOnlyContext = true,
+                RecordOnlyAfterExecutionEvidence = true,
+                TreatMemoryAsSupplementalEvidence = true
+            },
+            VerificationPolicy = new AgentTurnVerificationPolicy
+            {
+                AllowVerification = true,
+                RequireAllowedCommand = true,
+                RequireEvidenceBeforeSuccess = true
+            },
+            FinalAnswerPolicy = new AgentTurnFinalAnswerPolicy
+            {
+                RequireEvidenceForCompletionClaims = true,
+                RejectUnsupportedSuccess = true,
+                AskClarifyingQuestionForAmbiguous = false
+            }
+        };
     }
 
     private static DesktopAgentService CreateDesktopAgentService(IHttpClientFactory httpClientFactory, ITool? webSearchTool = null)

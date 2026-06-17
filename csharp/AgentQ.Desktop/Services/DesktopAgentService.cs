@@ -400,6 +400,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var executedCommands = new List<string>();
         var replayEntries = new List<ToolReplayEntry>();
         var editFailureTracker = new Dictionary<string, int>(StringComparer.Ordinal);
+        var malformedToolInputTracker = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var executedToolCount = 0;
         var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
         RecordDiagnostic(
@@ -414,6 +415,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var toolPolicy = turnState.ToolPolicy;
         var verificationPolicy = turnState.VerificationPolicy;
         var finalAnswerPolicy = turnState.FinalAnswerPolicy;
+        ImplementationContract? pendingImplementationContract = null;
 
         var shouldExecuteLocalServerDirectly = turnState.HasActionableContract &&
             ShouldExecuteLocalServerDirectly(turnState.TaskContract, turnState.WorkMode);
@@ -577,19 +579,58 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 replayEntries,
                 toolCallbacks);
             var scaffoldFailed = HasFailedProjectScaffoldEvidence(replayEntries);
-            toolCallbacks?.OnRunStep?.Invoke(
-                scaffoldFailed ? AgentRunState.Failed : AgentRunState.Done,
-                "Run complete",
-                scaffoldFailed
-                    ? "Safe scaffold mode stopped with failed scaffold or verification evidence."
-                    : "Safe scaffold mode finished after deterministic project creation.");
+            var implementationContract = ImplementationCompletionService.BuildContract(turnState);
+            var implementationVerification = ImplementationCompletionService.ShouldRequireImplementation(turnState)
+                ? ImplementationCompletionService.Verify(effectiveWorkspaceRoot, implementationContract)
+                : new ImplementationVerificationResult
+                {
+                    Succeeded = true,
+                    RequiresImplementation = false,
+                    MissingRequirements = [],
+                    PlaceholderFindings = [],
+                    InspectedFiles = [],
+                    RuntimePreviewRequired = false,
+                    VisualEvidenceRequired = false
+                };
+            if (implementationVerification.RequiresImplementation && !scaffoldFailed)
+            {
+                pendingImplementationContract = implementationContract;
+                var instruction = ImplementationCompletionService.BuildImplementationInstruction(
+                    implementationContract,
+                    implementationVerification);
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Planning,
+                    "Scaffold ready: implementation required",
+                    implementationVerification.Summary);
+                RecordDiagnostic(
+                    "implementation_contract_required",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; path=safe_scaffold_direct; inspected=\"{string.Join(",", implementationVerification.InspectedFiles)}\"; missing=\"{DesktopPromptBuilder.Truncate(string.Join(" | ", implementationVerification.MissingRequirements), 700)}\"; placeholders=\"{DesktopPromptBuilder.Truncate(string.Join(" | ", implementationVerification.PlaceholderFindings), 700)}\"");
+                _messages.Add(ChatMessage.UserText(instruction));
+                includeTransientContext = true;
+            }
+            else
+            {
+                toolCallbacks?.OnRunStep?.Invoke(
+                    scaffoldFailed ? AgentRunState.Failed : AgentRunState.Done,
+                    "Run complete",
+                    scaffoldFailed
+                        ? "Safe scaffold mode stopped with failed scaffold or verification evidence."
+                        : "Safe scaffold mode finished after deterministic project creation and implementation verification.");
+                RecordDiagnostic(
+                    scaffoldFailed ? "turn_failed" : "turn_completed",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; path=safe_scaffold_direct; succeeded={!scaffoldFailed}; implementationVerified={implementationVerification.Succeeded}; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
+                await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                return builder.ToString();
+            }
             RecordDiagnostic(
-                scaffoldFailed ? "turn_failed" : "turn_completed",
+                "turn_continues",
                 effectiveWorkspaceRoot,
                 config,
-                $"trace={turnTraceId}; path=safe_scaffold_direct; succeeded={!scaffoldFailed}; outputPreview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 900)}\"; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
-            await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
-            return builder.ToString();
+                $"trace={turnTraceId}; path=safe_scaffold_direct; reason=implementation_required; executedCommands={executedCommands.Count}; fileChanges={fileChanges.Count}; replayEntries={replayEntries.Count}");
         }
 
         var provider = CreateProvider(config, toolCallbacks);
@@ -1137,7 +1178,39 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 var verificationPlans = ReportVerificationPlans(fileChanges, executedCommands, projectMemory, toolCallbacks);
                 var finalRunState = AgentRunState.Done;
-                if (finalAnswerPolicy.RejectUnsupportedSuccess &&
+                if (pendingImplementationContract != null &&
+                    ImplementationCompletionService.Verify(effectiveWorkspaceRoot, pendingImplementationContract) is var finalImplementationVerification &&
+                    finalImplementationVerification.RequiresImplementation)
+                {
+                    finalRunState = AgentRunState.Failed;
+                    var replacementText =
+                        "Implementation is not complete yet. ScaffoldReady is not task completion, and AgentQ stopped before the implementation contract was satisfied. " +
+                        finalImplementationVerification.Summary;
+                    builder.Clear();
+                    builder.Append(replacementText);
+                    onDelta?.Invoke(replacementText);
+                    _messages.Add(ChatMessage.AssistantText(replacementText));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "Final answer guard: implementation incomplete",
+                        finalImplementationVerification.Summary);
+                }
+                else if (pendingImplementationContract is { RequiresRuntimePreview: true } &&
+                         !HasRuntimePreviewEvidence(executedCommands, replayEntries, verificationPlans))
+                {
+                    finalRunState = AgentRunState.Failed;
+                    const string replacementText =
+                        "Implementation is not complete yet. Frontend scaffold completion requires localhost preview, DOM, and screenshot/visual verification evidence before AgentQ can report success.";
+                    builder.Clear();
+                    builder.Append(replacementText);
+                    onDelta?.Invoke(replacementText);
+                    _messages.Add(ChatMessage.AssistantText(replacementText));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "Final answer guard: preview evidence missing",
+                        "Frontend implementation passed source checks but no runtime preview/DOM/visual evidence was recorded.");
+                }
+                else if (finalAnswerPolicy.RejectUnsupportedSuccess &&
                     ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
                 {
                     var replacementText = BuildFileChangeCompletionSummary(fileChanges, executedCommands, verificationPlans);
@@ -1170,9 +1243,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         "The model's final answer looked successful, but tool replay evidence recorded a failed verification.");
                 }
 
+                var finalEvidenceToolCount = Math.Max(
+                    executedToolCount,
+                    replayEntries.Count(entry => entry.IsError != true));
                 ReportConfidence(
                     builder.ToString(),
-                    executedToolCount,
+                    finalEvidenceToolCount,
                     fileChanges,
                     executedCommands,
                     verificationPlans,
@@ -1226,6 +1302,53 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     Role = ChatRole.User,
                     Content = toolResults
                 });
+            }
+
+            if (TryBuildMalformedToolInputRetryInstruction(
+                    toolResults,
+                    malformedToolInputTracker,
+                    out var malformedRetryInstruction,
+                    out var malformedRetryExhausted))
+            {
+                if (malformedRetryExhausted)
+                {
+                    builder.Clear();
+                    builder.Append(malformedRetryInstruction);
+                    onDelta?.Invoke(malformedRetryInstruction);
+                    _messages.Add(ChatMessage.AssistantText(malformedRetryInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Failed,
+                        "Tool input recovery failed",
+                        "Malformed tool input repeated after retry; AgentQ stopped before running unsafe or incomplete write/edit input.");
+                    ReportConfidence(
+                        builder.ToString(),
+                        executedToolCount,
+                        fileChanges,
+                        executedCommands,
+                        [],
+                        relevantLocalLessons.Count,
+                        replayEntries,
+                        toolCallbacks);
+                    RecordDiagnostic(
+                        "turn_failed",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; reason=malformed_tool_input_repeated; step={step}; preview=\"{DesktopPromptBuilder.Truncate(builder.ToString().ReplaceLineEndings(" "), 700)}\"");
+                    await SaveReplayAsync(effectiveWorkspaceRoot, config, userText, replayEntries, toolCallbacks, ct);
+                    return builder.ToString();
+                }
+
+                _messages.Add(ChatMessage.UserText(malformedRetryInstruction));
+                toolCallbacks?.OnRunStep?.Invoke(
+                    AgentRunState.Planning,
+                    "Tool input recovery: retry",
+                    "Malformed tool JSON was returned to the model with instructions to retry using smaller file/chunk inputs.");
+                RecordDiagnostic(
+                    "guard_retry_malformed_tool_input",
+                    effectiveWorkspaceRoot,
+                    config,
+                    $"trace={turnTraceId}; step={step}; instruction=\"{DesktopPromptBuilder.Truncate(malformedRetryInstruction.ReplaceLineEndings(" "), 700)}\"");
+                continue;
             }
 
             if (TryBuildProjectScaffoldCollisionSummary(toolResults, out var scaffoldCollisionSummary))
@@ -2578,6 +2701,82 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                    result.IsToolError == true &&
                    !string.IsNullOrWhiteSpace(result.ToolResult) &&
                    result.ToolResult.Contains("Repeated read-only tool call detected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool TryBuildMalformedToolInputRetryInstruction(
+        IReadOnlyList<ChatContent> toolResults,
+        IDictionary<string, int> malformedToolInputTracker,
+        out string instruction,
+        out bool exhausted)
+    {
+        instruction = string.Empty;
+        exhausted = false;
+        var malformed = toolResults
+            .Where(result => result.IsToolError == true &&
+                             !string.IsNullOrWhiteSpace(result.ToolResult) &&
+                             result.ToolResult.Contains("Invalid tool input", StringComparison.OrdinalIgnoreCase) &&
+                             result.ToolResult.Contains("malformed", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (malformed.Count == 0)
+        {
+            return false;
+        }
+
+        var toolKey = "unknown";
+        var first = malformed.First();
+        var resultText = first.ToolResult ?? string.Empty;
+        var match = Regex.Match(resultText, @"Invalid tool input for\s+(?<tool>[A-Za-z0-9_\-]+)", RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            toolKey = match.Groups["tool"].Value;
+        }
+
+        var count = malformedToolInputTracker.TryGetValue(toolKey, out var existing) ? existing + 1 : 1;
+        malformedToolInputTracker[toolKey] = count;
+        exhausted = count >= 2;
+        if (exhausted)
+        {
+            instruction =
+                $"Tool input JSON stayed malformed for {toolKey} after retry. AgentQ stopped before executing unsafe or incomplete tool input. " +
+                "Please retry with smaller files or split the implementation into multiple components/stylesheets.";
+            return true;
+        }
+
+        instruction =
+            $"The previous {toolKey} tool call had malformed JSON input and was not executed. " +
+            "Retry now using valid JSON only. Keep each write/edit payload small; split large UI work into separate component/CSS files or smaller edits. " +
+            "Do not claim completion until the file write/edit succeeds and build/implementation verification evidence exists.";
+        return true;
+    }
+
+    public static bool HasRuntimePreviewEvidence(
+        IReadOnlyList<string> executedCommands,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        IReadOnlyList<AgentVerificationPlan> verificationPlans)
+    {
+        var commandEvidence = executedCommands
+            .Concat(verificationPlans.Select(plan => plan.Command))
+            .OfType<string>()
+            .Where(command => !string.IsNullOrWhiteSpace(command));
+        if (commandEvidence.Any(command =>
+                command.Contains("playwright", StringComparison.OrdinalIgnoreCase) ||
+                command.Contains("test:e2e", StringComparison.OrdinalIgnoreCase) ||
+                command.Contains("npm run preview", StringComparison.OrdinalIgnoreCase) ||
+                command.Contains("npm run dev", StringComparison.OrdinalIgnoreCase) ||
+                command.Contains("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase) ||
+                command.Contains("http://localhost:", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return replayEntries.Any(entry =>
+            entry.IsError != true &&
+            (entry.ToolName.Equals("run_local_server", StringComparison.OrdinalIgnoreCase) ||
+             entry.ToolName.Equals("desktop_local_server", StringComparison.OrdinalIgnoreCase) ||
+             entry.ResultPreview.Contains("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase) ||
+             entry.ResultPreview.Contains("http://localhost:", StringComparison.OrdinalIgnoreCase) ||
+             entry.ResultPreview.Contains("screenshot", StringComparison.OrdinalIgnoreCase) ||
+             entry.ResultPreview.Contains("playwright", StringComparison.OrdinalIgnoreCase)));
     }
 
     public static bool ShouldRunProjectScaffoldFallbackAfterPermissionDenied(
