@@ -91,6 +91,8 @@ Scaffold success is not task completion. Frontend greenfield runs create an impl
 
 The final-answer guard blocks completion when the implementation contract is still missing requirements. If source checks pass but frontend runtime evidence is absent, the guard also blocks completion until localhost preview, DOM, and screenshot/visual evidence exists.
 
+`ImplementationRuntimePreviewService` provides the first deterministic preview path: it starts or reuses the local server through `DesktopLocalServerService`, verifies that the localhost URL responds, stores a DOM snapshot under `.agentq/preview/`, and records `implementation_runtime_preview` replay evidence. Browser-driven desktop/mobile screenshots and direct console-error capture remain layered on Playwright/screenshot artifact workflows when those are available.
+
 ## Local Server Mode
 
 Local server requests use `TaskContract` and `DesktopLocalServerService`:

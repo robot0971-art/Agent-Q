@@ -254,18 +254,23 @@
   - [x] `ImplementationPreviewVerificationResult`와 DOM/console/visual finding 검증 helper를 추가했다.
   - [x] frontend implementation source check가 통과해도 localhost preview, DOM, screenshot/visual evidence가 없으면 `Final answer guard: preview evidence missing`으로 완료를 금지한다.
   - [x] preview evidence는 local server replay, localhost URL, Playwright/e2e/screenshot evidence, preview/dev command evidence로 판정한다.
-  - [ ] 실제 브라우저 자동 실행으로 desktop/mobile screenshot artifact를 생성하고 DOM query/console error를 직접 수집하는 완전 자동 preview runner는 후속 강화가 필요하다.
+  - [x] `ImplementationRuntimePreviewService`를 추가해 source check 통과 후 preview evidence가 없으면 `DesktopLocalServerService`로 localhost preview를 시작하고 DOM snapshot을 `.agentq/preview/*-dom.html`에 저장한다.
+  - [x] runtime preview 결과는 `implementation_runtime_preview` replay evidence로 남기고 final guard가 URL/DOM 결과를 completion evidence로 사용한다.
+  - [ ] Playwright/browser 기반 desktop/mobile screenshot artifact 생성과 console error 직접 수집은 후속 강화가 필요하다.
 - [x] 회귀 테스트
   - [x] scaffold-only가 task complete로 처리되지 않는 테스트를 갱신했다.
   - [x] luxury clothing shop placeholder scaffold 실패 테스트를 추가했다.
   - [x] ImplementationContract 생성/검증, placeholder detector, requirement verifier 테스트를 추가했다.
   - [x] malformed tool input retry/exhaustion 테스트를 추가했다.
   - [x] preview DOM/console/visual finding verifier와 runtime preview evidence guard 테스트를 추가했다.
+  - [x] runtime preview service가 Node dev server를 시작하고 localhost DOM evidence/snapshot/replay를 남기는 테스트를 추가했다.
 - [x] 2026-06-16 focused 검증
   - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall" --logger "console;verbosity=minimal"` 통과 7, 실패 0.
   - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a1-full-fixed.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1126, 실패 0, 건너뜀 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationRuntimePreviewService_StartsServerAndVerifiesDomEvidence|FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeUsesDesktopServiceEvenWhenProviderConfigured|FullyQualifiedName~DesktopAgentService_WritesDiagnosticsForSafeScaffoldLifecycle" --logger "trx;LogFileName=agentq-a1-preview-focused.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 10, 실패 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a1-runtime-preview-full.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1127, 실패 0, 건너뜀 0.
 
 #### 실사용 UX / Tool recovery 후속 TODO
 

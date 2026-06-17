@@ -4492,6 +4492,83 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ImplementationRuntimePreviewService_StartsServerAndVerifiesDomEvidence()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/html'});
+              res.end(`<div id="root" data-agentq-root>
+                <main class="luxury atelier">
+                  <section class="hero lookbook">Luxury editorial collection</section>
+                  <article class="product card"><p class="price">$1,280</p><button>Add to cart</button><button>Wishlist</button></article>
+                </main>
+              </div>`);
+            }).listen(port, '127.0.0.1');
+            """);
+        var localServerService = new DesktopLocalServerService(new RealHttpClientFactory());
+        var service = new ImplementationRuntimePreviewService(localServerService, new RealHttpClientFactory());
+        var contract = new ImplementationContract
+        {
+            Goal = "React luxury clothing shop website",
+            RequiredFiles = [],
+            ForbiddenPlaceholders = ["Hello World", "Vite + React", "ShoppingCart is ready", "App is ready", "Lorem ipsum", "TODO", "is ready."],
+            RequiresRuntimePreview = true,
+            RequiresVisualEvidence = true,
+            Requirements =
+            [
+                new ImplementationRequirement { Id = "product-catalog", Description = "Product catalog/cards are rendered.", AnyKeywords = ["product", "card", "price"] },
+                new ImplementationRequirement { Id = "cart", Description = "Cart or bag interaction exists.", AnyKeywords = ["cart", "bag", "add to"] },
+                new ImplementationRequirement { Id = "wishlist", Description = "Wishlist/save interaction exists.", AnyKeywords = ["wishlist", "save"] },
+                new ImplementationRequirement { Id = "lookbook", Description = "Hero/lookbook/editorial section exists.", AnyKeywords = ["lookbook", "hero", "editorial"] },
+                new ImplementationRequirement { Id = "luxury-style", Description = "Luxury visual language is represented.", AnyKeywords = ["luxury", "atelier", "premium"] }
+            ]
+        };
+        ImplementationRuntimePreviewResult? result = null;
+
+        try
+        {
+            result = await service.VerifyAsync(
+                root,
+                contract,
+                new AllowAllPermissionEnforcer(),
+                new DesktopToolCallbacks(),
+                CancellationToken.None);
+            var replay = ImplementationRuntimePreviewService.CreateReplayEntry(result);
+
+            Assert.True(result.Succeeded, result.Summary);
+            Assert.StartsWith("http://127.0.0.1:", result.LocalServer.Url, StringComparison.Ordinal);
+            Assert.True(result.Preview.RootRendered);
+            Assert.Empty(result.Preview.MissingDomRequirements);
+            Assert.False(string.IsNullOrWhiteSpace(result.DomSnapshotPath));
+            Assert.True(File.Exists(Path.Combine(root, result.DomSnapshotPath.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.Equal("implementation_runtime_preview", replay.ToolName);
+            Assert.False(replay.IsError);
+            Assert.Contains("127.0.0.1", replay.ResultPreview, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (result?.LocalServer.ProcessId > 0)
+            {
+                try
+                {
+                    Process.GetProcessById(result.LocalServer.ProcessId).Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task DesktopLocalServerService_FailedStartedProcessKeepsAttemptedCommand()
     {
         var root = CreateTempDirectory();

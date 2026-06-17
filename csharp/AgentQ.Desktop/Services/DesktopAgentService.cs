@@ -78,6 +78,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ProjectScaffoldPlanRegistry _projectScaffoldPlanRegistry = new();
     private readonly ExecutionLessonMemoryService _executionLessonMemoryService = new();
     private readonly DesktopLocalServerService _localServerService;
+    private readonly ImplementationRuntimePreviewService _implementationRuntimePreviewService;
     private readonly DesktopDiagnosticsService _diagnosticsService;
     private readonly ITool? _webSearchTool;
     private readonly TaskExecutor _taskExecutor;
@@ -94,6 +95,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         WorkspaceSymbolIndexService symbolIndexService,
         WorkspaceAnalysisService workspaceAnalysisService,
         DesktopLocalServerService? localServerService = null,
+        ImplementationRuntimePreviewService? implementationRuntimePreviewService = null,
         SystemSkillService? systemSkillService = null,
         DesktopDiagnosticsService? diagnosticsService = null,
         ITool? webSearchTool = null)
@@ -110,6 +112,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _workspaceAnalysisService = workspaceAnalysisService;
         _systemSkillService = systemSkillService ?? new SystemSkillService();
         _localServerService = localServerService ?? new DesktopLocalServerService(httpClientFactory);
+        _implementationRuntimePreviewService = implementationRuntimePreviewService ?? new ImplementationRuntimePreviewService(_localServerService, httpClientFactory);
         _diagnosticsService = diagnosticsService ?? new DesktopDiagnosticsService();
         _webSearchTool = webSearchTool;
         
@@ -1198,17 +1201,44 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 else if (pendingImplementationContract is { RequiresRuntimePreview: true } &&
                          !HasRuntimePreviewEvidence(executedCommands, replayEntries, verificationPlans))
                 {
-                    finalRunState = AgentRunState.Failed;
-                    const string replacementText =
-                        "Implementation is not complete yet. Frontend scaffold completion requires localhost preview, DOM, and screenshot/visual verification evidence before AgentQ can report success.";
-                    builder.Clear();
-                    builder.Append(replacementText);
-                    onDelta?.Invoke(replacementText);
-                    _messages.Add(ChatMessage.AssistantText(replacementText));
                     toolCallbacks?.OnRunStep?.Invoke(
-                        AgentRunState.Failed,
-                        "Final answer guard: preview evidence missing",
-                        "Frontend implementation passed source checks but no runtime preview/DOM/visual evidence was recorded.");
+                        AgentRunState.RunningTool,
+                        "Runtime preview verification",
+                        "Frontend source checks passed; AgentQ is starting localhost preview and collecting DOM evidence.");
+                    var previewResult = await _implementationRuntimePreviewService.VerifyAsync(
+                        effectiveWorkspaceRoot,
+                        pendingImplementationContract,
+                        enforcer,
+                        toolCallbacks,
+                        ct);
+                    if (!string.IsNullOrWhiteSpace(previewResult.LocalServer.Command))
+                    {
+                        executedCommands.Add(previewResult.LocalServer.Command);
+                    }
+
+                    replayEntries.Add(ImplementationRuntimePreviewService.CreateReplayEntry(previewResult));
+                    toolCallbacks?.OnLocalServerChanged?.Invoke(new DesktopLocalServerState(
+                        IsRunning: previewResult.LocalServer.Succeeded,
+                        Url: previewResult.LocalServer.Url,
+                        Command: previewResult.LocalServer.Command,
+                        ProcessId: previewResult.LocalServer.ProcessId,
+                        ReusedExisting: previewResult.LocalServer.ReusedExisting,
+                        Message: previewResult.LocalServer.Message));
+                    if (!previewResult.Succeeded)
+                    {
+                        finalRunState = AgentRunState.Failed;
+                        var replacementText =
+                            "Implementation is not complete yet. Frontend scaffold completion requires localhost preview, DOM, and screenshot/visual verification evidence before AgentQ can report success. " +
+                            previewResult.Summary;
+                        builder.Clear();
+                        builder.Append(replacementText);
+                        onDelta?.Invoke(replacementText);
+                        _messages.Add(ChatMessage.AssistantText(replacementText));
+                        toolCallbacks?.OnRunStep?.Invoke(
+                            AgentRunState.Failed,
+                            "Final answer guard: preview evidence missing",
+                            previewResult.Summary);
+                    }
                 }
                 else if (finalAnswerPolicy.RejectUnsupportedSuccess &&
                     ShouldReplaceIrrelevantFinalAfterChanges(builder.ToString(), fileChanges, workMode, taskProfile.Kind))
