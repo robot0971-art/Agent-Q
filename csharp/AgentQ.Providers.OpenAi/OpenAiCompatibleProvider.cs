@@ -283,6 +283,35 @@ public class OpenAiCompatibleProvider : ILlmProvider
         {
             if (msg.Content.Any(c => c.Type == ContentType.ToolResult))
             {
+                var nonToolResultContent = msg.Content
+                    .Where(c => c.Type is ContentType.Text or ContentType.Image)
+                    .ToList();
+                if (nonToolResultContent.Count > 0)
+                {
+                    var userMessage = new OpenAiMessage { Role = "user" };
+                    if (nonToolResultContent.Any(c => c.Type == ContentType.Image))
+                    {
+                        userMessage.Content = nonToolResultContent
+                            .Select(ToOpenAiContentPart)
+                            .ToList();
+                    }
+                    else
+                    {
+                        userMessage.Content = string.Join(
+                            "\n",
+                            nonToolResultContent
+                                .Where(c => c.Type == ContentType.Text)
+                                .Select(c => c.Text)
+                                .Where(text => !string.IsNullOrEmpty(text)));
+                    }
+
+                    if (userMessage.Content is string text && !string.IsNullOrWhiteSpace(text) ||
+                        userMessage.Content is List<OpenAiContentPart> parts && parts.Count > 0)
+                    {
+                        messages.Add(userMessage);
+                    }
+                }
+
                 var toolResults = msg.Content
                     .Where(c => c.Type == ContentType.ToolResult &&
                                 !string.IsNullOrWhiteSpace(c.ToolUseId))
@@ -298,7 +327,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
                     });
                 }
 
-                if (toolResults.Count > 0)
+                if (toolResults.Count > 0 || nonToolResultContent.Count > 0)
                 {
                     continue;
                 }

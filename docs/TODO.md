@@ -563,6 +563,7 @@
   - [x] tool-call argument가 object/string/empty/malformed일 때 behavior를 통일한다.
     - [x] outbound assistant tool-use history에서 malformed/string/non-object input은 OpenAI `function.arguments`에 그대로 재주입하지 않고 `{}`로 정규화한다.
     - [x] 공백 tool id/name과 공백 tool result id는 OpenAI request의 invalid tool protocol message로 보내지 않는다.
+  - [x] user message에 text와 tool result가 함께 있는 복구/compaction edge case에서 최신 user text가 OpenAI request 변환 중 유실되지 않게 별도 `role=user` message로 보존한다.
 
 - [x] `AnthropicProvider.cs`
   - [x] content block start/delta/stop 순서 변형을 더 확인한다.
@@ -578,6 +579,11 @@
     - [x] CLI explicit `--timeout 60` / `--max-tokens 4096`이 env fallback 값에 덮이는 버그를 수정했다.
   - [x] 보호 저장/로드가 설정을 누락하지 않는지 확인한다.
     - [x] provider/model/base URL/API key, embedding 설정, timeout/max tokens, desktop context/link/vision/work mode/max tool steps/UI language 라운드트립을 테스트로 고정했다.
+
+- [x] 2026-06-18 F 재감사 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~OpenAiRequest_PreservesTextWhenMessageAlsoHasToolResults|FullyQualifiedName~AnthropicRequest_DropsBlankToolResultIds|FullyQualifiedName~AnthropicRequest_SendsStringifiedToolInputAsObject|FullyQualifiedName~ToolCallDeltaBuffer_|FullyQualifiedName~OpenAiStream_|FullyQualifiedName~OpenAiCompatibleProvider_" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 14, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
 
 ### G. Tools 남은 감사
 

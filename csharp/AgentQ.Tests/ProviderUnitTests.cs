@@ -683,6 +683,73 @@ public sealed class ProviderUnitTests
     }
 
     [Fact]
+    public async Task OpenAiRequest_PreservesTextWhenMessageAlsoHasToolResults()
+    {
+        const string responseBody =
+            """
+            {
+              "id": "chatcmpl_test",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "done"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """;
+
+        string? capturedBody = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost/")
+        };
+        var provider = new OpenAiCompatibleProvider(httpClient, "gpt-4o-mini");
+        var context = new ChatContext
+        {
+            Model = "gpt-4o-mini",
+            Messages = new List<ChatMessage>
+            {
+                new()
+                {
+                    Role = ChatRole.User,
+                    Content = new List<ChatContent>
+                    {
+                        ChatContent.CreateText("Latest user clarification must not be dropped."),
+                        ChatContent.CreateToolResult("   ", "blank id must not be sent", true),
+                        ChatContent.CreateToolResult("tool_123", "{\"contents\":\"ok\"}", false)
+                    }
+                }
+            },
+            MaxTokens = 256
+        };
+
+        await provider.GenerateResponseAsync(context, CreateToolDefinitions("read_file"));
+
+        Assert.False(string.IsNullOrWhiteSpace(capturedBody));
+        using var doc = JsonDocument.Parse(capturedBody!);
+        var messages = doc.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal(2, messages.Length);
+        Assert.Equal("user", messages[0].GetProperty("role").GetString());
+        Assert.Equal("Latest user clarification must not be dropped.", messages[0].GetProperty("content").GetString());
+        Assert.Equal("tool", messages[1].GetProperty("role").GetString());
+        Assert.Equal("tool_123", messages[1].GetProperty("tool_call_id").GetString());
+        Assert.DoesNotContain("blank id must not be sent", capturedBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnthropicRequest_DropsBlankToolResultIds()
     {
         const string responseBody =
