@@ -4524,8 +4524,27 @@ public sealed class DesktopServiceTests
               </div>`);
             }).listen(port, '127.0.0.1');
             """);
+        const string renderedDom = """
+            <div id="root" data-agentq-root>
+              <main class="luxury atelier">
+                <section class="hero lookbook">Luxury editorial collection</section>
+                <article class="product card"><p class="price">$1,280</p><button>Add to cart</button><button>Wishlist</button></article>
+              </main>
+            </div>
+            """;
         var localServerService = new DesktopLocalServerService(new RealHttpClientFactory());
-        var service = new ImplementationRuntimePreviewService(localServerService, new RealHttpClientFactory());
+        var service = new ImplementationRuntimePreviewService(
+            localServerService,
+            new RealHttpClientFactory(),
+            new StubImplementationPreviewBrowserVerifier(new ImplementationBrowserPreviewResult
+            {
+                Succeeded = true,
+                DomHtml = renderedDom,
+                ScreenshotDirectory = ".agentq/preview",
+                ScreenshotArtifacts = [".agentq/preview/desktop.png", ".agentq/preview/mobile.png"],
+                ConsoleErrors = [],
+                VisualFindings = []
+            }));
         var contract = new ImplementationContract
         {
             Goal = "React luxury clothing shop website",
@@ -4560,8 +4579,11 @@ public sealed class DesktopServiceTests
             Assert.Empty(result.Preview.MissingDomRequirements);
             Assert.False(string.IsNullOrWhiteSpace(result.DomSnapshotPath));
             Assert.True(File.Exists(Path.Combine(root, result.DomSnapshotPath.Replace('/', Path.DirectorySeparatorChar))));
+            Assert.Equal(2, result.Browser.ScreenshotArtifacts.Count);
+            Assert.Equal(".agentq/preview", result.Preview.ScreenshotDirectory);
             Assert.Equal("implementation_runtime_preview", replay.ToolName);
             Assert.False(replay.IsError);
+            Assert.Contains(".agentq/preview/desktop.png", replay.ResultPreview, StringComparison.Ordinal);
             Assert.Contains("127.0.0.1", replay.ResultPreview, StringComparison.Ordinal);
         }
         finally
@@ -4577,6 +4599,99 @@ public sealed class DesktopServiceTests
                 }
             }
         }
+    }
+
+    [Fact]
+    public async Task ImplementationRuntimePreviewService_BlocksConsoleAndVisualFailures()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """{"scripts":{"dev":"node server.js"}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "server.js"),
+            """
+            const http = require('http');
+            const port = Number(process.env.PORT || 5173);
+            http.createServer((req, res) => {
+              res.writeHead(200, {'content-type': 'text/html'});
+              res.end(`<div id="root" data-agentq-root><main><section class="hero">Luxury lookbook</section><article class="product card"><p class="price">$900</p><button>Add to cart</button><button>Wishlist</button></article></main></div>`);
+            }).listen(port, '127.0.0.1');
+            """);
+        var localServerService = new DesktopLocalServerService(new RealHttpClientFactory());
+        var service = new ImplementationRuntimePreviewService(
+            localServerService,
+            new RealHttpClientFactory(),
+            new StubImplementationPreviewBrowserVerifier(new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false,
+                DomHtml = "<div id=\"root\"><main><section>Luxury lookbook</section><article>Product card $900 Add to cart Wishlist</article></main></div>",
+                ScreenshotDirectory = ".agentq/preview",
+                ScreenshotArtifacts = [".agentq/preview/desktop.png", ".agentq/preview/mobile.png"],
+                ConsoleErrors = ["Uncaught Error: render failed"],
+                VisualFindings = [".agentq/preview/desktop.png: Screenshot appears almost entirely dark or blank."]
+            }));
+        var contract = new ImplementationContract
+        {
+            Goal = "React luxury clothing shop website",
+            RequiredFiles = [],
+            ForbiddenPlaceholders = [],
+            RequiresRuntimePreview = true,
+            RequiresVisualEvidence = true,
+            Requirements =
+            [
+                new ImplementationRequirement { Id = "product-catalog", Description = "Product catalog/cards are rendered.", AnyKeywords = ["product", "card", "price", "$900"] },
+                new ImplementationRequirement { Id = "cart", Description = "Cart or bag interaction exists.", AnyKeywords = ["cart", "bag", "add to"] },
+                new ImplementationRequirement { Id = "wishlist", Description = "Wishlist/save interaction exists.", AnyKeywords = ["wishlist", "save"] },
+                new ImplementationRequirement { Id = "lookbook", Description = "Hero/lookbook/editorial section exists.", AnyKeywords = ["lookbook", "hero", "editorial"] }
+            ]
+        };
+        ImplementationRuntimePreviewResult? result = null;
+
+        try
+        {
+            result = await service.VerifyAsync(
+                root,
+                contract,
+                new AllowAllPermissionEnforcer(),
+                new DesktopToolCallbacks(),
+                CancellationToken.None);
+            var replay = ImplementationRuntimePreviewService.CreateReplayEntry(result);
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("render failed", result.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("dark or blank", result.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(result.Preview.ConsoleErrors, error => error.Contains("render failed", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(result.Preview.VisualFindings, finding => finding.Contains("dark or blank", StringComparison.OrdinalIgnoreCase));
+            Assert.True(replay.IsError);
+            Assert.Contains("desktop.png", replay.ResultPreview, StringComparison.Ordinal);
+            Assert.Contains("render failed", replay.ResultPreview, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (result?.LocalServer.ProcessId > 0)
+            {
+                try
+                {
+                    Process.GetProcessById(result.LocalServer.ProcessId).Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PlaywrightImplementationPreviewBrowserVerifier_FailsWhenWorkspaceHasNoPlaywright()
+    {
+        var root = CreateTempDirectory();
+        var verifier = new PlaywrightImplementationPreviewBrowserVerifier();
+
+        var result = await verifier.VerifyAsync(root, "http://127.0.0.1:5173", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Playwright is not installed", result.Summary, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -19645,6 +19760,16 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             new WorkspaceSymbolIndexService(),
             workspaceAnalysisService,
             webSearchTool: webSearchTool);
+    }
+
+    private sealed class StubImplementationPreviewBrowserVerifier(ImplementationBrowserPreviewResult result)
+        : IImplementationPreviewBrowserVerifier
+    {
+        public Task<ImplementationBrowserPreviewResult> VerifyAsync(
+            string workspaceRoot,
+            string url,
+            CancellationToken ct) =>
+            Task.FromResult(result);
     }
 
     private static DesktopAgentRunWorkflowService CreateDesktopAgentRunWorkflowService(IHttpClientFactory httpClientFactory)

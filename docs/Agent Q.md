@@ -108,7 +108,7 @@ Concrete Korean greenfield requests such as `럭셔리 의류 쇼핑몰 만들�
 
 The final-answer guard blocks completion when the implementation contract is still missing requirements. If source checks pass but frontend runtime evidence is absent, the guard also blocks completion until localhost preview, DOM, and screenshot/visual evidence exists.
 
-`ImplementationRuntimePreviewService` provides the first deterministic preview path: it starts or reuses the local server through `DesktopLocalServerService`, verifies that the localhost URL responds, stores a DOM snapshot under `.agentq/preview/`, and records `implementation_runtime_preview` replay evidence. Browser-driven desktop/mobile screenshots and direct console-error capture remain layered on Playwright/screenshot artifact workflows when those are available.
+`ImplementationRuntimePreviewService` provides the deterministic preview path: it starts or reuses the local server through `DesktopLocalServerService`, verifies that the localhost URL responds, then attempts workspace-local Playwright browser verification. When Playwright is available it captures desktop and mobile screenshots under `.agentq/preview/`, collects browser console/page errors, stores the browser-rendered DOM snapshot, and records `implementation_runtime_preview` replay evidence. Missing Playwright support, console errors, or screenshot visual findings are treated as failed preview evidence instead of completion evidence.
 
 ## Local Server Mode
 

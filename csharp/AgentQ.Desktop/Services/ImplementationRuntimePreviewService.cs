@@ -13,6 +13,8 @@ public sealed record ImplementationRuntimePreviewResult
 
     public required ImplementationPreviewVerificationResult Preview { get; init; }
 
+    public required ImplementationBrowserPreviewResult Browser { get; init; }
+
     public string DomSnapshotPath { get; init; } = string.Empty;
 
     public string Summary => Succeeded
@@ -26,13 +28,16 @@ public sealed class ImplementationRuntimePreviewService
 {
     private readonly DesktopLocalServerService _localServerService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IImplementationPreviewBrowserVerifier _browserVerifier;
 
     public ImplementationRuntimePreviewService(
         DesktopLocalServerService localServerService,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IImplementationPreviewBrowserVerifier? browserVerifier = null)
     {
         _localServerService = localServerService;
         _httpClientFactory = httpClientFactory;
+        _browserVerifier = browserVerifier ?? new PlaywrightImplementationPreviewBrowserVerifier();
     }
 
     public async Task<ImplementationRuntimePreviewResult> VerifyAsync(
@@ -62,27 +67,42 @@ public sealed class ImplementationRuntimePreviewService
                     ConsoleErrors = [],
                     VisualFindings = [],
                     Url = localServer.Url
+                },
+                Browser = new ImplementationBrowserPreviewResult
+                {
+                    Succeeded = false,
+                    VisualFindings = ["Browser preview did not run because localhost preview did not start or respond."]
                 }
             };
         }
 
         var html = await FetchHtmlAsync(localServer.Url, ct);
-        var snapshotPath = await SaveDomSnapshotAsync(workspaceRoot, html, ct);
+        var browser = await _browserVerifier.VerifyAsync(workspaceRoot, localServer.Url, ct);
+        var evidenceHtml = string.IsNullOrWhiteSpace(browser.DomHtml) ? html : browser.DomHtml;
+        var snapshotPath = await SaveDomSnapshotAsync(workspaceRoot, evidenceHtml, ct);
+        var screenshotDirectory = string.IsNullOrWhiteSpace(browser.ScreenshotDirectory)
+            ? Path.GetDirectoryName(snapshotPath) ?? string.Empty
+            : browser.ScreenshotDirectory;
         var preview = ImplementationCompletionService.VerifyPreviewEvidence(
-            html,
+            evidenceHtml,
             contract,
+            browser.ConsoleErrors,
+            browser.VisualFindings,
             url: localServer.Url,
-            screenshotDirectory: Path.GetDirectoryName(snapshotPath) ?? string.Empty);
+            screenshotDirectory: screenshotDirectory);
         callbacks?.OnRunStep?.Invoke(
             preview.Succeeded ? AgentRunState.Done : AgentRunState.Failed,
             preview.Succeeded ? "Runtime preview verified" : "Runtime preview failed",
-            preview.Summary);
+            string.IsNullOrWhiteSpace(browser.Summary)
+                ? preview.Summary
+                : preview.Summary + " " + browser.Summary);
 
         return new ImplementationRuntimePreviewResult
         {
             Succeeded = preview.Succeeded,
             LocalServer = localServer,
             Preview = preview,
+            Browser = browser,
             DomSnapshotPath = snapshotPath
         };
     }
@@ -135,6 +155,10 @@ public sealed class ImplementationRuntimePreviewService
                 result.Succeeded,
                 result.LocalServer.Url,
                 result.DomSnapshotPath,
+                result.Preview.ScreenshotDirectory,
+                result.Browser.ScreenshotArtifacts,
+                result.Browser.ConsoleErrors,
+                result.Browser.VisualFindings,
                 result.Preview.Summary
             }),
             IsError = !result.Succeeded

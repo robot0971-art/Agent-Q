@@ -31,6 +31,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopLocalServerService>();
+        services.AddSingleton<IImplementationPreviewBrowserVerifier, PlaywrightImplementationPreviewBrowserVerifier>();
         services.AddSingleton<ImplementationRuntimePreviewService>();
         services.AddSingleton<DesktopAgentService>();
         services.AddSingleton<IDesktopLlmProviderFactory>(provider => provider.GetRequiredService<DesktopAgentService>());
