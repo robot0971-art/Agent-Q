@@ -1276,6 +1276,35 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void DesktopAgentService_ReplacesSuccessFinalWhenBashVerificationExitCodeFailed()
+    {
+        var replayEntries = new[]
+        {
+            new ToolReplayEntry
+            {
+                ToolName = "bash",
+                ToolUseId = "tool-build",
+                InputJson = """{"command":"npm run build"}""",
+                ResultPreview = """{"exitCode":1,"stdout":"vite build failed","stderr":"Build failed","timeoutMs":30000}""",
+                IsError = false
+            }
+        };
+
+        var replaced = DesktopAgentService.TryBuildFailedEvidenceFinalReplacement(
+            "구현이 완료되었고 빌드도 통과했습니다.",
+            [],
+            [],
+            [],
+            replayEntries,
+            out var replacement);
+
+        Assert.True(replaced);
+        Assert.Contains("검증 실패", replacement, StringComparison.Ordinal);
+        Assert.Contains("npm run build", replacement, StringComparison.Ordinal);
+        Assert.DoesNotContain("빌드도 통과했습니다", replacement, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_DoesNotReplaceFinalThatAlreadyReportsVerificationFailure()
     {
         var replayEntries = new[]

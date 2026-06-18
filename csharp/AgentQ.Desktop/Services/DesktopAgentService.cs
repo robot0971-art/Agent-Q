@@ -2725,7 +2725,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         summary.AppendLine("\uC2E4\uD328\uD55C \uAC80\uC99D/\uB3C4\uAD6C \uC99D\uAC70:");
         foreach (var entry in failedEntries)
         {
-            summary.AppendLine($"- {entry.ToolName}: {DesktopPromptBuilder.Truncate(entry.ResultPreview.ReplaceLineEndings(" "), 240)}");
+            summary.AppendLine($"- {BuildFailedEvidenceSummaryLine(entry)}");
         }
 
         if (executedCommands.Count > 0)
@@ -2751,6 +2751,14 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
         replacement = summary.ToString().TrimEnd();
         return true;
+    }
+
+    private static string BuildFailedEvidenceSummaryLine(ToolReplayEntry entry)
+    {
+        var command = TryGetJsonString(entry.InputJson, "command", out var parsedCommand)
+            ? $" command={parsedCommand};"
+            : string.Empty;
+        return $"{entry.ToolName}:{command} {DesktopPromptBuilder.Truncate(entry.ResultPreview.ReplaceLineEndings(" "), 240)}";
     }
 
     public static bool TryBuildFailedVerificationRepairInstruction(
@@ -2902,9 +2910,43 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return entry.IsError || ReplayJsonSucceededFalse(entry.ResultPreview);
         }
 
-        return string.Equals(entry.ToolName, "bash", StringComparison.OrdinalIgnoreCase) &&
-               entry.IsError &&
-               ContainsAny(entry.ResultPreview.ToLowerInvariant(), "exitcode", "exit code", "failed", "\uC2E4\uD328", "error");
+        if (!string.Equals(entry.ToolName, "bash", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var text = entry.ResultPreview.ToLowerInvariant();
+        if (entry.IsError)
+        {
+            return ContainsAny(text, "exitcode", "exit code", "failed", "\uC2E4\uD328", "error");
+        }
+
+        return TryParseShellExitCode(entry.ResultPreview, out var exitCode) &&
+               exitCode != 0 &&
+               IsVerificationReplayCommand(entry) &&
+               ContainsAny(text, "exitcode", "exit code", "failed", "\uC2E4\uD328", "error", "stderr", "stdout");
+    }
+
+    private static bool IsVerificationReplayCommand(ToolReplayEntry entry)
+    {
+        if (TryGetJsonString(entry.InputJson, "command", out var command) &&
+            VerificationCommandPolicy.IsAllowed(command))
+        {
+            return true;
+        }
+
+        return ContainsAny(
+            entry.ResultPreview.ToLowerInvariant(),
+            "dotnet test",
+            "dotnet build",
+            "npm test",
+            "npm run test",
+            "npm run build",
+            "pnpm test",
+            "pnpm build",
+            "yarn test",
+            "yarn build",
+            "pytest");
     }
 
     private static bool HasFailedProjectScaffoldEvidence(IReadOnlyList<ToolReplayEntry> replayEntries) =>

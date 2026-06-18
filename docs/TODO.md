@@ -592,6 +592,7 @@
   - [x] destructive command guard가 PowerShell/CMD/Git 변형을 충분히 막는지 확인한다.
   - [x] command output 안의 prompt injection을 Agent Q가 지시로 따르지 않게 context wording을 확인한다.
     - [x] Desktop/CLI system prompt에 shell output, tool results, logs, compiler/test output, file contents를 untrusted evidence로 취급하라는 rule을 추가했다.
+  - [x] `bash` tool result가 `IsError=false`여도 `exitCode != 0`인 검증 명령이면 final-answer guard의 failed verification evidence로 취급하게 했다.
 
 - [x] `ReadFileTool.cs`
   - [x] symlink/reparse outside file을 읽지 않는지 확인한다.
@@ -629,6 +630,11 @@
   - [x] `ToolRegistry.cs`, `ITool.cs`, `IPermissionEnforcer.cs`, `PluginEchoTool.cs`의 깨진 XML 주석을 정리했다.
   - [x] `ToolPathGuard.cs`가 invalid path syntax를 예외로 흘리지 않고 structured error로 반환하게 했다.
   - [x] `CreateDirectoryTool.cs` / `DeletePathTool.cs` / `TextFileIo.cs` / `EditRiskGuard.cs` / `ToolPathGuard.cs`를 직접 읽고 path boundary, binary/text, high-risk edit guard 흐름을 확인했다.
+
+- [x] 2026-06-18 G 재감사 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ReplacesSuccessFinalWhenBashVerificationExitCodeFailed|FullyQualifiedName~ReplacesSuccessFinalWhenVerificationEvidenceFailed|FullyQualifiedName~DoesNotReplaceFinalThatAlreadyReportsVerificationFailure|FullyQualifiedName~BashTool|FullyQualifiedName~ShellVerificationResultDetector|FullyQualifiedName~FailedBuildTestRepair" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 16, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
 
 ### H. CLI 남은 감사
 
