@@ -515,6 +515,8 @@
   - [x] shared memory와 local memory가 같은 lesson/preference/check/context fact key를 가질 때 local memory가 명시적으로 override한다.
   - [x] `x-api-key`, `access_token`, `private key`, `DATABASE_URL`, Postgres URL 같은 민감값도 prompt context와 저장 후보에서 제외한다.
   - [x] 오래 사용되지 않은 stale lesson이 최신 요청 context에 다시 섞이지 않도록 unused lesson stale 기준을 회귀 테스트와 맞췄다.
+  - [x] 최신 요청 query와 무관한 workspace rule이 prompt memory context에 항상 주입되는 경로를 막았다.
+  - [x] `Do not store secrets` 같은 전역 안전 규칙은 유지하되, 실제 API key/token/password 값이 들어간 workspace rule은 memory context에서 제외한다.
 
 - [x] `ExecutionLessonMemoryService.cs`
   - [x] 실패 lesson이 성공 경로에서 잘못 강화되지 않는지 확인한다.
@@ -528,6 +530,11 @@
   - [x] provider/model failure lesson이 민감한 error detail을 저장하지 않는지 확인한다.
   - [x] user가 직접 저장하기 전 pending lesson이 prompt context에 들어가지 않는지 확인한다.
   - [x] pending failure lesson title/content/source에서 API key, bearer token, password, access token, database URL을 redaction한다.
+
+- [x] 2026-06-18 E 재감사 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ProjectMemoryService_BuildContext|FullyQualifiedName~ProjectMemoryService_TouchRelevantLocalLessons|FullyQualifiedName~ExecutionLessonMemoryService|FullyQualifiedName~DesktopLearningSuggestionService" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 25, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
 
 ### F. Provider / Core 남은 감사
 

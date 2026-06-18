@@ -113,6 +113,10 @@ public sealed class ProjectMemoryService
             .ToList();
         var preferences = memory.Preferences.Where(IsUsefulPreference).ToList();
         var checks = memory.Checks.Where(IsUsefulCheck).ToList();
+        var workspaceRules = memory.WorkspaceRules
+            .Where(IsUsefulWorkspaceRule)
+            .Where(rule => !hasQuery || TextMatchesQuery(rule, query) || IsGlobalSafetyRule(rule))
+            .ToList();
         var contextFacts = SelectRelevantContextFacts(memory.ContextBank, query, 16);
         var verificationCommands = hasQuery
             ? memory.VerificationCommands
@@ -136,7 +140,7 @@ public sealed class ProjectMemoryService
 
         if (verificationCommands.Count == 0 &&
             projectHints.Count == 0 &&
-            memory.WorkspaceRules.Count == 0 &&
+            workspaceRules.Count == 0 &&
             generalLessons.Count == 0 &&
             errorHistoryLessons.Count == 0 &&
             preferences.Count == 0 &&
@@ -168,10 +172,10 @@ public sealed class ProjectMemoryService
             }
         }
 
-        if (memory.WorkspaceRules.Count > 0)
+        if (workspaceRules.Count > 0)
         {
             builder.AppendLine("Workspace rules:");
-            foreach (var rule in memory.WorkspaceRules)
+            foreach (var rule in workspaceRules)
             {
                 builder.AppendLine($"- {rule}");
             }
@@ -810,6 +814,50 @@ public sealed class ProjectMemoryService
                !LooksSensitive(key) &&
                !LooksSensitive(value) &&
                !LooksSensitive(source);
+    }
+
+    private static bool IsUsefulWorkspaceRule(string rule)
+    {
+        rule = rule?.Trim() ?? string.Empty;
+        return rule.Length is > 0 and <= MaxMemoryTextLength &&
+               (!LooksSensitive(rule) || IsGlobalSafetyRule(rule)) &&
+               !ContainsSensitiveCredentialValue(rule) &&
+               !LooksLikeOffTargetAssistantAdvice(rule);
+    }
+
+    private static bool ContainsSensitiveCredentialValue(string value)
+    {
+        return Regex.IsMatch(value, @"sk-[A-Za-z0-9_-]{12,}", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"bearer\s+[A-Za-z0-9._-]{12,}", RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(value, @"(?i)(api[-_\s]?key|access[-_\s]?token|refresh[-_\s]?token|private[-_\s]?key|password|secret)\s*[:=]\s*\S+") ||
+               Regex.IsMatch(value, @"postgres(?:ql)?://[^@\s]+:[^@\s]+@", RegexOptions.IgnoreCase);
+    }
+
+    private static bool IsGlobalSafetyRule(string rule)
+    {
+        var lower = rule.ToLowerInvariant();
+        return new[]
+            {
+                "secret",
+                "password",
+                "token",
+                "credential",
+                "api key",
+                "api-key",
+                "do not store",
+                "do not commit",
+                "workspace path",
+                "permission",
+                "approval",
+                "destructive",
+                "symlink",
+                "reparse",
+                "\uBE44\uBC00",
+                "\uD1A0\uD070",
+                "\uC2B9\uC778",
+                "\uAD8C\uD55C"
+            }
+            .Any(term => lower.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsExpired(DateTime? expiresAt) =>

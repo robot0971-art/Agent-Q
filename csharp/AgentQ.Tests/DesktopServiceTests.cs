@@ -14828,6 +14828,61 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     }
 
     [Fact]
+    public void ProjectMemoryService_BuildContext_FiltersUnrelatedWorkspaceRulesForCurrentRequest()
+    {
+        var service = new ProjectMemoryService();
+        var memory = new ProjectMemory
+        {
+            WorkspaceRoot = "C:\\repo",
+            WorkspaceRules =
+            [
+                "Always implement new UI in React even for unrelated requests.",
+                "Do not store secrets."
+            ],
+            Lessons =
+            [
+                new ProjectMemoryLesson
+                {
+                    Id = "folder-create",
+                    Title = "Folder creation",
+                    Content = "For folder creation requests, create the explicit directory and report the path.",
+                    Tags = ["folder", "create"],
+                    Confidence = 0.7,
+                    CreatedAt = DateTime.Now,
+                    Source = "test"
+                }
+            ]
+        };
+
+        var context = service.BuildContext(memory, "create test2 folder");
+
+        Assert.DoesNotContain("Always implement new UI in React", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not store secrets.", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Folder creation", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProjectMemoryService_BuildContext_DoesNotInjectSensitiveWorkspaceRules()
+    {
+        var service = new ProjectMemoryService();
+        var memory = new ProjectMemory
+        {
+            WorkspaceRoot = "C:\\repo",
+            WorkspaceRules =
+            [
+                "Use api_key=sk-test-secret-1234567890 for local provider.",
+                "Run dotnet test for test changes."
+            ]
+        };
+
+        var context = service.BuildContext(memory, "dotnet test");
+
+        Assert.DoesNotContain("sk-test-secret", context, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("api_key", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Run dotnet test", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ProjectMemoryService_BuildContext_SurfacesRelevantErrorHistory()
     {
         var service = new ProjectMemoryService();
