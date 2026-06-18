@@ -436,7 +436,12 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
         var sessionMemoryDeflectionRetryUsed = false;
-        var runtimePreviewRepairRetryUsed = false;
+        var runtimePreviewRepairAttempts = 0;
+        var runtimePreviewRepairFileChangeCount = 0;
+        var runtimePreviewLastFailureSignature = string.Empty;
+        var failedVerificationRepairAttempts = 0;
+        var failedVerificationRepairFileChangeCount = 0;
+        var failedVerificationLastSignature = string.Empty;
         var toolPolicy = turnState.ToolPolicy;
         var verificationPolicy = turnState.VerificationPolicy;
         var finalAnswerPolicy = turnState.FinalAnswerPolicy;
@@ -1221,7 +1226,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         finalImplementationVerification.Summary);
                 }
                 else if (pendingImplementationContract is { RequiresRuntimePreview: true } &&
-                         !HasRuntimePreviewEvidence(executedCommands, replayEntries, verificationPlans))
+                         !HasSuccessfulRuntimePreviewEvidence(replayEntries, verificationPlans))
                 {
                     toolCallbacks?.OnRunStep?.Invoke(
                         AgentRunState.RunningTool,
@@ -1248,28 +1253,41 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         Message: previewResult.LocalServer.Message));
                     if (!previewResult.Succeeded)
                     {
-                        if (!runtimePreviewRepairRetryUsed && step < maxToolSteps)
+                        var failureSignature = BuildRuntimePreviewFailureSignature(previewResult);
+                        var stopReason = GetRuntimePreviewRepairStopReason(
+                            runtimePreviewRepairAttempts,
+                            maximumAttempts: 3,
+                            runtimePreviewRepairFileChangeCount,
+                            fileChanges.Count,
+                            runtimePreviewLastFailureSignature,
+                            failureSignature);
+                        if (string.IsNullOrWhiteSpace(stopReason) && step < maxToolSteps)
                         {
-                            runtimePreviewRepairRetryUsed = true;
-                            var repairInstruction = BuildRuntimePreviewRepairInstruction(previewResult);
+                            runtimePreviewRepairAttempts++;
+                            runtimePreviewRepairFileChangeCount = fileChanges.Count;
+                            runtimePreviewLastFailureSignature = failureSignature;
+                            var repairInstruction = BuildRuntimePreviewRepairInstruction(
+                                previewResult,
+                                runtimePreviewRepairAttempts,
+                                maximumAttempts: 3);
                             builder.Clear();
                             _messages.Add(ChatMessage.UserText(repairInstruction));
                             toolCallbacks?.OnRunStep?.Invoke(
                                 AgentRunState.Planning,
-                                "Runtime preview repair: retry",
-                                previewResult.Summary);
+                                $"Runtime preview repair: retry {runtimePreviewRepairAttempts}/3",
+                                BuildRuntimePreviewRepairRunStepDetail(previewResult, runtimePreviewRepairAttempts, 3));
                             RecordDiagnostic(
                                 "guard_retry_runtime_preview_repair",
                                 effectiveWorkspaceRoot,
                                 config,
-                                $"trace={turnTraceId}; step={step}; instruction=\"{DesktopPromptBuilder.Truncate(repairInstruction.ReplaceLineEndings(" "), 900)}\"");
+                                $"trace={turnTraceId}; step={step}; attempt={runtimePreviewRepairAttempts}; signature=\"{DesktopPromptBuilder.Truncate(failureSignature, 500)}\"; instruction=\"{DesktopPromptBuilder.Truncate(repairInstruction.ReplaceLineEndings(" "), 900)}\"");
                             continue;
                         }
 
                         finalRunState = AgentRunState.Failed;
                         var replacementText =
                             "Implementation is not complete yet. Frontend scaffold completion requires localhost preview, DOM, and screenshot/visual verification evidence before AgentQ can report success. " +
-                            previewResult.Summary;
+                            BuildRuntimePreviewStoppedSummary(previewResult, runtimePreviewRepairAttempts, stopReason);
                         builder.Clear();
                         builder.Append(replacementText);
                         onDelta?.Invoke(replacementText);
@@ -1292,6 +1310,35 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         AgentRunState.Done,
                         "Final answer guard: replaced",
                         "The model's final answer did not match the recorded file changes, so AgentQ replaced it with a deterministic change summary.");
+                }
+                else if (finalAnswerPolicy.RequireEvidenceForCompletionClaims &&
+                         TryBuildFailedVerificationRepairInstruction(
+                             builder.ToString(),
+                             fileChanges,
+                             replayEntries,
+                             failedVerificationRepairAttempts,
+                             maximumAttempts: 2,
+                             failedVerificationRepairFileChangeCount,
+                             failedVerificationLastSignature,
+                             out var failedVerificationRepairInstruction,
+                             out var failedVerificationSignature,
+                             out var failedVerificationRepairStopReason))
+                {
+                    failedVerificationRepairAttempts++;
+                    failedVerificationRepairFileChangeCount = fileChanges.Count;
+                    failedVerificationLastSignature = failedVerificationSignature;
+                    builder.Clear();
+                    _messages.Add(ChatMessage.UserText(failedVerificationRepairInstruction));
+                    toolCallbacks?.OnRunStep?.Invoke(
+                        AgentRunState.Planning,
+                        $"Verification repair: retry {failedVerificationRepairAttempts}/2",
+                        DesktopPromptBuilder.Truncate(failedVerificationSignature, 700));
+                    RecordDiagnostic(
+                        "guard_retry_failed_verification_repair",
+                        effectiveWorkspaceRoot,
+                        config,
+                        $"trace={turnTraceId}; step={step}; attempt={failedVerificationRepairAttempts}; signature=\"{DesktopPromptBuilder.Truncate(failedVerificationSignature, 500)}\"; stopReason=\"{DesktopPromptBuilder.Truncate(failedVerificationRepairStopReason, 500)}\"");
+                    continue;
                 }
                 else if (finalAnswerPolicy.RequireEvidenceForCompletionClaims &&
                          TryBuildFailedEvidenceFinalReplacement(
@@ -2682,6 +2729,107 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return true;
     }
 
+    public static bool TryBuildFailedVerificationRepairInstruction(
+        string assistantText,
+        IReadOnlyList<FileChangeRecord> fileChanges,
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        int attempts,
+        int maximumAttempts,
+        int fileChangeCountAtLastRepair,
+        string previousFailureSignature,
+        out string instruction,
+        out string failureSignature,
+        out string stopReason)
+    {
+        instruction = string.Empty;
+        failureSignature = string.Empty;
+        stopReason = string.Empty;
+        if (string.IsNullOrWhiteSpace(assistantText) ||
+            replayEntries.Count == 0 ||
+            !LooksLikeUnsupportedSuccessClaim(assistantText) ||
+            MentionsFailure(assistantText))
+        {
+            return false;
+        }
+
+        var failedEntries = replayEntries
+            .Where(IsFailedVerificationEvidence)
+            .Take(6)
+            .ToList();
+        if (failedEntries.Count == 0)
+        {
+            return false;
+        }
+
+        failureSignature = BuildFailedVerificationSignature(failedEntries);
+        stopReason = GetRuntimePreviewRepairStopReason(
+            attempts,
+            maximumAttempts,
+            fileChangeCountAtLastRepair,
+            fileChanges.Count,
+            previousFailureSignature,
+            failureSignature);
+        if (!string.IsNullOrWhiteSpace(stopReason))
+        {
+            return false;
+        }
+
+        instruction = BuildFailedVerificationRepairInstruction(failedEntries, attempts + 1, maximumAttempts);
+        return true;
+    }
+
+    public static string BuildFailedVerificationRepairInstruction(
+        IReadOnlyList<ToolReplayEntry> failedEntries,
+        int attempt,
+        int maximumAttempts)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Build/test/verification evidence failed, so the implementation is not complete.");
+        builder.AppendLine($"Repair attempt {Math.Max(1, attempt)} of {Math.Max(1, maximumAttempts)}.");
+        builder.AppendLine("Retry now by inspecting the failed output, fixing the smallest likely cause, and rerunning the relevant build/test/verification command.");
+        builder.AppendLine("Do not claim completion until the failed command is rerun successfully and the new tool replay evidence shows success.");
+        builder.AppendLine();
+        builder.AppendLine("Failed evidence:");
+        foreach (var entry in failedEntries.Take(6))
+        {
+            builder.AppendLine($"- {entry.ToolName}: {ClassifyFailedVerificationEvidence(entry)}");
+            builder.AppendLine($"  {DesktopPromptBuilder.Truncate(entry.ResultPreview.ReplaceLineEndings(" "), 500)}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public static string BuildFailedVerificationSignature(IReadOnlyList<ToolReplayEntry> failedEntries)
+    {
+        return string.Join(
+            " | ",
+            failedEntries
+                .Select(entry => $"{entry.ToolName}:{ClassifyFailedVerificationEvidence(entry)}:{DesktopPromptBuilder.Truncate(entry.ResultPreview.ReplaceLineEndings(" ").ToLowerInvariant(), 240)}")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8));
+    }
+
+    public static string ClassifyFailedVerificationEvidence(ToolReplayEntry entry)
+    {
+        var text = $"{entry.ToolName} {entry.ResultPreview}".ToLowerInvariant();
+        if (ContainsAny(text, "npm run build", "vite build", "build failed", "build error", "compilation", "compiler"))
+        {
+            return "build-failure";
+        }
+
+        if (ContainsAny(text, "dotnet test", "npm test", "pytest", "test failed", "failed:", "assert", "xunit"))
+        {
+            return "test-failure";
+        }
+
+        if (string.Equals(entry.ToolName, "verify_project_scaffold", StringComparison.OrdinalIgnoreCase))
+        {
+            return "scaffold-verification-failure";
+        }
+
+        return "verification-failure";
+    }
+
     public static string BuildFileChangeStepLimitSummary(
         IReadOnlyList<FileChangeRecord> fileChanges,
         IReadOnlyList<string> executedCommands,
@@ -2829,14 +2977,22 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         return true;
     }
 
-    public static string BuildRuntimePreviewRepairInstruction(ImplementationRuntimePreviewResult result)
+    public static string BuildRuntimePreviewRepairInstruction(ImplementationRuntimePreviewResult result) =>
+        BuildRuntimePreviewRepairInstruction(result, attempt: 1, maximumAttempts: 3);
+
+    public static string BuildRuntimePreviewRepairInstruction(
+        ImplementationRuntimePreviewResult result,
+        int attempt,
+        int maximumAttempts)
     {
         var builder = new StringBuilder();
         builder.AppendLine("Runtime preview verification failed, so the implementation is not complete.");
+        builder.AppendLine($"Repair attempt {Math.Max(1, attempt)} of {Math.Max(1, maximumAttempts)}.");
         builder.AppendLine("Retry now by inspecting the relevant project files, fixing the smallest likely cause, and then report only after file edits and verification evidence exist.");
         builder.AppendLine("Do not claim completion until localhost preview, DOM evidence, desktop/mobile screenshot evidence, and console/visual checks pass.");
         builder.AppendLine();
         builder.AppendLine("Preview failure evidence:");
+        AppendPreviewRepairLine(builder, "Failure kind", ClassifyRuntimePreviewFailure(result));
         AppendPreviewRepairLine(builder, "URL", result.LocalServer.Url);
         AppendPreviewRepairLine(builder, "Command", result.LocalServer.Command);
         AppendPreviewRepairLine(builder, "Local server", result.LocalServer.Message);
@@ -2847,6 +3003,121 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         AppendPreviewRepairList(builder, "Visual findings", result.Preview.VisualFindings);
         AppendPreviewRepairList(builder, "Screenshot artifacts", result.Browser.ScreenshotArtifacts);
         return builder.ToString().TrimEnd();
+    }
+
+    public static string ClassifyRuntimePreviewFailure(ImplementationRuntimePreviewResult result)
+    {
+        if (!result.LocalServer.Succeeded)
+        {
+            return "dev-server-failure";
+        }
+
+        if (result.Preview.ConsoleErrors.Count > 0 || result.Browser.ConsoleErrors.Count > 0)
+        {
+            return "console-error";
+        }
+
+        if (result.Preview.VisualFindings.Any(IsBlankOrBrokenVisualFinding) ||
+            result.Browser.VisualFindings.Any(IsBlankOrBrokenVisualFinding))
+        {
+            return "blank-or-broken-screen";
+        }
+
+        if (!result.Preview.RootRendered || result.Preview.MissingDomRequirements.Count > 0)
+        {
+            return "missing-dom";
+        }
+
+        if (result.Preview.VisualFindings.Count > 0 || result.Browser.VisualFindings.Count > 0)
+        {
+            return "visual-finding";
+        }
+
+        return "preview-evidence-failure";
+    }
+
+    public static string BuildRuntimePreviewFailureSignature(ImplementationRuntimePreviewResult result)
+    {
+        var evidence = new[]
+            {
+                ClassifyRuntimePreviewFailure(result),
+                result.LocalServer.Message,
+                result.Preview.Summary
+            }
+            .Concat(result.Preview.MissingDomRequirements)
+            .Concat(result.Preview.ConsoleErrors)
+            .Concat(result.Preview.VisualFindings)
+            .Concat(result.Browser.ConsoleErrors)
+            .Concat(result.Browser.VisualFindings)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => Regex.Replace(item.Trim().ToLowerInvariant(), @"\s+", " "))
+            .Distinct(StringComparer.Ordinal)
+            .Take(16);
+        return string.Join(" | ", evidence);
+    }
+
+    public static string GetRuntimePreviewRepairStopReason(
+        int attempts,
+        int maximumAttempts,
+        int fileChangeCountAtLastRepair,
+        int currentFileChangeCount,
+        string previousFailureSignature,
+        string currentFailureSignature)
+    {
+        if (attempts >= maximumAttempts)
+        {
+            return $"runtime preview repair reached the maximum attempt count ({maximumAttempts}).";
+        }
+
+        if (attempts > 0 && currentFileChangeCount <= fileChangeCountAtLastRepair)
+        {
+            return "the last repair attempt did not record any file changes.";
+        }
+
+        if (attempts > 0 &&
+            !string.IsNullOrWhiteSpace(previousFailureSignature) &&
+            string.Equals(previousFailureSignature, currentFailureSignature, StringComparison.OrdinalIgnoreCase))
+        {
+            return "the same runtime preview failure repeated after repair.";
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildRuntimePreviewRepairRunStepDetail(
+        ImplementationRuntimePreviewResult result,
+        int attempt,
+        int maximumAttempts) =>
+        $"attempt={attempt}/{maximumAttempts}; failureKind={ClassifyRuntimePreviewFailure(result)}; {result.Summary}";
+
+    private static string BuildRuntimePreviewStoppedSummary(
+        ImplementationRuntimePreviewResult result,
+        int attempts,
+        string stopReason)
+    {
+        var reason = string.IsNullOrWhiteSpace(stopReason)
+            ? "runtime preview repair could not continue within the current model step budget."
+            : stopReason;
+        return $"Runtime preview repair stopped after {attempts} attempt(s): {reason} Last failure kind: {ClassifyRuntimePreviewFailure(result)}. {result.Summary}";
+    }
+
+    private static bool IsBlankOrBrokenVisualFinding(string finding)
+    {
+        var lower = finding.ToLowerInvariant();
+        return ContainsAny(
+            lower,
+            "blank",
+            "dark",
+            "black",
+            "empty",
+            "broken",
+            "clipping",
+            "overlap",
+            "missing ui",
+            "not visible",
+            "깨짐",
+            "빈 화면",
+            "검은 화면");
     }
 
     private static void AppendPreviewRepairLine(StringBuilder builder, string label, string value)
@@ -2899,6 +3170,38 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
              entry.ResultPreview.Contains("http://localhost:", StringComparison.OrdinalIgnoreCase) ||
              entry.ResultPreview.Contains("screenshot", StringComparison.OrdinalIgnoreCase) ||
              entry.ResultPreview.Contains("playwright", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public static bool HasSuccessfulRuntimePreviewEvidence(
+        IReadOnlyList<ToolReplayEntry> replayEntries,
+        IReadOnlyList<AgentVerificationPlan> verificationPlans)
+    {
+        _ = verificationPlans;
+        return replayEntries.Any(entry =>
+            string.Equals(entry.ToolName, "implementation_runtime_preview", StringComparison.OrdinalIgnoreCase) &&
+            entry.IsError != true &&
+            ReplayJsonSucceededTrue(entry.ResultPreview));
+    }
+
+    private static bool ReplayJsonSucceededTrue(string resultPreview)
+    {
+        if (string.IsNullOrWhiteSpace(resultPreview))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(resultPreview);
+            return document.RootElement.TryGetProperty("succeeded", out var succeeded) &&
+                   succeeded.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                   succeeded.GetBoolean();
+        }
+        catch (JsonException)
+        {
+            return resultPreview.Contains("\"succeeded\":true", StringComparison.OrdinalIgnoreCase) ||
+                   resultPreview.Contains("\"succeeded\": true", StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public static bool ShouldRunProjectScaffoldFallbackAfterPermissionDenied(

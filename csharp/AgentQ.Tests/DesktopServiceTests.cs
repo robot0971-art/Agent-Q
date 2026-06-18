@@ -8017,7 +8017,11 @@ public sealed class DesktopServiceTests
                 ["content"] = styleImplementation,
                 ["overwrite"] = true
             }),
-            StreamTextResponse("구현과 빌드가 완료되었습니다."));
+            StreamTextResponse("구현과 빌드가 완료되었습니다."),
+            StreamTextResponse("preview repair 후에도 로컬 preview evidence가 부족합니다."),
+            StreamTextResponse("preview evidence가 아직 부족합니다."),
+            StreamTextResponse("runtime preview 검증이 아직 실패했습니다."),
+            StreamTextResponse("완료로 보고하지 않고 실패 evidence를 보고합니다."));
         var service = CreateDesktopAgentService(httpClientFactory);
         var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
             toolName is "create_project_scaffold" or "verify_project_scaffold" or "write_file");
@@ -8032,7 +8036,7 @@ public sealed class DesktopServiceTests
                 DesktopAutoAttachWorkspaceContext = false,
                 DesktopAutoFetchLinks = false,
                 DesktopWorkMode = "Coding",
-                DesktopMaxToolSteps = 5
+                DesktopMaxToolSteps = 12
             },
             "럭셔리 의류 쇼핑몰 만들어줘",
             workspaceRoot: root,
@@ -8060,10 +8064,16 @@ public sealed class DesktopServiceTests
         Assert.Empty(sourceVerification.MissingRequirements);
         Assert.DoesNotContain("ShoppingCart is ready", appText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Implementation is not complete yet. ScaffoldReady is not task completion", result, StringComparison.Ordinal);
-        Assert.Contains("Implementation is not complete yet. Frontend scaffold completion requires localhost preview", result, StringComparison.Ordinal);
+        Assert.True(
+            result.Contains("Implementation is not complete yet. Frontend scaffold completion requires localhost preview", StringComparison.Ordinal) ||
+            result.Contains("프로젝트 생성이 아직 실제 파일 생성과 검증 증거로 확인되지 않았습니다", StringComparison.Ordinal),
+            result);
         Assert.Contains(runSteps, step => step.Title == "Scaffold ready: implementation required");
         Assert.Contains(runSteps, step => step.Title == "Runtime preview verification");
-        Assert.Contains(runSteps, step => step.Title == "Final answer guard: preview evidence missing");
+        Assert.Contains(runSteps, step => step.Title == "Runtime preview repair: retry 1/3");
+        Assert.Contains(runSteps, step =>
+            step.Title == "Final answer guard: preview evidence missing" ||
+            step.Title == "Task contract: rejected");
     }
 
     [Fact]
@@ -8176,8 +8186,9 @@ public sealed class DesktopServiceTests
         var appText = File.ReadAllText(Path.Combine(root, "src", "App.jsx"));
 
         Assert.Contains("repaired-preview", appText, StringComparison.Ordinal);
-        Assert.Contains(runSteps, step => step.Title == "Runtime preview repair: retry");
+        Assert.Contains(runSteps, step => step.Title == "Runtime preview repair: retry 1/3");
         Assert.Contains(runSteps, step => step.Title == "Runtime preview verification");
+        Assert.True(runSteps.Count(step => step.Title == "Runtime preview verification") >= 2);
         Assert.Contains("Implementation is not complete yet. Frontend scaffold completion requires localhost preview", result, StringComparison.Ordinal);
         Assert.True(permissionEnforcer.RequestedTools.Count(tool => tool == "write_file") >= 3);
     }
@@ -8223,6 +8234,120 @@ public sealed class DesktopServiceTests
         Assert.Contains("Uncaught Error: render failed", instruction, StringComparison.Ordinal);
         Assert.Contains("dark or blank", instruction, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".agentq/preview/desktop.png", instruction, StringComparison.Ordinal);
+        Assert.Contains("Do not claim completion", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopAgentService_ClassifiesRuntimePreviewFailuresAndStopsRepeatedRepair()
+    {
+        var result = new ImplementationRuntimePreviewResult
+        {
+            Succeeded = false,
+            LocalServer = new LocalServerStartResult
+            {
+                Succeeded = true,
+                Url = "http://127.0.0.1:5173/",
+                Command = "npm run dev",
+                Message = "Server responded."
+            },
+            Preview = new ImplementationPreviewVerificationResult
+            {
+                Succeeded = false,
+                RequiresPreviewEvidence = true,
+                RootRendered = true,
+                MissingDomRequirements = [],
+                ConsoleErrors = ["ReferenceError: ProductCard is not defined"],
+                VisualFindings = [],
+                Url = "http://127.0.0.1:5173/"
+            },
+            Browser = new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false,
+                ConsoleErrors = ["ReferenceError: ProductCard is not defined"]
+            }
+        };
+
+        var signature = DesktopAgentService.BuildRuntimePreviewFailureSignature(result);
+        var repeated = DesktopAgentService.GetRuntimePreviewRepairStopReason(
+            attempts: 1,
+            maximumAttempts: 3,
+            fileChangeCountAtLastRepair: 4,
+            currentFileChangeCount: 5,
+            previousFailureSignature: signature,
+            currentFailureSignature: signature);
+        var noChanges = DesktopAgentService.GetRuntimePreviewRepairStopReason(
+            attempts: 1,
+            maximumAttempts: 3,
+            fileChangeCountAtLastRepair: 4,
+            currentFileChangeCount: 4,
+            previousFailureSignature: "old",
+            currentFailureSignature: "new");
+
+        Assert.Equal("console-error", DesktopAgentService.ClassifyRuntimePreviewFailure(result));
+        Assert.Contains("productcard", signature, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("same runtime preview failure repeated", repeated, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("did not record any file changes", noChanges, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopAgentService_RequiresSuccessfulRuntimePreviewReplayEvidence()
+    {
+        var failedPreview = new ToolReplayEntry
+        {
+            StartedAt = DateTime.Now,
+            CompletedAt = DateTime.Now,
+            ToolName = "implementation_runtime_preview",
+            ToolUseId = "preview-failed",
+            InputJson = "{}",
+            ResultPreview = """{"succeeded":false,"url":"http://127.0.0.1:5173"}""",
+            IsError = true
+        };
+        var successfulPreview = new ToolReplayEntry
+        {
+            StartedAt = DateTime.Now,
+            CompletedAt = DateTime.Now,
+            ToolName = "implementation_runtime_preview",
+            ToolUseId = "preview-ok",
+            InputJson = "{}",
+            ResultPreview = """{"succeeded":true,"url":"http://127.0.0.1:5173"}""",
+            IsError = false
+        };
+
+        Assert.False(DesktopAgentService.HasSuccessfulRuntimePreviewEvidence([failedPreview], []));
+        Assert.True(DesktopAgentService.HasSuccessfulRuntimePreviewEvidence([failedPreview, successfulPreview], []));
+    }
+
+    [Fact]
+    public void DesktopAgentService_BuildsFailedBuildTestRepairInstruction()
+    {
+        var failedBuild = new ToolReplayEntry
+        {
+            StartedAt = DateTime.Now,
+            CompletedAt = DateTime.Now,
+            ToolName = "bash",
+            ToolUseId = "build-failed",
+            InputJson = """{"command":"npm run build"}""",
+            ResultPreview = "ExitCode: 1\nnpm run build\nvite build failed: ProductCard is not defined",
+            IsError = true
+        };
+
+        var shouldRepair = DesktopAgentService.TryBuildFailedVerificationRepairInstruction(
+            "구현이 완료되었습니다.",
+            [new FileChangeRecord { Path = "src/App.jsx", RelativePath = "src/App.jsx" }],
+            [failedBuild],
+            attempts: 0,
+            maximumAttempts: 2,
+            fileChangeCountAtLastRepair: 0,
+            previousFailureSignature: string.Empty,
+            out var instruction,
+            out var signature,
+            out var stopReason);
+
+        Assert.True(shouldRepair);
+        Assert.Empty(stopReason);
+        Assert.Contains("build-failure", signature, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Build/test/verification evidence failed", instruction, StringComparison.Ordinal);
+        Assert.Contains("npm run build", instruction, StringComparison.Ordinal);
         Assert.Contains("Do not claim completion", instruction, StringComparison.Ordinal);
     }
 
