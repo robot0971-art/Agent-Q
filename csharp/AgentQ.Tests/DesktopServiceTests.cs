@@ -8067,6 +8067,166 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopAgentService_RetriesImplementationAfterRuntimePreviewFailure()
+    {
+        var root = CreateTempDirectory();
+        const string firstAppImplementation =
+            """
+            import "./styles.css";
+
+            export default function App() {
+              return (
+                <main className="luxury atelier">
+                  <section className="hero lookbook">Luxury editorial collection</section>
+                  <article className="product card">
+                    <p className="price">$1,280</p>
+                    <button>Add to cart</button>
+                    <button>Wishlist</button>
+                  </article>
+                </main>
+              );
+            }
+            """;
+        const string repairedAppImplementation =
+            """
+            import "./styles.css";
+
+            export default function App() {
+              return (
+                <main className="luxury atelier repaired-preview">
+                  <section className="hero lookbook">Luxury editorial collection</section>
+                  <article className="product card">
+                    <p className="price">$1,280</p>
+                    <button>Add to cart</button>
+                    <button>Wishlist</button>
+                  </article>
+                </main>
+              );
+            }
+            """;
+        const string styleImplementation =
+            """
+            .luxury.atelier {
+              min-height: 100vh;
+            }
+            """;
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Action",
+                  "userGoal": "Create a luxury clothing shopping mall website.",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": true,
+                    "actionKind": "createProject",
+                    "target": "럭셔리 의류 쇼핑몰",
+                    "reason": "The user directly asked AgentQ to create this project now."
+                  },
+                  "requiresWrite": true,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.95
+                }
+                """),
+            StreamToolCallResponse("tool-write-app", "write_file", new Dictionary<string, object?>
+            {
+                ["path"] = "src/App.jsx",
+                ["content"] = firstAppImplementation,
+                ["overwrite"] = true
+            }),
+            StreamToolCallResponse("tool-write-style", "write_file", new Dictionary<string, object?>
+            {
+                ["path"] = "src/styles.css",
+                ["content"] = styleImplementation,
+                ["overwrite"] = true
+            }),
+            StreamTextResponse("구현이 완료되었습니다."),
+            StreamToolCallResponse("tool-repair-app", "write_file", new Dictionary<string, object?>
+            {
+                ["path"] = "src/App.jsx",
+                ["content"] = repairedAppImplementation,
+                ["overwrite"] = true
+            }),
+            StreamTextResponse("preview 실패 원인을 수정했습니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
+            toolName is "create_project_scaffold" or "verify_project_scaffold" or "write_file");
+        var runSteps = new List<(AgentRunState State, string Title, string? Detail)>();
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "runtime-preview-repair-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 8
+            },
+            "럭셔리 의류 쇼핑몰 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (state, title, detail) => runSteps.Add((state, title, detail))
+            });
+
+        var appText = File.ReadAllText(Path.Combine(root, "src", "App.jsx"));
+
+        Assert.Contains("repaired-preview", appText, StringComparison.Ordinal);
+        Assert.Contains(runSteps, step => step.Title == "Runtime preview repair: retry");
+        Assert.Contains(runSteps, step => step.Title == "Runtime preview verification");
+        Assert.Contains("Implementation is not complete yet. Frontend scaffold completion requires localhost preview", result, StringComparison.Ordinal);
+        Assert.True(permissionEnforcer.RequestedTools.Count(tool => tool == "write_file") >= 3);
+    }
+
+    [Fact]
+    public void DesktopAgentService_BuildsRuntimePreviewRepairInstruction()
+    {
+        var result = new ImplementationRuntimePreviewResult
+        {
+            Succeeded = false,
+            LocalServer = new LocalServerStartResult
+            {
+                Succeeded = true,
+                Url = "http://127.0.0.1:5173/",
+                Command = "npm run dev",
+                Message = "Server responded."
+            },
+            Preview = new ImplementationPreviewVerificationResult
+            {
+                Succeeded = false,
+                RequiresPreviewEvidence = true,
+                RootRendered = true,
+                MissingDomRequirements = ["missing DOM evidence: wishlist"],
+                ConsoleErrors = ["Uncaught Error: render failed"],
+                VisualFindings = ["desktop.png: Screenshot appears almost entirely dark or blank."],
+                Url = "http://127.0.0.1:5173/",
+                ScreenshotDirectory = ".agentq/preview"
+            },
+            Browser = new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false,
+                ScreenshotDirectory = ".agentq/preview",
+                ScreenshotArtifacts = [".agentq/preview/desktop.png", ".agentq/preview/mobile.png"],
+                ConsoleErrors = ["Uncaught Error: render failed"],
+                VisualFindings = ["desktop.png: Screenshot appears almost entirely dark or blank."]
+            },
+            DomSnapshotPath = ".agentq/preview/dom.html"
+        };
+
+        var instruction = DesktopAgentService.BuildRuntimePreviewRepairInstruction(result);
+
+        Assert.Contains("Runtime preview verification failed", instruction, StringComparison.Ordinal);
+        Assert.Contains("Uncaught Error: render failed", instruction, StringComparison.Ordinal);
+        Assert.Contains("dark or blank", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(".agentq/preview/desktop.png", instruction, StringComparison.Ordinal);
+        Assert.Contains("Do not claim completion", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ImplementationCompletionService_FailsLuxuryShopPlaceholderScaffold()
     {
         var root = CreateTempDirectory();

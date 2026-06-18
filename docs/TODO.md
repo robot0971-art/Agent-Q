@@ -260,6 +260,10 @@
   - [x] `PlaywrightImplementationPreviewBrowserVerifier`를 추가해 workspace-local Playwright로 localhost preview를 열고 desktop/mobile screenshot을 `.agentq/preview/`에 저장한다.
   - [x] browser-rendered DOM, console error, page error, screenshot artifact, visual finding을 `ImplementationPreviewVerificationResult`와 `implementation_runtime_preview` replay evidence에 연결했다.
   - [x] Playwright가 없거나 screenshot/console/visual evidence가 실패하면 preview completion을 실패 처리해 blank/dark/깨진 화면을 완료라고 말하지 못하게 했다.
+- [x] 4차 Preview failure repair retry
+  - [x] runtime preview 실패를 최종 실패 문구로만 끝내지 않고, 같은 turn 안에서 1회 repair instruction으로 provider tool loop에 되돌린다.
+  - [x] repair instruction은 URL, 실행 command, local server message, DOM snapshot, missing DOM evidence, console errors, visual findings, screenshot artifacts를 포함한다.
+  - [x] 반복 실패는 무한 루프가 아니라 기존 final-answer guard 실패로 보고한다.
 - [x] 회귀 테스트
   - [x] scaffold-only가 task complete로 처리되지 않는 테스트를 갱신했다.
   - [x] luxury clothing shop placeholder scaffold 실패 테스트를 추가했다.
@@ -269,6 +273,8 @@
   - [x] runtime preview service가 Node dev server를 시작하고 localhost DOM evidence/snapshot/replay를 남기는 테스트를 추가했다.
   - [x] runtime preview service가 browser screenshot evidence를 replay에 남기고 console/visual failure를 완료 차단 evidence로 쓰는 테스트를 추가했다.
   - [x] Playwright가 없는 workspace에서 browser verifier가 성공으로 위장하지 않는 테스트를 추가했다.
+  - [x] runtime preview 실패 후 provider가 같은 turn 안에서 추가 `write_file` repair를 수행하는 테스트를 추가했다.
+  - [x] runtime preview repair instruction이 console/visual/screenshot evidence를 포함하는 테스트를 추가했다.
 - [x] 2026-06-16 focused 검증
   - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall" --logger "console;verbosity=minimal"` 통과 7, 실패 0.
@@ -281,6 +287,10 @@
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationRuntimePreviewService|FullyQualifiedName~PlaywrightImplementationPreviewBrowserVerifier" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` exit code 0.
   - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a4-full.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 1136, 실패 0, 건너뜀 0.
+- [x] 2026-06-18 A5 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopAgentService_RetriesImplementationAfterRuntimePreviewFailure|FullyQualifiedName~DesktopAgentService_BuildsRuntimePreviewRepairInstruction" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 2, 실패 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~RuntimePreview|FullyQualifiedName~ImplementationRuntimePreviewService|FullyQualifiedName~PlaywrightImplementationPreviewBrowserVerifier" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` exit code 0.
 
 ### A2. Pending Plan / Guard UX 연속성
 

@@ -436,6 +436,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var genericGreetingRetryUsed = false;
         var emptyResponseRetryUsed = false;
         var sessionMemoryDeflectionRetryUsed = false;
+        var runtimePreviewRepairRetryUsed = false;
         var toolPolicy = turnState.ToolPolicy;
         var verificationPolicy = turnState.VerificationPolicy;
         var finalAnswerPolicy = turnState.FinalAnswerPolicy;
@@ -1247,6 +1248,24 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                         Message: previewResult.LocalServer.Message));
                     if (!previewResult.Succeeded)
                     {
+                        if (!runtimePreviewRepairRetryUsed && step < maxToolSteps)
+                        {
+                            runtimePreviewRepairRetryUsed = true;
+                            var repairInstruction = BuildRuntimePreviewRepairInstruction(previewResult);
+                            builder.Clear();
+                            _messages.Add(ChatMessage.UserText(repairInstruction));
+                            toolCallbacks?.OnRunStep?.Invoke(
+                                AgentRunState.Planning,
+                                "Runtime preview repair: retry",
+                                previewResult.Summary);
+                            RecordDiagnostic(
+                                "guard_retry_runtime_preview_repair",
+                                effectiveWorkspaceRoot,
+                                config,
+                                $"trace={turnTraceId}; step={step}; instruction=\"{DesktopPromptBuilder.Truncate(repairInstruction.ReplaceLineEndings(" "), 900)}\"");
+                            continue;
+                        }
+
                         finalRunState = AgentRunState.Failed;
                         var replacementText =
                             "Implementation is not complete yet. Frontend scaffold completion requires localhost preview, DOM, and screenshot/visual verification evidence before AgentQ can report success. " +
@@ -2808,6 +2827,48 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             "Retry now using valid JSON only. Keep each write/edit payload small; split large UI work into separate component/CSS files or smaller edits. " +
             "Do not claim completion until the file write/edit succeeds and build/implementation verification evidence exists.";
         return true;
+    }
+
+    public static string BuildRuntimePreviewRepairInstruction(ImplementationRuntimePreviewResult result)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Runtime preview verification failed, so the implementation is not complete.");
+        builder.AppendLine("Retry now by inspecting the relevant project files, fixing the smallest likely cause, and then report only after file edits and verification evidence exist.");
+        builder.AppendLine("Do not claim completion until localhost preview, DOM evidence, desktop/mobile screenshot evidence, and console/visual checks pass.");
+        builder.AppendLine();
+        builder.AppendLine("Preview failure evidence:");
+        AppendPreviewRepairLine(builder, "URL", result.LocalServer.Url);
+        AppendPreviewRepairLine(builder, "Command", result.LocalServer.Command);
+        AppendPreviewRepairLine(builder, "Local server", result.LocalServer.Message);
+        AppendPreviewRepairLine(builder, "Summary", result.Summary);
+        AppendPreviewRepairLine(builder, "DOM snapshot", result.DomSnapshotPath);
+        AppendPreviewRepairList(builder, "Missing DOM evidence", result.Preview.MissingDomRequirements);
+        AppendPreviewRepairList(builder, "Console errors", result.Preview.ConsoleErrors);
+        AppendPreviewRepairList(builder, "Visual findings", result.Preview.VisualFindings);
+        AppendPreviewRepairList(builder, "Screenshot artifacts", result.Browser.ScreenshotArtifacts);
+        return builder.ToString().TrimEnd();
+    }
+
+    private static void AppendPreviewRepairLine(StringBuilder builder, string label, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            builder.AppendLine($"- {label}: {DesktopPromptBuilder.Truncate(value.ReplaceLineEndings(" "), 500)}");
+        }
+    }
+
+    private static void AppendPreviewRepairList(StringBuilder builder, string label, IReadOnlyList<string> values)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        builder.AppendLine($"- {label}:");
+        foreach (var value in values.Where(item => !string.IsNullOrWhiteSpace(item)).Take(8))
+        {
+            builder.AppendLine($"  - {DesktopPromptBuilder.Truncate(value.ReplaceLineEndings(" "), 500)}");
+        }
     }
 
     public static bool HasRuntimePreviewEvidence(

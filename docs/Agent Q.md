@@ -110,6 +110,8 @@ The final-answer guard blocks completion when the implementation contract is sti
 
 `ImplementationRuntimePreviewService` provides the deterministic preview path: it starts or reuses the local server through `DesktopLocalServerService`, verifies that the localhost URL responds, then attempts workspace-local Playwright browser verification. When Playwright is available it captures desktop and mobile screenshots under `.agentq/preview/`, collects browser console/page errors, stores the browser-rendered DOM snapshot, and records `implementation_runtime_preview` replay evidence. Missing Playwright support, console errors, or screenshot visual findings are treated as failed preview evidence instead of completion evidence.
 
+When runtime preview fails, `DesktopAgentService` returns the concrete preview evidence to the provider loop once as a repair instruction. The repair prompt includes the URL, command, local-server message, DOM snapshot, missing DOM evidence, console errors, visual findings, and screenshot artifacts. If the follow-up repair still fails preview evidence, the final-answer guard reports the failed verification instead of looping indefinitely or claiming completion.
+
 ## Local Server Mode
 
 Local server requests use `TaskContract` and `DesktopLocalServerService`:
