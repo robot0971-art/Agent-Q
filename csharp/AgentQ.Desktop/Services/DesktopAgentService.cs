@@ -86,6 +86,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ExecutionLessonMemoryService _executionLessonMemoryService = new();
     private readonly DesktopLocalServerService _localServerService;
     private readonly ImplementationRuntimePreviewService _implementationRuntimePreviewService;
+    private readonly FrontendPackageRepairService _frontendPackageRepairService;
     private readonly DesktopDiagnosticsService _diagnosticsService;
     private readonly ITool? _webSearchTool;
     private readonly TaskExecutor _taskExecutor;
@@ -104,6 +105,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         WorkspaceAnalysisService workspaceAnalysisService,
         DesktopLocalServerService? localServerService = null,
         ImplementationRuntimePreviewService? implementationRuntimePreviewService = null,
+        FrontendPackageRepairService? frontendPackageRepairService = null,
         SystemSkillService? systemSkillService = null,
         DesktopDiagnosticsService? diagnosticsService = null,
         ITool? webSearchTool = null)
@@ -121,6 +123,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _systemSkillService = systemSkillService ?? new SystemSkillService();
         _localServerService = localServerService ?? new DesktopLocalServerService(httpClientFactory);
         _implementationRuntimePreviewService = implementationRuntimePreviewService ?? new ImplementationRuntimePreviewService(_localServerService, httpClientFactory);
+        _frontendPackageRepairService = frontendPackageRepairService ?? new FrontendPackageRepairService();
         _diagnosticsService = diagnosticsService ?? new DesktopDiagnosticsService();
         _webSearchTool = webSearchTool;
         
@@ -1261,6 +1264,20 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     if (!previewResult.Succeeded)
                     {
                         var failureSignature = BuildRuntimePreviewFailureSignature(previewResult);
+                        if (await TryRunDeterministicPackageRepairAsync(
+                                previewResult,
+                                effectiveWorkspaceRoot,
+                                fileChanges,
+                                replayEntries,
+                                toolCallbacks,
+                                config,
+                                turnTraceId,
+                                ct))
+                        {
+                            builder.Clear();
+                            continue;
+                        }
+
                         var stopReason = GetRuntimePreviewRepairStopReason(
                             runtimePreviewRepairAttempts,
                             maximumAttempts: 3,
@@ -3039,6 +3056,93 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         AppendPreviewRepairList(builder, "Console errors", result.Preview.ConsoleErrors);
         AppendPreviewRepairList(builder, "Visual findings", result.Preview.VisualFindings);
         AppendPreviewRepairList(builder, "Screenshot artifacts", result.Browser.ScreenshotArtifacts);
+        return builder.ToString().TrimEnd();
+    }
+
+    private async Task<bool> TryRunDeterministicPackageRepairAsync(
+        ImplementationRuntimePreviewResult previewResult,
+        string workspaceRoot,
+        List<FileChangeRecord> fileChanges,
+        List<ToolReplayEntry> replayEntries,
+        DesktopToolCallbacks? callbacks,
+        ProviderConfiguration config,
+        string turnTraceId,
+        CancellationToken ct)
+    {
+        var failureKind = ClassifyRuntimePreviewFailure(previewResult);
+        if (!failureKind.Equals("missing-npm-script", StringComparison.OrdinalIgnoreCase) &&
+            !failureKind.Equals("missing-dependency", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var packageJsonPath = Path.Combine(workspaceRoot, "package.json");
+        var snapshot = File.Exists(packageJsonPath) && WorkspacePathResolver.IsResolvedInsideWorkspace(workspaceRoot, packageJsonPath)
+            ? new FileSnapshot(packageJsonPath, true, await ReadSnapshotTextAsync(packageJsonPath, ct))
+            : null;
+        callbacks?.OnRunStep?.Invoke(
+            AgentRunState.RunningTool,
+            "Deterministic package repair",
+            $"Detected {failureKind}; checking package.json before model repair.");
+
+        var repairResult = await _frontendPackageRepairService.RepairViteReactPackageAsync(
+            workspaceRoot,
+            failureKind,
+            ct);
+        replayEntries.Add(FrontendPackageRepairService.CreateReplayEntry(repairResult));
+
+        if (!repairResult.Changed)
+        {
+            callbacks?.OnRunStep?.Invoke(
+                repairResult.Succeeded ? AgentRunState.Planning : AgentRunState.Failed,
+                "Deterministic package repair: skipped",
+                repairResult.Summary);
+            RecordDiagnostic(
+                "deterministic_package_repair_skipped",
+                workspaceRoot,
+                config,
+                $"trace={turnTraceId}; kind={failureKind}; summary=\"{DesktopPromptBuilder.Truncate(repairResult.Summary.ReplaceLineEndings(" "), 500)}\"");
+            return false;
+        }
+
+        var change = await BuildFileChangeRecordAsync(snapshot, workspaceRoot, ct);
+        if (change != null)
+        {
+            fileChanges.Add(change);
+            callbacks?.OnFileChanged?.Invoke(change);
+            callbacks?.OnRunStep?.Invoke(
+                AgentRunState.RecordingChanges,
+                "Evidence: package.json repaired",
+                $"{change.RelativePath} ({change.Summary})");
+        }
+
+        var instruction = BuildDeterministicPackageRepairFollowUpInstruction(repairResult);
+        _messages.Add(ChatMessage.UserText(instruction));
+        callbacks?.OnRunStep?.Invoke(
+            AgentRunState.Planning,
+            "Package repair verification required",
+            string.Join(Environment.NewLine, repairResult.SuggestedCommands));
+        RecordDiagnostic(
+            "deterministic_package_repair_applied",
+            workspaceRoot,
+            config,
+            $"trace={turnTraceId}; kind={failureKind}; patched=\"{string.Join(",", repairResult.PatchedFields)}\"; commands=\"{string.Join(" && ", repairResult.SuggestedCommands)}\"");
+        return true;
+    }
+
+    private static string BuildDeterministicPackageRepairFollowUpInstruction(FrontendPackageRepairResult result)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("AgentQ deterministically patched package.json for a Vite/React package/script/dependency failure.");
+        builder.AppendLine(result.Summary);
+        builder.AppendLine("Do not report completion from the package.json edit alone.");
+        builder.AppendLine("Next, use the normal permissioned shell/tool path to run the verification commands below, then continue runtime preview verification:");
+        foreach (var command in result.SuggestedCommands)
+        {
+            builder.AppendLine($"- {command}");
+        }
+
+        builder.AppendLine("If install, build, or preview still fails, repair the concrete error with file changes and keep replay evidence.");
         return builder.ToString().TrimEnd();
     }
 

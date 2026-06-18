@@ -8241,6 +8241,170 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task FrontendPackageRepairService_PatchesMissingViteReactScriptsAndDependencies()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "index.html"), """<script type="module" src="/src/main.jsx"></script>""");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.jsx"), """import React from "react";""");
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"name":"shop","private":true}""");
+        var service = new FrontendPackageRepairService();
+
+        var result = await service.RepairViteReactPackageAsync(root, "missing-dependency");
+        var patched = await File.ReadAllTextAsync(Path.Combine(root, "package.json"));
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.Changed);
+        Assert.Contains("scripts.dev", result.PatchedFields);
+        Assert.Contains("scripts.build", result.PatchedFields);
+        Assert.Contains("dependencies.react", result.PatchedFields);
+        Assert.Contains("dependencies.react-dom", result.PatchedFields);
+        Assert.Contains("devDependencies.vite", result.PatchedFields);
+        Assert.Contains("devDependencies.@vitejs/plugin-react", result.PatchedFields);
+        Assert.Contains("\"dev\": \"vite --host 127.0.0.1\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"build\": \"vite build\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"react-dom\": \"latest\"", patched, StringComparison.Ordinal);
+        Assert.Contains("npm install", result.SuggestedCommands);
+        Assert.Contains("npm run build", result.SuggestedCommands);
+    }
+
+    [Fact]
+    public async Task FrontendPackageRepairService_DoesNotOverwriteExistingPackageFields()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "vite.config.js"), """import react from "@vitejs/plugin-react";""");
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "package.json"),
+            """
+            {
+              "scripts": {
+                "dev": "custom-dev",
+                "build": "custom-build"
+              },
+              "dependencies": {
+                "react": "18.2.0",
+                "react-dom": "18.2.0"
+              },
+              "devDependencies": {
+                "vite": "5.0.0",
+                "@vitejs/plugin-react": "4.0.0"
+              }
+            }
+            """);
+        var service = new FrontendPackageRepairService();
+
+        var result = await service.RepairViteReactPackageAsync(root, "missing-dependency");
+        var patched = await File.ReadAllTextAsync(Path.Combine(root, "package.json"));
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.Changed);
+        Assert.DoesNotContain(result.PatchedFields, field => field.Contains("scripts", StringComparison.Ordinal));
+        Assert.Contains("\"dev\": \"custom-dev\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"build\": \"custom-build\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"react\": \"18.2.0\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"vite\": \"5.0.0\"", patched, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FrontendPackageRepairService_SkipsWhenFrameworkIsUnclear()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"name":"plain-node"}""");
+        var service = new FrontendPackageRepairService();
+
+        var result = await service.RepairViteReactPackageAsync(root, "missing-dependency");
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.Changed);
+        Assert.Empty(result.PatchedFields);
+        Assert.Equal("""{"name":"plain-node"}""", await File.ReadAllTextAsync(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task FrontendPackageRepairService_DoesNotReplaceNonObjectManifestFields()
+    {
+        var root = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root, "vite.config.js"), """import react from "@vitejs/plugin-react";""");
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"scripts":"custom","dependencies":{"react":"18.2.0"}}""");
+        var service = new FrontendPackageRepairService();
+
+        var result = await service.RepairViteReactPackageAsync(root, "missing-dependency");
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.Changed);
+        Assert.Contains(result.Warnings, warning => warning.Contains("scripts", StringComparison.Ordinal));
+        Assert.Equal("""{"scripts":"custom","dependencies":{"react":"18.2.0"}}""", await File.ReadAllTextAsync(Path.Combine(root, "package.json")));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_DeterministicPackageRepairRecordsReplayAndFileChange()
+    {
+        var root = CreateTempDirectory();
+        Directory.CreateDirectory(Path.Combine(root, "src"));
+        await File.WriteAllTextAsync(Path.Combine(root, "index.html"), """<script type="module" src="/src/main.jsx"></script>""");
+        await File.WriteAllTextAsync(Path.Combine(root, "src", "main.jsx"), """import React from "react";""");
+        await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"name":"shop","private":true}""");
+        var service = CreateDesktopAgentService(new StubHttpClientFactory("{}"));
+        var previewResult = new ImplementationRuntimePreviewResult
+        {
+            Succeeded = false,
+            LocalServer = new LocalServerStartResult
+            {
+                Succeeded = false,
+                Command = "npm run dev",
+                Message = "Error: Cannot find module '@vitejs/plugin-react'"
+            },
+            Preview = new ImplementationPreviewVerificationResult
+            {
+                Succeeded = false,
+                RequiresPreviewEvidence = true,
+                RootRendered = false,
+                MissingDomRequirements = [],
+                ConsoleErrors = [],
+                VisualFindings = []
+            },
+            Browser = new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false
+            }
+        };
+        var fileChanges = new List<FileChangeRecord>();
+        var replayEntries = new List<ToolReplayEntry>();
+        var runSteps = new List<(AgentRunState State, string Title, string? Detail)>();
+
+        var method = typeof(DesktopAgentService).GetMethod(
+            "TryRunDeterministicPackageRepairAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var task = (Task<bool>)method.Invoke(
+            service,
+            [
+                previewResult,
+                root,
+                fileChanges,
+                replayEntries,
+                new DesktopToolCallbacks
+                {
+                    OnRunStep = (state, title, detail) => runSteps.Add((state, title, detail))
+                },
+                new ProviderConfiguration(),
+                "test-trace",
+                CancellationToken.None
+            ])!;
+
+        var continued = await task;
+
+        Assert.True(continued);
+        Assert.Contains(fileChanges, change => change.RelativePath == "package.json");
+        Assert.Contains(replayEntries, entry => entry.ToolName == "frontend_package_repair" && !entry.IsError);
+        Assert.Contains(runSteps, step => step.Title == "Package repair verification required");
+        var patched = await File.ReadAllTextAsync(Path.Combine(root, "package.json"));
+        Assert.Contains("\"@vitejs/plugin-react\": \"latest\"", patched, StringComparison.Ordinal);
+        Assert.Contains("\"dev\": \"vite --host 127.0.0.1\"", patched, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DesktopAgentService_ClassifiesRuntimePreviewFailuresAndStopsRepeatedRepair()
     {
         var result = new ImplementationRuntimePreviewResult

@@ -276,6 +276,13 @@
   - [x] dependency/package/script 복구는 `package.json` 우선 확인, `npm install`/`npm run build`/`npm run dev` 재검증, workspace/permission/replay evidence 보존을 명시한다.
   - [x] React runtime/import/JSX 복구는 관련 `src/*` 파일 우선 확인, placeholder 대체 금지, build/preview 재검증을 명시한다.
   - [x] blank/dark/mobile visual 복구는 mount/CSS/responsive layout/screenshot 재검증 전략을 명시한다.
+- [x] 7차 package/script/dependency deterministic repair
+  - [x] `FrontendPackageRepairService`를 추가해 확실한 Vite/React workspace에서만 root `package.json`을 구조적으로 파싱하고 패치한다.
+  - [x] missing npm script/dependency preview failure에서 `scripts.dev`, `scripts.build`, `dependencies.react`, `dependencies.react-dom`, `devDependencies.vite`, `devDependencies.@vitejs/plugin-react` 누락을 진단한다.
+  - [x] 기존 script/dependency 값은 덮어쓰지 않고 누락 필드만 추가한다.
+  - [x] framework evidence가 부족하거나 `package.json`이 없거나 malformed이면 silent write 없이 기존 A7 repair instruction 경로로 fallback한다.
+  - [x] deterministic package patch를 `DesktopAgentService` runtime preview repair loop에 연결하고 `frontend_package_repair` replay evidence와 file mutation snapshot을 남긴다.
+  - [x] package patch 자체를 완료 evidence로 보지 않고, permission 기반 `npm install`/`npm run build`/`npm run dev` 및 runtime preview 재검증을 다음 loop에 요구한다.
 - [x] 회귀 테스트
   - [x] scaffold-only가 task complete로 처리되지 않는 테스트를 갱신했다.
   - [x] luxury clothing shop placeholder scaffold 실패 테스트를 추가했다.
@@ -292,6 +299,8 @@
   - [x] failed build/test replay evidence가 repair instruction으로 변환되는 테스트를 추가했다.
   - [x] runtime preview와 build/test failure가 케이스별 repair strategy를 포함하는지 테스트를 추가했다.
   - [x] missing script/dependency, React runtime error, import/export mismatch, JSX syntax error, mobile visual layout failure 분류 테스트를 추가했다.
+  - [x] Vite/React package repair가 누락 scripts/dependencies를 추가하고 기존 값을 덮어쓰지 않으며 framework가 불명확하면 skip하는 테스트를 추가했다.
+  - [x] DesktopAgentService deterministic package repair가 replay evidence와 file mutation snapshot을 기록하는 테스트를 추가했다.
 - [x] 2026-06-16 focused 검증
   - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~DesktopAgentService_BuildsRetryInstructionForMalformedToolInput|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall" --logger "console;verbosity=minimal"` 통과 7, 실패 0.
@@ -318,6 +327,11 @@
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ClassifiesRuntimePreviewRepairCases|FullyQualifiedName~ClassifiesMobileVisualLayoutFailure|FullyQualifiedName~ClassifiesBuildTestRepairCases|FullyQualifiedName~BuildsRuntimePreviewRepairInstruction|FullyQualifiedName~BuildsFailedBuildTestRepairInstruction|FullyQualifiedName~DesktopAgentService_SmokeLuxuryShopScaffoldContinuesIntoImplementationAndPreviewGate|FullyQualifiedName~RuntimePreviewRepair|FullyQualifiedName~FailedBuildTestRepair|FullyQualifiedName~SuccessfulRuntimePreviewReplayEvidence|FullyQualifiedName~ClassifiesRuntimePreviewFailuresAndStopsRepeatedRepair|FullyQualifiedName~RetriesImplementationAfterRuntimePreviewFailure" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 16, 실패 0.
   - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
   - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a7-full.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal /p:UseSharedCompilation=false /p:NodeReuse=false /m:1`는 wrapper timeout 124를 반환했지만, 생성된 `agentq-a7-full.trx`는 `Completed`, 통과 1151, 실패 0, 건너뜀 0으로 기록됐다.
+- [x] 2026-06-18 A8 focused 검증
+  - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~FrontendPackageRepairService|FullyQualifiedName~DesktopAgentService_DeterministicPackageRepairRecordsReplayAndFileChange" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 5, 실패 0.
+  - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+  - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ClassifiesRuntimePreviewRepairCases|FullyQualifiedName~ClassifiesBuildTestRepairCases|FullyQualifiedName~BuildsRuntimePreviewRepairInstruction|FullyQualifiedName~BuildsFailedBuildTestRepairInstruction|FullyQualifiedName~FrontendPackageRepairService|FullyQualifiedName~DesktopAgentService_DeterministicPackageRepairRecordsReplayAndFileChange" --logger "console;verbosity=normal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과 16, 실패 0.
 
 ### A2. Pending Plan / Guard UX 연속성
 
