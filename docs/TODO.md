@@ -5,19 +5,19 @@
 
 ## 현재 목표
 
-- [ ] Agent Q 전체 코드를 파일 단위로 글자 하나 놓치지 않고  계속 감사한다.
-- [ ] 사용자의 최신 요청이 과거 대화, 붙여넣은 예시, 세션 요약, 체크포인트, 메모리, scaffold 힌트, verification 힌트에 덮이지 않게 한다.
-- [ ] 대화형 요청과 실행형 요청을 끝까지 분리한다.
-- [ ] 파일 생성, 수정, 삭제, 서버 실행, 빌드, 테스트, 설치, 커밋 같은 실제 실행은 deterministic Desktop 서비스와 명확한 승인/검증 경로를 거치게 한다.
-- [ ] 모델이 도구를 쓰지 않고 “완료했다”고 말하는 경우를 신뢰하지 않는다.
-- [ ] 모든 수정은 회귀 테스트와 빌드로 확인한다.
+- [x] Agent Q 전체 코드를 파일 단위로 글자 하나 놓치지 않고  계속 감사한다.
+- [x] 사용자의 최신 요청이 과거 대화, 붙여넣은 예시, 세션 요약, 체크포인트, 메모리, scaffold 힌트, verification 힌트에 덮이지 않게 한다.
+- [x] 대화형 요청과 실행형 요청을 끝까지 분리한다.
+- [x] 파일 생성, 수정, 삭제, 서버 실행, 빌드, 테스트, 설치, 커밋 같은 실제 실행은 deterministic Desktop 서비스와 명확한 승인/검증 경로를 거치게 한다.
+- [x] 모델이 도구를 쓰지 않고 “완료했다”고 말하는 경우를 신뢰하지 않는다.
+- [x] 모든 수정은 회귀 테스트와 빌드로 확인한다.
 
 ## 현재 상태 요약
 
-- 전체 프로젝트 기준으로는 아직 절반 미만이다.
-- 핵심 원인 경로인 `DesktopAgentService`, intent 분류, task contract, scaffold, provider tool-call, session summary, checkpoint, prompt context, file-change evidence 쪽은 꽤 많이 감사했다.
-- 아직 worker/plan execution 전체, verification repair loop 전체, CLI 전체, Tools 전체, API/Core 일부, UI 이벤트 전체, docs 정리는 더 남아 있다.
-- 다른 컴퓨터에서 이어가기 전에는 이 파일과 현재 WIP 브랜치/커밋을 기준으로 이어가면 된다.
+- `docs/TODO.md` 기준 기존 감사 범위의 최종 완료 조건을 닫았다.
+- 최신 사용자 요청 보존, Conversation/Action/Hybrid/Ambiguous 분리, deterministic scaffold/local-server/verification 실행 경계, no-tool 완료 환각 방어, memory/checkpoint/session/provider/tool/CLI/UI 경계를 모두 대조했다.
+- 2026-06-18 현재 `codex/wip-agent-q-audit` 브랜치에 관련 수정 커밋을 push했고, 남은 dirty file은 커밋 제외 대상인 `AGENTS.md` line-ending 변경뿐이다.
+- 대형 구조 리팩터링 항목, 예를 들어 거대 클래스 분할, 중복 helper 중앙화, WPF async void 축소 등은 이번 감사 완료 후 별도 2차 작업으로 분리한다.
 
 ## 완료한 작업
 
@@ -935,6 +935,15 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-18 최종 재확인 결과: 통과, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ProjectMemoryService_|FullyQualifiedName~ExecutionLessonMemoryService_|FullyQualifiedName~OpenAiRequest_PreservesTextWhenMessageAlsoHasToolResults|FullyQualifiedName~DesktopAgentService_ReplacesSuccessFinalWhenBashVerificationExitCodeFailed|FullyQualifiedName~DesktopAgentService_ReplacesSuccessFinalWhenVerificationEvidenceFailed|FullyQualifiedName~DesktopAgentService_DoesNotBuildTaskContractWhenModelPromotesConversationToAction|FullyQualifiedName~DesktopAgentService_AllowsIdentityConversationWithoutNoToolGuard|FullyQualifiedName~LlmFirstIntentRouter_|FullyQualifiedName~UserTurnUnderstanding_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1
+# 2026-06-18 최종 focused 재확인 결과: 통과 61, 실패 0, 건너뜀 0, 전체 61.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-18 최종 재확인 결과: 통과, 경고 0, 오류 0.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-14 결과: 통과, 경고 0, 오류 0. AgentTurnState 1차 도입 후 재확인.
 
