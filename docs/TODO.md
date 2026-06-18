@@ -306,10 +306,18 @@
   - [x] `write_file`/`edit_file` tool input JSON이 중간에 끊기면 실행하지 않고 failed tool result를 남기는 현재 방어는 유지한다.
   - [x] 같은 turn 안에서 모델에게 "tool input JSON이 malformed였으니 더 작은 chunk/file 단위로 다시 호출하라"는 자동 retry instruction을 주입한다.
   - [x] 2회 이상 같은 파일/도구에서 JSON parse failure가 반복되면 사용자에게 명확한 실패와 재시도 옵션을 보여준다.
-- [ ] scaffold UX smoke test를 추가한다.
-  - [ ] "럭셔리 의류 쇼핑몰"처럼 구체적인 greenfield 요청에서 Vite 껍데기만 만들고 `ShoppingCart is ready` 수준으로 멈추지 않게 한다.
-  - [ ] scaffold 후 provider implementation loop 또는 worker step이 실제 `src/App.jsx`/style 구현까지 이어지는지 확인한다.
-  - [ ] build success만으로 "사용자 요청 구현 완료"라고 보지 않고, 주요 UI 요구사항이 파일 내용에 반영됐는지 evidence를 요구한다.
+- [x] scaffold UX smoke test를 추가한다.
+  - [x] "럭셔리 의류 쇼핑몰"처럼 구체적인 greenfield 요청에서 Vite 껍데기만 만들고 `ShoppingCart is ready` 수준으로 멈추지 않게 한다.
+  - [x] scaffold 후 provider implementation loop가 실제 `src/App.jsx`/`src/styles.css` 구현까지 이어지는지 확인한다.
+  - [x] build success만으로 "사용자 요청 구현 완료"라고 보지 않고, 상품 카드, 가격, 장바구니, 위시리스트, hero/lookbook, luxury visual language가 파일 내용에 반영됐는지 evidence를 요구한다.
+  - [x] source evidence가 통과해도 localhost preview/DOM evidence가 없으면 `Final answer guard: preview evidence missing`으로 완료를 막는 smoke test를 추가했다.
+  - [x] 한국어 `럭셔리 의류 쇼핑몰 만들어줘` 요청을 `UserIntentTranslator`와 `ProjectScaffoldPlanner`가 concrete `CreateProject` / `shopping-cart` greenfield 요청으로 인식하도록 회귀 테스트를 추가했다.
+  - [x] 2026-06-18 focused 검증
+    - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --filter "FullyQualifiedName~DesktopAgentService_SmokeLuxuryShopScaffoldContinuesIntoImplementationAndPreviewGate|FullyQualifiedName~UserIntentTranslator_RecognizesConcreteKoreanLuxuryShopProjectRequest|FullyQualifiedName~ProjectScaffoldPlanner_BuildsViteReactPlanForCommonKoreanWebApps" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과 14, 실패 0.
+    - [x] `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+    - [x] `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과, 경고 0, 오류 0.
+    - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopAgentService_SmokeLuxuryShopScaffoldContinuesIntoImplementationAndPreviewGate|FullyQualifiedName~ImplementationCompletionService_|FullyQualifiedName~ImplementationRuntimePreviewService_StartsServerAndVerifiesDomEvidence|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeCreatesProjectBeforeModelCall|FullyQualifiedName~DesktopAgentService_SafeScaffoldModeUsesDesktopServiceEvenWhenProviderConfigured|FullyQualifiedName~DesktopAgentService_RequiresRuntimePreviewEvidenceForFrontendCompletion|FullyQualifiedName~UserIntentTranslator_RecognizesConcreteKoreanLuxuryShopProjectRequest|FullyQualifiedName~ProjectScaffoldPlanner_BuildsViteReactPlanForCommonKoreanWebApps" --logger "console;verbosity:minimal"` exit code 0.
+    - [x] `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --logger "trx;LogFileName=agentq-a3-full.trx" --results-directory csharp\AgentQ.Tests\TestResults --verbosity:minimal` 통과 1134, 실패 0, 건너뜀 0.
 
 ### A. 전체 감사 진행 방식
 

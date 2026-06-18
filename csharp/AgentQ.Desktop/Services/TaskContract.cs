@@ -394,7 +394,7 @@ public static class UserIntentTranslator
     private static bool IsCreateProjectRequest(string normalized)
     {
         return HasExecutionCreateVerb(normalized) &&
-               ContainsAny(normalized, "project", "app", "website", "site", "web", "webapp", "react", "vite", "wordbook", "glossary", "homepage", "portfolio", "landingpage", "blog", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uD648\uD398\uC774\uC9C0", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uB79C\uB529", "\uBE14\uB85C\uADF8", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1") &&
+               ContainsAny(normalized, "project", "app", "website", "site", "web", "webapp", "react", "vite", "wordbook", "glossary", "homepage", "portfolio", "landingpage", "blog", "shopping", "shop", "store", "mall", "commerce", "clothing", "fashion", "apparel", "\uD504\uB85C\uC81D\uD2B8", "\uC571", "\uC6F9\uC0AC\uC774\uD2B8", "\uC0AC\uC774\uD2B8", "\uC6F9", "\uD648\uD398\uC774\uC9C0", "\uD3EC\uD2B8\uD3F4\uB9AC\uC624", "\uB79C\uB529", "\uBE14\uB85C\uADF8", "\uB2E8\uC5B4\uC7A5", "\uC6A9\uC5B4\uC9D1", "\uC1FC\uD551", "\uC1FC\uD551\uBAB0", "\uC0C1\uC810", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC758\uB958", "\uD328\uC158") &&
                !IsConsultativeRequest(normalized);
     }
 

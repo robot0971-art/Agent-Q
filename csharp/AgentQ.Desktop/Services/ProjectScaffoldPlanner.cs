@@ -916,6 +916,7 @@ public sealed class ProjectScaffoldPlanner
         "wordbook", "vocabulary", "flashcard",
         "glossary", "terminology", "dictionary", "terms",
         "shopping", "shop", "store", "cart", "mall",
+        "\uC1FC\uD551", "\uC1FC\uD551\uBAB0", "\uC0C1\uC810", "\uC7A5\uBC14\uAD6C\uB2C8", "\uC758\uB958", "\uD328\uC158",
         "blog",
         "newproject", "newapp", "newweb", "newwebsite",
         "react", "nextjs", "next", "angular", "vue", "svelte",

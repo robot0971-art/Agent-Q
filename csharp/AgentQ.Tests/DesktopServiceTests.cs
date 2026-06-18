@@ -2198,6 +2198,15 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesConcreteKoreanLuxuryShopProjectRequest()
+    {
+        var contract = UserIntentTranslator.Translate("럭셔리 의류 쇼핑몰 만들어줘");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateProject, contract.Intent);
+    }
+
+    [Fact]
     public void UserTurnUnderstanding_PrefersModelConversationForConsultativeFallbackAction()
     {
         var fallback = UserTurnUnderstandingService.Understand(
@@ -7497,6 +7506,7 @@ public sealed class DesktopServiceTests
     [InlineData("단어장 만들어줘", "wordbook")]
     [InlineData("쇼핑몰 장바구니 앱 생성", "shopping-cart")]
     [InlineData("쇼핑몰 만들어줘", "shopping-cart")]
+    [InlineData("럭셔리 의류 쇼핑몰 만들어줘", "shopping-cart")]
     [InlineData("블로그 웹사이트 만들자", "blog")]
     [InlineData("블로그 만들어줘", "blog")]
     public void ProjectScaffoldPlanner_BuildsViteReactPlanForCommonKoreanWebApps(string request, string expectedProjectType)
@@ -7779,6 +7789,166 @@ public sealed class DesktopServiceTests
         Assert.DoesNotContain(runSteps, step =>
             step.Contains("Confidence:", StringComparison.Ordinal) &&
             step.Contains("No tool evidence was gathered", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DesktopAgentService_SmokeLuxuryShopScaffoldContinuesIntoImplementationAndPreviewGate()
+    {
+        var root = CreateTempDirectory();
+        const string appImplementation =
+            """
+            import "./styles.css";
+
+            const products = [
+              { name: "Atelier Wool Coat", price: "$1,280" },
+              { name: "Silk Evening Dress", price: "$940" },
+              { name: "Leather Travel Bag", price: "$1,120" }
+            ];
+
+            export function App() {
+              return (
+                <main className="luxury atelier">
+                  <section className="hero lookbook">
+                    <p>VIP editorial collection</p>
+                    <h1>Luxury Clothing Atelier</h1>
+                    <button>Shop the lookbook</button>
+                  </section>
+                  <section className="product collection">
+                    {products.map((product) => (
+                      <article className="product card" key={product.name}>
+                        <h2>{product.name}</h2>
+                        <p className="price">{product.price}</p>
+                        <button>Add to cart</button>
+                        <button>Wishlist</button>
+                      </article>
+                    ))}
+                  </section>
+                </main>
+              );
+            }
+
+            export default App;
+            """;
+        const string styleImplementation =
+            """
+            :root {
+              font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+              color: #f7f0e6;
+              background: #101010;
+            }
+
+            body {
+              margin: 0;
+              min-width: 320px;
+              min-height: 100vh;
+            }
+
+            .luxury.atelier {
+              min-height: 100vh;
+              padding: 48px;
+              background: #101010;
+            }
+
+            .hero.lookbook {
+              display: grid;
+              gap: 16px;
+              max-width: 920px;
+              margin-bottom: 40px;
+            }
+
+            .product.collection {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+              gap: 20px;
+            }
+
+            .product.card {
+              border: 1px solid #c9a96e;
+              padding: 20px;
+            }
+
+            .price {
+              color: #c9a96e;
+            }
+            """;
+        using var httpClientFactory = new SequentialStubHttpClientFactory(
+            ChatResponse("""
+                {
+                  "primaryIntent": "Action",
+                  "userGoal": "Create a luxury clothing shopping mall website.",
+                  "embeddedContent": [],
+                  "actualRequestedAction": {
+                    "shouldExecute": true,
+                    "actionKind": "createProject",
+                    "target": "럭셔리 의류 쇼핑몰",
+                    "reason": "The user directly asked AgentQ to create this project now."
+                  },
+                  "requiresWrite": true,
+                  "requiresShell": false,
+                  "requiresNetwork": false,
+                  "isConcreteEnough": true,
+                  "confidence": 0.95
+                }
+                """),
+            StreamToolCallResponse("tool-write-app", "write_file", new Dictionary<string, object?>
+            {
+                ["path"] = "src/App.jsx",
+                ["content"] = appImplementation,
+                ["overwrite"] = true
+            }),
+            StreamToolCallResponse("tool-write-style", "write_file", new Dictionary<string, object?>
+            {
+                ["path"] = "src/styles.css",
+                ["content"] = styleImplementation,
+                ["overwrite"] = true
+            }),
+            StreamTextResponse("구현과 빌드가 완료되었습니다."));
+        var service = CreateDesktopAgentService(httpClientFactory);
+        var permissionEnforcer = new RecordingPermissionEnforcer(toolName =>
+            toolName is "create_project_scaffold" or "verify_project_scaffold" or "write_file");
+        var runSteps = new List<(AgentRunState State, string Title, string? Detail)>();
+
+        var result = await service.SendAsync(
+            new ProviderConfiguration
+            {
+                Provider = "openai",
+                BaseUrl = "http://localhost/v1",
+                Model = "scaffold-smoke-test",
+                DesktopAutoAttachWorkspaceContext = false,
+                DesktopAutoFetchLinks = false,
+                DesktopWorkMode = "Coding",
+                DesktopMaxToolSteps = 5
+            },
+            "럭셔리 의류 쇼핑몰 만들어줘",
+            workspaceRoot: root,
+            permissionEnforcer: permissionEnforcer,
+            toolCallbacks: new DesktopToolCallbacks
+            {
+                OnRunStep = (state, title, detail) => runSteps.Add((state, title, detail))
+            });
+
+        var appText = File.ReadAllText(Path.Combine(root, "src", "App.jsx"));
+        var cssText = File.ReadAllText(Path.Combine(root, "src", "styles.css"));
+        var scaffoldPlan = new ProjectScaffoldPlanner().Plan("럭셔리 의류 쇼핑몰 만들어줘", root);
+        var turnState = CreateTestTurnState("럭셔리 의류 쇼핑몰 만들어줘", root, TaskContractIntent.CreateProject, scaffoldPlan);
+        var contract = ImplementationCompletionService.BuildContract(turnState);
+        var sourceVerification = ImplementationCompletionService.Verify(root, contract);
+
+        Assert.Contains("create_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Contains("verify_project_scaffold", permissionEnforcer.RequestedTools);
+        Assert.Contains("write_file", permissionEnforcer.RequestedTools);
+        Assert.Contains("Luxury Clothing Atelier", appText, StringComparison.Ordinal);
+        Assert.Contains("Wishlist", appText, StringComparison.Ordinal);
+        Assert.Contains("Add to cart", appText, StringComparison.Ordinal);
+        Assert.Contains(".product.collection", cssText, StringComparison.Ordinal);
+        Assert.True(sourceVerification.Succeeded, sourceVerification.Summary);
+        Assert.Empty(sourceVerification.MissingRequirements);
+        Assert.DoesNotContain("ShoppingCart is ready", appText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Implementation is not complete yet. ScaffoldReady is not task completion", result, StringComparison.Ordinal);
+        Assert.Contains("Implementation is not complete yet. Frontend scaffold completion requires localhost preview", result, StringComparison.Ordinal);
+        Assert.Contains(runSteps, step => step.Title == "Scaffold ready: implementation required");
+        Assert.Contains(runSteps, step => step.Title == "Runtime preview verification");
+        Assert.Contains(runSteps, step => step.Title == "Final answer guard: preview evidence missing");
     }
 
     [Fact]

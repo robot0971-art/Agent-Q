@@ -104,6 +104,8 @@ If the model misses a scaffold tool call but an approved scaffold plan exists, t
 
 Scaffold success is not task completion. Frontend greenfield runs create an implementation contract after scaffold execution. The contract rejects placeholder-only output such as `ShoppingCart is ready`, `Hello World`, `Vite + React`, `App is ready`, `Lorem ipsum`, or `TODO`. Domain-specific requests, such as a luxury clothing shop, must show matching evidence in source and runtime checks: product cards/catalog, prices, cart/bag actions, wishlist/save actions, hero/lookbook/editorial sections, and luxury visual language.
 
+Concrete Korean greenfield requests such as `럭셔리 의류 쇼핑몰 만들어줘` are expected to route as `CreateProject` / shopping-cart scaffold requests. After deterministic scaffold creation, the provider implementation loop must update the real app files, including `src/App.jsx` and styling such as `src/styles.css`, before Agent Q can consider the task implemented.
+
 The final-answer guard blocks completion when the implementation contract is still missing requirements. If source checks pass but frontend runtime evidence is absent, the guard also blocks completion until localhost preview, DOM, and screenshot/visual evidence exists.
 
 `ImplementationRuntimePreviewService` provides the first deterministic preview path: it starts or reuses the local server through `DesktopLocalServerService`, verifies that the localhost URL responds, stores a DOM snapshot under `.agentq/preview/`, and records `implementation_runtime_preview` replay evidence. Browser-driven desktop/mobile screenshots and direct console-error capture remain layered on Playwright/screenshot artifact workflows when those are available.
