@@ -114,6 +114,8 @@ When runtime preview fails, `DesktopAgentService` returns the concrete preview e
 
 The same repair pattern applies to failed build/test/verification replay evidence. Failed shell/scaffold evidence is classified as build failure, test failure, scaffold verification failure, or generic verification failure and returned to the provider loop with a focused repair instruction. A frontend run is considered complete only when successful runtime preview replay evidence exists, not merely because a dev-server command was attempted.
 
+Repair instructions are case-specific. Agent Q classifies missing npm scripts, missing dependencies, dev-server startup failures, React runtime errors, import/export mismatches, JSX syntax errors, blank or broken screens, missing DOM requirements, and mobile visual layout failures. Each strategy names priority files, preferred repair actions, actions to avoid, and verification commands to rerun. Package/script/dependency repairs still go through normal workspace validation, permission checks, and replay evidence; the model is guided to patch `package.json` or source files, then rerun install/build/preview through the permissioned tool path instead of silently treating edits as success.
+
 ## Local Server Mode
 
 Local server requests use `TaskContract` and `DesktopLocalServerService`:

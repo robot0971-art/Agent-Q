@@ -60,6 +60,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     internal const string DirectorySnapshotMarker = "[agentq:directory]";
     private const string ToolOutputDirectoryName = "tool-output";
 
+    public sealed record RepairStrategy(
+        string Kind,
+        IReadOnlyList<string> PriorityFiles,
+        IReadOnlyList<string> RepairActions,
+        IReadOnlyList<string> AvoidActions,
+        IReadOnlyList<string> VerificationCommands);
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly LinkContentFetcher _linkContentFetcher;
     private readonly ProjectMemoryService _projectMemoryService;
@@ -2788,6 +2795,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine($"Repair attempt {Math.Max(1, attempt)} of {Math.Max(1, maximumAttempts)}.");
         builder.AppendLine("Retry now by inspecting the failed output, fixing the smallest likely cause, and rerunning the relevant build/test/verification command.");
         builder.AppendLine("Do not claim completion until the failed command is rerun successfully and the new tool replay evidence shows success.");
+        var primaryKind = failedEntries.Count == 0
+            ? "verification-failure"
+            : ClassifyFailedVerificationEvidence(failedEntries[0]);
+        AppendRepairStrategy(builder, BuildRepairStrategy(primaryKind));
         builder.AppendLine();
         builder.AppendLine("Failed evidence:");
         foreach (var entry in failedEntries.Take(6))
@@ -2812,6 +2823,31 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     public static string ClassifyFailedVerificationEvidence(ToolReplayEntry entry)
     {
         var text = $"{entry.ToolName} {entry.ResultPreview}".ToLowerInvariant();
+        if (ContainsAny(text, "missing script", "script \"build\"", "script \"dev\"", "npm err! missing script"))
+        {
+            return "missing-npm-script";
+        }
+
+        if (ContainsAny(text, "cannot find module", "module not found", "failed to resolve import", "vite: not found", "'vite' is not recognized", "@vitejs/plugin-react", "react-dom"))
+        {
+            return "missing-dependency";
+        }
+
+        if (ContainsAny(text, "unexpected token", "unterminated", "syntaxerror", "failed to parse source", "jsx"))
+        {
+            return "jsx-syntax-error";
+        }
+
+        if (ContainsAny(text, "does not provide an export", "not exported", "failed to resolve import"))
+        {
+            return "import-export-mismatch";
+        }
+
+        if (ContainsAny(text, "referenceerror", " is not defined", "cannot access '"))
+        {
+            return "react-runtime-error";
+        }
+
         if (ContainsAny(text, "npm run build", "vite build", "build failed", "build error", "compilation", "compiler"))
         {
             return "build-failure";
@@ -2990,6 +3026,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         builder.AppendLine($"Repair attempt {Math.Max(1, attempt)} of {Math.Max(1, maximumAttempts)}.");
         builder.AppendLine("Retry now by inspecting the relevant project files, fixing the smallest likely cause, and then report only after file edits and verification evidence exist.");
         builder.AppendLine("Do not claim completion until localhost preview, DOM evidence, desktop/mobile screenshot evidence, and console/visual checks pass.");
+        AppendRepairStrategy(builder, BuildRuntimePreviewRepairStrategy(result));
         builder.AppendLine();
         builder.AppendLine("Preview failure evidence:");
         AppendPreviewRepairLine(builder, "Failure kind", ClassifyRuntimePreviewFailure(result));
@@ -3007,19 +3044,55 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     public static string ClassifyRuntimePreviewFailure(ImplementationRuntimePreviewResult result)
     {
+        var combined = BuildRuntimePreviewFailureText(result);
         if (!result.LocalServer.Succeeded)
         {
+            if (ContainsAny(combined, "missing script", "script \"dev\"", "npm err! missing script", "no script", "dev script"))
+            {
+                return "missing-npm-script";
+            }
+
+            if (ContainsAny(combined, "cannot find module", "module not found", "vite: not found", "'vite' is not recognized", "react-dom", "@vitejs/plugin-react"))
+            {
+                return "missing-dependency";
+            }
+
             return "dev-server-failure";
         }
 
         if (result.Preview.ConsoleErrors.Count > 0 || result.Browser.ConsoleErrors.Count > 0)
         {
+            if (ContainsAny(combined, "cannot find module", "module not found", "failed to resolve import", "does not provide an export", "not exported"))
+            {
+                return "import-export-mismatch";
+            }
+
+            if (ContainsAny(combined, "unexpected token", "unterminated", "jsx", "syntaxerror", "failed to parse source"))
+            {
+                return "jsx-syntax-error";
+            }
+
+            if (ContainsAny(combined, "referenceerror", " is not defined", "cannot access '", "undefined is not"))
+            {
+                return "react-runtime-error";
+            }
+
+            if (ContainsAny(combined, "cannot find module", "module not found", "failed to resolve dependency"))
+            {
+                return "missing-dependency";
+            }
+
             return "console-error";
         }
 
         if (result.Preview.VisualFindings.Any(IsBlankOrBrokenVisualFinding) ||
             result.Browser.VisualFindings.Any(IsBlankOrBrokenVisualFinding))
         {
+            if (ContainsAny(combined, "mobile", "390", "viewport", "small screen", "responsive"))
+            {
+                return "mobile-visual-layout-failure";
+            }
+
             return "blank-or-broken-screen";
         }
 
@@ -3035,6 +3108,163 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
         return "preview-evidence-failure";
     }
+
+    public static RepairStrategy BuildRuntimePreviewRepairStrategy(ImplementationRuntimePreviewResult result)
+    {
+        return BuildRepairStrategy(ClassifyRuntimePreviewFailure(result));
+    }
+
+    public static RepairStrategy BuildRepairStrategy(string kind)
+    {
+        return kind switch
+        {
+            "missing-npm-script" => new RepairStrategy(
+                kind,
+                ["package.json"],
+                [
+                    "Inspect package.json scripts and add a safe dev script such as \"dev\": \"vite --host 127.0.0.1\" when the project is Vite/React.",
+                    "If scripts are present under a subdirectory package, keep the command scoped to that workspace path."
+                ],
+                [
+                    "Do not invent a new framework or move the project root.",
+                    "Do not report success until the dev script runs and runtime preview replay succeeds."
+                ],
+                ["npm run dev", "npm run build"]),
+            "missing-dependency" => new RepairStrategy(
+                kind,
+                ["package.json", "package-lock.json", "src/main.jsx", "src/main.tsx", "vite.config.js"],
+                [
+                    "Inspect package.json dependencies/devDependencies for react, react-dom, vite, and @vitejs/plugin-react when the app is Vite/React.",
+                    "Patch package.json first when dependencies are missing, then request/run npm install through the normal permissioned shell/tool path.",
+                    "After install, rerun the failing build or preview command and keep replay evidence."
+                ],
+                [
+                    "Do not edit node_modules manually.",
+                    "Do not mark dependency repair complete from package.json edits alone."
+                ],
+                ["npm install", "npm run build", "npm run dev"]),
+            "react-runtime-error" => new RepairStrategy(
+                kind,
+                ["src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx", "src/components/*"],
+                [
+                    "Search for the undefined identifier or component named in the console error.",
+                    "Fix missing imports, misspelled component names, hook usage, or variables referenced before declaration.",
+                    "Keep the implemented UI requirements intact while repairing runtime errors."
+                ],
+                [
+                    "Do not remove major UI sections just to silence the error.",
+                    "Do not claim success without a clean browser console."
+                ],
+                ["npm run build", "npm run dev"]),
+            "import-export-mismatch" => new RepairStrategy(
+                kind,
+                ["src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx", "src/components/*"],
+                [
+                    "Inspect the import path and the exporting file together.",
+                    "Align default/named exports and fix incorrect relative paths or file extensions.",
+                    "Prefer small import/export fixes over rewriting the app."
+                ],
+                [
+                    "Do not duplicate components to bypass an import error.",
+                    "Do not change public component names unless all imports are updated."
+                ],
+                ["npm run build", "npm run dev"]),
+            "jsx-syntax-error" => new RepairStrategy(
+                kind,
+                ["src/App.jsx", "src/App.tsx", "src/components/*"],
+                [
+                    "Inspect the line/column from the parser error and surrounding JSX.",
+                    "Fix unclosed tags, braces, strings, fragments, and invalid JSX attributes.",
+                    "Run build again after the syntax fix."
+                ],
+                [
+                    "Do not replace the UI with a placeholder to avoid syntax work.",
+                    "Do not ignore parser line numbers."
+                ],
+                ["npm run build"]),
+            "blank-or-broken-screen" => new RepairStrategy(
+                kind,
+                ["src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx", "src/styles.css", "src/App.css"],
+                [
+                    "Verify React mounts into the expected root element and the main app renders visible content.",
+                    "Inspect CSS for display:none, opacity:0, zero height, offscreen transforms, overly dark foreground/background, or z-index overlays.",
+                    "Keep desktop and mobile screenshots as evidence after repair."
+                ],
+                [
+                    "Do not satisfy the check with a tiny placeholder label.",
+                    "Do not hide required UI behind hover-only or offscreen states."
+                ],
+                ["npm run build", "npm run dev"]),
+            "mobile-visual-layout-failure" => new RepairStrategy(
+                kind,
+                ["src/styles.css", "src/App.css", "src/App.jsx", "src/App.tsx"],
+                [
+                    "Inspect responsive CSS for fixed widths, overflow, text clipping, overlapping controls, and viewport-height traps.",
+                    "Use responsive grids, wrapping, min/max widths, and media queries that preserve the requested UI.",
+                    "Recheck mobile screenshot evidence after repair."
+                ],
+                [
+                    "Do not fix mobile by removing required desktop content.",
+                    "Do not use viewport-scaled text that can overflow controls."
+                ],
+                ["npm run build", "npm run dev"]),
+            "missing-dom" => new RepairStrategy(
+                kind,
+                ["src/App.jsx", "src/App.tsx", "src/components/*", "src/styles.css"],
+                [
+                    "Compare missing DOM requirements with the user request and implementation contract.",
+                    "Add the missing visible product/cart/wishlist/lookbook or domain-specific UI elements.",
+                    "Ensure text is present in rendered DOM, not only comments or unused data."
+                ],
+                [
+                    "Do not add hidden text solely to satisfy keyword checks.",
+                    "Do not remove existing passing requirements."
+                ],
+                ["npm run build", "npm run dev"]),
+            "dev-server-failure" => new RepairStrategy(
+                kind,
+                ["package.json", "vite.config.js", "src/main.jsx", "src/main.tsx", "index.html"],
+                [
+                    "Inspect package scripts, Vite config, index.html, and entrypoint files.",
+                    "Fix startup errors before changing unrelated UI code.",
+                    "Reuse localhost/127.0.0.1 and keep the command workspace-scoped."
+                ],
+                [
+                    "Do not claim completion from source checks when the local server cannot respond.",
+                    "Do not switch to a different stack to avoid startup repair."
+                ],
+                ["npm run dev", "npm run build"]),
+            _ => new RepairStrategy(
+                kind,
+                ["package.json", "src/App.jsx", "src/App.tsx", "src/main.jsx", "src/main.tsx", "src/styles.css"],
+                [
+                    "Inspect the files most directly connected to the failed evidence.",
+                    "Make the smallest repair that addresses the reported failure.",
+                    "Rerun the same failing verification path and preserve replay evidence."
+                ],
+                [
+                    "Do not report success from an unverified guess.",
+                    "Do not introduce unrelated rewrites."
+                ],
+                ["npm run build", "npm run dev"])
+        };
+    }
+
+    private static string BuildRuntimePreviewFailureText(ImplementationRuntimePreviewResult result) =>
+        string.Join(
+            " ",
+            new[]
+                {
+                    result.LocalServer.Message,
+                    result.LocalServer.Command,
+                    result.Preview.Summary
+                }
+                .Concat(result.Preview.MissingDomRequirements)
+                .Concat(result.Preview.ConsoleErrors)
+                .Concat(result.Preview.VisualFindings)
+                .Concat(result.Browser.ConsoleErrors)
+                .Concat(result.Browser.VisualFindings))
+            .ToLowerInvariant();
 
     public static string BuildRuntimePreviewFailureSignature(ImplementationRuntimePreviewResult result)
     {
@@ -3139,6 +3369,31 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         foreach (var value in values.Where(item => !string.IsNullOrWhiteSpace(item)).Take(8))
         {
             builder.AppendLine($"  - {DesktopPromptBuilder.Truncate(value.ReplaceLineEndings(" "), 500)}");
+        }
+    }
+
+    private static void AppendRepairStrategy(StringBuilder builder, RepairStrategy strategy)
+    {
+        builder.AppendLine();
+        builder.AppendLine("Case-specific repair strategy:");
+        AppendStrategyList(builder, "Priority files", strategy.PriorityFiles);
+        AppendStrategyList(builder, "Repair actions", strategy.RepairActions);
+        AppendStrategyList(builder, "Avoid", strategy.AvoidActions);
+        AppendStrategyList(builder, "Re-run", strategy.VerificationCommands);
+        builder.AppendLine("- Safety: keep all package/script/file edits inside the validated workspace and preserve permission/replay evidence for shell or install commands.");
+    }
+
+    private static void AppendStrategyList(StringBuilder builder, string label, IReadOnlyList<string> values)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        builder.AppendLine($"- {label}:");
+        foreach (var value in values.Take(8))
+        {
+            builder.AppendLine($"  - {value}");
         }
     }
 

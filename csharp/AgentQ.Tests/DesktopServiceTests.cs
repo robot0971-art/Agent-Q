@@ -8235,6 +8235,9 @@ public sealed class DesktopServiceTests
         Assert.Contains("dark or blank", instruction, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(".agentq/preview/desktop.png", instruction, StringComparison.Ordinal);
         Assert.Contains("Do not claim completion", instruction, StringComparison.Ordinal);
+        Assert.Contains("Case-specific repair strategy", instruction, StringComparison.Ordinal);
+        Assert.Contains("Priority files", instruction, StringComparison.Ordinal);
+        Assert.Contains("Re-run", instruction, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -8283,10 +8286,92 @@ public sealed class DesktopServiceTests
             previousFailureSignature: "old",
             currentFailureSignature: "new");
 
-        Assert.Equal("console-error", DesktopAgentService.ClassifyRuntimePreviewFailure(result));
+        Assert.Equal("react-runtime-error", DesktopAgentService.ClassifyRuntimePreviewFailure(result));
         Assert.Contains("productcard", signature, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("same runtime preview failure repeated", repeated, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("did not record any file changes", noChanges, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("npm ERR! Missing script: \"dev\"", "missing-npm-script")]
+    [InlineData("Error: Cannot find module '@vitejs/plugin-react'", "missing-dependency")]
+    [InlineData("ReferenceError: ProductCard is not defined", "react-runtime-error")]
+    [InlineData("SyntaxError: Unexpected token '<' in JSX", "jsx-syntax-error")]
+    [InlineData("The requested module './Card.jsx' does not provide an export named 'Card'", "import-export-mismatch")]
+    public void DesktopAgentService_ClassifiesRuntimePreviewRepairCases(string evidence, string expectedKind)
+    {
+        var localServerSucceeded = expectedKind != "missing-npm-script" && expectedKind != "missing-dependency";
+        var result = new ImplementationRuntimePreviewResult
+        {
+            Succeeded = false,
+            LocalServer = new LocalServerStartResult
+            {
+                Succeeded = localServerSucceeded,
+                Url = localServerSucceeded ? "http://127.0.0.1:5173/" : string.Empty,
+                Command = "npm run dev",
+                Message = localServerSucceeded ? "Server responded." : evidence
+            },
+            Preview = new ImplementationPreviewVerificationResult
+            {
+                Succeeded = false,
+                RequiresPreviewEvidence = true,
+                RootRendered = localServerSucceeded,
+                MissingDomRequirements = [],
+                ConsoleErrors = localServerSucceeded ? [evidence] : [],
+                VisualFindings = [],
+                Url = localServerSucceeded ? "http://127.0.0.1:5173/" : string.Empty
+            },
+            Browser = new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false,
+                ConsoleErrors = localServerSucceeded ? [evidence] : [],
+                VisualFindings = []
+            }
+        };
+
+        var instruction = DesktopAgentService.BuildRuntimePreviewRepairInstruction(result, attempt: 2, maximumAttempts: 3);
+
+        Assert.Equal(expectedKind, DesktopAgentService.ClassifyRuntimePreviewFailure(result));
+        Assert.Contains($"Failure kind: {expectedKind}", instruction, StringComparison.Ordinal);
+        Assert.Contains("Case-specific repair strategy", instruction, StringComparison.Ordinal);
+        Assert.Contains("Safety: keep all package/script/file edits inside the validated workspace", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DesktopAgentService_ClassifiesMobileVisualLayoutFailure()
+    {
+        var result = new ImplementationRuntimePreviewResult
+        {
+            Succeeded = false,
+            LocalServer = new LocalServerStartResult
+            {
+                Succeeded = true,
+                Url = "http://127.0.0.1:5173/",
+                Command = "npm run dev",
+                Message = "Server responded."
+            },
+            Preview = new ImplementationPreviewVerificationResult
+            {
+                Succeeded = false,
+                RequiresPreviewEvidence = true,
+                RootRendered = true,
+                MissingDomRequirements = [],
+                ConsoleErrors = [],
+                VisualFindings = ["mobile 390px viewport has overlapping buttons and clipped text"],
+                Url = "http://127.0.0.1:5173/"
+            },
+            Browser = new ImplementationBrowserPreviewResult
+            {
+                Succeeded = false,
+                VisualFindings = ["mobile 390px viewport has overlapping buttons and clipped text"]
+            }
+        };
+
+        var instruction = DesktopAgentService.BuildRuntimePreviewRepairInstruction(result);
+
+        Assert.Equal("mobile-visual-layout-failure", DesktopAgentService.ClassifyRuntimePreviewFailure(result));
+        Assert.Contains("responsive CSS", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mobile screenshot", instruction, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -8345,10 +8430,37 @@ public sealed class DesktopServiceTests
 
         Assert.True(shouldRepair);
         Assert.Empty(stopReason);
-        Assert.Contains("build-failure", signature, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("react-runtime-error", signature, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Build/test/verification evidence failed", instruction, StringComparison.Ordinal);
         Assert.Contains("npm run build", instruction, StringComparison.Ordinal);
+        Assert.Contains("Search for the undefined identifier", instruction, StringComparison.Ordinal);
         Assert.Contains("Do not claim completion", instruction, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("npm ERR! Missing script: \"build\"", "missing-npm-script")]
+    [InlineData("Cannot find module 'vite'", "missing-dependency")]
+    [InlineData("SyntaxError: Failed to parse source for import analysis", "jsx-syntax-error")]
+    [InlineData("ReferenceError: ProductCard is not defined", "react-runtime-error")]
+    public void DesktopAgentService_ClassifiesBuildTestRepairCases(string output, string expectedKind)
+    {
+        var failed = new ToolReplayEntry
+        {
+            StartedAt = DateTime.Now,
+            CompletedAt = DateTime.Now,
+            ToolName = "bash",
+            ToolUseId = "failed",
+            InputJson = """{"command":"npm run build"}""",
+            ResultPreview = "ExitCode: 1\n" + output,
+            IsError = true
+        };
+
+        var instruction = DesktopAgentService.BuildFailedVerificationRepairInstruction([failed], attempt: 1, maximumAttempts: 2);
+
+        Assert.Equal(expectedKind, DesktopAgentService.ClassifyFailedVerificationEvidence(failed));
+        Assert.Contains(expectedKind, instruction, StringComparison.Ordinal);
+        Assert.Contains("Case-specific repair strategy", instruction, StringComparison.Ordinal);
+        Assert.Contains("Re-run", instruction, StringComparison.Ordinal);
     }
 
     [Fact]
