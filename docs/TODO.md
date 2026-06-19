@@ -43,7 +43,13 @@
   - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
   - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMcpToolRegistrar_|FullyQualifiedName~McpBridgeTool_|FullyQualifiedName~StdioMcpClient_|FullyQualifiedName~McpServerRegistry_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 10개 테스트.
   - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
-- [ ] 거대 클래스 분할은 helper 중앙화와 async/security 개선 뒤 안전한 단위로 진행한다.
+- [x] 거대 테스트 파일 분리 1차를 완료했다.
+  - [x] `DesktopServiceTests.cs`에서 MCP registry/bridge/stdio/registrar/evidence/config-builder 테스트 13개를 `DesktopMcpServiceTests.cs`로 분리했다.
+  - [x] MCP 전용 fake client/helper를 새 테스트 파일 내부로 옮겨 `DesktopServiceTests.cs`의 책임을 줄였다.
+  - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+  - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMcpServiceTests" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 13개 테스트.
+  - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+- [ ] 추가 거대 클래스 분할은 Desktop agent orchestration, workspace analysis, memory service 순서로 안전한 단위를 더 찾는다.
 
 ## 완료한 작업
 
