@@ -649,7 +649,7 @@ public class OpenAiCompatibleProvider : ILlmProvider
     }
 
     public static string NormalizeBaseUrl(string baseUrl) =>
-        baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : $"{baseUrl}/";
+        ProviderHttpClientFactory.NormalizeBaseUrl(baseUrl);
 
     private bool ShouldDisableThinking(string model) =>
         _name.Equals("opencode-go", StringComparison.OrdinalIgnoreCase) &&

@@ -30,6 +30,11 @@
   - [x] `AgentQ.Api.AgentQJsonOptions`를 추가해 `Indented`, `CaseInsensitiveIndented`, `CamelCaseIndented`, `CamelCaseIndentedRelaxed`, `IndentedIgnoreNullCaseInsensitive`, `WebCaseInsensitive*` 옵션을 공유한다.
   - [x] CLI automation/config/session/tool formatting과 Desktop checkpoint/session/config/replay/memory/scaffold/local-server/cache/telemetry 저장 옵션을 공용 옵션으로 전환했다.
   - [x] provider별 snake_case/custom request 옵션과 worker host 특수 옵션은 동작 차이가 있어 다음 정리 후보로 남겼다.
+- [x] 보안/설정 위험 1차를 보강했다.
+  - [x] `ProviderHttpClientFactory.NormalizeBaseUrl`이 빈 값, 상대 URL, host 없는 URL, `file:`/`ftp:` 같은 비 HTTP(S) scheme을 provider client 생성 전에 거부한다.
+  - [x] `OpenAiCompatibleProvider.NormalizeBaseUrl`과 embedding client 경로가 같은 provider base URL 검증을 공유한다.
+  - [x] `DesktopConfigService.LoadAsync`가 malformed config를 조용히 삼키기만 하지 않고 `LastLoadError`에 실패 원인을 남긴다.
+  - [x] provider base URL 검증과 Desktop config load failure 회귀 테스트를 추가했다.
 - [ ] 거대 클래스 분할은 helper 중앙화와 async/security 개선 뒤 안전한 단위로 진행한다.
 
 ## 완료한 작업
@@ -948,6 +953,15 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 provider base URL/config load failure 보강 후 결과: 통과, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ProviderHttpClientFactory_|FullyQualifiedName~DesktopConfigService_LoadAsync_|FullyQualifiedName~ConfigStore_LoadAsync_ReturnsNullForMalformedJson|FullyQualifiedName~ConfigStore_SaveAndLoad_RoundTripsProviderConfiguration|FullyQualifiedName~ProviderConfiguration_FromArgs_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1
+# 2026-06-19 provider/config focused 검증 결과: 통과 21, 실패 0, 건너뜀 0, 전체 21.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 provider base URL/config load failure 보강 후 결과: 통과, 경고 0, 오류 0.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-19 JSON defaults 중앙화 후 결과: 통과, 경고 0, 오류 0.
 

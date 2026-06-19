@@ -398,6 +398,45 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task DesktopConfigService_LoadAsync_RecordsMalformedJsonError()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var service = new DesktopConfigService(workspace.RootPath);
+        Directory.CreateDirectory(workspace.RootPath);
+        await File.WriteAllTextAsync(service.ConfigPath, "{invalid json");
+
+        var loaded = await service.LoadAsync();
+
+        Assert.Null(loaded);
+        Assert.NotNull(service.LastLoadError);
+        Assert.Contains("invalid", service.LastLoadError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopConfigService_LoadAsync_ClearsPreviousLoadErrorAfterSuccess()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var service = new DesktopConfigService(workspace.RootPath);
+        Directory.CreateDirectory(workspace.RootPath);
+        await File.WriteAllTextAsync(service.ConfigPath, "{invalid json");
+        Assert.Null(await service.LoadAsync());
+        Assert.NotNull(service.LastLoadError);
+
+        await service.SaveAsync(new ProviderConfiguration
+        {
+            Provider = "openai",
+            Model = "gpt-5",
+            BaseUrl = "https://api.openai.com/v1"
+        });
+
+        var loaded = await service.LoadAsync();
+
+        Assert.NotNull(loaded);
+        Assert.Null(service.LastLoadError);
+        Assert.Equal("openai", loaded.Provider);
+    }
+
+    [Fact]
     public async Task ConfigStore_Delete_RemovesSavedConfiguration()
     {
         var config = new ProviderConfiguration
@@ -487,6 +526,33 @@ public sealed class ToolAndConfigurationTests : IDisposable
         Assert.NotNull(registry.Get("create_directory"));
         Assert.NotNull(registry.Get("delete_path"));
         Assert.NotNull(registry.Get("web_search"));
+    }
+
+    [Fact]
+    public void ProviderHttpClientFactory_NormalizesHttpAndHttpsBaseUrls()
+    {
+        Assert.Equal("https://api.example.test/v1/", ProviderHttpClientFactory.NormalizeBaseUrl("https://api.example.test/v1"));
+        Assert.Equal("http://localhost:18080/v1/", ProviderHttpClientFactory.NormalizeBaseUrl("http://localhost:18080/v1/"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("models")]
+    [InlineData("/v1")]
+    [InlineData("file:///tmp/provider")]
+    [InlineData("ftp://example.test/v1")]
+    public void ProviderHttpClientFactory_RejectsUnsafeBaseUrls(string baseUrl)
+    {
+        Assert.Throws<ArgumentException>(() => ProviderHttpClientFactory.NormalizeBaseUrl(baseUrl));
+    }
+
+    [Fact]
+    public void ProviderHttpClientFactory_RejectsUnsafeBaseUrlBeforeCreatingClient()
+    {
+        using var factory = new ProviderHttpClientFactory();
+
+        Assert.Throws<ArgumentException>(() =>
+            factory.CreateClient("file:///tmp/provider", "test-key", ProviderHttpAuthKind.Bearer));
     }
 
     [Fact]

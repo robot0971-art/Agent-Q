@@ -61,6 +61,29 @@ public sealed class ProviderHttpClientFactory : IProviderHttpClientFactory, IDis
         }
     }
 
-    private static string NormalizeBaseUrl(string baseUrl) =>
-        baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : $"{baseUrl}/";
+    public static string NormalizeBaseUrl(string baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new ArgumentException("Provider base URL is required.", nameof(baseUrl));
+        }
+
+        var trimmed = baseUrl.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            throw new ArgumentException("Provider base URL must be an absolute HTTP(S) URL.", nameof(baseUrl));
+        }
+
+        if (uri.Scheme is not ("http" or "https"))
+        {
+            throw new ArgumentException("Provider base URL must use http or https.", nameof(baseUrl));
+        }
+
+        if (string.IsNullOrWhiteSpace(uri.Host))
+        {
+            throw new ArgumentException("Provider base URL must include a host.", nameof(baseUrl));
+        }
+
+        return trimmed.EndsWith("/", StringComparison.Ordinal) ? trimmed : $"{trimmed}/";
+    }
 }
