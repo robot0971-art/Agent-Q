@@ -1,5 +1,5 @@
 using System.Text.Json;
-using System.Text.Encodings.Web;
+using AgentQ.Api;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 
@@ -154,12 +154,7 @@ public sealed class ToolExecutionRecord
 
 public static class AutomationSupport
 {
-    public static readonly JsonSerializerOptions JsonOutputOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    public static readonly JsonSerializerOptions JsonOutputOptions = AgentQJsonOptions.CamelCaseIndentedRelaxed;
 
     public static async Task<AutomationInvocation> ResolveInvocationAsync(
         ProviderConfiguration config,

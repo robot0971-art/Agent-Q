@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Core.Providers;
 
 namespace AgentQ.Cli;
@@ -20,11 +21,7 @@ public sealed class FileConfigStore : IConfigStore
 {
     public const string ConfigHomeEnvironmentVariable = "AGENTQ_CONFIG_HOME";
 
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitiveIndented;
 
     public static FileConfigStore Default { get; } = new();
 

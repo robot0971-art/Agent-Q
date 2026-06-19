@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Core.Models;
 using AgentQ.Tools;
 
@@ -81,7 +82,7 @@ internal sealed class ToolExecutor(
             {
                 using var document = JsonDocument.Parse(raw);
                 var root = NormalizeRootElement(document.RootElement);
-                return JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
+                return JsonSerializer.Serialize(root, AgentQJsonOptions.Indented);
             }
             catch
             {
@@ -91,10 +92,10 @@ internal sealed class ToolExecutor(
 
         if (input is JsonElement json)
         {
-            return JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(json, AgentQJsonOptions.Indented);
         }
 
-        return JsonSerializer.Serialize(input, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.Serialize(input, AgentQJsonOptions.Indented);
     }
 
     private static JsonElement NormalizeRootElement(JsonElement root)

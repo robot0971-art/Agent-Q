@@ -1,16 +1,13 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Core.Providers;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopConfigService
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitiveIndented;
 
     private readonly string _configDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

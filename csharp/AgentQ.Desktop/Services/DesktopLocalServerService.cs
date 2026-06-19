@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
@@ -56,7 +57,7 @@ public sealed class DesktopLocalServerService
             command = plan.DisplayCommand,
             workspaceRoot = Path.GetFullPath(workspaceRoot),
             url = plan.Url
-        }, new JsonSerializerOptions { WriteIndented = true });
+        }, AgentQJsonOptions.Indented);
         var approved = await permissionEnforcer.RequestPermissionAsync(
             "run_local_server",
             $"Start local development server: {plan.DisplayCommand}",
@@ -170,7 +171,7 @@ public sealed class DesktopLocalServerService
             workspaceRoot = workspaceKey,
             url = session.Url,
             processId = session.ProcessId
-        }, new JsonSerializerOptions { WriteIndented = true });
+        }, AgentQJsonOptions.Indented);
         var approved = await permissionEnforcer.RequestPermissionAsync(
             "stop_local_server",
             $"Stop local development server: {session.Url}",
@@ -603,7 +604,7 @@ public sealed class DesktopLocalServerService
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(
             path,
-            JsonSerializer.Serialize(session, new JsonSerializerOptions { WriteIndented = true }),
+            JsonSerializer.Serialize(session, AgentQJsonOptions.Indented),
             ct);
     }
 

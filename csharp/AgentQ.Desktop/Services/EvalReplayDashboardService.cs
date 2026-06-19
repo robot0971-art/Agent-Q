@@ -1,14 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class EvalReplayDashboardService(ToolReplayService replayService)
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitive;
 
     public async Task<EvalReplayDashboardReport> BuildAsync(
         string workspaceRoot,

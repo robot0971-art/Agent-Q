@@ -1,15 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class ProjectAgentConfigService
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitiveIndented;
 
     public async Task<ProjectAgentConfig?> LoadAsync(string workspaceRoot, CancellationToken ct = default)
     {

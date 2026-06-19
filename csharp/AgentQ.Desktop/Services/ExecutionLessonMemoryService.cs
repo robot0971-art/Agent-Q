@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
@@ -8,11 +9,7 @@ public sealed class ExecutionLessonMemoryService
 {
     private const int MaxRelevantLessons = 3;
     private const double MinConfidence = 0.45;
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.WebCaseInsensitiveIndented;
     private static readonly JsonSerializerOptions EventJsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<IReadOnlyList<ExecutionLesson>> SelectRelevantAsync(

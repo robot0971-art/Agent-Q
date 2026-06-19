@@ -1,14 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class EmbeddingIndexStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.Indented;
 
     private static readonly JsonSerializerOptions JsonLineOptions = new();
 

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
@@ -17,11 +18,7 @@ public sealed class ProjectMemoryService
     private const double MinUsefulLessonConfidence = 0.2;
     private const int StaleUnusedLessonDays = 180;
 
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitiveIndented;
 
     private readonly string _memoryDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

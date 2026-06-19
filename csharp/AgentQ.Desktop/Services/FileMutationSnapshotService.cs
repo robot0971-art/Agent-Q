@@ -2,16 +2,13 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class FileMutationSnapshotService
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CaseInsensitiveIndented;
 
     public async Task<string> SaveAsync(FileMutationSnapshot snapshot, CancellationToken ct = default)
     {

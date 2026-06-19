@@ -5415,7 +5415,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 if (ShouldStopRepeatedReadOnlyToolCall(tool.Name, parsedInput, editFailureTracker, out var loopMessage))
                 {
-                    var loopInputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
+                    var loopInputJson = JsonSerializer.Serialize(parsedInput, AgentQ.Api.AgentQJsonOptions.Indented);
                     RecordDiagnostic(
                         "tool_blocked_by_read_only_loop_guard",
                         workspaceRoot,
@@ -5442,7 +5442,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                     continue;
                 }
 
-                var inputJson = JsonSerializer.Serialize(parsedInput, new JsonSerializerOptions { WriteIndented = true });
+                var inputJson = JsonSerializer.Serialize(parsedInput, AgentQ.Api.AgentQJsonOptions.Indented);
                 var evidence = DesktopEvidenceFormatter.DescribeToolEvidence(tool.Name, parsedInput, workspaceRoot);
                 if (!string.IsNullOrWhiteSpace(evidence))
                 {

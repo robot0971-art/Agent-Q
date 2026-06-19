@@ -26,7 +26,10 @@
   - [x] `BashTool`, `ReadFileTool`, `WriteFileTool`, `EditFileTool`, `EditRiskGuard`, `ListDirectoryTool`, `CreateDirectoryTool`, `DeletePathTool`, `GrepTool`, `GlobTool`, `WebSearchTool`이 공용 string/int/bool parser를 사용한다.
   - [x] high-risk edit approval이 provider `JsonElement` boolean으로 들어와도 `EditRiskGuard`가 같은 방식으로 처리하게 했다.
   - [x] `EditFileTool_AcceptsJsonElementHighRiskApproval` 회귀 테스트를 추가했다.
-- [ ] JSON defaults 중앙화는 다음 작업 단위로 이어간다.
+- [x] JSON defaults 중앙화 1차를 완료했다.
+  - [x] `AgentQ.Api.AgentQJsonOptions`를 추가해 `Indented`, `CaseInsensitiveIndented`, `CamelCaseIndented`, `CamelCaseIndentedRelaxed`, `IndentedIgnoreNullCaseInsensitive`, `WebCaseInsensitive*` 옵션을 공유한다.
+  - [x] CLI automation/config/session/tool formatting과 Desktop checkpoint/session/config/replay/memory/scaffold/local-server/cache/telemetry 저장 옵션을 공용 옵션으로 전환했다.
+  - [x] provider별 snake_case/custom request 옵션과 worker host 특수 옵션은 동작 차이가 있어 다음 정리 후보로 남겼다.
 - [ ] 거대 클래스 분할은 helper 중앙화와 async/security 개선 뒤 안전한 단위로 진행한다.
 
 ## 완료한 작업
@@ -945,6 +948,15 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 JSON defaults 중앙화 후 결과: 통과, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ConfigStore_|FullyQualifiedName~SessionStore_|FullyQualifiedName~SerializeJson_IncludesExitCodeAndToolState|FullyQualifiedName~CliInteractiveToolCommands_|FullyQualifiedName~ToolExecutor|FullyQualifiedName~AgentSessionSummaryService_|FullyQualifiedName~AgentCheckpointService_|FullyQualifiedName~FileMutationSnapshotService_|FullyQualifiedName~ProjectMemoryService_|FullyQualifiedName~ExecutionLessonMemoryService_|FullyQualifiedName~DesktopProjectScaffoldCreateTool_|FullyQualifiedName~DesktopProjectScaffoldVerifyTool_|FullyQualifiedName~FrontendPackageRepairService_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1
+# 2026-06-19 JSON defaults focused serialization 검증 결과: 통과 73, 실패 0, 건너뜀 0, 전체 73.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 JSON defaults 중앙화 후 결과: 통과, 경고 0, 오류 0.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-19 2차 리팩터링 ToolInputParser 중앙화 후 결과: 통과, 경고 0, 오류 0.
 

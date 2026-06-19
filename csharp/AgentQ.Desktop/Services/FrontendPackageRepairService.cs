@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
@@ -15,10 +16,7 @@ public sealed record FrontendPackageRepairResult(
 
 public sealed class FrontendPackageRepairService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.Indented;
 
     public async Task<FrontendPackageRepairResult> RepairViteReactPackageAsync(
         string workspaceRoot,

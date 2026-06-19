@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentQ.Api;
 using AgentQ.Core.Models;
 
 namespace AgentQ.Cli;
@@ -13,12 +14,7 @@ public interface ISessionStore
 
 public sealed class FileSessionStore : ISessionStore
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.IndentedIgnoreNullCaseInsensitive;
 
     public static FileSessionStore Default { get; } = new();
 

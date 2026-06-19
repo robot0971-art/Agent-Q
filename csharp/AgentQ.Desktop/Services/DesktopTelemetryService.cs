@@ -1,14 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopTelemetryService
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CamelCase;
 
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 

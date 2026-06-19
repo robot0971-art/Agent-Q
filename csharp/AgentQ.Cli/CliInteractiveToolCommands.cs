@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Tools;
 using Spectre.Console;
 using Spectre.Console.Json;
@@ -40,7 +41,7 @@ public sealed class CliInteractiveToolCommands
             return;
         }
 
-        var normalizedJsonArgs = JsonSerializer.Serialize(inputDict, new JsonSerializerOptions { WriteIndented = true });
+        var normalizedJsonArgs = JsonSerializer.Serialize(inputDict, AgentQJsonOptions.Indented);
         if (tool.RequiresPermission)
         {
             if (!await enforcer.RequestPermissionAsync(tool.Name, tool.Description, normalizedJsonArgs))
@@ -87,7 +88,7 @@ public sealed class CliInteractiveToolCommands
         try
         {
             using var document = JsonDocument.Parse(value);
-            prettyJson = JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            prettyJson = JsonSerializer.Serialize(document.RootElement, AgentQJsonOptions.Indented);
             return true;
         }
         catch (JsonException)

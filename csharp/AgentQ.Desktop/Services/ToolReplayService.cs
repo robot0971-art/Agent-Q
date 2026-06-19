@@ -1,15 +1,12 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class ToolReplayService
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static readonly JsonSerializerOptions Options = AgentQJsonOptions.CamelCaseIndented;
 
     public async Task<string?> SaveAsync(ToolReplaySession session, CancellationToken ct = default)
     {

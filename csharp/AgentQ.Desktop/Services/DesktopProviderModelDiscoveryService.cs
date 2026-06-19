@@ -3,17 +3,14 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Core.Providers;
 
 namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopProviderModelDiscoveryService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.CaseInsensitiveIndented;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(24);
 

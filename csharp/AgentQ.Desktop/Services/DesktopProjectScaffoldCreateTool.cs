@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
@@ -11,10 +12,7 @@ public sealed class DesktopProjectScaffoldCreateTool(
 {
     private readonly WorkerScaffoldExecutor _executor = executor ?? new WorkerScaffoldExecutor();
     private readonly ProjectScaffoldPlanRegistry _planRegistry = planRegistry ?? new ProjectScaffoldPlanRegistry();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.WebCaseInsensitive;
 
     public string Name => "create_project_scaffold";
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentQ.Api;
 using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
@@ -12,10 +13,7 @@ public sealed class DesktopProjectScaffoldVerifyTool(
     private readonly DesktopVerificationRunner _runner = runner ?? new DesktopVerificationRunner([]);
     private readonly VerificationFailureClassifier _failureClassifier = failureClassifier ?? new VerificationFailureClassifier();
     private readonly ProjectScaffoldPlanRegistry _planRegistry = planRegistry ?? new ProjectScaffoldPlanRegistry();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = AgentQJsonOptions.WebCaseInsensitive;
 
     public string Name => "verify_project_scaffold";
 

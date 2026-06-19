@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
+using AgentQ.Api;
 
 namespace AgentQ.Desktop.Services;
 
@@ -113,7 +114,7 @@ public sealed class ProjectScaffoldPlanner
                 verificationCommands = result.Plan.VerificationCommands
             },
             overwriteExistingFiles = false
-        }, new JsonSerializerOptions { WriteIndented = true });
+        }, AgentQJsonOptions.Indented);
         var verifyInput = JsonSerializer.Serialize(new
         {
             planId = result.PlanId,
@@ -124,7 +125,7 @@ public sealed class ProjectScaffoldPlanner
                 files = result.Plan.Files,
                 verificationCommands = result.Plan.VerificationCommands
             }
-        }, new JsonSerializerOptions { WriteIndented = true });
+        }, AgentQJsonOptions.Indented);
         return
             "Project scaffold preflight plan:\n" +
             $"- planId: {result.PlanId}\n" +
