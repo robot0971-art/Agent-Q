@@ -88,6 +88,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly ImplementationRuntimePreviewService _implementationRuntimePreviewService;
     private readonly FrontendPackageRepairService _frontendPackageRepairService;
     private readonly DesktopDiagnosticsService _diagnosticsService;
+    private readonly DesktopMcpToolRegistrar _mcpToolRegistrar;
     private readonly ITool? _webSearchTool;
     private readonly TaskExecutor _taskExecutor;
     private PendingExecutionPlan? _pendingExecutionPlan;
@@ -108,6 +109,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         FrontendPackageRepairService? frontendPackageRepairService = null,
         SystemSkillService? systemSkillService = null,
         DesktopDiagnosticsService? diagnosticsService = null,
+        DesktopMcpToolRegistrar? mcpToolRegistrar = null,
         ITool? webSearchTool = null)
     {
         _httpClientFactory = httpClientFactory;
@@ -125,6 +127,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _implementationRuntimePreviewService = implementationRuntimePreviewService ?? new ImplementationRuntimePreviewService(_localServerService, httpClientFactory);
         _frontendPackageRepairService = frontendPackageRepairService ?? new FrontendPackageRepairService();
         _diagnosticsService = diagnosticsService ?? new DesktopDiagnosticsService();
+        _mcpToolRegistrar = mcpToolRegistrar ?? new DesktopMcpToolRegistrar();
         _webSearchTool = webSearchTool;
         
         _taskExecutor = new TaskExecutor(
@@ -436,7 +439,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         var editFailureTracker = new Dictionary<string, int>(StringComparer.Ordinal);
         var malformedToolInputTracker = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var executedToolCount = 0;
-        var toolRegistry = CreateToolRegistry(config, effectiveWorkspaceRoot);
+        var toolRegistry = await CreateToolRegistryAsync(config, effectiveWorkspaceRoot, ct);
         RecordDiagnostic(
             "tool_registry_created",
             effectiveWorkspaceRoot,
@@ -6540,7 +6543,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         }
     }
 
-    private ToolRegistry CreateToolRegistry(ProviderConfiguration config, string workspaceRoot)
+    private async Task<ToolRegistry> CreateToolRegistryAsync(ProviderConfiguration config, string workspaceRoot, CancellationToken ct)
     {
         var registry = new ToolRegistry();
         registry.Register(new BashTool());
@@ -6577,43 +6580,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 embeddingModel));
         }
 
-        RegisterMcpTools(registry, workspaceRoot);
+        await _mcpToolRegistrar.RegisterAsync(registry, workspaceRoot, ct);
         registry.Register(new PluginEchoTool());
         return registry;
-    }
-
-    private static void RegisterMcpTools(ToolRegistry registry, string workspaceRoot)
-    {
-        var projectConfig = ProjectAgentConfigService.LoadLocal(workspaceRoot);
-        var servers = McpServerRegistry.EnabledServers(projectConfig, workspaceRoot);
-        if (servers.Count == 0)
-        {
-            return;
-        }
-
-        var client = new StdioMcpClient();
-        foreach (var server in servers.Take(4))
-        {
-            IReadOnlyList<McpToolInfo> tools;
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
-                tools = client.ListToolsAsync(server, cts.Token).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var tool in tools.Take(16))
-            {
-                registry.TryRegister(new McpBridgeTool(
-                    McpToolName.Build(server.Name, tool.Name),
-                    server,
-                    tool,
-                    client));
-            }
-        }
     }
 }
 

@@ -35,6 +35,14 @@
   - [x] `OpenAiCompatibleProvider.NormalizeBaseUrl`과 embedding client 경로가 같은 provider base URL 검증을 공유한다.
   - [x] `DesktopConfigService.LoadAsync`가 malformed config를 조용히 삼키기만 하지 않고 `LastLoadError`에 실패 원인을 남긴다.
   - [x] provider base URL 검증과 Desktop config load failure 회귀 테스트를 추가했다.
+- [x] 비동기 안티패턴/거대 클래스 분리 1차를 완료했다.
+  - [x] `DesktopAgentService.RegisterMcpTools`를 `DesktopMcpToolRegistrar`로 분리해 `DesktopAgentService`의 MCP discovery 책임을 줄였다.
+  - [x] MCP tool discovery에서 `.GetAwaiter().GetResult()` 동기 블로킹을 제거하고 `RegisterAsync`/`await` 기반으로 전환했다.
+  - [x] MCP discovery는 linked cancellation token과 12초 timeout을 유지하면서 실패한 서버만 건너뛰도록 했다.
+  - [x] `DesktopMcpToolRegistrar_RegistersEnabledServerTools`, `DesktopMcpToolRegistrar_SkipsFailedDiscoveryWithoutBlockingRegistry` 회귀 테스트를 추가했다.
+  - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+  - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMcpToolRegistrar_|FullyQualifiedName~McpBridgeTool_|FullyQualifiedName~StdioMcpClient_|FullyQualifiedName~McpServerRegistry_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 10개 테스트.
+  - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
 - [ ] 거대 클래스 분할은 helper 중앙화와 async/security 개선 뒤 안전한 단위로 진행한다.
 
 ## 완료한 작업

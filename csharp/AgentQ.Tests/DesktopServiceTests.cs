@@ -12697,6 +12697,66 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task DesktopMcpToolRegistrar_RegistersEnabledServerTools()
+    {
+        var root = CreateTempDirectory();
+        await new ProjectAgentConfigService().SaveAsync(
+            root,
+            new ProjectAgentConfig
+            {
+                McpServers =
+                [
+                    new McpServerConfig
+                    {
+                        Name = "unity",
+                        Command = "node",
+                        Args = ["server.js"],
+                        Tags = ["trusted"]
+                    }
+                ]
+            },
+            CancellationToken.None);
+        var registry = new ToolRegistry();
+        var registrar = new DesktopMcpToolRegistrar(new FakeMcpClient(JsonSerializer.SerializeToElement(new
+        {
+            content = new[] { new { type = "text", text = "ok" } }
+        })));
+
+        await registrar.RegisterAsync(registry, root, CancellationToken.None);
+
+        var registered = Assert.IsType<McpBridgeTool>(registry.Get("mcp_unity_scene_read_object"));
+        Assert.Equal("mcp_unity_scene_read_object", registered.Name);
+    }
+
+    [Fact]
+    public async Task DesktopMcpToolRegistrar_SkipsFailedDiscoveryWithoutBlockingRegistry()
+    {
+        var root = CreateTempDirectory();
+        await new ProjectAgentConfigService().SaveAsync(
+            root,
+            new ProjectAgentConfig
+            {
+                McpServers =
+                [
+                    new McpServerConfig
+                    {
+                        Name = "unity",
+                        Command = "node",
+                        Args = ["server.js"],
+                        Tags = ["trusted"]
+                    }
+                ]
+            },
+            CancellationToken.None);
+        var registry = new ToolRegistry();
+        var registrar = new DesktopMcpToolRegistrar(new ThrowingMcpClient());
+
+        await registrar.RegisterAsync(registry, root, CancellationToken.None);
+
+        Assert.Empty(registry.All);
+    }
+
+    [Fact]
     public async Task StdioMcpClient_ReusesInitializedSessionForToolCalls()
     {
         var powershell = Path.Combine(
@@ -22115,6 +22175,19 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             LastToolName = toolName;
             LastArguments = arguments.Clone();
             return Task.FromResult(callResult.Clone());
+        }
+    }
+
+    private sealed class ThrowingMcpClient : IMcpClient
+    {
+        public Task<IReadOnlyList<McpToolInfo>> ListToolsAsync(McpServerConfig server, CancellationToken ct = default)
+        {
+            throw new InvalidOperationException("discovery failed");
+        }
+
+        public Task<JsonElement> CallToolAsync(McpServerConfig server, string toolName, JsonElement arguments, CancellationToken ct = default)
+        {
+            throw new InvalidOperationException("call failed");
         }
     }
 }
