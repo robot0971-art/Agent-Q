@@ -47,7 +47,7 @@ public class GlobTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var pattern = TryGetString(input, "pattern");
+        var pattern = ToolInputParser.GetString(input, "pattern");
         if (pattern == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
@@ -55,7 +55,7 @@ public class GlobTool : ITool
             return Task.FromResult(ToolResult.Error("pattern must not be empty"));
 
         var searchPath = ".";
-        if (TryGetString(input, "path") is { } p) searchPath = p;
+        if (ToolInputParser.GetString(input, "path") is { } p) searchPath = p;
 
         try
         {
@@ -196,18 +196,4 @@ public class GlobTool : ITool
                path.Contains("\\node_modules\\") || path.Contains("/node_modules/");
     }
 
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }

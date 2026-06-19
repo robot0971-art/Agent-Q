@@ -24,13 +24,13 @@ public class DeletePathTool : ITool
 
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
         {
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
         }
 
-        var recursive = TryGetBoolean(input, "recursive");
+        var recursive = ToolInputParser.GetBoolean(input, "recursive");
 
         try
         {
@@ -77,35 +77,4 @@ public class DeletePathTool : ITool
         return ToolResult.Success(JsonSerializer.Serialize(output));
     }
 
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
-
-    private static bool TryGetBoolean(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return false;
-        }
-
-        return value switch
-        {
-            bool flag => flag,
-            string text when bool.TryParse(text, out var parsed) => parsed,
-            JsonElement { ValueKind: JsonValueKind.True } => true,
-            JsonElement { ValueKind: JsonValueKind.False } => false,
-            _ => false
-        };
-    }
 }

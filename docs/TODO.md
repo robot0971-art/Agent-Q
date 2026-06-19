@@ -19,6 +19,16 @@
 - 2026-06-18 현재 `codex/wip-agent-q-audit` 브랜치에 관련 수정 커밋을 push했고, 남은 dirty file은 커밋 제외 대상인 `AGENTS.md` line-ending 변경뿐이다.
 - 대형 구조 리팩터링 항목, 예를 들어 거대 클래스 분할, 중복 helper 중앙화, WPF async void 축소 등은 이번 감사 완료 후 별도 2차 작업으로 분리한다.
 
+## 2차 리팩터링 / 품질 개선 진행
+
+- [x] 2026-06-19 2차 리팩터링 브랜치를 `codex/wip-agent-q-refactor-quality`로 시작했다.
+- [x] `AgentQ.Tools`의 반복 tool input parsing helper를 `ToolInputParser`로 중앙화했다.
+  - [x] `BashTool`, `ReadFileTool`, `WriteFileTool`, `EditFileTool`, `EditRiskGuard`, `ListDirectoryTool`, `CreateDirectoryTool`, `DeletePathTool`, `GrepTool`, `GlobTool`, `WebSearchTool`이 공용 string/int/bool parser를 사용한다.
+  - [x] high-risk edit approval이 provider `JsonElement` boolean으로 들어와도 `EditRiskGuard`가 같은 방식으로 처리하게 했다.
+  - [x] `EditFileTool_AcceptsJsonElementHighRiskApproval` 회귀 테스트를 추가했다.
+- [ ] JSON defaults 중앙화는 다음 작업 단위로 이어간다.
+- [ ] 거대 클래스 분할은 helper 중앙화와 async/security 개선 뒤 안전한 단위로 진행한다.
+
 ## 완료한 작업
 
 ### 1. 원래 사고 재현 경로 방어
@@ -935,6 +945,15 @@
 ## 최근 실행한 검증 명령
 
 ```powershell
+dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 2차 리팩터링 ToolInputParser 중앙화 후 결과: 통과, 경고 0, 오류 0.
+
+dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ListDirectoryTool_|FullyQualifiedName~ReadFileTool_|FullyQualifiedName~WriteFileTool_|FullyQualifiedName~EditFileTool_|FullyQualifiedName~DeletePathTool_|FullyQualifiedName~CreateDirectoryTool_|FullyQualifiedName~BashTool_|FullyQualifiedName~GlobTool_|FullyQualifiedName~GrepTool_|FullyQualifiedName~WebSearchTool_" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1
+# 2026-06-19 2차 리팩터링 focused tool 테스트 결과: 통과 63, 실패 0, 건너뜀 0, 전체 63.
+
+dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
+# 2026-06-19 2차 리팩터링 ToolInputParser 중앙화 후 결과: 통과, 경고 0, 오류 0.
+
 dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal
 # 2026-06-18 최종 재확인 결과: 통과, 경고 0, 오류 0.
 

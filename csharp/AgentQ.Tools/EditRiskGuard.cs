@@ -60,7 +60,7 @@ internal static class EditRiskGuard
 
     public static bool IsRiskAcknowledged(Dictionary<string, object?> input)
     {
-        return TryGetBoolean(input, "allow_high_risk_edit", out var allowed) && allowed;
+        return ToolInputParser.TryGetBoolean(input, "allow_high_risk_edit", out var allowed) && allowed;
     }
 
     public static string BuildWriteBlockMessage(string path, EditRiskAssessment assessment)
@@ -115,26 +115,4 @@ internal static class EditRiskGuard
         return count;
     }
 
-    private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
-    {
-        value = false;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is bool boolValue)
-        {
-            value = boolValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && bool.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        return false;
-    }
 }

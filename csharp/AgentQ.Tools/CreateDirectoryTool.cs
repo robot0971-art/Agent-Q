@@ -23,7 +23,7 @@ public class CreateDirectoryTool : ITool
 
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
         {
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
@@ -63,18 +63,4 @@ public class CreateDirectoryTool : ITool
         }
     }
 
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }

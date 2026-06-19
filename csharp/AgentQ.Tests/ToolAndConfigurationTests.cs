@@ -808,6 +808,42 @@ public sealed class ToolAndConfigurationTests : IDisposable
     }
 
     [Fact]
+    public async Task EditFileTool_AcceptsJsonElementHighRiskApproval()
+    {
+        using var workspace = new TemporaryWorkspace();
+        SetEnvironment("AGENTQ_WORKSPACE_ROOT", workspace.RootPath);
+        var filePath = workspace.CreateFile(
+            "DamageFlashController.cs",
+            """
+            using UnityEngine;
+
+            public sealed class DamageFlashController : MonoBehaviour
+            {
+                [SerializeField] private Renderer targetRenderer;
+
+                public void Flash()
+                {
+                    targetRenderer.enabled = true;
+                }
+            }
+            """);
+
+        using var document = JsonDocument.Parse("true");
+        var tool = new EditFileTool();
+        var result = await tool.ExecuteAsync(new Dictionary<string, object?>
+        {
+            ["path"] = filePath,
+            ["old_string"] = "targetRenderer",
+            ["new_string"] = "renderer",
+            ["replace_all"] = true,
+            ["allow_high_risk_edit"] = document.RootElement.Clone()
+        });
+
+        Assert.False(result.IsError);
+        Assert.DoesNotContain("targetRenderer", File.ReadAllText(filePath), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EditFileTool_AllowsSmallPatchOnUnityBehaviour()
     {
         using var workspace = new TemporaryWorkspace();

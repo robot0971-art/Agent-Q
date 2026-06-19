@@ -51,7 +51,7 @@ public class GrepTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var pattern = TryGetString(input, "pattern");
+        var pattern = ToolInputParser.GetString(input, "pattern");
         if (pattern == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: pattern"));
 
@@ -62,9 +62,9 @@ public class GrepTool : ITool
         var outputMode = "content";
         var include = "*";
 
-        if (TryGetString(input, "path") is { } p) searchPath = p;
-        if (TryGetString(input, "output_mode") is { } m) outputMode = m;
-        if (TryGetString(input, "include") is { } incPattern) include = incPattern;
+        if (ToolInputParser.GetString(input, "path") is { } p) searchPath = p;
+        if (ToolInputParser.GetString(input, "output_mode") is { } m) outputMode = m;
+        if (ToolInputParser.GetString(input, "include") is { } incPattern) include = incPattern;
 
         try
         {
@@ -294,20 +294,6 @@ public class GrepTool : ITool
                normalized.Contains("/node_modules/");
     }
 
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }
 
 /// <summary>

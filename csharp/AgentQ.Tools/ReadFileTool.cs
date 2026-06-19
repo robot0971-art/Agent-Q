@@ -50,7 +50,7 @@ public class ReadFileTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
 
@@ -70,8 +70,8 @@ public class ReadFileTool : ITool
             var offset = 0;
             var limit = DefaultLineLimit;
 
-            if (TryGetInt32(input, "offset", out var parsedOffset)) offset = Math.Max(0, parsedOffset - 1);
-            if (TryGetInt32(input, "limit", out var parsedLimit)) limit = parsedLimit;
+            if (ToolInputParser.TryGetInt32(input, "offset", out var parsedOffset)) offset = Math.Max(0, parsedOffset - 1);
+            if (ToolInputParser.TryGetInt32(input, "limit", out var parsedLimit)) limit = parsedLimit;
 
             if (limit <= 0)
                 return Task.FromResult(ToolResult.Error("limit must be greater than 0"));
@@ -119,56 +119,6 @@ public class ReadFileTool : ITool
     /// <param name="key">키</param>
     /// <param name="value">파싱된 값 (out)</param>
     /// <returns>파싱 성공 여부</returns>
-    private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
-    {
-        value = 0;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is int intValue)
-        {
-            value = intValue;
-            return true;
-        }
-
-        if (rawValue is long longValue && longValue is >= int.MinValue and <= int.MaxValue)
-        {
-            value = (int)longValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && int.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json && json.TryGetInt32(out parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
-
     private static ReadLinesResult ReadSelectedLines(string fullPath, int offset, int limit)
     {
         var selectedLines = new List<string>(Math.Min(limit, MaximumLineLimit));

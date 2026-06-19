@@ -48,20 +48,20 @@ public class EditFileTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
 
-        var oldString = TryGetString(input, "old_string");
+        var oldString = ToolInputParser.GetString(input, "old_string");
         if (oldString == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: old_string"));
 
-        var newString = TryGetString(input, "new_string");
+        var newString = ToolInputParser.GetString(input, "new_string");
         if (newString == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: new_string"));
 
         var replaceAll = false;
-        if (TryGetBoolean(input, "replace_all", out var parsedReplaceAll))
+        if (ToolInputParser.TryGetBoolean(input, "replace_all", out var parsedReplaceAll))
         {
             replaceAll = parsedReplaceAll;
         }
@@ -159,47 +159,4 @@ public class EditFileTool : ITool
     /// <param name="key">키</param>
     /// <param name="value">파싱된 값 (out)</param>
     /// <returns>파싱 성공 여부</returns>
-    private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
-    {
-        value = false;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is bool boolValue)
-        {
-            value = boolValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && bool.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json && json.ValueKind is JsonValueKind.True or JsonValueKind.False)
-        {
-            value = json.GetBoolean();
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }

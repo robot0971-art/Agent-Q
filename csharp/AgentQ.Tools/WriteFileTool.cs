@@ -48,16 +48,16 @@ public class WriteFileTool : ITool
     /// <returns>도구 실행 결과</returns>
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
             return Task.FromResult(ToolResult.Error("Missing required parameter: path"));
 
-        var content = TryGetString(input, "content");
+        var content = ToolInputParser.GetString(input, "content");
         if (content == null)
             return Task.FromResult(ToolResult.Error("Missing required parameter: content"));
 
         var overwrite = true;
-        if (TryGetBoolean(input, "overwrite", out var parsedOverwrite))
+        if (ToolInputParser.TryGetBoolean(input, "overwrite", out var parsedOverwrite))
         {
             overwrite = parsedOverwrite;
         }
@@ -122,47 +122,4 @@ public class WriteFileTool : ITool
         }
     }
 
-    private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
-    {
-        value = false;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is bool boolValue)
-        {
-            value = boolValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && bool.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json && json.ValueKind is JsonValueKind.True or JsonValueKind.False)
-        {
-            value = json.GetBoolean();
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }

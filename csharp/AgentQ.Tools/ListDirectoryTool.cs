@@ -28,7 +28,7 @@ public sealed class ListDirectoryTool : ITool
     public Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
         var requestedPath = ".";
-        var path = TryGetString(input, "path");
+        var path = ToolInputParser.GetString(input, "path");
         if (!string.IsNullOrWhiteSpace(path))
         {
             requestedPath = path;
@@ -46,8 +46,8 @@ public sealed class ListDirectoryTool : ITool
                 return Task.FromResult(ToolResult.Error($"Directory not found: {requestedPath}"));
             }
 
-            var includeHidden = TryGetBoolean(input, "includeHidden", out var parsedIncludeHidden) && parsedIncludeHidden;
-            var requestedLimit = TryGetInt32(input, "limit", out var parsedLimit) ? parsedLimit : DefaultLimit;
+            var includeHidden = ToolInputParser.TryGetBoolean(input, "includeHidden", out var parsedIncludeHidden) && parsedIncludeHidden;
+            var requestedLimit = ToolInputParser.TryGetInt32(input, "limit", out var parsedLimit) ? parsedLimit : DefaultLimit;
             if (requestedLimit <= 0)
             {
                 return Task.FromResult(ToolResult.Error("limit must be greater than 0"));
@@ -151,83 +151,4 @@ public sealed class ListDirectoryTool : ITool
         }
     }
 
-    private static bool TryGetBoolean(Dictionary<string, object?> input, string key, out bool value)
-    {
-        value = false;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is bool boolValue)
-        {
-            value = boolValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && bool.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json &&
-            (json.ValueKind == JsonValueKind.True || json.ValueKind == JsonValueKind.False))
-        {
-            value = json.GetBoolean();
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
-    {
-        value = 0;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is int intValue)
-        {
-            value = intValue;
-            return true;
-        }
-
-        if (rawValue is long longValue && longValue is >= int.MinValue and <= int.MaxValue)
-        {
-            value = (int)longValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && int.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json && json.TryGetInt32(out parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
-    }
 }

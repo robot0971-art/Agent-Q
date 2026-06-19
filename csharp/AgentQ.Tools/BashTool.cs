@@ -82,7 +82,7 @@ public class BashTool : ITool
     /// <returns>Tool execution result.</returns>
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var command = TryGetString(input, "command");
+        var command = ToolInputParser.GetString(input, "command");
         if (command == null)
             return ToolResult.Error("Missing required parameter: command");
 
@@ -94,7 +94,7 @@ public class BashTool : ITool
             return ToolResult.Error($"Command blocked by safety policy: {blockedReason}");
 
         var timeout = DefaultTimeoutMs;
-        if (TryGetInt32(input, "timeout", out var parsedTimeout))
+        if (ToolInputParser.TryGetInt32(input, "timeout", out var parsedTimeout))
         {
             if (parsedTimeout < MinimumTimeoutMs || parsedTimeout > MaximumTimeoutMs)
             {
@@ -188,63 +188,6 @@ public class BashTool : ITool
         {
             return ToolResult.Error($"Failed to execute command: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Tries to read an input value as an Int32.
-    /// </summary>
-    /// <param name="input">Input dictionary.</param>
-    /// <param name="key">Key to read.</param>
-    /// <param name="value">Parsed value.</param>
-    /// <returns>Whether parsing succeeded.</returns>
-    private static bool TryGetInt32(Dictionary<string, object?> input, string key, out int value)
-    {
-        value = 0;
-        if (!input.TryGetValue(key, out var rawValue) || rawValue == null)
-        {
-            return false;
-        }
-
-        if (rawValue is int intValue)
-        {
-            value = intValue;
-            return true;
-        }
-
-        if (rawValue is long longValue && longValue is >= int.MinValue and <= int.MaxValue)
-        {
-            value = (int)longValue;
-            return true;
-        }
-
-        if (rawValue is string stringValue && int.TryParse(stringValue, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        if (rawValue is JsonElement json && json.TryGetInt32(out parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var value) || value == null)
-        {
-            return null;
-        }
-
-        return value switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } json => json.GetString(),
-            _ => null
-        };
     }
 
     private static bool TryGetBlockedReason(string command, out string reason)

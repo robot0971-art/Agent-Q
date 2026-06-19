@@ -40,7 +40,7 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
 
     public async Task<ToolResult> ExecuteAsync(Dictionary<string, object?> input, CancellationToken ct = default)
     {
-        var query = TryGetString(input, "query");
+        var query = ToolInputParser.GetString(input, "query", fallbackToString: true);
         if (string.IsNullOrWhiteSpace(query))
         {
             return ToolResult.Error("Missing required parameter: query");
@@ -52,7 +52,7 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
             return ToolResult.Error($"query is too long; keep it under {MaximumQueryLength} characters and search the current request, not pasted logs.");
         }
 
-        var maxResults = Math.Clamp(TryGetInt(input, "max_results") ?? DefaultMaxResults, 1, MaximumMaxResults);
+        var maxResults = Math.Clamp(ToolInputParser.GetInt32(input, "max_results") ?? DefaultMaxResults, 1, MaximumMaxResults);
         try
         {
             var url = "https://duckduckgo.com/html/?q=" + Uri.EscapeDataString(query);
@@ -137,47 +137,6 @@ public sealed class WebSearchTool(HttpClient? httpClient = null) : ITool
         }
 
         return value[..maxLength].TrimEnd() + "...";
-    }
-
-    private static string? TryGetString(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var raw) || raw is null)
-        {
-            return null;
-        }
-
-        return raw switch
-        {
-            string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
-            _ => raw.ToString()
-        };
-    }
-
-    private static int? TryGetInt(IReadOnlyDictionary<string, object?> input, string key)
-    {
-        if (!input.TryGetValue(key, out var raw) || raw is null)
-        {
-            return null;
-        }
-
-        return raw switch
-        {
-            int value => value,
-            long value => value > int.MaxValue
-                ? int.MaxValue
-                : value < int.MinValue
-                    ? int.MinValue
-                    : (int)value,
-            double value => value > int.MaxValue
-                ? int.MaxValue
-                : value < int.MinValue
-                    ? int.MinValue
-                    : (int)value,
-            JsonElement { ValueKind: JsonValueKind.Number } element when element.TryGetInt32(out var value) => value,
-            string text when int.TryParse(text, out var value) => value,
-            _ => null
-        };
     }
 
     private static HttpClient CreateDefaultHttpClient() =>
