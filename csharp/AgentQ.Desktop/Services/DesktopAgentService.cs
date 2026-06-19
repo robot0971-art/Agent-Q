@@ -5786,6 +5786,13 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             return;
         }
 
+        await _executionLessonMemoryService.RecordExecutionOutcomeAsync(
+            workspaceRoot,
+            UserIntentTranslator.Translate(userText),
+            userText,
+            replayEntries,
+            ct);
+
         var path = await _toolReplayService.SaveAsync(
             new ToolReplaySession
             {

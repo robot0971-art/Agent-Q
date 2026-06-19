@@ -4286,6 +4286,111 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public async Task ExecutionLessonMemoryService_AutoCreatesSanitizedLessonFromFailedReplay()
+    {
+        var root = CreateTempDirectory();
+        var service = new ExecutionLessonMemoryService();
+        var contract = UserIntentTranslator.Translate("dotnet test \uB3CC\uB824\uC918");
+        var replay = new ToolReplayEntry
+        {
+            ToolName = "bash",
+            InputJson = """{"command":"dotnet test","api_key":"sk-secretsecret"}""",
+            ResultPreview = "dotnet test failed at C:\\Users\\woo53\\secret\\Project\\File.cs with token=abc123 and 400 errors",
+            IsError = true
+        };
+
+        await service.RecordExecutionOutcomeAsync(
+            root,
+            contract,
+            "dotnet test \uB3CC\uB824\uC918. \uB0B4 \uAC1C\uC778 \uB300\uD654\uB294 \uC800\uC7A5\uD558\uC9C0 \uB9C8.",
+            [replay],
+            CancellationToken.None);
+
+        var lessonPath = Path.Combine(root, ".agentq", "lessons", "execution-lessons.json");
+        var json = await File.ReadAllTextAsync(lessonPath);
+        var lesson = Assert.Single((await service.LoadAsync(root, CancellationToken.None)).Lessons);
+
+        Assert.Equal("execution-run_verification-build-test-failure", lesson.Id);
+        Assert.Equal("run_verification", lesson.Intent);
+        Assert.Contains("rerun focused verification", lesson.Rule, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("build-test-failure", lesson.Tags);
+        Assert.DoesNotContain("sk-secretsecret", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token=abc123", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("C:\\Users\\woo53", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\uB0B4 \uAC1C\uC778 \uB300\uD654", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecutionLessonMemoryService_RelevanceGateDoesNotInjectFailureLessonIntoUnrelatedConversation()
+    {
+        var root = CreateTempDirectory();
+        var service = new ExecutionLessonMemoryService();
+        var contract = UserIntentTranslator.Translate("dotnet test \uB3CC\uB824\uC918");
+        await service.RecordExecutionOutcomeAsync(
+            root,
+            contract,
+            "dotnet test \uB3CC\uB824\uC918",
+            [
+                new ToolReplayEntry
+                {
+                    ToolName = "bash",
+                    ResultPreview = "dotnet test failed",
+                    IsError = true
+                }
+            ],
+            CancellationToken.None);
+
+        var relevant = await service.SelectRelevantAsync(
+            root,
+            "\uB7ED\uC154\uB9AC \uC1FC\uD551\uBAB0 \uB514\uC790\uC778\uC740 \uC5B4\uB5A4 \uBC29\uD5A5\uC774 \uC88B\uC744\uAE4C?",
+            UserIntentTranslator.Translate("\uB7ED\uC154\uB9AC \uC1FC\uD551\uBAB0 \uB514\uC790\uC778\uC740 \uC5B4\uB5A4 \uBC29\uD5A5\uC774 \uC88B\uC744\uAE4C?"),
+            CancellationToken.None);
+
+        Assert.Empty(relevant);
+        Assert.Equal(string.Empty, service.BuildContext(relevant));
+    }
+
+    [Fact]
+    public async Task ExecutionLessonMemoryService_DisablesOldFailedUnusedLessons()
+    {
+        var root = CreateTempDirectory();
+        var lessonsDirectory = Path.Combine(root, ".agentq", "lessons");
+        Directory.CreateDirectory(lessonsDirectory);
+        var old = DateTimeOffset.UtcNow.AddDays(-220);
+        await File.WriteAllTextAsync(
+            Path.Combine(lessonsDirectory, "execution-lessons.json"),
+            $$"""
+            {
+              "version": 1,
+              "lessons": [
+                {
+                  "id": "old-failure",
+                  "intent": "run_verification",
+                  "triggers": ["dotnet test"],
+                  "rule": "Old failed lesson",
+                  "confidence": 0.9,
+                  "failureCount": 3,
+                  "successCount": 0,
+                  "createdAtUtc": "{{old:O}}",
+                  "lastOutcomeUtc": "{{old:O}}"
+                }
+              ]
+            }
+            """);
+        var service = new ExecutionLessonMemoryService();
+
+        var document = await service.LoadAsync(root, CancellationToken.None);
+        var relevant = await service.SelectRelevantAsync(
+            root,
+            "dotnet test \uB3CC\uB824\uC918",
+            UserIntentTranslator.Translate("dotnet test \uB3CC\uB824\uC918"),
+            CancellationToken.None);
+
+        Assert.True(Assert.Single(document.Lessons).Disabled);
+        Assert.Empty(relevant);
+    }
+
+    [Fact]
     public async Task ExecutionLessonMemoryService_DoesNotReinforceUnappliedLessonOnSuccess()
     {
         var root = CreateTempDirectory();

@@ -51,6 +51,21 @@
   - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
 - [ ] 추가 거대 클래스 분할은 Desktop agent orchestration, workspace analysis, memory service 순서로 안전한 단위를 더 찾는다.
 
+## 3차 메모리 시스템 / 자동 실행 교훈 진행
+
+- [x] `ExecutionLessonMemoryService`를 자동 실행 교훈 중심으로 보강했다.
+  - [x] tool replay 저장 공통 경로인 `DesktopAgentService.SaveReplayAsync`에서 `RecordExecutionOutcomeAsync`를 호출해 실패 replay가 자동 lesson 후보가 되게 했다.
+  - [x] `tool-failure`, `build-test-failure`, `verification-failure`, `scaffold-failure`, `local-server-failure` 패턴을 분류한다.
+  - [x] 저장되는 lesson에 `FailurePattern`, `CorrectBehavior`, `Tags`를 추가해 긴 대화 대신 짧은 행동 규칙을 저장한다.
+  - [x] lesson 저장 전 `SensitiveTextRedactor`, 경로 마스킹, 길이 제한을 적용해 사용자 개인 대화, 민감정보, 긴 출력이 저장되지 않게 했다.
+  - [x] `BuildContext`에 historical lesson 안내를 넣어 최신 사용자 요청보다 위에 서지 않게 했다.
+  - [x] 오래되고 성공 이력이 없는 실패 lesson은 load/selection 단계에서 자동 감쇠/비활성화한다.
+  - [x] 자동 생성/sanitizer/relevance gate/감쇠 회귀 테스트를 추가했다.
+  - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+  - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ExecutionLessonMemoryService" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 10개 테스트.
+  - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+- [ ] 후속으로 `ProjectMemoryService`의 수동 memory.local/shared lesson과 자동 execution lesson의 ranking/수명 정책을 더 통합한다.
+
 ## 완료한 작업
 
 ### 1. 원래 사고 재현 경로 방어
