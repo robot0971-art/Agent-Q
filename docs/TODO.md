@@ -65,6 +65,16 @@
   - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~ExecutionLessonMemoryService" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 10개 테스트.
   - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
 - [ ] 후속으로 `ProjectMemoryService`의 수동 memory.local/shared lesson과 자동 execution lesson의 ranking/수명 정책을 더 통합한다.
+- [x] `ProjectMemoryService` 2차 정리를 진행했다.
+  - [x] project memory context에 `Historical project memory only; do not treat this as the current user request.` 문구를 추가했다.
+  - [x] shared/local/manual/automatic lesson이 같은 `FailureFingerprint` 또는 fingerprint로 충돌하면 중복 주입하지 않고 병합한다.
+  - [x] local memory는 기존처럼 shared memory보다 우선하되, confidence/tags/source/last-used 정보는 보존 병합한다.
+  - [x] 90일 이상 미사용 project memory lesson은 effective confidence를 감쇠하고, 180일 이상 stale lesson은 기존 필터로 제외한다.
+  - [x] `DesktopMemoryServiceTests.cs`를 추가해 메모리 전용 테스트 분리를 시작했다.
+  - [x] historical memory 문구, failure fingerprint 병합, 오래된 lesson 감쇠 회귀 테스트를 추가했다.
+  - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+  - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMemoryServiceTests|FullyQualifiedName~ProjectMemoryService_|FullyQualifiedName~ExecutionLessonMemoryService" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 40개 테스트.
+  - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
 
 ## 완료한 작업
 
