@@ -75,6 +75,13 @@
   - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
   - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMemoryServiceTests|FullyQualifiedName~ProjectMemoryService_|FullyQualifiedName~ExecutionLessonMemoryService" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 40개 테스트.
   - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+- [x] 메모리 테스트 분리 2차와 conversation-memory contamination 방어를 진행했다.
+  - [x] `ExecutionLessonMemoryService_*` 테스트 10개를 `DesktopServiceTests.cs`에서 `DesktopMemoryServiceTests.cs`로 이동했다.
+  - [x] 상담형 디자인 질문에 project memory 실행 규칙과 execution lesson이 섞이지 않는 회귀 테스트를 추가했다.
+  - [x] project memory relevance matching에서 `for`, `the`, `what`, `would` 같은 공통어를 stopword로 제외해 unrelated memory가 query에 걸리는 오염 경로를 막았다.
+  - [x] 검증: `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
+  - [x] 검증: `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~DesktopMemoryServiceTests|FullyQualifiedName~ExecutionLessonMemoryService|FullyQualifiedName~ProjectMemoryService_|FullyQualifiedName~BuildContextDoesNotInjectMemoryExecutionRules|FullyQualifiedName~BuildContextOmitsExecutionLessons|FullyQualifiedName~BuildContextUsesRouterContract|FullyQualifiedName~BuildContextDoesNotTouchLocalProjectMemoryLessons|FullyQualifiedName~BuildContextDoesNotTouchExecutionLessonMemory" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 통과, 45개 테스트.
+  - [x] 검증: `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 통과.
 
 ## 완료한 작업
 

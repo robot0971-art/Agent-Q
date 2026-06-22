@@ -1188,9 +1188,16 @@ public sealed class ProjectMemoryService
     {
         foreach (Match match in Regex.Matches(value, @"[\p{L}\p{N}_\.-]{3,}", RegexOptions.IgnoreCase))
         {
-            yield return match.Value.ToLowerInvariant();
+            var term = match.Value.ToLowerInvariant();
+            if (!IsStopTerm(term))
+            {
+                yield return term;
+            }
         }
     }
+
+    private static bool IsStopTerm(string term) =>
+        term is "the" or "and" or "for" or "with" or "that" or "this" or "from" or "into" or "when" or "what" or "would" or "could" or "should" or "good" or "best" or "about" or "because" or "before" or "after";
 
     private static string CreateLessonSearchText(ProjectMemoryLesson lesson)
     {
