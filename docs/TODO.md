@@ -1556,3 +1556,12 @@ dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseShar
 - 관련 없는 dirty file은 되돌리지 않는다.
 - 커밋할 때는 가능하면 WIP 브랜치에 먼저 저장한다.
 - main에 바로 커밋하지 말고, 안정화 후 merge한다.
+
+## 2026-06-24 진행 기록
+
+- Conversation intent block 재발 케이스 보강: `main.cpp`/`CMakeLists.txt`/C++ 콘솔 계산기처럼 명확한 네이티브 파일/프로젝트 생성 요청이 Conversation 도구 차단으로 떨어지지 않도록 `TaskContract` 생성 힌트를 확장했다.
+- 모델이 C++ 파일 생성 요청을 Conversation으로 오분류해도 deterministic fallback의 명확한 현재 실행 계약을 보존하는 회귀 테스트를 추가했다.
+- 검증:
+  - `dotnet build csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 결과: 빌드 성공, 경고 0, 오류 0.
+  - `dotnet test csharp\AgentQ.Tests\AgentQ.Tests.csproj --no-build --filter "FullyQualifiedName~UserIntentTranslator_RecognizesCppFileCreationRequest|FullyQualifiedName~UserIntentTranslator_RecognizesCppCalculatorProjectRequest|FullyQualifiedName~UserTurnUnderstanding_PreservesCppFileRequestWhenModelMisclassifiesConversation|FullyQualifiedName~LlmFirstIntentRouter_PreservesExplicitCreateDirectoryContract|FullyQualifiedName~LlmFirstIntentRouter_DoesNotCreateContractForConversationEvenWhenRuleLooksActionable" --logger "console;verbosity=minimal" /p:UseSharedCompilation=false /p:NodeReuse=false /m:1` 결과: 통과 5, 실패 0, 전체 5.
+  - `dotnet build csharp\AgentQ.Desktop\AgentQ.Desktop.csproj --no-restore /p:UseSharedCompilation=false /p:NodeReuse=false /m:1 --verbosity:minimal` 결과: 빌드 성공, 경고 0, 오류 0.

@@ -2754,6 +2754,61 @@ public sealed class DesktopServiceTests
     }
 
     [Fact]
+    public void UserIntentTranslator_RecognizesCppFileCreationRequest()
+    {
+        var contract = UserIntentTranslator.Translate("main.cpp\uB791 CMakeLists.txt \uD30C\uC77C \uC0DD\uC131\uD574\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateFile, contract.Intent);
+        Assert.Contains("write_file", string.Join(" ", contract.RequiredActions), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UserIntentTranslator_RecognizesCppCalculatorProjectRequest()
+    {
+        var contract = UserIntentTranslator.Translate("C++ \uCF58\uC194 \uACC4\uC0B0\uAE30 \uB9CC\uB4E4\uC5B4\uC918");
+
+        Assert.True(contract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateProject, contract.Intent);
+    }
+
+    [Fact]
+    public void UserTurnUnderstanding_PreservesCppFileRequestWhenModelMisclassifiesConversation()
+    {
+        var userText = "main.cpp\uB791 CMakeLists.txt \uD30C\uC77C \uC0DD\uC131\uD574\uC918";
+        var fallback = UserTurnUnderstandingService.Understand(userText);
+        var json =
+            """
+            {
+              "primaryIntent": "Conversation",
+              "userGoal": "main.cpp and CMakeLists.txt files",
+              "actualRequestedAction": {
+                "shouldExecute": false,
+                "actionKind": "none",
+                "target": "",
+                "reason": "The user appears to be discussing possible files."
+              },
+              "requiresWrite": false,
+              "requiresShell": false,
+              "requiresNetwork": false,
+              "isConcreteEnough": true,
+              "confidence": 0.91
+            }
+            """;
+
+        Assert.True(UserTurnUnderstandingService.TryParseModelResponse(json, userText, fallback, out var modelUnderstanding));
+        var effective = UserTurnUnderstandingService.ApplySafetyRules(fallback, modelUnderstanding);
+        var turnIntent = UserTurnUnderstandingService.ToTurnIntentClassification(effective);
+        var route = LlmFirstIntentRouter.Route(userText, effective, TurnIntentClassifier.Classify(userText));
+
+        Assert.True(fallback.ActualRequestedAction.ShouldExecute);
+        Assert.True(effective.ActualRequestedAction.ShouldExecute);
+        Assert.Equal(TurnIntentType.Action, turnIntent.Type);
+        Assert.True(route.ExecutionContract.IsActionable);
+        Assert.Equal(TaskContractIntent.CreateFile, route.ExecutionContract.Intent);
+    }
+
+    [Fact]
     public void UserIntentTranslator_RecognizesModifyCodeRequest()
     {
         var contract = UserIntentTranslator.Translate("App.jsx \uCF54\uB4DC \uC218\uC815\uD574\uC918");
