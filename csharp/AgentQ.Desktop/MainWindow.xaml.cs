@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly DesktopProviderModelDiscoveryService _modelDiscoveryService;
     private readonly ProjectMemoryService _projectMemoryService;
     private readonly DesktopLocalServerService _localServerService;
+    private readonly DesktopRunRecoveryService _runRecoveryService;
     private readonly List<DesktopAttachment> _attachments = [];
     private CancellationTokenSource? _modelRefreshCts;
 
@@ -47,7 +48,8 @@ public partial class MainWindow : Window
         DesktopPanelEventBinder panelEventBinder,
         DesktopProviderModelDiscoveryService modelDiscoveryService,
         ProjectMemoryService projectMemoryService,
-        DesktopLocalServerService localServerService)
+        DesktopLocalServerService localServerService,
+        DesktopRunRecoveryService runRecoveryService)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -67,6 +69,7 @@ public partial class MainWindow : Window
         _modelDiscoveryService = modelDiscoveryService;
         _projectMemoryService = projectMemoryService;
         _localServerService = localServerService;
+        _runRecoveryService = runRecoveryService;
         DataContext = _viewModel;
         HookPanelEvents();
         _viewModel.Messages.CollectionChanged += (_, _) => ChatPanelView.ScrollMessagesToEndIfPinned();
@@ -176,7 +179,33 @@ public partial class MainWindow : Window
         await RefreshSavedMemoryAsync();
         await RefreshEvalDashboardAsync();
         await RefreshLocalServerStateAsync();
+        await RefreshRunRecoveryCandidatesAsync();
         ScheduleProviderModelRefresh(preserveCurrentModel: true);
+    }
+
+    private async Task RefreshRunRecoveryCandidatesAsync()
+    {
+        try
+        {
+            var candidates = await _runRecoveryService.FindCandidatesAsync(_viewModel.WorkspaceRoot, CancellationToken.None);
+            foreach (var candidate in candidates)
+            {
+                _viewModel.AddRunStep(
+                    candidate.Kind == DesktopRunRecoveryKind.CorruptJournal ? AgentRunState.Failed : AgentRunState.WaitingForApproval,
+                    $"Recovery review: {candidate.RunId}",
+                    candidate.Message);
+            }
+
+            if (candidates.Count > 0)
+            {
+                _viewModel.StatusText = $"{candidates.Count} interrupted run(s) need recovery review";
+                _viewModel.AddLog("Recovery candidates detected. No run was resumed automatically.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _viewModel.AddLog($"Run recovery scan failed: {TrimForLog(ex.Message)}");
+        }
     }
 
     private async Task RefreshLocalServerStateAsync()

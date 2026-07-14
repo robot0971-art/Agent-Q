@@ -40,6 +40,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopConfigService>();
         services.AddSingleton<DesktopStartupCommandService>();
         services.AddSingleton<DesktopLocalServerService>();
+        services.AddSingleton<DesktopRunRecoveryService>();
         services.AddSingleton<IImplementationPreviewBrowserVerifier, PlaywrightImplementationPreviewBrowserVerifier>();
         services.AddSingleton<ImplementationRuntimePreviewService>();
         services.AddSingleton<IIntentRoutingPipeline, IntentRoutingPipeline>();
