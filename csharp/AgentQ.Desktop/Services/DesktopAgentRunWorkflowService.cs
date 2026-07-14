@@ -157,7 +157,7 @@ public sealed class DesktopAgentRunWorkflowService(
         CancellationTokenSource? operationCts = null;
         DesktopPermissionEnforcer? permissionEnforcer = null;
         var startedAt = DateTime.UtcNow;
-        var runtimeRun = _runtimeRunLifecycle.Start($"desktop-{Guid.NewGuid():N}");
+        var runtimeRun = _runtimeRunLifecycle.Start($"desktop-{Guid.NewGuid():N}", viewModel.WorkspaceRoot);
         runtimeRun.RecordDesktopState(AgentRunState.GatheringContext);
 
         try

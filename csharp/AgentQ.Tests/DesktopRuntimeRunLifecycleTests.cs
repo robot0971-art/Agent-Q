@@ -38,6 +38,33 @@ public sealed class DesktopRuntimeRunLifecycleTests
     }
 
     [Fact]
+    public async Task WorkspaceRun_PersistsUnderAgentQRunDirectory()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "agentq-workspace-journal-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        try
+        {
+            var run = new DesktopRuntimeRunLifecycle().Start("desktop-workspace-journal", workspace);
+            run.RecordDesktopState(AgentRunState.GatheringContext);
+            run.RecordDesktopState(AgentRunState.Done);
+            await run.FlushJournalAsync();
+
+            var store = new FileAgentRunJournalStore(Path.Combine(workspace, ".agentq", "runs"));
+            var recovered = await store.ReadAsync("desktop-workspace-journal");
+
+            Assert.Equal(RunJournalReadStatus.Loaded, recovered.Status);
+            Assert.Equal(AgentRunStatus.Completed, recovered.Journal!.Transitions[^1].NextStatus);
+        }
+        finally
+        {
+            if (Directory.Exists(workspace))
+            {
+                Directory.Delete(workspace, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task JournalFailure_DoesNotChangeTheObservedDesktopLifecycle()
     {
         var run = new DesktopRuntimeRunLifecycle(journalStore: new ThrowingJournalStore()).Start("desktop-journal-failure");

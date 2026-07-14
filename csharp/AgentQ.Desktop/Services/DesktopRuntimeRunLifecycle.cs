@@ -14,16 +14,36 @@ public sealed class DesktopRuntimeRunLifecycle(
     IAgentRunJournalStore? journalStore = null)
 {
     private readonly IAgentRunCoordinator _coordinator = coordinator ?? new AgentRunCoordinator(new AgentRunStateMachine());
-    // The migration bridge does not receive a validated workspace at construction time.
-    // Keep its recovery snapshots in the process-local temp area until the Runtime owns
-    // workspace selection, rather than deriving a file path from an untrusted prompt.
-    private readonly IAgentRunJournalStore _journalStore = journalStore ?? new FileAgentRunJournalStore(
-        Path.Combine(Path.GetTempPath(), "AgentQ", "run-journals"));
+    private readonly IAgentRunJournalStore? _journalStore = journalStore;
 
-    public DesktopRuntimeRunSession Start(string runId)
+    public DesktopRuntimeRunSession Start(string runId, string? workspaceRoot = null)
     {
         var session = _coordinator.Start(runId, "desktop-runtime-bridge-v1");
-        return new DesktopRuntimeRunSession(session, _journalStore);
+        return new DesktopRuntimeRunSession(session, _journalStore ?? CreateWorkspaceJournalStore(workspaceRoot));
+    }
+
+    private static IAgentRunJournalStore CreateWorkspaceJournalStore(string? workspaceRoot)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(workspaceRoot) && Directory.Exists(workspaceRoot))
+            {
+                var root = Path.GetFullPath(workspaceRoot);
+                var directory = Path.Combine(root, ".agentq", "runs");
+                if (WorkspacePathResolver.IsInsideWorkspace(root, directory) &&
+                    WorkspacePathResolver.IsResolvedInsideWorkspace(root, directory))
+                {
+                    return new FileAgentRunJournalStore(directory);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Journal placement is observability-only during migration. Fall back to a
+            // process-local location if a selected workspace cannot be used safely.
+        }
+
+        return new FileAgentRunJournalStore(Path.Combine(Path.GetTempPath(), "AgentQ", "run-journals"));
     }
 }
 
