@@ -1,6 +1,8 @@
 using AgentQ.Desktop.Services;
 using AgentQ.Runtime.Journaling;
 using AgentQ.Runtime.Runs;
+using AgentQ.Runtime.Contracts;
+using AgentQ.Runtime.Intent;
 using Xunit;
 
 namespace AgentQ.Tests;
@@ -74,6 +76,35 @@ public sealed class DesktopRuntimeRunLifecycleTests
         await run.FlushJournalAsync();
 
         Assert.Equal(AgentRunStatus.Cancelled, run.History[^1].NextStatus);
+    }
+
+    [Fact]
+    public async Task RuntimeContract_IsPersistedWithTheBoundRunJournal()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "agentq-contract-journal-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new FileAgentRunJournalStore(directory);
+            var run = new DesktopRuntimeRunLifecycle(journalStore: store).Start("desktop-contract");
+            var contract = new TaskContractFactory().Create(new RuntimeTaskContractRequest(
+                "workspace", AgentTurnIntent.Action, "Create a folder", [], ["workspace-write"],
+                ["create directory"], [], ["directory exists"], DateTimeOffset.UtcNow.AddHours(1)), "desktop-contract");
+
+            run.RecordContract(contract);
+            run.RecordDesktopState(AgentRunState.GatheringContext);
+            await run.FlushJournalAsync();
+
+            var recovered = await store.ReadAsync("desktop-contract");
+            Assert.Equal(contract.Hash, recovered.Journal!.Contract!.Hash);
+            Assert.Equal("desktop-contract", recovered.Journal.Contract.ContractId);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     [Fact]

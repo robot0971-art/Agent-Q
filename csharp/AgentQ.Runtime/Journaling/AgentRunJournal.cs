@@ -1,4 +1,5 @@
 using AgentQ.Runtime.Runs;
+using AgentQ.Runtime.Contracts;
 
 namespace AgentQ.Runtime.Journaling;
 
@@ -10,7 +11,8 @@ public sealed record AgentRunJournal(
     string RunId,
     int SchemaVersion,
     IReadOnlyList<AgentRunTransition> Transitions,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    RuntimeTaskContract? Contract = null)
 {
     public const int CurrentSchemaVersion = 1;
 }

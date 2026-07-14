@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentQ.Runtime.Contracts;
 using AgentQ.Runtime.Runs;
 
 namespace AgentQ.Runtime.Journaling;
@@ -115,6 +116,14 @@ public sealed class FileAgentRunJournalStore : IAgentRunJournalStore
         if (journal.Transitions is null || journal.Transitions.Count == 0)
         {
             throw new ArgumentException("A journal must contain at least one transition.", nameof(journal));
+        }
+
+        if (journal.Contract is { } contract &&
+            (!string.Equals(contract.ContractId, journal.RunId, StringComparison.Ordinal) ||
+             string.IsNullOrWhiteSpace(contract.Hash) ||
+             string.IsNullOrWhiteSpace(contract.WorkspaceId)))
+        {
+            throw new ArgumentException("The journal contains an invalid runtime contract.", nameof(journal));
         }
 
         DateTimeOffset? previousOccurredAt = null;

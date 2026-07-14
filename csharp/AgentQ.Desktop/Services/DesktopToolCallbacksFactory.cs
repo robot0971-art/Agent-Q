@@ -14,6 +14,7 @@ public static class DesktopToolCallbacksFactory
     {
         return new DesktopToolCallbacks
         {
+            OnTurnStateCreated = _ => { },
             OnRunStep = (state, title, detail) => dispatcher.Invoke(() =>
             {
                 viewModel.AddRunStep(state, title, detail);

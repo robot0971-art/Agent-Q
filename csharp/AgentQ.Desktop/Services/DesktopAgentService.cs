@@ -321,6 +321,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             effectiveWorkspaceRoot,
             config,
             turnState.Summary);
+        toolCallbacks?.OnTurnStateCreated?.Invoke(turnState);
         toolCallbacks?.OnRunStep?.Invoke(
             AgentRunState.Planning,
             "TurnState",

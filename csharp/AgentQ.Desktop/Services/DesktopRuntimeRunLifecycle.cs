@@ -1,5 +1,6 @@
 using AgentQ.Runtime.Runs;
 using AgentQ.Runtime.Journaling;
+using AgentQ.Runtime.Contracts;
 using System.IO;
 
 namespace AgentQ.Desktop.Services;
@@ -53,6 +54,7 @@ public sealed class DesktopRuntimeRunSession
     private readonly IAgentRunJournalStore _journalStore;
     private readonly object _journalWriteGate = new();
     private Task _journalWrites = Task.CompletedTask;
+    private RuntimeTaskContract? _contract;
 
     internal DesktopRuntimeRunSession(AgentRunSession session, IAgentRunJournalStore journalStore)
     {
@@ -62,6 +64,22 @@ public sealed class DesktopRuntimeRunSession
     }
 
     public IReadOnlyList<AgentRunTransition> History => _session.History;
+
+    public string RunId => _session.RunId;
+
+    public RuntimeTaskContract? Contract => _contract;
+
+    public void RecordContract(RuntimeTaskContract contract)
+    {
+        ArgumentNullException.ThrowIfNull(contract);
+        if (!string.Equals(contract.ContractId, RunId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The runtime contract must be bound to this run.", nameof(contract));
+        }
+
+        _contract = contract;
+        QueueJournalSnapshot();
+    }
 
     public void RecordDesktopState(AgentRunState state)
     {
@@ -208,7 +226,8 @@ public sealed class DesktopRuntimeRunSession
             _session.RunId,
             AgentRunJournal.CurrentSchemaVersion,
             _session.History.ToArray(),
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            _contract);
 
         lock (_journalWriteGate)
         {

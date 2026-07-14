@@ -185,7 +185,13 @@ public sealed class DesktopAgentRunWorkflowService(
                 config.Model,
                 succeeded: true,
                 detail: workMode.ToString());
-            permissionEnforcer = new DesktopPermissionEnforcer(owner, workMode, viewModel.IsKoreanUi, workspaceRoot);
+            permissionEnforcer = new DesktopPermissionEnforcer(
+                owner,
+                workMode,
+                viewModel.IsKoreanUi,
+                workspaceRoot,
+                taskContractId: runtimeRun.RunId,
+                runId: runtimeRun.RunId);
             _activePermissionEnforcer = permissionEnforcer;
             viewModel.ClearRunPermissionStatus();
             permissionEnforcer.ApprovedForRunChanged += approved =>
@@ -278,6 +284,7 @@ public sealed class DesktopAgentRunWorkflowService(
                     RecordUsageTelemetry("usage_actual", workspaceRoot, config, snapshot);
                 });
             var telemetryCallbacks = WrapTelemetryCallbacks(toolCallbacks, workspaceRoot, config);
+            telemetryCallbacks = WrapRuntimeContractCallbacks(telemetryCallbacks, runtimeRun);
             telemetryCallbacks = WrapRuntimeLifecycleCallbacks(telemetryCallbacks, runtimeRun);
             var fullText = await Task.Run(async () =>
                 await agentService.SendAsync(
@@ -644,6 +651,7 @@ public sealed class DesktopAgentRunWorkflowService(
     {
         return new DesktopToolCallbacks
         {
+            OnTurnStateCreated = state => SafeCallback("OnTurnStateCreated", () => callbacks.OnTurnStateCreated?.Invoke(state), state.Summary),
             OnRunStep = (state, title, detail) =>
             {
                 SafeCallback("OnRunStep", () => callbacks.OnRunStep?.Invoke(state, title, detail), detail ?? title);
@@ -810,11 +818,47 @@ public sealed class DesktopAgentRunWorkflowService(
     {
         return new DesktopToolCallbacks
         {
+            OnTurnStateCreated = callbacks.OnTurnStateCreated,
             OnRunStep = (state, title, detail) =>
             {
                 runtimeRun.RecordDesktopState(state);
                 callbacks.OnRunStep?.Invoke(state, title, detail);
             },
+            OnToolExecution = callbacks.OnToolExecution,
+            OnToolOutput = callbacks.OnToolOutput,
+            OnToolError = callbacks.OnToolError,
+            OnPermissionDenied = callbacks.OnPermissionDenied,
+            OnFileChanged = callbacks.OnFileChanged,
+            OnVerificationPlan = callbacks.OnVerificationPlan,
+            OnVerificationResult = callbacks.OnVerificationResult,
+            OnUsage = callbacks.OnUsage,
+            OnLocalServerChanged = callbacks.OnLocalServerChanged,
+            OnRequestExtendSteps = callbacks.OnRequestExtendSteps
+        };
+    }
+
+    private static DesktopToolCallbacks WrapRuntimeContractCallbacks(
+        DesktopToolCallbacks callbacks,
+        DesktopRuntimeRunSession runtimeRun)
+    {
+        var adapter = new DesktopRuntimeTaskContractAdapter();
+        return new DesktopToolCallbacks
+        {
+            OnTurnStateCreated = state =>
+            {
+                try
+                {
+                    runtimeRun.RecordContract(adapter.Create(state, runtimeRun.RunId, DateTimeOffset.UtcNow));
+                }
+                catch
+                {
+                    // Runtime contracts are a migration seam. Existing Desktop routing,
+                    // permission, and execution remain authoritative if journaling fails.
+                }
+
+                callbacks.OnTurnStateCreated?.Invoke(state);
+            },
+            OnRunStep = callbacks.OnRunStep,
             OnToolExecution = callbacks.OnToolExecution,
             OnToolOutput = callbacks.OnToolOutput,
             OnToolError = callbacks.OnToolError,

@@ -4,6 +4,8 @@ namespace AgentQ.Desktop.Services;
 
 public sealed class DesktopToolCallbacks
 {
+    public Action<AgentTurnState>? OnTurnStateCreated { get; init; }
+
     public Action<AgentRunState, string, string?>? OnRunStep { get; init; }
 
     public Action<string>? OnToolExecution { get; init; }
