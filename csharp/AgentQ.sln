@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Tests", "AgentQ.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Desktop", "AgentQ.Desktop\AgentQ.Desktop.csproj", "{604EEEBD-E63A-416D-9827-973008FBF789}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentQ.Runtime", "AgentQ.Runtime\AgentQ.Runtime.csproj", "{B49E7816-B3AA-43A5-A2F6-31CBA8953018}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -139,6 +141,18 @@ Global
 		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x64.Build.0 = Release|Any CPU
 		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x86.ActiveCfg = Release|Any CPU
 		{604EEEBD-E63A-416D-9827-973008FBF789}.Release|x86.Build.0 = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|x64.Build.0 = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Debug|x86.Build.0 = Debug|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|x64.ActiveCfg = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|x64.Build.0 = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|x86.ActiveCfg = Release|Any CPU
+		{B49E7816-B3AA-43A5-A2F6-31CBA8953018}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

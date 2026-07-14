@@ -28,6 +28,7 @@
     <ProjectReference Include="..\AgentQ.Cli\AgentQ.Cli.csproj" />
     <ProjectReference Include="..\AgentQ.Providers.Anthropic\AgentQ.Providers.Anthropic.csproj" />
     <ProjectReference Include="..\AgentQ.Providers.OpenAi\AgentQ.Providers.OpenAi.csproj" />
+    <ProjectReference Include="..\AgentQ.Runtime\AgentQ.Runtime.csproj" />
     <ProjectReference Include="..\AgentQ.Tools\AgentQ.Tools.csproj" />
     <ProjectReference Include="..\AgentQ.Desktop\AgentQ.Desktop.csproj" />
   </ItemGroup>

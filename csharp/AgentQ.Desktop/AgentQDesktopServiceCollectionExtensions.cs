@@ -1,5 +1,13 @@
 using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
+using AgentQ.Runtime.Intent;
+using AgentQ.Runtime.Runs;
+using AgentQ.Runtime.Contracts;
+using AgentQ.Runtime.Evidence;
+using AgentQ.Runtime.Completion;
+using AgentQ.Runtime.Dispatch;
+using AgentQ.Runtime.Repair;
+using AgentQ.Runtime.Model;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentQ.Desktop;
@@ -15,6 +23,7 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<LinkContentFetcher>();
         services.AddSingleton<DesktopProviderModelDiscoveryService>();
+        services.AddSingleton<IDesktopProviderSessionFactory, DesktopProviderSessionFactory>();
         services.AddSingleton<DesktopDiagnosticsService>();
         services.AddSingleton<DesktopTelemetryService>();
         services.AddSingleton<ToolReplayService>();
@@ -33,6 +42,19 @@ public static class AgentQDesktopServiceCollectionExtensions
         services.AddSingleton<DesktopLocalServerService>();
         services.AddSingleton<IImplementationPreviewBrowserVerifier, PlaywrightImplementationPreviewBrowserVerifier>();
         services.AddSingleton<ImplementationRuntimePreviewService>();
+        services.AddSingleton<IIntentRoutingPipeline, IntentRoutingPipeline>();
+        services.AddSingleton<IDesktopIntentRoutingAdapter, DesktopIntentRoutingAdapter>();
+        services.AddSingleton<ICompletionSafetyPolicy, CompletionSafetyPolicy>();
+        services.AddSingleton<IDesktopTaskContractCompletionAdapter, DesktopTaskContractCompletionAdapter>();
+        services.AddSingleton<ITaskContractFactory, TaskContractFactory>();
+        services.AddTransient<IRunEvidenceCollector, RunEvidenceCollector>();
+        services.AddSingleton<ICompletionEvaluator, CompletionEvaluator>();
+        services.AddSingleton<IFinalAnswerConsistencyGuard, FinalAnswerConsistencyGuard>();
+        services.AddTransient<IDeterministicActionDispatcher, DeterministicActionDispatcher>();
+        services.AddSingleton<IRepairCoordinator, RepairCoordinator>();
+        services.AddSingleton<IModelToolLoop, ModelToolLoop>();
+        services.AddSingleton<IAgentRunStateMachine, AgentRunStateMachine>();
+        services.AddTransient<IAgentRunCoordinator, AgentRunCoordinator>();
         services.AddSingleton<DesktopAgentService>();
         services.AddSingleton<IDesktopLlmProviderFactory>(provider => provider.GetRequiredService<DesktopAgentService>());
         services.AddSingleton<IVerificationArtifactCollector, PlaywrightVerificationArtifactCollector>();

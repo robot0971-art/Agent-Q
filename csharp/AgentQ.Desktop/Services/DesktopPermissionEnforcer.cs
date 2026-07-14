@@ -3,13 +3,49 @@ using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
 
-public sealed class DesktopPermissionEnforcer(
-    Window owner,
-    AgentWorkMode workMode,
-    bool useKoreanUi = false,
-    string workspaceRoot = "") : IPermissionEnforcer
+public sealed class DesktopPermissionEnforcer : IPermissionEnforcer
 {
+    private static readonly TimeSpan TaskApprovalLifetime = TimeSpan.FromHours(8);
+    private readonly Window _owner;
+    private readonly AgentWorkMode _workMode;
+    private readonly bool _useKoreanUi;
+    private readonly string _workspaceRoot;
+    private readonly TaskScopedApprovalStore _taskApprovals;
+    private readonly Func<DateTimeOffset> _utcNow;
     private readonly HashSet<PermissionRiskLevel> _approvedForRun = [];
+
+    /// <summary>
+    /// Creates a permission enforcer whose reusable approvals are confined to
+    /// one task, one run, and one normalized workspace. The optional identity
+    /// arguments exist for callers that already own a TaskContract/Run; until
+    /// every workflow supplies them, generated immutable identities preserve
+    /// the same isolation.
+    /// </summary>
+    public DesktopPermissionEnforcer(
+        Window owner,
+        AgentWorkMode workMode,
+        bool useKoreanUi = false,
+        string workspaceRoot = "",
+        string? taskContractId = null,
+        string? runId = null,
+        TaskScopedApprovalStore? taskApprovals = null,
+        Func<DateTimeOffset>? utcNow = null)
+    {
+        _owner = owner;
+        _workMode = workMode;
+        _useKoreanUi = useKoreanUi;
+        _workspaceRoot = string.IsNullOrWhiteSpace(workspaceRoot)
+            ? Environment.CurrentDirectory
+            : workspaceRoot;
+        TaskContractId = string.IsNullOrWhiteSpace(taskContractId) ? Guid.NewGuid().ToString("N") : taskContractId;
+        RunId = string.IsNullOrWhiteSpace(runId) ? Guid.NewGuid().ToString("N") : runId;
+        _taskApprovals = taskApprovals ?? new TaskScopedApprovalStore();
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+    }
+
+    public string TaskContractId { get; }
+
+    public string RunId { get; }
 
     public event Action<IReadOnlyCollection<PermissionRiskLevel>>? ApprovedForRunChanged;
 
@@ -19,17 +55,19 @@ public sealed class DesktopPermissionEnforcer(
 
     public async Task<bool> RequestPermissionAsync(string toolName, string description, string inputJson)
     {
-        return await owner.Dispatcher.InvokeAsync(() =>
+        return await _owner.Dispatcher.InvokeAsync(() =>
         {
-            var policy = ToolPermissionPolicy.Evaluate(toolName, inputJson, workspaceRoot, workMode);
+            // Policy is always evaluated first. A task approval is never a way
+            // to override a blocked/destructive/external operation.
+            var policy = ToolPermissionPolicy.Evaluate(toolName, inputJson, _workspaceRoot, _workMode);
             var assessment = policy.Assessment;
             if (policy.IsBlocked)
             {
                 RecordPermissionEvent("Blocked", toolName, assessment, PermissionApprovalChoice.Deny);
                 System.Windows.MessageBox.Show(
-                    owner,
-                    BuildPermissionBlockedMessage(assessment, workMode, policy.PolicyReason, useKoreanUi),
-                    DesktopLocalizer.PermissionBlockedTitle(useKoreanUi),
+                    _owner,
+                    BuildPermissionBlockedMessage(assessment, _workMode, policy.PolicyReason, _useKoreanUi),
+                    DesktopLocalizer.PermissionBlockedTitle(_useKoreanUi),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
                 return false;
@@ -42,10 +80,11 @@ public sealed class DesktopPermissionEnforcer(
             }
 
             var reusableApprovalAllowed = IsReusableApproval(toolName, assessment.RiskLevel);
-            if (reusableApprovalAllowed &&
-                _approvedForRun.Contains(assessment.RiskLevel))
+            var fullAccessAllowed = IsFullAccessApprovalTool(toolName);
+            if ((reusableApprovalAllowed && IsApprovedForCurrentTask(assessment.RiskLevel)) ||
+                (fullAccessAllowed && HasFullAccessForCurrentTask()))
             {
-                RecordPermissionEvent("Allowed by run approval", toolName, assessment, null);
+                RecordPermissionEvent("Allowed by task approval", toolName, assessment, null);
                 return true;
             }
 
@@ -54,10 +93,10 @@ public sealed class DesktopPermissionEnforcer(
                 : inputJson;
             var focusedPreview = BuildFocusedPreview(toolName, inputJson);
             var approvalHint = reusableApprovalAllowed
-                ? DesktopLocalizer.ReusableApprovalHint(useKoreanUi)
+                ? DesktopLocalizer.ReusableApprovalHint(_useKoreanUi)
                 : string.Empty;
             var dialogContent = new PermissionDialogContent(
-                BuildPermissionSummary(assessment, useKoreanUi),
+                BuildPermissionSummary(assessment, _useKoreanUi),
                 $"{assessment.RiskLevel} / {assessment.Operation}",
                 assessment.Target,
                 assessment.Reason + approvalHint,
@@ -68,16 +107,42 @@ public sealed class DesktopPermissionEnforcer(
                 preview);
 
             var choice = PermissionApprovalDialog.Show(
-                owner,
+                _owner,
                 $"AgentQ permission: {assessment.RiskLevel}",
                 dialogContent,
                 reusableApprovalAllowed,
-                reusableApprovalAllowed,
-                useKoreanUi);
+                fullAccessAllowed,
+                _useKoreanUi);
 
-            foreach (var approvedRisk in GetReusableApprovals(choice, assessment.RiskLevel, toolName))
+            var approvalMode = choice switch
             {
-                _approvedForRun.Add(approvedRisk);
+                PermissionApprovalChoice.AllowSimilarForRun => UserApprovalMode.ThisTask,
+                PermissionApprovalChoice.AllowAllForRun => UserApprovalMode.FullAccess,
+                _ => (UserApprovalMode?)null
+            };
+            if (approvalMode is UserApprovalMode.ThisTask && !reusableApprovalAllowed)
+            {
+                approvalMode = null;
+            }
+
+            if (approvalMode is UserApprovalMode.FullAccess && !fullAccessAllowed)
+            {
+                approvalMode = null;
+            }
+
+            if (approvalMode is { } mode)
+            {
+                var approval = _taskApprovals.Grant(new TaskScopedApprovalRequest(
+                    TaskContractId,
+                    RunId,
+                    _workspaceRoot,
+                    assessment.RiskLevel,
+                    mode,
+                    _utcNow().Add(TaskApprovalLifetime)), _utcNow());
+                foreach (var approvedRisk in approval.Capabilities)
+                {
+                    _approvedForRun.Add(approvedRisk);
+                }
             }
 
             ApprovedForRunChanged?.Invoke(ApprovedForRun);
@@ -96,8 +161,15 @@ public sealed class DesktopPermissionEnforcer(
     public void ClearRunApprovals()
     {
         _approvedForRun.Clear();
+        _taskApprovals.RevokeRun(RunId);
         ApprovedForRunChanged?.Invoke(ApprovedForRun);
     }
+
+    public bool IsApprovedForCurrentTask(PermissionRiskLevel capability) =>
+        _taskApprovals.IsApproved(TaskContractId, RunId, _workspaceRoot, capability, _utcNow());
+
+    public bool HasFullAccessForCurrentTask() =>
+        _taskApprovals.HasFullAccess(TaskContractId, RunId, _workspaceRoot, _utcNow());
 
     private void RecordPermissionEvent(
         string outcome,
@@ -189,6 +261,9 @@ public sealed class DesktopPermissionEnforcer(
         return !IsPlanSpecificApprovalTool(toolName) &&
                (riskLevel is PermissionRiskLevel.ProjectWrite or PermissionRiskLevel.VerificationCommand);
     }
+
+    private static bool IsFullAccessApprovalTool(string toolName) =>
+        !IsPlanSpecificApprovalTool(toolName);
 
     private static bool IsPlanSpecificApprovalTool(string toolName) =>
         string.Equals(toolName, "create_project_scaffold", StringComparison.OrdinalIgnoreCase);

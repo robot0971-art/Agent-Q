@@ -1,13 +1,11 @@
 ﻿using System.IO;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
-using AgentQ.Providers.Anthropic;
-using AgentQ.Providers.OpenAi;
+using AgentQ.Runtime.Intent;
 using AgentQ.Tools;
 
 namespace AgentQ.Desktop.Services;
@@ -90,6 +88,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
     private readonly DesktopDiagnosticsService _diagnosticsService;
     private readonly DesktopMcpToolRegistrar _mcpToolRegistrar;
     private readonly ITool? _webSearchTool;
+    private readonly IDesktopIntentRoutingAdapter _intentRoutingAdapter;
+    private readonly IDesktopTaskContractCompletionAdapter _taskContractCompletionAdapter;
+    private readonly IDesktopProviderSessionFactory _providerSessionFactory;
     private readonly TaskExecutor _taskExecutor;
     private PendingExecutionPlan? _pendingExecutionPlan;
 
@@ -110,7 +111,10 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         SystemSkillService? systemSkillService = null,
         DesktopDiagnosticsService? diagnosticsService = null,
         DesktopMcpToolRegistrar? mcpToolRegistrar = null,
-        ITool? webSearchTool = null)
+        ITool? webSearchTool = null,
+        IDesktopIntentRoutingAdapter? intentRoutingAdapter = null,
+        IDesktopTaskContractCompletionAdapter? taskContractCompletionAdapter = null,
+        IDesktopProviderSessionFactory? providerSessionFactory = null)
     {
         _httpClientFactory = httpClientFactory;
         _linkContentFetcher = linkContentFetcher;
@@ -129,6 +133,9 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
         _diagnosticsService = diagnosticsService ?? new DesktopDiagnosticsService();
         _mcpToolRegistrar = mcpToolRegistrar ?? new DesktopMcpToolRegistrar();
         _webSearchTool = webSearchTool;
+        _intentRoutingAdapter = intentRoutingAdapter ?? new DesktopIntentRoutingAdapter(new IntentRoutingPipeline());
+        _taskContractCompletionAdapter = taskContractCompletionAdapter ?? new DesktopTaskContractCompletionAdapter();
+        _providerSessionFactory = providerSessionFactory ?? new DesktopProviderSessionFactory(httpClientFactory);
         
         _taskExecutor = new TaskExecutor(
             httpClientFactory,
@@ -210,7 +217,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
             config,
             ruleTurnIntent,
             $"taskKind={taskProfile.Kind}; workMode={workMode}; prompt=\"{DesktopPromptBuilder.Truncate(routingText.ReplaceLineEndings(" "), 240)}\"");
-        var routingDecision = LlmFirstIntentRouter.Route(routingSeedText, turnUnderstanding, ruleTurnIntent);
+        var routingDecision = _intentRoutingAdapter.Route(routingSeedText, turnUnderstanding, ruleTurnIntent);
         var turnIntent = routingDecision.EffectiveIntent;
         var taskContract = routingDecision.ExecutionContract;
         routingText = routingDecision.RoutingText;
@@ -862,7 +869,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
                 if (finalAnswerPolicy.RequireEvidenceForCompletionClaims &&
                     !genericGreetingRetryUsed &&
-                    TaskContractCompletionChecker.ShouldRetry(taskContract, candidateText, executedCommands, workMode, replayEntries))
+                    _taskContractCompletionAdapter.ShouldRetry(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     if (TryBuildDirectContractToolUse(taskContract, routingText, userText, out var directToolUse))
                     {
@@ -973,7 +980,7 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
                 }
 
                 if (finalAnswerPolicy.RejectUnsupportedSuccess &&
-                    TaskContractCompletionChecker.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
+                    _taskContractCompletionAdapter.ShouldReject(taskContract, candidateText, executedCommands, workMode, replayEntries))
                 {
                     var message = GuardMessageHumanizer.BuildTaskContractRejectedMessage(taskContract);
                     await _executionLessonMemoryService.RecordContractFailureAsync(effectiveWorkspaceRoot, taskContract, userText, candidateText, ct);
@@ -5261,58 +5268,16 @@ public sealed class DesktopAgentService : IDesktopLlmProviderFactory
 
     public ILlmProvider CreateProvider(ProviderConfiguration config)
     {
-        return CreateProvider(config, callbacks: null);
+        return _providerSessionFactory.Create(config);
     }
 
     private ILlmProvider CreateProvider(ProviderConfiguration config, DesktopToolCallbacks? callbacks)
     {
-        ILlmProvider provider = config.Provider.ToLowerInvariant() switch
-        {
-            "openai" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o")),
-            "opencode-go" => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o"), name: "opencode-go"),
-            "anthropic" => new AnthropicProvider(CreateAnthropicClient(config.BaseUrl), config.ApiKey),
-            _ => new OpenAiCompatibleProvider(CreateOpenAiClient(config.BaseUrl, config.ApiKey), ResolveModel(config, "gpt-4o"), name: config.Provider)
-        };
-
-        return new ResilientLlmProvider(provider, onRetry: retry =>
-            callbacks?.OnRunStep?.Invoke(
-                AgentRunState.Generating,
-                $"Provider retry {retry.Attempt}/{retry.MaxRetries}",
-                FormatProviderRetryDetail(retry)));
+        return _providerSessionFactory.Create(config, callbacks);
     }
 
-    private static string FormatProviderRetryDetail(LlmProviderRetryInfo retry)
-    {
-        var status = retry.StatusCode == null ? "network/timeout" : $"HTTP {(int)retry.StatusCode} {retry.StatusCode}";
-        var delay = retry.Delay == TimeSpan.Zero
-            ? "immediately"
-            : $"after {retry.Delay.TotalSeconds:0.#}s";
-        return $"{retry.ProviderName} retrying {delay} because {status}: {DesktopPromptBuilder.Truncate(retry.ErrorMessage, 160)}";
-    }
-
-    private static string ResolveModel(ProviderConfiguration config, string fallback)
-    {
-        return string.IsNullOrWhiteSpace(config.Model) ? fallback : config.Model;
-    }
-
-    private HttpClient CreateAnthropicClient(string baseUrl)
-    {
-        var client = _httpClientFactory.CreateClient("anthropic");
-        client.BaseAddress = new Uri(baseUrl);
-        return client;
-    }
-
-    private HttpClient CreateOpenAiClient(string baseUrl, string apiKey)
-    {
-        var client = _httpClientFactory.CreateClient("openai");
-        client.BaseAddress = new Uri(OpenAiCompatibleProvider.NormalizeBaseUrl(baseUrl));
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        }
-
-        return client;
-    }
+    private static string ResolveModel(ProviderConfiguration config, string fallback) =>
+        string.IsNullOrWhiteSpace(config.Model) ? fallback : config.Model;
 
     private static int ResolveMaxToolSteps(ProviderConfiguration config, AgentWorkMode workMode)
     {

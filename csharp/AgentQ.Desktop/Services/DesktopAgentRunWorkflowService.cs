@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using AgentQ.Core.Providers;
 using AgentQ.Desktop.ViewModels;
+using AgentQ.Runtime.Runs;
 
 namespace AgentQ.Desktop.Services;
 
@@ -12,7 +13,8 @@ public sealed class DesktopAgentRunWorkflowService(
     DesktopVerificationPanelWorkflowService verificationPanelWorkflowService,
     DesktopLearningSuggestionService learningSuggestionService,
     DesktopTelemetryService telemetryService,
-    DesktopDiagnosticsService diagnosticsService)
+    DesktopDiagnosticsService diagnosticsService,
+    IAgentRunCoordinator? runtimeRunCoordinator = null)
 {
     private const string ThinkingPlaceholder = "\uC0DD\uAC01\uC911...";
     private const string ContinuationPrompt =
@@ -23,6 +25,7 @@ public sealed class DesktopAgentRunWorkflowService(
     private string _activeWorkspaceRoot = string.Empty;
     private string _activeProvider = string.Empty;
     private string _activeModel = string.Empty;
+    private readonly DesktopRuntimeRunLifecycle _runtimeRunLifecycle = new(runtimeRunCoordinator);
 
     public void Stop(MainViewModel viewModel)
     {
@@ -154,6 +157,8 @@ public sealed class DesktopAgentRunWorkflowService(
         CancellationTokenSource? operationCts = null;
         DesktopPermissionEnforcer? permissionEnforcer = null;
         var startedAt = DateTime.UtcNow;
+        var runtimeRun = _runtimeRunLifecycle.Start($"desktop-{Guid.NewGuid():N}");
+        runtimeRun.RecordDesktopState(AgentRunState.GatheringContext);
 
         try
         {
@@ -273,6 +278,7 @@ public sealed class DesktopAgentRunWorkflowService(
                     RecordUsageTelemetry("usage_actual", workspaceRoot, config, snapshot);
                 });
             var telemetryCallbacks = WrapTelemetryCallbacks(toolCallbacks, workspaceRoot, config);
+            telemetryCallbacks = WrapRuntimeLifecycleCallbacks(telemetryCallbacks, runtimeRun);
             var fullText = await Task.Run(async () =>
                 await agentService.SendAsync(
                     config,
@@ -321,6 +327,7 @@ public sealed class DesktopAgentRunWorkflowService(
             UpdateContinuationState(viewModel, fullText);
             AddLearningCandidates(viewModel, prompt, fullText);
             var completionOutcome = BuildRunCompletionOutcome(fullText);
+            runtimeRun.RecordDesktopState(completionOutcome.Succeeded ? AgentRunState.Done : AgentRunState.Failed);
             viewModel.StatusText = completionOutcome.StatusText;
             viewModel.AddLog(completionOutcome.LogText);
             var usage = _usageTracker.RecordEstimate(prompt, fullText);
@@ -362,6 +369,7 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         catch (OperationCanceledException)
         {
+            runtimeRun.RecordDesktopState(AgentRunState.Cancelled);
             diagnosticsService.Record(
                 "run_cancelled",
                 $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}",
@@ -383,6 +391,7 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         catch (Exception ex)
         {
+            runtimeRun.RecordDesktopState(AgentRunState.Failed);
             diagnosticsService.Record(
                 "run_exception",
                 $"durationMs={(int)(DateTime.UtcNow - startedAt).TotalMilliseconds}",
@@ -407,6 +416,8 @@ public sealed class DesktopAgentRunWorkflowService(
         }
         finally
         {
+            await runtimeRun.FlushJournalAsync();
+
             if (operationCts != null)
             {
                 ClearActiveOperation(operationCts);
@@ -791,6 +802,30 @@ public sealed class DesktopAgentRunWorkflowService(
                     ex);
             }
         }
+    }
+
+    private static DesktopToolCallbacks WrapRuntimeLifecycleCallbacks(
+        DesktopToolCallbacks callbacks,
+        DesktopRuntimeRunSession runtimeRun)
+    {
+        return new DesktopToolCallbacks
+        {
+            OnRunStep = (state, title, detail) =>
+            {
+                runtimeRun.RecordDesktopState(state);
+                callbacks.OnRunStep?.Invoke(state, title, detail);
+            },
+            OnToolExecution = callbacks.OnToolExecution,
+            OnToolOutput = callbacks.OnToolOutput,
+            OnToolError = callbacks.OnToolError,
+            OnPermissionDenied = callbacks.OnPermissionDenied,
+            OnFileChanged = callbacks.OnFileChanged,
+            OnVerificationPlan = callbacks.OnVerificationPlan,
+            OnVerificationResult = callbacks.OnVerificationResult,
+            OnUsage = callbacks.OnUsage,
+            OnLocalServerChanged = callbacks.OnLocalServerChanged,
+            OnRequestExtendSteps = callbacks.OnRequestExtendSteps
+        };
     }
 
     private static string ToNoToolGuardTelemetryEventType(string title)

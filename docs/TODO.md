@@ -19,6 +19,530 @@
 - 2026-06-18 현재 `codex/wip-agent-q-audit` 브랜치에 관련 수정 커밋을 push했고, 남은 dirty file은 커밋 제외 대상인 `AGENTS.md` line-ending 변경뿐이다.
 - 대형 구조 리팩터링 항목, 예를 들어 거대 클래스 분할, 중복 helper 중앙화, WPF async void 축소 등은 이번 감사 완료 후 별도 2차 작업으로 분리한다.
 
+## Desktop 중심 Agent Q 1.0 통합 구현 로드맵
+
+> 추가일: 2026-07-11
+> 목적: 지금까지 확인한 구조적 단점, 안전성과 사용성 문제, scaffold 권한 병목, 코딩 완수율 개선, CLI 비활성화 논의를 하나의 실행 계획으로 통합한다.
+> 제품 방향: Agent Q는 Desktop을 유일한 주력 제품으로 삼고, 모델의 판단과 결정적 실행 엔진을 분리하며, 모든 작업을 계약·승인·상태 전이·증거·검증·복구로 관리한다.
+
+### 통합 원칙
+
+- [ ] 모델은 의도 이해, 계획, 코드 생성, 오류 분석, repair 제안을 담당하고 실제 실행의 진실성은 Runtime과 deterministic service가 담당하게 한다.
+- [ ] 모델이 말로 `완료`했다고 응답해도 mutation, command, verification evidence가 없으면 완료로 인정하지 않는다.
+- [ ] 최신 사용자 요청을 현재 계약, memory, RAG, checkpoint, session summary, 과거 대화보다 항상 우선한다.
+- [ ] 안전 정책의 목표를 최대 차단이 아니라 `위험한 행동은 확실히 막고 안전하고 되돌릴 수 있는 행동은 자연스럽게 진행`하는 것으로 정의한다.
+- [ ] 승인된 작업 범위 안의 반복 수정, build, focused test, bounded repair에는 중복 승인창을 띄우지 않는다.
+- [ ] 위험이나 외부 영향 범위가 확대될 때만 추가 승인을 요청한다.
+- [ ] Stop, 취소, rollback은 모든 권한 모드에서 즉시 사용할 수 있게 한다.
+- [ ] 기존의 workspace 경계, planId/planHash, snapshot, verification, completion evidence guard는 약화하지 않는다.
+
+### 권장 목표 구조
+
+- [ ] `AgentQ.Core`에는 외부 시스템과 UI에 의존하지 않는 공통 모델과 계약만 둔다.
+- [ ] `AgentQ.Runtime`을 생성해 intent routing, TaskContract, 상태 머신, model tool loop, completion, repair orchestration을 소유하게 한다.
+- [ ] `AgentQ.Execution`을 생성해 파일 mutation, shell/process, local server, Git command, snapshot, rollback, execution journal을 소유하게 한다.
+- [ ] `AgentQ.Security`를 생성해 workspace 경계, capability, approval, command policy, secret redaction, process 정책을 소유하게 한다.
+- [ ] `AgentQ.Scaffolding`을 생성해 scaffold intent, plan registry, manifest, executor, overwrite policy, implementation contract를 소유하게 한다.
+- [ ] `AgentQ.Verification`을 생성해 verification selection, runner, artifact, browser preview, failure classification, repair evidence를 소유하게 한다.
+- [ ] `AgentQ.Memory`를 생성해 project memory, execution lesson, session summary, embedding index, migration, retention, GC를 소유하게 한다.
+- [ ] `AgentQ.Mcp`를 생성해 MCP registry, client lifecycle, tool capability, timeout, output 제한을 소유하게 한다.
+- [ ] `AgentQ.Desktop`은 WPF UI, ViewModel, 승인 dialog, run timeline, diff/evidence 표시, composition root만 담당하게 한다.
+- [ ] `AgentQ.Cli`는 필요할 때 동일 Runtime을 호출하는 internal smoke/debug thin host로만 유지한다.
+- [ ] Runtime/Core/Execution/Security 계층이 WPF를 참조하지 않는 architecture test를 추가한다.
+
+### Phase 0 — 현재 기준선과 종료 안정성 고정
+
+- [ ] Desktop의 핵심 사용자 시나리오를 회귀 테스트와 E2E 목록으로 고정한다.
+  - [ ] Conversation 요청은 write/shell/scaffold permission을 열지 않는다.
+  - [ ] 명확한 Action은 안전 규칙 때문에 Conversation으로 영구 차단되지 않는다.
+  - [ ] scaffold는 plan 승인 후 실제 프로젝트를 생성하고 구현·검증까지 이어진다.
+  - [ ] local server는 start, URL 확인, reuse, stop, session persistence를 만족한다.
+  - [ ] 파일 변경은 snapshot, diff, revert evidence를 남긴다.
+  - [ ] 검증 실패는 bounded repair 또는 정확한 blocker로 끝난다.
+  - [ ] 모델의 no-tool 완료 응답은 거부된다.
+- [ ] 전체 테스트가 제한 시간 안에 종료되지 않고 여러 `dotnet` 자식 프로세스를 남기는 원인을 추적한다.
+- [ ] CI와 로컬 test 명령에 `--blame-hang`, hang timeout, crash dump 수집을 추가한다.
+- [ ] local server, language worker, MCP, Playwright, WPF Dispatcher 테스트의 프로세스와 비동기 작업 disposal을 점검한다.
+- [ ] 모든 테스트 종료 후 Agent Q가 시작한 child process가 0개인지 검증하는 공통 fixture를 추가한다.
+- [ ] 병렬 테스트의 port, session file, output directory, WPF build cache 충돌을 제거한다.
+- [ ] `DesktopAgentService`와 주요 서비스의 현재 동작을 characterization test로 고정한 후 분해를 시작한다.
+- [ ] 완료 조건: Desktop build 경고 0/오류 0, 전체 테스트 정상 종료, 잔여 child process 0개.
+
+### Phase 1 — CLI 공식 비활성화와 Desktop 집중
+
+- [x] README와 설치 문서의 주요 진입점을 Desktop 중심으로 변경한다.
+- [x] 사용자 대상 CLI 설치 및 업데이트 안내를 별도 internal 문서로 이동한다.
+- [x] release workflow에서 CLI NuGet package를 공식 release artifact에서 제외한다.
+- [x] CLI 신규 기능과 Desktop parity 개발을 중단한다.
+- [x] CLI 실행 시 internal/experimental/unsupported 상태를 명확히 표시한다.
+- [x] CLI 코드는 삭제하지 않고 provider streaming, tool loop, Runtime smoke 진단용으로 유지한다.
+- [x] CLI 전용 테스트는 핵심 smoke와 provider/tool contract 범위로 축소한다.
+- [ ] Desktop과 CLI에 중복된 orchestration은 CLI가 아니라 `AgentQ.Runtime`으로 이동한다.
+- [x] 향후 headless automation 또는 remote worker 요구가 확인될 때만 CLI 공식 재활성화를 검토한다.
+
+### Phase 2 — DesktopAgentService 분해와 Runtime 추출
+
+- [ ] 약 6,700줄인 `DesktopAgentService`에 신규 책임을 추가하지 않고 facade로 축소한다.
+- [ ] 다음 책임을 독립 서비스로 추출한다.
+  - [ ] `AgentRunCoordinator`
+  - [ ] `IntentRoutingPipeline`
+  - [ ] `TaskContractFactory`
+  - [ ] `DeterministicActionDispatcher`
+  - [ ] `ModelToolLoop`
+  - [ ] `CompletionEvaluator`
+  - [ ] `RepairCoordinator`
+  - [ ] `RunEvidenceCollector`
+  - [ ] `FinalAnswerConsistencyGuard`
+  - [ ] `ProviderSessionFactory`
+- [ ] orchestration은 구체적인 파일·프로세스·WPF 구현을 직접 호출하지 않고 interface 계약을 사용하게 한다.
+- [ ] static 정책 helper를 테스트 가능한 evaluator/service로 전환한다.
+- [ ] 한 클래스는 하나의 변경 이유를 갖게 하고 500줄 이상 클래스는 추가 분해 여부를 검토한다.
+- [ ] `WorkspaceAnalysisService`, `ProjectMemoryService`, `MainViewModel`도 책임과 상태 소유권을 기준으로 단계적으로 분해한다.
+- [ ] Desktop Runtime의 mutable singleton을 run scope와 workspace scope로 분리한다.
+- [ ] 설정·catalog는 singleton, workspace/session은 workspace scope, agent run은 run scope, process/browser/server는 명시적 lifecycle owner를 사용한다.
+- [ ] 완료 조건: 핵심 Runtime 테스트가 WPF 없이 실행되고 DesktopAgentService가 얇은 facade가 된다.
+
+### Phase 3 — 명시적 실행 상태 머신
+
+- [ ] 모든 agent run을 다음 상태 집합으로 관리한다.
+  - [ ] `Received`
+  - [ ] `Understanding`
+  - [ ] `Conversation`
+  - [ ] `AwaitingClarification`
+  - [ ] `Planning`
+  - [ ] `AwaitingApproval`
+  - [ ] `ReadyToExecute`
+  - [ ] `Executing`
+  - [ ] `Verifying`
+  - [ ] `Repairing`
+  - [ ] `Recovering`
+  - [ ] `Completed`
+  - [ ] `Failed`
+  - [ ] `Cancelled`
+  - [ ] `RolledBack`
+- [ ] 허용되는 상태 전이를 코드로 제한하고 잘못된 전이를 실패시키는 state transition test를 추가한다.
+- [ ] 상태 전이에 runId, contractId, 이전/다음 상태, 이유 코드, policy version, evidenceId를 기록한다.
+- [ ] UI timeline과 status accent는 상태 머신 이벤트만을 source of truth로 사용한다.
+- [ ] 실패, guard stop, step limit, 취소를 Completed/green으로 표시하지 않는다.
+- [ ] 모든 비동기 하위 작업에 run cancellation token을 전파한다.
+- [ ] 취소 결과를 clean cancellation, force kill, child process remaining, rollback required로 구분한다.
+
+### Phase 4 — TaskContract, 실행 저널, crash recovery
+
+- [ ] 모든 실행 요청을 versioned `TaskContract`로 정규화한다.
+- [ ] TaskContract에 contractId, workspaceId, intent, goal, targets, capability, expected mutation, verification, completion 조건, hash, 유효기간을 포함한다.
+- [ ] TaskContract를 승인 전 preview와 실제 실행의 공통 source of truth로 사용한다.
+- [ ] 계약의 영향 범위가 바뀌면 hash를 갱신하고 필요한 범위만 재승인한다.
+- [ ] 동일 작업의 중복 실행을 막는 idempotency key를 도입한다.
+- [ ] `.agentq/runs/<runId>/` 아래에 contract, state, events, approvals, evidence, snapshots, verification, result를 저장한다.
+- [ ] 실행 저널은 append-only sequence를 사용하고 atomic write 또는 안전한 single-writer 정책을 적용한다.
+- [ ] 앱 시작 시 미완료 run, 살아 있는 child process, 부분 mutation, snapshot 상태를 탐지한다.
+- [ ] 사용자에게 resume, rollback, 현재 상태 유지, 종료 선택을 제공한다.
+- [ ] 앱 재시작 후 사용자 승인 없이 mutation을 자동 재개하지 않는다.
+- [ ] crash recovery와 중복 실행 방지 E2E 테스트를 추가한다.
+
+### Phase 5 — 사용성을 우선한 3단계 권한 모드
+
+- [ ] 사용자에게 보이는 권한 모드를 다음 세 가지로 단순화한다.
+  - [ ] `권한 승인`: 읽기·검색은 자동, 파일 변경과 명령은 작업 단위 승인.
+  - [ ] `작업 전체 승인` 기본/권장: plan/TaskContract를 한 번 승인하면 범위 안의 수정·검증·bounded repair를 계속 수행.
+  - [ ] `전체 액세스`: 선택한 workspace 안의 일반 개발 작업을 개별 승인 없이 수행.
+- [ ] 기존 Readonly/Coding/Full Agent 설정과의 migration 또는 호환 매핑을 설계한다.
+- [ ] 내부에서는 단순 모드가 아니라 `capability + scope + contract` 정책을 유지한다.
+- [ ] 사용자 승인 단위를 tool call이나 파일 하나가 아닌 이해 가능한 작업 전체로 정의한다.
+- [ ] 동일 계약의 동일 capability에 대한 중복 승인창을 제거한다.
+- [ ] 승인 유효 범위를 `이번 행동`, `현재 작업`, `현재 실행`, `이 workspace에서 항상`으로 제공한다.
+- [ ] 영구 저장할 수 없는 권한을 명시한다.
+  - [ ] workspace 밖 변경
+  - [ ] credential 접근·전송
+  - [ ] 관리자 권한
+  - [ ] 대규모·재귀 삭제
+  - [ ] Git push/force push
+  - [ ] package publish/production deploy
+- [ ] 전체 액세스에서도 workspace 경계, snapshot, evidence, verification, secret redaction, timeout, rollback guard를 유지한다.
+- [ ] 전체 액세스의 의미를 `선택된 workspace 안에서 일반적인 개발 작업을 자율 수행`으로 제한한다.
+- [ ] 작업 중 추가 capability가 필요하면 현재 작업을 즉시 실패시키지 않고 권한 상승 요청을 표시한다.
+- [ ] 추가 권한이 거부되면 현재 범위 안의 대체 구현을 먼저 탐색하고 불가능할 때 정확한 blocker를 보고한다.
+- [ ] 승인창에 목적, 대상 파일, 예상 변경, 명령, network 대상, 위험, 승인 범위, rollback 가능 여부를 한 화면에 표시한다.
+- [ ] 기본 목표를 읽기/분석 승인 0회, 일반 bug fix 승인 1회, scaffold 승인 1회, Git push/publish 별도 승인으로 설정한다.
+- [ ] 작업당 승인 횟수, 중복 승인율, permission 직후 취소율, 불필요한 clarification 비율을 측정한다.
+
+### Phase 6 — Scaffold 권한 병목 제거
+
+- [ ] scaffold를 `write_file` 호출들의 집합이 아니라 하나의 결정적이고 승인 가능한 작업으로 취급한다.
+- [ ] 올바른 실행 경로를 `ScaffoldPlan -> 사용자 승인 -> ScaffoldAuthorization -> deterministic executor`로 고정한다.
+- [ ] scaffold executor가 일반 file-by-file permission loop를 통하지 않게 한다.
+- [ ] 승인 후 planId, planHash, workspaceRoot, targetRoot, manifest, command allowlist, expiry가 묶인 `ScaffoldAuthorization`을 발급한다.
+- [ ] authorization 범위 안에서는 디렉터리·파일 생성마다 permission dialog를 반복하지 않는다.
+- [ ] 정확한 파일 목록과 승인된 패턴 범위를 함께 지원한다.
+  - [ ] 정확한 파일 예: `package.json`, `src/App.tsx`, `src/main.tsx`
+  - [ ] 패턴 범위 예: `src/components/**`, `src/styles/**`, `tests/**`, `public/assets/**`
+- [ ] `.git/**`, credential, 사용자 프로필, OS 설정, workspace 밖, 다른 기존 프로젝트는 기본 제외한다.
+- [ ] CreateProject TaskContract 아래에 ScaffoldContract, ImplementationContract, VerificationContract를 연결한다.
+- [ ] 상위 CreateProject 계약 승인 한 번으로 범위 내 scaffold, 실제 기능 구현, dependency 설치, build, preview, bounded repair가 이어지게 한다.
+- [ ] scaffold 생성 성공을 전체 구현 완료로 오인하지 않는다.
+- [ ] 상태를 ScaffoldPlanned, ScaffoldCreated, DependenciesReady, FeatureImplemented, BuildVerified, RuntimeVerified, Completed로 분리한다.
+- [ ] 계획에 dependency와 허용 명령을 사전에 표시한다.
+- [ ] 승인된 `npm install`, `dotnet restore`, build/dev 명령은 다시 묻지 않고 실행한다.
+- [ ] global install, 알 수 없는 registry, Git URL dependency, workspace 밖 local dependency, 관리자 권한 install은 별도 승인한다.
+- [ ] 구현 중 최초 manifest에 없던 파일이 필요할 때 승인된 pattern 범위면 계속하고 범위를 벗어나면 추가 승인한다.
+- [ ] 일부 생성 후 실패 시 `repair 후 계속`, `현재 파일 유지`, `전체 rollback` 선택을 제공한다.
+- [ ] 전체 액세스에서는 명확한 greenfield 요청의 plan preview를 기록하되 workspace 내부 안전 scaffold의 사용자 승인창은 생략할 수 있게 한다.
+- [ ] scaffold 권한 회귀 테스트를 추가한다.
+  - [ ] 파일마다 승인창이 뜨지 않는다.
+  - [ ] dependency 설치에서 불필요하게 중단되지 않는다.
+  - [ ] scaffold 후 implementation 단계가 새 권한 계약 부재로 막히지 않는다.
+  - [ ] build/preview를 동일 계약에서 수행한다.
+  - [ ] plan 밖 경로와 명령은 차단된다.
+  - [ ] 전체 액세스에서도 workspace 밖 쓰기는 자동 허용하지 않는다.
+
+### Phase 7 — 프로세스 감독과 실행 격리
+
+- [ ] 모든 child process를 공통 `ProcessSupervisor`로 실행한다.
+- [ ] Windows Job Object 또는 동등한 process-tree lifecycle 관리를 적용한다.
+- [ ] process timeout, cancellation, force kill, stdout/stderr 크기 제한을 공통화한다.
+- [ ] 프로세스 종료 시 child tree가 실제로 종료됐는지 검증한다.
+- [ ] 제한된 환경 변수 allowlist를 사용해 API key와 불필요한 사용자 환경이 child process로 전달되지 않게 한다.
+- [ ] 실행 파일과 command category allowlist를 지원한다.
+- [ ] CPU, memory, wall-clock, disk/output budget을 지원한다.
+- [ ] localhost network와 public network를 별도 capability로 구분한다.
+- [ ] symlink/reparse point를 command 직전에도 재검증해 TOCTOU 경로 우회를 줄인다.
+- [ ] process 종료 결과를 normal, timeout, cancelled, force-killed, child-remaining, termination-failed로 구분한다.
+
+### Phase 8 — Verification과 bounded repair
+
+- [ ] 검증을 static check, build, focused test, broader test, runtime preview, DOM/visual review 단계로 구성한다.
+- [ ] 변경 유형과 영향 범위에 따라 필요한 검증만 선택해 불필요한 전체 테스트를 줄인다.
+- [ ] dependency graph를 수정 대상에서 관련 프로젝트와 테스트를 찾는 데 실제로 연결한다.
+- [ ] verification result에 satisfied requirement, missing requirement, contradiction, evidence ID를 포함한다.
+- [ ] completion evaluator가 사용자 요구사항과 실제 증거를 비교하게 한다.
+- [ ] repair loop에 최대 시도, token, 시간, 비용, 파일 범위, failure fingerprint 제한을 둔다.
+- [ ] 기본 `작업 전체 승인`에서는 같은 계약 범위의 최대 2회 자동 수정·재검증을 허용한다.
+- [ ] 새 package, 새 network, 범위 밖 파일, 더 위험한 command가 필요하면 repair를 멈추고 권한을 확장한다.
+- [ ] 동일 failure fingerprint 반복 시 문구만 바꿔 재시도하지 않고 탐색과 가설을 변경한다.
+- [ ] 첫 실패는 직접 repair, 두 번째 동일 실패는 호출자·설정 재탐색, 세 번째는 가설 폐기/대안 또는 blocker 보고 정책을 검토한다.
+- [ ] cancelled verification이 기존 실패 evidence를 성공 또는 수정 가능 상태로 덮지 않게 한다.
+
+### Phase 9 — 코딩 능력과 작업 완수율 향상
+
+- [ ] 작업을 bug fix, feature, refactoring, test generation, performance, security, migration, frontend UI, scaffold, documentation으로 분류한다.
+- [ ] 작업 유형별 실행 전략을 정의한다.
+  - [ ] bug fix는 재현과 관련 테스트를 우선한다.
+  - [ ] refactoring은 동작 보존 테스트와 작은 단계 변경을 우선한다.
+  - [ ] feature는 요구사항·completion contract·관련 테스트를 먼저 확정한다.
+  - [ ] frontend는 source뿐 아니라 build, browser, DOM, console, screenshot evidence를 확인한다.
+  - [ ] migration은 compatibility와 rollback을 계약에 포함한다.
+- [ ] 수정 전 관련 symbol, caller/callee, 테스트, 설정, dependency, 프로젝트 convention을 위험도에 맞게 탐색한다.
+- [ ] 작은 변경에는 과도한 context 수집과 planning을 강제하지 않는다.
+- [ ] `WorkspaceDependencyGraphService` 결과를 plan과 verification selector에 연결한다.
+- [ ] 난이도와 작업 유형에 따른 모델 라우팅을 도입한다.
+  - [ ] 검색·요약은 빠른 모델
+  - [ ] 일반 코드 수정은 표준 코딩 모델
+  - [ ] 복잡한 디버깅·설계는 고추론 모델
+  - [ ] screenshot/UI는 vision 모델
+- [ ] 코드베이스 이해, build 통과율, 요구사항 충족률, 잘못된 파일 수정률, 회귀율, repair 횟수, 사용자 수동 수정량을 평가한다.
+- [ ] execution lesson은 긴 대화가 아니라 failure pattern과 correct next behavior만 저장한다.
+- [ ] 평가 데이터셋에 한국어/영어 intent, 실제 bug fix, scaffold, local server, frontend, cancellation, recovery 시나리오를 포함한다.
+
+### Phase 10 — 테스트 구조와 품질 게이트
+
+- [ ] 21,000줄 이상인 `DesktopServiceTests.cs`를 계속 기능별로 분할한다.
+- [ ] 테스트 프로젝트를 Core, Runtime, Security, Scaffolding, Verification, Memory, Desktop presentation, E2E 단위로 분리한다.
+- [ ] 하나의 test project가 모든 production project를 참조하는 구조를 제거한다.
+- [ ] provider/tool/MCP/persistence contract test를 독립시킨다.
+- [ ] architecture dependency test를 추가한다.
+- [ ] CI에서 coverage artifact 업로드뿐 아니라 최소 품질 기준을 검사한다.
+- [ ] 전체 line coverage, 핵심 safety branch coverage, 변경 라인 diff coverage 기준을 구분한다.
+- [ ] intent, permission, path, scaffold contract, completion guard에 높은 branch coverage 기준을 적용한다.
+- [ ] 외부 process, port, file system을 사용하는 테스트는 명시적 collection과 isolated fixture를 사용한다.
+- [ ] 사용자 행동 중심의 테스트 이름과 실패 메시지를 사용한다.
+
+### Phase 11 — Memory, RAG, persistence 수명주기
+
+- [ ] `.agentq`에 저장되는 모든 문서에 schemaVersion을 포함한다.
+- [ ] memory, execution lesson, run journal, telemetry, replay, embedding, local-server session에 migration pipeline을 추가한다.
+- [ ] atomic write 공통 컴포넌트와 single-writer/file-lock 정책을 도입한다.
+- [ ] 손상된 파일을 조용히 무시하지 말고 quarantine하고 UI에 복구 안내를 표시한다.
+- [ ] 데이터별 보존 기간, 크기 제한, GC 정책을 정의한다.
+- [ ] workspace 이동과 복제 시 workspace identity 정책을 정의한다.
+- [ ] 프로젝트 데이터 export, import, 전체 삭제 기능을 제공한다.
+- [ ] embedding index를 incremental update하고 stale chunk를 제거한다.
+- [ ] memory/RAG는 현재 요청의 intent나 실행 권한을 승격할 수 없다는 회귀 테스트를 유지한다.
+- [ ] 원문 prompt와 private content 저장은 기본 비활성화하고 opt-in으로 제공한다.
+
+### Phase 12 — MCP와 플러그인 보안
+
+- [ ] MCP server 단위가 아니라 tool capability와 scope 단위로 권한을 평가한다.
+- [ ] server 신뢰 등급, tool allowlist, read/write 구분, endpoint, 전송 데이터 preview를 제공한다.
+- [ ] MCP request timeout, output 크기 제한, cancellation, child process cleanup을 공통화한다.
+- [ ] server 설정 checksum과 tool schema 변경을 감지해 기존 승인을 자동 재사용하지 않는다.
+- [ ] MCP로 전달되는 데이터에서 secret과 private path를 redaction한다.
+- [ ] 장기적으로 plugin manifest에 version, publisher, signature, requested capability, minimum Agent Q version, update policy를 포함한다.
+- [ ] 서명되지 않았거나 capability가 변경된 plugin은 명시적 재승인을 요구한다.
+
+### Phase 13 — Desktop UX와 관측성
+
+- [ ] 사용자가 현재 intent, TaskContract, 상태, 승인 대기, 실행 명령, live process, 변경 파일, 검증 결과, 비용·시간·token, rollback 가능 여부를 확인할 수 있게 한다.
+- [ ] Run Timeline을 상태 머신과 journal event 기반으로 표시한다.
+- [ ] `Changes`, `Verification`, `Git`, `Diagnostics`, `Processes` 화면의 source of truth를 통합한다.
+- [ ] 실행 전 예상 파일·명령·capability를 보여주는 dry-run/preview를 제공한다.
+- [ ] 승인한 plan과 실제 변경 결과의 diff를 제공한다.
+- [ ] live child process 목록과 Stop/force-stop 상태를 보여주는 process dashboard를 추가한다.
+- [ ] `.agentq` 데이터 사용량, retention, export/delete 화면을 제공한다.
+- [ ] 진단 번들을 생성하기 전에 포함 파일과 redaction 결과를 preview하게 한다.
+- [ ] intent confidence, permission 결과, tool latency, provider latency, token/비용, repair, rollback, orphan process, recovery 결과를 로컬 telemetry로 수집한다.
+- [ ] 원문 prompt 저장과 외부 telemetry 전송은 opt-in으로 유지한다.
+- [ ] 정책 변경을 안전하게 배포할 수 있도록 feature flag와 policy version을 도입한다.
+
+### Phase 14 — 배포와 운영 안정성
+
+- [ ] 공식 배포물을 Desktop installer, portable ZIP, checksum, release notes, SBOM으로 정리한다.
+- [ ] Desktop 실행 파일과 installer에 Authenticode 서명을 적용한다.
+- [ ] dependency vulnerability scan과 secret scan을 CI에 추가한다.
+- [ ] central package management 또는 lock file 정책을 도입한다.
+- [ ] 재현 가능한 빌드와 release provenance/attestation을 검토한다.
+- [ ] stable/beta update channel과 자동 업데이트를 구현한다.
+- [ ] 업데이트 실패 시 rollback을 지원한다.
+- [ ] installer 설치·업데이트·삭제 smoke test를 추가한다.
+- [ ] crash dump와 diagnostics bundle 수집은 사용자 동의와 redaction을 전제로 한다.
+
+### 구조 안정화 전 보류할 기능
+
+- [ ] 복잡한 멀티에이전트 자율 mutation 확대는 Runtime과 상태 머신 안정화 후 진행한다.
+- [ ] 무인 background mutation은 durable journal, cancellation, recovery 완료 전 추가하지 않는다.
+- [ ] remote shell과 workspace 밖 자동 실행은 보류한다.
+- [ ] 자동 Git push, force push, package publish, production deploy는 기본 기능으로 추가하지 않는다.
+- [ ] 조직용 cloud sync와 광범위 plugin marketplace는 security/capability 체계 완료 후 검토한다.
+- [ ] cross-platform UI 재작성은 Desktop 1.0 Runtime 분리 이후 별도 제품 결정으로 다룬다.
+
+### 구현 우선순위와 예상 마일스톤
+
+- [ ] 1차 안정화(약 2~3주 목표): Phase 0, CLI 비활성화, 권한 모드 기본형, scaffold 승인 병목, 가장 위험한 DesktopAgentService 책임 분리.
+- [ ] 핵심 아키텍처 개편(누적 약 5~7주 목표): Runtime 추출, 상태 머신, TaskContract, process supervisor, capability 정책, verification/repair 정리.
+- [ ] 전체 제품 안정화(누적 약 8~12주 목표): durable journal, crash recovery, persistence migration, 진단, 배포·서명·업데이트, 전체 E2E.
+- [ ] 각 Phase는 focused test, Desktop build, 관련 E2E, 문서 동기화가 통과해야 완료 처리한다.
+- [ ] 일정 때문에 테스트와 검증을 생략하지 않고 기능 범위를 줄여서라도 각 milestone을 사용 가능한 상태로 마감한다.
+
+### 최종 성공 기준
+
+- [ ] 상담 요청이 실행으로 오인되어 permission dialog를 띄우지 않는다.
+- [ ] 명확한 실행 요청이 과도한 safety brake 때문에 실행 불가능 상태가 되지 않는다.
+- [ ] 일반 bug fix는 기본 모드에서 작업 승인 1회로 수정·검증·bounded repair가 완료된다.
+- [ ] greenfield scaffold는 plan/작업 승인 1회로 생성, 실제 구현, dependency, build, preview까지 이어진다.
+- [ ] 전체 액세스는 workspace 내부 개발 작업을 자율 수행하지만 외부·파괴적 작업은 계속 보호한다.
+- [ ] 완료 응답에는 실제 mutation과 검증 evidence가 존재한다.
+- [ ] 실패한 변경을 snapshot으로 되돌릴 수 있다.
+- [ ] 앱 종료 후 미완료 작업을 복구하거나 rollback할 수 있다.
+- [ ] Stop 이후 Agent Q가 시작한 잔여 프로세스가 없다.
+- [ ] 전체 테스트가 반복 실행에서도 안정적으로 종료된다.
+- [ ] secret과 private content가 telemetry, memory, replay, diagnostics bundle에 노출되지 않는다.
+- [ ] 핵심 Runtime이 WPF와 분리되어 headless test가 가능하다.
+- [ ] 사용자에게 모든 변경, 명령, 권한, 검증, 비용과 현재 상태가 투명하게 보인다.
+- [ ] Desktop installer와 실행 파일이 서명되고 안전하게 업데이트·rollback된다.
+
+### Agent Q 1.0 이후 확장 로드맵
+
+> 아래 항목은 앞서 검토한 장기 기능을 누락 없이 보존하기 위한 후속 범위다. Runtime 분리, 상태 머신, 실행 저널, capability 권한, process supervisor, 테스트 안정화가 완료되기 전에는 핵심 1.0 작업보다 우선하지 않는다.
+
+#### 격리된 개발 작업과 Git workflow
+
+- [ ] 작업마다 별도의 Git worktree를 선택적으로 생성해 사용자 작업tree와 agent mutation을 격리한다.
+- [ ] worktree 생성 전 repository 상태, branch, untracked file, submodule, LFS 상태를 점검한다.
+- [ ] worktree별 run journal, process, local server, snapshot, verification 결과를 분리한다.
+- [ ] 작업 완료 후 사용자가 diff 검토, merge, branch 유지, worktree 삭제를 선택하게 한다.
+- [ ] dirty file과 agent 변경이 같은 파일에 섞이면 hunk 단위 검토와 staging을 지원한다.
+- [ ] Git branch 생성, commit, rebase, merge, push에 서로 다른 capability를 적용한다.
+- [ ] Git push, force push, branch 삭제, remote 변경은 전체 액세스에서도 별도 승인을 유지한다.
+- [ ] pull/rebase/merge 전 충돌과 사용자 변경 유실 가능성을 분석하는 safety preview를 제공한다.
+- [ ] pull request 생성, 설명 생성, 변경 요약, test evidence 첨부 workflow를 추가한다.
+- [ ] pull request 자동 검토에서 요구사항 누락, 회귀 위험, 검증 evidence 부족을 표시한다.
+
+#### 여러 workspace와 동시 세션
+
+- [ ] 여러 workspace를 동시에 열고 각각 독립된 agent session과 권한 모드를 유지한다.
+- [ ] workspace별 provider/model, memory, MCP, trusted command, retention 설정을 지원한다.
+- [ ] 서로 다른 workspace의 context, approval, process, local server, snapshot이 섞이지 않게 한다.
+- [ ] workspace 간 파일 복사·참조·수정은 별도의 cross-workspace capability로 취급한다.
+- [ ] 여러 run을 동시에 실행할 때 CPU, memory, provider rate limit, process 수를 공정하게 배분한다.
+- [ ] active run, 대기 run, blocked run을 보여주는 작업 큐를 제공한다.
+
+#### Plan 수정과 부분 재승인
+
+- [ ] 승인된 plan이 변경되면 전체 계획이 아니라 변경된 단계와 capability만 diff로 표시한다.
+- [ ] 파일 범위, command, dependency, network endpoint, 위험 수준이 동일하면 기존 승인을 재사용한다.
+- [ ] 영향 범위가 줄어든 plan은 재승인 없이 계속할 수 있게 한다.
+- [ ] 영향 범위가 확대된 plan은 새로 추가된 범위만 부분 승인받는다.
+- [ ] 사용자가 plan step을 수정·삭제·재정렬하고 계약 hash를 다시 생성할 수 있게 한다.
+- [ ] 실행 완료 단계는 plan 수정 후에도 evidence와 함께 보존하고 불필요하게 반복하지 않는다.
+
+#### Provider 복원력과 모델 비교
+
+- [ ] provider별 timeout, retry, rate limit, circuit breaker 상태를 공통 Runtime 계약으로 관리한다.
+- [ ] provider 장애 시 자동 fallback 가능 여부와 비용·데이터 전송 차이를 사용자에게 표시한다.
+- [ ] fallback provider가 달라지면 base URL, privacy, tool capability, context limit을 다시 검증한다.
+- [ ] 모델별 성공률, latency, token, 예상 비용, repair 횟수, 사용자 수정량을 비교하는 화면을 제공한다.
+- [ ] 동일 평가 작업을 여러 모델에 replay해 품질과 비용을 비교할 수 있게 한다.
+- [ ] workspace 또는 task type별 preferred model과 fallback chain을 설정한다.
+- [ ] provider 장애 중 무한 retry하지 않고 circuit open 상태와 재시도 가능 시간을 표시한다.
+
+#### 출력 DLP와 실행 provenance
+
+- [ ] 입력·파일·tool output·모델 응답·MCP payload·diagnostics bundle 전체에 적용되는 출력 DLP 정책을 설계한다.
+- [ ] API key, access token, private key, connection string, credential file, 개인정보 패턴을 탐지한다.
+- [ ] secret이 외부 provider, MCP, web request, clipboard, telemetry로 전송되기 전에 차단 또는 redaction한다.
+- [ ] 사용자가 전송될 내용과 redaction 결과를 preview할 수 있게 한다.
+- [ ] false positive를 처리할 workspace-local 예외 정책을 제공하되 secret 원문은 저장하지 않는다.
+- [ ] 모든 결과에 사용한 model, provider, prompt policy version, tool, command, input hash, artifact hash, verification evidence를 연결한다.
+- [ ] source file부터 최종 결과까지 추적할 수 있는 provenance graph를 구성한다.
+- [ ] 실행 evidence와 artifact에 SHA-256 hash를 기록해 사후 변경 여부를 탐지한다.
+- [ ] 외부로 내보내는 보고서와 PR 설명에 검증된 사실과 모델 추론을 구분한다.
+
+#### Remote execution worker
+
+- [ ] 로컬 Desktop과 분리된 remote execution worker 프로토콜을 설계한다.
+- [ ] Desktop은 계획·승인·상태 표시를 담당하고 worker는 격리된 실행과 evidence 수집을 담당하게 한다.
+- [ ] worker 등록, device identity, mutual authentication, capability negotiation을 제공한다.
+- [ ] 작업 source와 artifact 전송은 암호화하고 최소 데이터만 전송한다.
+- [ ] remote workspace와 local workspace의 identity 및 revision을 명확히 연결한다.
+- [ ] 연결 중단 후 idempotent resume와 중복 실행 방지를 지원한다.
+- [ ] remote worker의 CPU, memory, disk, network, process, timeout quota를 강제한다.
+- [ ] remote shell은 명시적 조직 정책과 승인 없이 활성화하지 않는다.
+
+#### 팀·조직 정책과 감사
+
+- [ ] 조직이 강제할 수 있는 중앙 policy bundle과 사용자 설정의 우선순위를 정의한다.
+- [ ] 조직 정책으로 허용 provider, model, MCP server, plugin, command, network domain, workspace 경계를 제한할 수 있게 한다.
+- [ ] 정책은 서명, version, expiry, rollback을 지원한다.
+- [ ] 조직 정책이 사용자에게 어떤 기능을 차단했는지 설명 가능한 reason code를 제공한다.
+- [ ] approval, mutation, shell, network, Git, MCP, recovery, export 이벤트를 감사 로그에 기록한다.
+- [ ] 감사 로그는 tamper evidence, retention, access control, export 정책을 갖게 한다.
+- [ ] 사용자 private prompt와 조직 audit에 필요한 실행 metadata를 분리한다.
+- [ ] 조직 관리자가 원문 private content 없이도 위험 작업을 감사할 수 있게 한다.
+- [ ] 팀 공통 workspace rule, verification profile, scaffold template, execution lesson 배포를 지원한다.
+
+#### 작업 큐, 예약 실행, background agent
+
+- [ ] 작업을 즉시 실행, 대기, 예약, 반복 실행 상태로 관리하는 durable queue를 설계한다.
+- [ ] 예약 작업에도 실행 시점의 workspace revision, policy, approval 유효성을 다시 확인한다.
+- [ ] 과거 승인을 사용해 새 mutation을 무인 실행하지 않는다.
+- [ ] background agent는 read-only monitoring과 mutation job을 명확히 분리한다.
+- [ ] mutation background job은 사전에 승인된 contract, capability, 시간·비용·변경 범위를 요구한다.
+- [ ] 야간 build/test, dependency audit, repository health check 같은 안전한 background workflow를 제공한다.
+- [ ] background run 실패, 비용 초과, policy 변경, workspace conflict 시 실행을 중단하고 알림을 남긴다.
+- [ ] 작업별 pause, resume, cancel, retry, archive 기능을 제공한다.
+- [ ] queue starvation과 무한 retry를 방지한다.
+
+#### 고급 PR 생성·검토 자동화
+
+- [ ] TaskContract의 목표와 실제 diff를 비교해 PR 설명을 생성한다.
+- [ ] build/test/runtime/visual evidence와 미검증 항목을 PR에 구분해 표시한다.
+- [ ] 변경 파일별 위험, public API 변경, migration, backward compatibility 영향을 분석한다.
+- [ ] review comment는 정확한 파일·line과 재현 가능한 evidence를 포함한다.
+- [ ] 자동 review 결과가 사람의 승인이나 remote merge 권한을 우회하지 않게 한다.
+- [ ] CI 실패 후 동일 branch에서 bounded repair와 재검증을 수행할 수 있게 한다.
+- [ ] merge, squash, rebase 선택과 branch 삭제는 사용자 또는 조직 정책 승인을 요구한다.
+
+#### 평가·벤치마크 플랫폼
+
+- [ ] 고정된 Agent Q coding benchmark와 실제 회귀 scenario corpus를 관리한다.
+- [ ] intent 정확도, permission 마찰, scaffold 성공률, build/test 통과율, completion 정확도, repair 성공률을 버전별로 비교한다.
+- [ ] 모델, provider, prompt policy, Runtime version, tool version을 평가 결과에 기록한다.
+- [ ] benchmark가 실제 사용자 private repository 내용을 포함하지 않게 한다.
+- [ ] synthetic task와 승인된 anonymized failure pattern을 구분한다.
+- [ ] 정책 또는 모델 변경 전후에 자동 replay를 실행하고 regression budget을 검사한다.
+- [ ] 외부 benchmark/evaluation package를 설치할 경우 publisher, signature, dataset license, capability를 검증한다.
+- [ ] 장기적으로 검증된 evaluation pack을 공유할 수 있는 marketplace를 검토한다.
+
+#### 접근성과 국제화
+
+- [ ] 키보드만으로 plan, approval, Stop, rollback, diff, verification을 조작할 수 있게 한다.
+- [ ] screen reader를 위한 automation name, role, live region을 주요 UI에 제공한다.
+- [ ] 색상만으로 상태와 위험 수준을 구분하지 않는다.
+- [ ] 고대비, 배율, font scaling, reduced motion을 지원한다.
+- [ ] 한국어와 영어에서 intent example, guard message, approval summary, 오류 설명의 의미가 일치하게 한다.
+- [ ] mojibake와 잘린 번역을 CI에서 지속적으로 검사한다.
+- [ ] 긴 경로, RTL 가능성, 다양한 locale의 날짜·숫자 표시를 검토한다.
+
+### 비기능 요구사항과 SLO
+
+#### 성능
+
+- [ ] 일반 workspace에서 앱 시작과 기본 UI 표시 목표 시간을 정의하고 측정한다.
+- [ ] workspace 분석은 UI를 차단하지 않고 단계별 결과를 표시한다.
+- [ ] 대형 저장소에서 index, symbol, dependency, embedding 작업의 시간·메모리 예산을 설정한다.
+- [ ] 파일 watcher와 incremental index가 변경 폭주 시 debounce와 backpressure를 적용한다.
+- [ ] Run Timeline과 telemetry가 장시간 run에서도 UI를 과도하게 느리게 하지 않게 virtualization과 bounded history를 사용한다.
+- [ ] provider first-token latency, tool latency, verification latency의 percentile을 측정한다.
+
+#### 비용과 자원 예산
+
+- [ ] run별 token, 예상 비용, wall-clock, tool call, repair, process, disk artifact budget을 설정할 수 있게 한다.
+- [ ] budget의 80%와 100%에서 사용자에게 경고하고 계속·축소·중단 선택을 제공한다.
+- [ ] 비용 한도 도달을 완료나 성공으로 기록하지 않는다.
+- [ ] embedding, screenshot vision, multi-model evaluation처럼 추가 비용이 드는 단계는 사전에 표시한다.
+- [ ] `.agentq` 전체와 run별 저장 용량 상한을 정의한다.
+
+#### 신뢰성
+
+- [ ] 일반 bug fix, scaffold, local server, verification 시나리오별 성공률 SLO를 정의한다.
+- [ ] Stop 이후 child process 정리 완료 시간 목표를 정의한다.
+- [ ] crash recovery 성공률과 snapshot rollback 성공률을 측정한다.
+- [ ] run journal write 실패, disk full, permission loss, corrupted state를 fault injection으로 테스트한다.
+- [ ] 동일 작업을 재실행해도 중복 mutation과 중복 process가 발생하지 않는 idempotency SLO를 정의한다.
+
+#### 권한 사용성
+
+- [ ] read-only 분석은 평균 승인 0회를 목표로 한다.
+- [ ] 일반 bug fix와 작은 feature는 기본 `작업 전체 승인`에서 평균 승인 1회를 목표로 한다.
+- [ ] scaffold는 기본 모드에서 plan 승인 1회로 생성·구현·검증까지 이어지는 것을 목표로 한다.
+- [ ] 불필요한 clarification과 중복 permission dialog의 허용 상한을 정의한다.
+- [ ] 권한 거부 후 안전한 대체 경로 제시율을 측정한다.
+
+#### 데이터 보존과 개인정보
+
+- [ ] telemetry, run journal, snapshot, replay, screenshot, DOM, embedding별 기본 보존 기간을 정의한다.
+- [ ] 삭제 요청 후 관련 local artifact가 제거되는 최대 시간을 정의한다.
+- [ ] 외부 provider와 MCP에 전송되는 데이터 범위를 UI와 privacy 문서에 명시한다.
+- [ ] secret redaction 누락을 release blocker로 취급한다.
+
+### Architecture Decision Record 체계
+
+- [ ] `docs/adr/` 디렉터리와 ADR template을 추가한다.
+- [ ] 주요 구조 변경은 배경, 결정, 대안, 장점, 단점, migration, rollback을 기록한다.
+- [ ] 최소한 다음 결정을 ADR로 남긴다.
+  - [ ] Desktop을 주력 제품으로 하고 CLI를 internal host로 전환한 결정
+  - [ ] WPF 밖으로 AgentQ.Runtime을 추출하는 결정
+  - [ ] 작업 단위 3단계 권한 UX와 내부 capability 정책의 관계
+  - [ ] scaffold authorization과 deterministic executor 계약
+  - [ ] append-only run journal과 crash recovery 방식
+  - [ ] process supervisor와 Windows Job Object 사용
+  - [ ] `.agentq` persistence schema와 migration 정책
+  - [ ] MCP/plugin trust 및 capability 모델
+  - [ ] telemetry/privacy 기본값
+- [ ] ADR가 변경되면 관련 TODO, architecture 문서, code contract test를 함께 갱신한다.
+- [ ] 폐기된 결정은 삭제하지 않고 superseded 상태와 대체 ADR을 연결한다.
+
+### Threat modeling과 보안 감사
+
+- [ ] Agent Q의 trust boundary와 자산을 데이터 흐름도로 작성한다.
+- [ ] 최소한 사용자 입력, model output, tool input, workspace, child process, provider, MCP, plugin, Git remote, updater를 경계로 다룬다.
+- [ ] prompt injection이 tool permission, TaskContract, current intent, MCP data 전송을 우회하지 못하게 위협 시나리오를 테스트한다.
+- [ ] 경로 traversal, symlink/reparse race, junction, UNC path, alternate data stream, case normalization을 감사한다.
+- [ ] shell escaping, argument injection, command substitution, executable shadowing, PATH hijacking을 감사한다.
+- [ ] malicious package install script, compromised MCP server, plugin update, model-supplied URL을 위협 모델에 포함한다.
+- [ ] secret exfiltration, clipboard leakage, screenshot/DOM private data, telemetry leakage를 점검한다.
+- [ ] updater와 release artifact의 signature, checksum, downgrade, rollback 공격을 점검한다.
+- [ ] destructive Git operation, remote push, force push, publish/deploy의 승인 우회 경로를 점검한다.
+- [ ] threat마다 preventive control, detective control, recovery, regression test owner를 기록한다.
+- [ ] release 전 security checklist와 정기 dependency/plugin/MCP 재평가 절차를 운영한다.
+
+### 장기 확장 기능 완료 원칙
+
+- [ ] 장기 기능은 각 항목이 요구하는 capability, state transition, journal event, cancellation, evidence, recovery 계약 없이 완료 처리하지 않는다.
+- [ ] 장기 기능 추가가 Desktop 1.0의 핵심 안전성, 사용성, 테스트 종료 안정성을 악화시키면 rollout을 중단한다.
+- [ ] feature flag와 staged rollout을 사용하고 metric 악화 시 즉시 비활성화할 수 있게 한다.
+- [ ] 신규 기능은 사용자 승인 횟수, 작업 완수율, 비용, latency, security risk에 미치는 영향을 함께 보고한다.
+
 ## 2차 리팩터링 / 품질 개선 진행
 
 - [x] 2026-06-19 2차 리팩터링 브랜치를 `codex/wip-agent-q-refactor-quality`로 시작했다.
