@@ -1,5 +1,6 @@
 ﻿using AgentQ.Desktop.Services;
 using AgentQ.Desktop.ViewModels;
+using AgentQ.Runtime.Intent;
 using AgentQ.Core.Models;
 using AgentQ.Core.Providers;
 using AgentQ.Providers.OpenAi;
@@ -732,6 +733,40 @@ public sealed class DesktopServiceTests
         Assert.True(route.ExecutionContract.IsActionable);
         Assert.Equal(TaskContractIntent.CreateDirectory, route.ExecutionContract.Intent);
         Assert.Contains("test2", route.RoutingText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DesktopIntentRoutingAdapter_PreservesLegacyCreateDirectoryRoute()
+    {
+        const string userText = "logs 폴더 만들어줘";
+        var understanding = UserTurnUnderstandingService.Understand(userText);
+        var rule = TurnIntentClassifier.Classify(userText);
+
+        var expected = LlmFirstIntentRouter.Route(userText, understanding, rule);
+        var actual = new DesktopIntentRoutingAdapter(new IntentRoutingPipeline()).Route(userText, understanding, rule);
+
+        Assert.Equal(expected.EffectiveIntent, actual.EffectiveIntent);
+        Assert.Equal(expected.ExecutionContract.Intent, actual.ExecutionContract.Intent);
+        Assert.Equal(expected.ExecutionContract.Confidence, actual.ExecutionContract.Confidence);
+        Assert.Equal(expected.ExecutionContract.Goal, actual.ExecutionContract.Goal);
+        Assert.Equal(expected.ExecutionContract.RequiredActions, actual.ExecutionContract.RequiredActions);
+        Assert.Equal(expected.ExecutionContract.DoneWhen, actual.ExecutionContract.DoneWhen);
+        Assert.Equal(expected.ExecutionContract.InvalidCompletions, actual.ExecutionContract.InvalidCompletions);
+        Assert.Equal(expected.RoutingText, actual.RoutingText);
+    }
+
+    [Fact]
+    public void DesktopTaskContractCompletionAdapter_PreservesLegacyRejectDecision()
+    {
+        var contract = UserIntentTranslator.Translate("logs 폴더 만들어줘");
+        const string assistantText = "logs 폴더를 만들 수 있습니다.";
+        var adapter = new DesktopTaskContractCompletionAdapter();
+
+        var expected = TaskContractCompletionChecker.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, []);
+        var actual = adapter.ShouldReject(contract, assistantText, [], AgentWorkMode.Coding, []);
+
+        Assert.Equal(expected, actual);
+        Assert.True(actual);
     }
 
     [Fact]
@@ -4320,6 +4355,8 @@ public sealed class DesktopServiceTests
         Assert.Contains(expectedCommandPrefix, plan.DisplayCommand, StringComparison.Ordinal);
     }
 
+    // Starts a real npm/node process and binds a localhost port.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopLocalServerService_StartsNodeDevServerAndVerifiesUrl()
     {
@@ -4371,6 +4408,8 @@ public sealed class DesktopServiceTests
         }
     }
 
+    // Exercises the real local-server lifecycle; browser inspection is stubbed only.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task ImplementationRuntimePreviewService_StartsServerAndVerifiesDomEvidence()
     {
@@ -4470,6 +4509,8 @@ public sealed class DesktopServiceTests
         }
     }
 
+    // Exercises the real local-server lifecycle; browser inspection is stubbed only.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task ImplementationRuntimePreviewService_BlocksConsoleAndVisualFailures()
     {
@@ -4563,6 +4604,8 @@ public sealed class DesktopServiceTests
         Assert.Contains("Playwright is not installed", result.Summary, StringComparison.OrdinalIgnoreCase);
     }
 
+    // Starts a child process even though that process exits with an error.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopLocalServerService_FailedStartedProcessKeepsAttemptedCommand()
     {
@@ -4647,6 +4690,8 @@ public sealed class DesktopServiceTests
         Assert.False(Directory.Exists(Path.Combine(outside, "local-server")));
     }
 
+    // Starts, reuses, and stops a real node server process.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopLocalServerService_ReusesAndStopsWorkspaceSession()
     {
@@ -4743,6 +4788,8 @@ public sealed class DesktopServiceTests
         Assert.False(File.Exists(sessionPath));
     }
 
+    // Exercises the deterministic local-server contract against a real node process.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopAgentService_RunLocalServerContractStartsServerBeforeModelCall()
     {
@@ -4847,6 +4894,8 @@ public sealed class DesktopServiceTests
             step.Detail?.Contains("finished successfully", StringComparison.OrdinalIgnoreCase) == true);
     }
 
+    // Exercises the provider-backed local-server contract against a real node process.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopAgentService_RunLocalServerContractUsesDesktopServiceEvenWhenProviderConfigured()
     {
@@ -4927,6 +4976,8 @@ public sealed class DesktopServiceTests
         }
     }
 
+    // Starts and stops a real node server through the agent contract.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopAgentService_StopLocalServerContractStopsExistingSession()
     {
@@ -8004,6 +8055,8 @@ public sealed class DesktopServiceTests
             step.Title == "Task contract: rejected");
     }
 
+    // This exercises scaffold creation, local server startup, and preview-repair retries.
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DesktopAgentService_RetriesImplementationAfterRuntimePreviewFailure()
     {
@@ -9343,6 +9396,7 @@ public sealed class DesktopServiceTests
         Assert.Contains("pytest", File.ReadAllText(Path.Combine(root, "requirements.txt")), StringComparison.Ordinal);
     }
 
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task ProjectScaffoldIntegration_JavaScriptPortfolioBuildsWithNpm()
     {
@@ -9368,6 +9422,7 @@ public sealed class DesktopServiceTests
         Assert.True(Directory.Exists(Path.Combine(root, "dist")));
     }
 
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task ProjectScaffoldIntegration_PythonDataAnalysisPassesPytest()
     {
@@ -9758,6 +9813,101 @@ public sealed class DesktopServiceTests
         Assert.Equal("cmd /c test.cmd", rootElement.GetProperty("command").GetString());
         Assert.Equal(0, rootElement.GetProperty("exitCode").GetInt32());
         Assert.Contains("scaffold ok", rootElement.GetProperty("combinedOutput").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldVerifyTool_RejectsVerificationWithoutCreateAuthorization()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = registry.Register(TestScaffoldIntent(), TestCommandPlan(), root);
+        var tool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
+
+        var result = await tool.ExecuteAsync(ScaffoldToolInput(record));
+
+        Assert.True(result.IsError);
+        Assert.Contains("unexpired authorization", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProjectScaffoldAuthorization_BindsPlanWorkspaceCommandsAndEvidence()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = registry.Register(PortfolioIntent(), PortfolioPlan(), root);
+
+        var authorization = registry.IssueAuthorization(record, overwriteExistingFiles: false, taskContractId: "contract-1", runId: "run-1");
+
+        Assert.StartsWith("sca_", authorization.ScaffoldAuthorizationId, StringComparison.Ordinal);
+        Assert.Equal(record.PlanId, authorization.PlanId);
+        Assert.Equal(record.PlanHash, authorization.PlanHash);
+        Assert.Equal(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), authorization.WorkspaceRoot);
+        Assert.Contains("package.json", authorization.AllowedFiles);
+        Assert.Contains("src/**", authorization.AllowedPathPatterns);
+        Assert.Contains("npm run build", authorization.AllowedCommands);
+        Assert.True(authorization.AllowCreateDirectories);
+        Assert.True(authorization.AllowDependencyInstall);
+        Assert.True(authorization.AllowVerification);
+        Assert.Equal("contract-1", authorization.TaskContractId);
+        Assert.Equal("run-1", authorization.RunId);
+        Assert.NotEmpty(authorization.AuthorizationEvidence);
+        Assert.True(registry.TryAuthorizeFile(authorization, "src/App.jsx"));
+        Assert.True(registry.TryAuthorizeFile(authorization, "src/components/Chart.jsx"));
+        Assert.False(registry.TryAuthorizeFile(authorization, ".git/config"));
+        Assert.False(registry.TryAuthorizeFile(authorization, "src/../.git/config"));
+        Assert.False(registry.TryAuthorizeFile(authorization, "../outside.txt"));
+        Assert.True(registry.TryAuthorizeCommand(authorization, "npm run build"));
+        Assert.False(registry.TryAuthorizeCommand(authorization, "npm test"));
+    }
+
+    [Fact]
+    public async Task DesktopProjectScaffoldCreateTool_IssuesAuthorizationForCreationAndBindsVerificationToRun()
+    {
+        var root = CreateTempDirectory();
+        var registry = new ProjectScaffoldPlanRegistry();
+        var record = registry.Register(TestScaffoldIntent(), TestCommandPlan(), root);
+        var createTool = new DesktopProjectScaffoldCreateTool(root, planRegistry: registry);
+        var createInput = ScaffoldToolInput(record);
+        createInput["taskContractId"] = "contract-1";
+        createInput["runId"] = "run-1";
+
+        var create = await createTool.ExecuteAsync(createInput);
+
+        Assert.False(create.IsError, create.ErrorMessage);
+        using var document = JsonDocument.Parse(create.Content);
+        var authorizationId = document.RootElement
+            .GetProperty("scaffoldAuthorization")
+            .GetProperty("scaffoldAuthorizationId")
+            .GetString();
+        Assert.False(string.IsNullOrWhiteSpace(authorizationId));
+        Assert.True(registry.TryGetValidAuthorization(
+            authorizationId!, record.PlanId, record.PlanHash, root, "contract-1", "run-1", out _));
+
+        var verifyTool = new DesktopProjectScaffoldVerifyTool(root, planRegistry: registry);
+        var wrongRunInput = ScaffoldToolInput(record);
+        wrongRunInput["scaffoldAuthorizationId"] = authorizationId;
+        wrongRunInput["taskContractId"] = "contract-1";
+        wrongRunInput["runId"] = "run-2";
+        var wrongRun = await verifyTool.ExecuteAsync(wrongRunInput);
+
+        Assert.True(wrongRun.IsError);
+        Assert.Contains("does not match", wrongRun.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolPermissionPolicy_FullAgentAllowsOnlyWorkspaceBoundScaffoldWithoutDialog()
+    {
+        var input = JsonSerializer.Serialize(new
+        {
+            plan = new { files = new[] { "package.json", "src/App.jsx" }, verificationCommands = new[] { "npm run build" } },
+            overwriteExistingFiles = false
+        });
+
+        var fullAccess = ToolPermissionPolicy.Evaluate("create_project_scaffold", input, CreateTempDirectory(), AgentWorkMode.FullAgent);
+        var taskApproval = ToolPermissionPolicy.Evaluate("create_project_scaffold", input, CreateTempDirectory(), AgentWorkMode.Coding);
+
+        Assert.Equal(ToolPermissionDecision.Allow, fullAccess.Decision);
+        Assert.Equal(ToolPermissionDecision.RequireApproval, taskApproval.Decision);
     }
 
     [Fact]
@@ -19842,8 +19992,12 @@ public sealed class DesktopServiceTests
         ProjectScaffoldPlanRegistry registry,
         ProjectScaffoldIntentModel intent,
         ProjectScaffoldPlanModel plan,
-        string? workspaceRoot = null) =>
-        registry.Register(intent, plan, workspaceRoot ?? CreateTempDirectory());
+        string? workspaceRoot = null)
+    {
+        var record = registry.Register(intent, plan, workspaceRoot ?? CreateTempDirectory());
+        registry.IssueAuthorization(record, overwriteExistingFiles: false);
+        return record;
+    }
 
     private static Dictionary<string, object?> ScaffoldToolInput(
         ProjectScaffoldPlanRecord record,

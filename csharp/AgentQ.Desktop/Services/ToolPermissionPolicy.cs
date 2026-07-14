@@ -48,6 +48,16 @@ public static class ToolPermissionPolicy
             return Allow(assessment, "Safe read-only operation.");
         }
 
+        // Full Agent is the user-facing "full workspace access" mode. Keep all
+        // workspace/path policy checks above, but do not add a per-file dialog to
+        // a deterministic, registry-bound scaffold creation.
+        if (workMode == AgentWorkMode.FullAgent &&
+            string.Equals(assessment.Operation, "Create project scaffold", StringComparison.OrdinalIgnoreCase) &&
+            assessment.RiskLevel is PermissionRiskLevel.LowRiskProjectWrite or PermissionRiskLevel.ProjectWrite)
+        {
+            return Allow(assessment, "Full Agent mode permits a safe workspace-bound deterministic scaffold without an individual approval dialog.");
+        }
+
         return workMode switch
         {
             AgentWorkMode.Readonly => Block(

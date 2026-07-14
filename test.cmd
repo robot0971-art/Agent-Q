@@ -35,6 +35,7 @@ echo Building test assembly
 dotnet msbuild "%REPO_ROOT%csharp\AgentQ.Tests\AgentQ.Tests.csproj" /t:Build /p:BuildProjectReferences=false /p:RestoreConfigFile="%NUGET_CONFIG%" /m:1 /v:minimal
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-echo Running non-integration tests
-dotnet vstest "%TEST_DLL%" --TestCaseFilter:"Category!=Integration"
+echo Running non-integration tests with hang and crash diagnostics
+if not exist "%REPO_ROOT%artifacts\test-results" mkdir "%REPO_ROOT%artifacts\test-results"
+dotnet test "%REPO_ROOT%csharp\AgentQ.Tests\AgentQ.Tests.csproj" --no-build --filter "Category!=Integration" --blame-hang --blame-hang-timeout 60s --blame-crash --diag "%REPO_ROOT%artifacts\test-results\vstest-diag.log" --logger "trx;LogFileName=agentq-tests.trx" --results-directory "%REPO_ROOT%artifacts\test-results"
 exit /b %ERRORLEVEL%

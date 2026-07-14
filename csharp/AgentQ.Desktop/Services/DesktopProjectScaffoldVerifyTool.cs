@@ -20,6 +20,9 @@ public sealed class DesktopProjectScaffoldVerifyTool(
     public string Description =>
         "Run an approved project scaffold verification command from the plan returned by plan_project_scaffold. Only commands listed in plan.verificationCommands may run.";
 
+    // Authorization proves the command is bound to the approved scaffold plan. It does
+    // not bypass the existing shell/verification approval boundary; permission policy can
+    // still reuse a task-wide approval without making this tool silently executable.
     public bool RequiresPermission => true;
 
     public object InputSchema => new
@@ -52,6 +55,9 @@ public sealed class DesktopProjectScaffoldVerifyTool(
                 }
             },
             planHash = new { type = "string", description = "The approved SHA-256 plan hash returned by plan_project_scaffold or preflight." },
+            scaffoldAuthorizationId = new { type = "string", description = "Optional authorization evidence returned by create_project_scaffold." },
+            taskContractId = new { type = "string", description = "Optional parent TaskContract id. When supplied, it must match the scaffold authorization." },
+            runId = new { type = "string", description = "Optional agent run id. When supplied, it must match the scaffold authorization." },
             command = new
             {
                 type = "string",
@@ -90,6 +96,37 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             return ToolResult.Error(mismatch);
         }
 
+        var taskContractId = TryGetString(input, "taskContractId", out var requestedTaskContractId)
+            ? requestedTaskContractId
+            : null;
+        var runId = TryGetString(input, "runId", out var requestedRunId)
+            ? requestedRunId
+            : null;
+        ScaffoldAuthorization authorization;
+        if (TryGetString(input, "scaffoldAuthorizationId", out var authorizationId))
+        {
+            if (!_planRegistry.TryGetValidAuthorization(
+                    authorizationId,
+                    record.PlanId,
+                    record.PlanHash,
+                    workspaceRoot,
+                    taskContractId,
+                    runId,
+                    out authorization))
+            {
+                return ToolResult.Error("Scaffold authorization does not match the approved plan, workspace, task contract, or run.");
+            }
+        }
+        else if (!_planRegistry.TryGetValidAuthorization(record.PlanId, record.PlanHash, out authorization))
+        {
+            return ToolResult.Error("Project scaffold verification requires an unexpired authorization from successful create_project_scaffold execution.");
+        }
+
+        if (!ProjectScaffoldPlanRegistry.MatchesWorkspace(authorization.WorkspaceRoot, workspaceRoot))
+        {
+            return ToolResult.Error("Scaffold authorization belongs to a different workspace.");
+        }
+
         var plan = record.Plan;
         var commands = plan.VerificationCommands
             .Where(command => !string.IsNullOrWhiteSpace(command))
@@ -114,6 +151,11 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             return ToolResult.Error("Verification command is not allowed by the verification command policy.");
         }
 
+        if (!_planRegistry.TryAuthorizeCommand(authorization, command))
+        {
+            return ToolResult.Error("Verification command is not covered by the approved scaffold authorization.");
+        }
+
         var timeout = TimeSpan.FromSeconds(Math.Clamp(TryGetInt(input, "timeoutSeconds", 120), 1, 600));
         var verificationPlan = new AgentVerificationPlan
         {
@@ -132,6 +174,8 @@ public sealed class DesktopProjectScaffoldVerifyTool(
             {
                 succeeded = result.Succeeded,
                 command,
+                scaffoldAuthorizationId = authorization.ScaffoldAuthorizationId,
+                authorizationEvidence = authorization.AuthorizationEvidence,
                 exitCode = result.ExitCode,
                 standardOutput = Truncate(result.StandardOutput),
                 standardError = Truncate(result.StandardError),

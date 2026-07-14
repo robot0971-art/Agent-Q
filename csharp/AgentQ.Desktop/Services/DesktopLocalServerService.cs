@@ -15,6 +15,7 @@ public sealed class DesktopLocalServerService
     private static readonly string[] PreferredScripts = ["dev", "start", "preview"];
     private static readonly string[] BunLockFiles = ["bun.lockb", "bun.lock"];
     private static readonly ConcurrentDictionary<string, LocalServerSession> Sessions = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, OwnedProcessLifetime> RuntimeProcesses = new(StringComparer.OrdinalIgnoreCase);
     private readonly IHttpClientFactory _httpClientFactory;
 
     public DesktopLocalServerService(IHttpClientFactory httpClientFactory)
@@ -89,7 +90,7 @@ public sealed class DesktopLocalServerService
         Process? process;
         try
         {
-            process = Process.Start(CreateStartInfo(plan, stdoutPath, stderrPath));
+            process = Process.Start(CreateStartInfo(plan));
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ObjectDisposedException)
         {
@@ -107,7 +108,22 @@ public sealed class DesktopLocalServerService
                 url: plan.Url);
         }
 
-        var reachable = await WaitForReachableAsync(plan.Url, process, ct);
+        var ownedLifetime = OwnedProcessLifetime.Attach(process);
+        _ = CaptureOutputAsync(process.StandardOutput, stdoutPath);
+        _ = CaptureOutputAsync(process.StandardError, stderrPath);
+
+        bool reachable;
+        try
+        {
+            reachable = await WaitForReachableAsync(plan.Url, process, ct);
+        }
+
+        catch (OperationCanceledException)
+        {
+            ownedLifetime.KillAndWait(TimeSpan.FromSeconds(5));
+            ownedLifetime.Dispose();
+            throw;
+        }
         if (reachable)
         {
             callbacks?.OnRunStep?.Invoke(
@@ -122,6 +138,12 @@ public sealed class DesktopLocalServerService
                 StartedAtUtc: DateTimeOffset.UtcNow,
                 ProcessStartedAtUtc: TryGetProcessStartTimeUtc(process.Id));
             Sessions[workspaceKey] = session;
+            if (RuntimeProcesses.TryGetValue(workspaceKey, out var staleRuntime) && staleRuntime.ProcessId != process.Id)
+            {
+                staleRuntime.KillAndWait(TimeSpan.FromSeconds(5));
+                staleRuntime.Dispose();
+            }
+            RuntimeProcesses[workspaceKey] = ownedLifetime;
             await SaveSessionAsync(session, ct);
             return new LocalServerStartResult
             {
@@ -136,8 +158,10 @@ public sealed class DesktopLocalServerService
         var error = await ReadShortErrorAsync(stderrPath, stdoutPath, ct);
         if (!process.HasExited)
         {
-            TryKill(process);
+            ownedLifetime.KillAndWait(TimeSpan.FromSeconds(5));
         }
+        var failedProcessId = process.Id;
+        ownedLifetime.Dispose();
 
         return LocalServerStartResult.Failed(
             string.IsNullOrWhiteSpace(error)
@@ -145,7 +169,7 @@ public sealed class DesktopLocalServerService
                 : $"Local server did not respond at {plan.Url}. {error}",
             command: plan.DisplayCommand,
             url: plan.Url,
-            processId: process.Id);
+            processId: failedProcessId);
     }
 
     public async Task<LocalServerStopResult> StopAsync(
@@ -188,8 +212,33 @@ public sealed class DesktopLocalServerService
 
         Sessions.TryRemove(workspaceKey, out _);
         DeleteSessionFile(workspaceKey);
+        if (RuntimeProcesses.TryRemove(workspaceKey, out var ownedProcess))
+        {
+            try
+            {
+                if (ownedProcess.ProcessId == session.ProcessId)
+                {
+                    ownedProcess.KillAndWait(TimeSpan.FromSeconds(5));
+                }
+            }
+            catch
+            {
+                return LocalServerStopResult.Failed($"Failed to stop local server process {session.ProcessId}.");
+            }
+            finally
+            {
+                ownedProcess.Dispose();
+            }
+        }
+        else
         if (IsProcessAlive(session.ProcessId))
         {
+            if (!ProcessMatchesSession(session))
+            {
+                return LocalServerStopResult.Failed(
+                    $"Local server process {session.ProcessId} no longer matches the recorded session; it was not terminated.");
+            }
+
             try
             {
                 using var process = Process.GetProcessById(session.ProcessId);
@@ -304,21 +353,34 @@ public sealed class DesktopLocalServerService
         }
     }
 
-    private static ProcessStartInfo CreateStartInfo(LocalServerStartPlan plan, string stdoutPath, string stderrPath)
+    private static ProcessStartInfo CreateStartInfo(LocalServerStartPlan plan)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = GetPackageManagerExecutable(plan.PackageManager),
-            WorkingDirectory = plan.WorkspaceRoot,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add(plan.ScriptName);
+        var executable = GetPackageManagerExecutable(plan.PackageManager);
+        var arguments = new List<string> { "run", plan.ScriptName };
         if (plan.ServerArguments.Count > 0)
         {
-            startInfo.ArgumentList.Add("--");
-            foreach (var argument in plan.ServerArguments)
+            arguments.Add("--");
+            arguments.AddRange(plan.ServerArguments);
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : executable,
+            WorkingDirectory = plan.WorkspaceRoot,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            // cmd.exe owns batch-file child lifetime only when it receives the full
+            // command line verbatim; ArgumentList adds another quoting layer here.
+            startInfo.Arguments = $"/d /s /c \"{BuildCmdCommand(executable, arguments)}\"";
+        }
+        else
+        {
+            foreach (var argument in arguments)
             {
                 startInfo.ArgumentList.Add(argument);
             }
@@ -327,8 +389,16 @@ public sealed class DesktopLocalServerService
         startInfo.Environment["PORT"] = plan.Port.ToString();
         startInfo.Environment["HOST"] = "127.0.0.1";
 
-        return RedirectToFiles(startInfo, stdoutPath, stderrPath);
+        return startInfo;
     }
+
+    private static string BuildCmdCommand(string executable, IReadOnlyList<string> arguments) =>
+        $"call {executable} {string.Join(" ", arguments.Select(QuoteCmdArgument))}";
+
+    private static string QuoteCmdArgument(string value) =>
+        value.IndexOfAny([' ', '\t', '"']) >= 0
+            ? $"\"{value.Replace("\"", "\\\"")}\""
+            : value;
 
     private static string ResolvePackageManager(string workspaceRoot)
     {
@@ -391,37 +461,23 @@ public sealed class DesktopLocalServerService
             : $"{packageManager}.cmd";
     }
 
-    private static ProcessStartInfo RedirectToFiles(ProcessStartInfo startInfo, string stdoutPath, string stderrPath)
+    private static async Task CaptureOutputAsync(StreamReader reader, string path)
     {
-        var originalFileName = startInfo.FileName;
-        var originalArguments = startInfo.ArgumentList.ToArray();
-        var wrapper = new ProcessStartInfo
+        try
         {
-            FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/sh",
-            WorkingDirectory = startInfo.WorkingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        if (OperatingSystem.IsWindows())
-        {
-            wrapper.ArgumentList.Add("-NoProfile");
-            wrapper.ArgumentList.Add("-ExecutionPolicy");
-            wrapper.ArgumentList.Add("Bypass");
-            wrapper.ArgumentList.Add("-Command");
-            var args = string.Join(" ", originalArguments.Select(QuotePowerShellArg));
-            wrapper.ArgumentList.Add($"& {QuotePowerShellArg(originalFileName)} {args} > {QuotePowerShellArg(stdoutPath)} 2> {QuotePowerShellArg(stderrPath)}");
+            await using var writer = new StreamWriter(path, append: false);
+            var buffer = new char[4096];
+            int count;
+            while ((count = await reader.ReadAsync(buffer)) > 0)
+            {
+                await writer.WriteAsync(buffer.AsMemory(0, count));
+                await writer.FlushAsync();
+            }
         }
-        else
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            wrapper.ArgumentList.Add("-c");
-            var args = string.Join(" ", originalArguments.Select(QuoteShellArg));
-            wrapper.ArgumentList.Add($"{QuoteShellArg(originalFileName)} {args} > {QuoteShellArg(stdoutPath)} 2> {QuoteShellArg(stderrPath)}");
+            // The process was stopped while its redirected stream was being captured.
         }
-
-        wrapper.Environment["PORT"] = startInfo.Environment["PORT"];
-        wrapper.Environment["HOST"] = startInfo.Environment["HOST"];
-        return wrapper;
     }
 
     private async Task<bool> WaitForReachableAsync(string url, Process process, CancellationToken ct)
@@ -517,17 +573,6 @@ public sealed class DesktopLocalServerService
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            process.Kill(entireProcessTree: true);
-        }
-        catch
-        {
-        }
     }
 
     private static bool IsProcessAlive(int processId)

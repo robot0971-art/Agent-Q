@@ -40,7 +40,15 @@ public sealed class NativeWorkerHost
 
             var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
             var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
+            try
+            {
+                await process.WaitForExitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                OwnedProcessCleanup.TryKillTree(process);
+                throw;
+            }
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
 

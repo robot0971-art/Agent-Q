@@ -68,14 +68,16 @@ public sealed class DesktopVerificationRunner(IEnumerable<IVerificationArtifactC
         {
             await process.WaitForExitAsync(linkedCts.Token);
         }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            if (!process.HasExited)
+            OwnedProcessCleanup.TryKillTree(process);
+
+            if (timeoutCts.IsCancellationRequested)
             {
-                process.Kill(entireProcessTree: true);
+                throw new TimeoutException($"Verification timed out after {timeout.TotalSeconds:0} seconds.");
             }
 
-            throw new TimeoutException($"Verification timed out after {timeout.TotalSeconds:0} seconds.");
+            throw;
         }
 
         return new VerificationRunResult

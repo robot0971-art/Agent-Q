@@ -335,6 +335,7 @@ public sealed class StdioMcpClient : IMcpClient, IDisposable
                 if (!_process.HasExited)
                 {
                     _process.Kill(entireProcessTree: true);
+                    _process.WaitForExit(5000);
                 }
             }
             catch

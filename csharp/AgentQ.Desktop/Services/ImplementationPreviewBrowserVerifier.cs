@@ -189,9 +189,10 @@ public sealed class PlaywrightImplementationPreviewBrowserVerifier : IImplementa
         startInfo.ArgumentList.Add(desktopPath);
         startInfo.ArgumentList.Add(mobilePath);
 
+        Process? process = null;
         try
         {
-            using var process = Process.Start(startInfo);
+            process = Process.Start(startInfo);
             if (process == null)
             {
                 return BrowserProcessOutput.Failed("Failed to start node for Playwright browser verification.");
@@ -208,7 +209,12 @@ public sealed class PlaywrightImplementationPreviewBrowserVerifier : IImplementa
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or OperationCanceledException or IOException)
         {
+            OwnedProcessCleanup.TryKillTree(process);
             return BrowserProcessOutput.Failed("Playwright browser verification failed: " + ex.Message);
+        }
+        finally
+        {
+            process?.Dispose();
         }
     }
 

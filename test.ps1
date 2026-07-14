@@ -1,5 +1,6 @@
 param(
-    [string]$Filter = "Category!=Integration"
+    [string]$Filter = "Category!=Integration",
+    [int]$HangTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +53,8 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-Write-Host "Running tests with filter: $Filter"
-& dotnet vstest $testAssembly "--TestCaseFilter:$Filter"
+Write-Host "Running tests with filter: $Filter (hang diagnostics: $HangTimeoutSeconds seconds)"
+$resultsDirectory = Join-Path $repoRoot "artifacts\test-results"
+New-Item -ItemType Directory -Force -Path $resultsDirectory | Out-Null
+& dotnet test $testProject --no-build "--filter:$Filter" --blame-hang "--blame-hang-timeout:$($HangTimeoutSeconds)s" --blame-crash --diag (Join-Path $resultsDirectory "vstest-diag.log") --logger "trx;LogFileName=agentq-tests.trx" --results-directory $resultsDirectory
 exit $LASTEXITCODE

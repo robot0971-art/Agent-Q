@@ -5,6 +5,7 @@ using Xunit;
 
 namespace AgentQ.Tests;
 
+[Collection("Environment variable tests")]
 public sealed class DesktopMcpServiceTests
 {
     [Fact]

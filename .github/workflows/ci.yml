@@ -34,17 +34,60 @@ jobs:
       - name: Build
         run: dotnet build .\csharp\AgentQ.sln -c Release --no-restore
 
-      - name: Test
-        run: >
-          dotnet test .\csharp\AgentQ.sln
-          -c Release
-          --no-build
-          --logger trx
-          --results-directory .\artifacts\test-results
-          --collect:"XPlat Code Coverage"
+      - name: Test non-integration suite with hang and crash diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results = '.\artifacts\test-results'
+          New-Item -ItemType Directory -Force -Path $results | Out-Null
+          $arguments = @('test', '.\csharp\AgentQ.sln', '-c', 'Release', '--no-build', '--filter', 'Category!=Integration', '--logger', 'trx;LogFileName=non-integration.trx', '--results-directory', $results, '--collect:XPlat Code Coverage', '--blame-hang', '--blame-hang-timeout', '60s', '--blame-crash', '--diag', "$results\non-integration-vstest-diag.log")
+          $process = Start-Process dotnet -ArgumentList $arguments -NoNewWindow -PassThru
+          $known = [System.Collections.Generic.HashSet[int]]::new()
+          [void]$known.Add($process.Id)
+          $deadline = [DateTimeOffset]::UtcNow.AddMinutes(7)
+          do {
+            $snapshot = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CreationDate, CommandLine)
+            $changed = $true
+            while ($changed) {
+              $changed = $false
+              foreach ($candidate in $snapshot) {
+                if ($known.Contains([int]$candidate.ParentProcessId) -and $known.Add([int]$candidate.ProcessId)) {
+                  $changed = $true
+                }
+              }
+            }
+            Start-Sleep -Seconds 1
+          } while (-not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $deadline)
+          if (-not $process.HasExited) {
+            $snapshot | Where-Object { $known.Contains([int]$_.ProcessId) } |
+              ConvertTo-Json -Depth 3 | Set-Content "$results\timeout-processes.json"
+            & taskkill.exe /PID $process.Id /T /F | Out-Host
+            throw "Non-integration tests timed out after 420 seconds; only the CI test root process tree was terminated."
+          }
+          $stillOwned = @(Get-CimInstance Win32_Process | Where-Object { $known.Contains([int]$_.ProcessId) })
+          if ($stillOwned.Count -gt 0) {
+            $stillOwned | Select-Object ProcessId, ParentProcessId, Name, CreationDate, CommandLine |
+              ConvertTo-Json -Depth 3 | Set-Content "$results\residual-owned-processes.json"
+            throw "dotnet test exited but left process(es) owned by this CI test run. See residual-owned-processes.json."
+          }
+          if ($process.ExitCode -ne 0) { exit $process.ExitCode }
 
-      - name: Pack CLI tool
-        run: dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release --no-build
+      - name: Test integration suite with hang and crash diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results = '.\artifacts\test-results'
+          New-Item -ItemType Directory -Force -Path $results | Out-Null
+          $arguments = @('test', '.\csharp\AgentQ.sln', '-c', 'Release', '--no-build', '--filter', 'Category=Integration', '--logger', 'trx;LogFileName=integration.trx', '--results-directory', $results, '--collect:XPlat Code Coverage', '--blame-hang', '--blame-hang-timeout', '60s', '--blame-crash', '--diag', "$results\integration-vstest-diag.log")
+          $process = Start-Process dotnet -ArgumentList $arguments -NoNewWindow -PassThru
+          if (-not $process.WaitForExit(180000)) {
+            Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $process.Id -or $_.ParentProcessId -eq $process.Id } |
+              Select-Object ProcessId, ParentProcessId, Name, CreationDate, CommandLine |
+              ConvertTo-Json -Depth 3 | Set-Content "$results\integration-timeout-processes.json"
+            & taskkill.exe /PID $process.Id /T /F | Out-Host
+            throw "Integration tests timed out after 180 seconds; only the CI test root process tree was terminated."
+          }
+          if ($process.ExitCode -ne 0) { exit $process.ExitCode }
 
       - name: Publish desktop app
         run: >
@@ -65,12 +108,6 @@ jobs:
             -DestinationPath .\artifacts\desktop-package\AgentQ.Desktop-win-x64.zip `
             -Force
 
-      - name: Upload CLI package
-        uses: actions/upload-artifact@v4
-        with:
-          name: agentq-cli-package
-          path: artifacts/packages/*.nupkg
-
       - name: Upload desktop package
         uses: actions/upload-artifact@v4
         with:
@@ -82,7 +119,7 @@ jobs:
         if: always()
         with:
           name: test-results
-          path: artifacts/test-results/*.trx
+          path: artifacts/test-results/**
 
       - name: Upload coverage results
         uses: actions/upload-artifact@v4
@@ -122,7 +159,7 @@ jobs:
           docker logs agentq-mockservice
           exit 1
 
-      - name: Run CLI smoke test against mock service
+      - name: Run internal CLI Runtime-contract smoke against mock service
         shell: pwsh
         env:
           AGENTQ_PROVIDER: anthropic
@@ -137,7 +174,7 @@ jobs:
             --json | Tee-Object -FilePath cli-smoke.json
           $result = Get-Content cli-smoke.json -Raw | ConvertFrom-Json
           if (-not $result.success) {
-            throw "CLI smoke test failed: $($result | ConvertTo-Json -Depth 10)"
+            throw "Internal CLI Runtime-contract smoke failed: $($result | ConvertTo-Json -Depth 10)"
           }
           if ($result.finalText -ne "plugin tool completed: hello from plugin parity") {
             throw "Unexpected finalText: $($result.finalText)"

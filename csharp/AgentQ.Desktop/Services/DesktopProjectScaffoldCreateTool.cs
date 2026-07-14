@@ -51,6 +51,8 @@ public sealed class DesktopProjectScaffoldCreateTool(
             },
             planId = new { type = "string", description = "The approved plan id returned by plan_project_scaffold or preflight." },
             planHash = new { type = "string", description = "The approved SHA-256 plan hash returned by plan_project_scaffold or preflight." },
+            taskContractId = new { type = "string", description = "Optional parent TaskContract id for authorization evidence." },
+            runId = new { type = "string", description = "Optional agent run id for authorization evidence." },
             overwriteExistingFiles = new { type = "boolean", description = "Whether existing files may be overwritten. Defaults to false." }
         },
         required = new[] { "planId", "planHash" }
@@ -89,17 +91,56 @@ public sealed class DesktopProjectScaffoldCreateTool(
             return ToolResult.Error("Project scaffold plan is not safe to execute: " + string.Join("; ", validationIssues));
         }
 
+        // The tool permission is the user's approval for this deterministic plan. Issue the
+        // scoped authorization before any file is created, then use it to validate every
+        // manifest entry that will be passed to the executor. This keeps creation out of the
+        // generic per-file permission loop without turning it into an unrestricted write.
+        var taskContractId = TryGetString(input, "taskContractId", out var requestedTaskContractId)
+            ? requestedTaskContractId
+            : null;
+        var runId = TryGetString(input, "runId", out var requestedRunId)
+            ? requestedRunId
+            : null;
+        var authorization = _planRegistry.IssueAuthorization(record, overwrite, taskContractId, runId);
+        if (!_planRegistry.TryGetValidAuthorization(
+                authorization.ScaffoldAuthorizationId,
+                record.PlanId,
+                record.PlanHash,
+                workspaceRoot,
+                taskContractId,
+                runId,
+                out var validatedAuthorization) ||
+            !plan.Files.All(file => _planRegistry.TryAuthorizeFile(validatedAuthorization, file)))
+        {
+            _planRegistry.RevokeAuthorization(authorization.ScaffoldAuthorizationId);
+            return ToolResult.Error("Project scaffold authorization does not cover the approved plan files or current workspace.");
+        }
+
         var workerPlan = ToWorkerPlan(plan.Name, intent, plan);
-        var result = await _executor.ExecuteAsync(
-            new WorkerScaffoldExecutionRequest
-            {
-                Plan = workerPlan,
-                WorkspaceRoot = workspaceRoot,
-                FeatureName = intent.ProjectType,
-                OverwriteExistingFiles = overwrite,
-                EnableAutoWiring = false
-            },
-            ct);
+        WorkerScaffoldExecutionResult result;
+        try
+        {
+            result = await _executor.ExecuteAsync(
+                new WorkerScaffoldExecutionRequest
+                {
+                    Plan = workerPlan,
+                    WorkspaceRoot = workspaceRoot,
+                    FeatureName = intent.ProjectType,
+                    OverwriteExistingFiles = overwrite,
+                    EnableAutoWiring = false
+                },
+                ct);
+        }
+        catch
+        {
+            _planRegistry.RevokeAuthorization(authorization.ScaffoldAuthorizationId);
+            throw;
+        }
+
+        if (!result.Succeeded)
+        {
+            _planRegistry.RevokeAuthorization(authorization.ScaffoldAuthorizationId);
+        }
 
         return ToolResult.Success(JsonSerializer.Serialize(new
         {
@@ -119,6 +160,25 @@ public sealed class DesktopProjectScaffoldCreateTool(
             },
             planId = record.PlanId,
             planHash,
+            scaffoldAuthorization = result.Succeeded ? new
+            {
+                scaffoldAuthorizationId = authorization.ScaffoldAuthorizationId,
+                authorization.PlanId,
+                authorization.PlanHash,
+                authorization.WorkspaceRoot,
+                authorization.TargetRoot,
+                authorization.AllowedFiles,
+                authorization.AllowedPathPatterns,
+                authorization.AllowedCommands,
+                authorization.AllowCreateDirectories,
+                authorization.AllowDependencyInstall,
+                authorization.AllowVerification,
+                authorization.AllowRuntimePreview,
+                authorization.Expiry,
+                authorization.TaskContractId,
+                authorization.RunId,
+                authorization.AuthorizationEvidence
+            } : null,
             createdFiles = result.CreatedFiles,
             skippedFiles = result.SkippedFiles,
             issues = result.Issues,
