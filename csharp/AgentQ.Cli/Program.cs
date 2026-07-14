@@ -12,4 +12,5 @@ var services = new ServiceCollection();
 services.AddAgentQCli(args);
 
 await using var serviceProvider = services.BuildServiceProvider();
+Console.Error.WriteLine("AgentQ CLI is an internal, experimental, unsupported smoke/debug host. Use AgentQ Desktop for supported product workflows.");
 await serviceProvider.GetRequiredService<CliApplication>().RunAsync();

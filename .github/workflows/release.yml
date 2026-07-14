@@ -49,9 +49,6 @@ jobs:
       - name: Test
         run: dotnet test .\csharp\AgentQ.sln -c Release --no-build --logger trx --results-directory .\artifacts\test-results
 
-      - name: Pack CLI tool
-        run: dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release --no-build -p:PackageVersion=${{ steps.version.outputs.version }}
-
       - name: Publish desktop app
         run: >
           dotnet publish .\csharp\AgentQ.Desktop\AgentQ.Desktop.csproj
@@ -85,7 +82,6 @@ jobs:
             -Path .\artifacts\desktop\win-x64\* `
             -DestinationPath ".\artifacts\release\AgentQ.Desktop-win-x64-${{ steps.version.outputs.tag }}.zip" `
             -Force
-          Copy-Item .\artifacts\packages\*.nupkg .\artifacts\release\
 
       - name: Generate SHA256 checksums
         shell: pwsh
@@ -107,5 +103,4 @@ jobs:
           files: |
             artifacts/release/*.zip
             artifacts/release/*.exe
-            artifacts/release/*.nupkg
             artifacts/release/*.sha256

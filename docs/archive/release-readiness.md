@@ -2,7 +2,7 @@
 
 Updated: 2026-05-27
 
-This checklist is for the current Windows desktop beta. Keep it focused on the release path that is already supported: Windows WPF desktop, CLI package, GitHub Releases, portable ZIP, and Inno Setup installer.
+This checklist is for the current Windows desktop beta. Keep it focused on the supported release path: Windows WPF desktop, GitHub Releases, portable ZIP, and Inno Setup installer. The CLI is an internal smoke/debug host and is not a release artifact.
 
 ## Current Desktop Workflow
 
@@ -60,7 +60,6 @@ Expected artifacts:
 
 - `AgentQ-Setup-<tag>.exe`
 - `AgentQ.Desktop-win-x64-<tag>.zip`
-- `AgentQ.Tool.<version>.nupkg`
 - matching `.sha256` checksum files
 
 Installer QA:
@@ -83,12 +82,6 @@ Portable ZIP QA:
 - Confirm Settings can be saved.
 - Confirm workspace analysis works on a small C# or TypeScript fixture.
 - Confirm Git status/diff panel works in a disposable repository.
-
-CLI Package QA:
-
-- Install or update the package from the downloaded `.nupkg`.
-- Run `agentq --prompt "hello" --json` with a mock or configured provider.
-- Confirm JSON output reports success.
 
 ## Desktop Smoke Scenarios
 

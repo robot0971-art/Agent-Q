@@ -1,17 +1,16 @@
 ﻿# AgentQ
 
-AgentQ is a C# coding assistant with a CLI, a Windows desktop app, tool-use support, provider abstraction, and a mock-service-backed test workflow.
+AgentQ is a Windows desktop coding-agent runtime. The Desktop app is the supported product; it combines model reasoning with deterministic, approval-aware local execution.
 
 ## Status
 
 The project is past the prototype stage.
 
-- core CLI loop exists
-- WPF desktop app exists
+- Windows WPF desktop app is the supported product
 - Anthropic and OpenAI-compatible providers exist
 - tool execution and permission flow exist
 - session/config persistence exist
-- mock parity infrastructure exists
+- an internal CLI smoke/debug host remains for provider streaming and tool-loop contract checks
 
 Current work is focused on desktop stabilization, regression coverage, and documentation sync.
 
@@ -93,23 +92,17 @@ csharp/
 
 `AGENTQ_CONFIG_HOME` is optional. When set, AgentQ stores configuration in `<AGENTQ_CONFIG_HOME>\.agentq\config.json`; otherwise it uses the current user's profile directory. This is mainly useful for tests and isolated local runs.
 
-## Running
+## Start Desktop
 
-Start the CLI:
-
-```powershell
-dotnet run --project .\csharp\AgentQ.Cli
-```
-
-On first interactive launch, run `/setup` when prompted. It walks through provider, model, base URL, and API key, then offers to save the configuration to `<user-profile>\.agentq\config.json`.
-
-Start the Windows desktop app:
+Start the supported Windows desktop app:
 
 ```powershell
 dotnet run --project .\csharp\AgentQ.Desktop
 ```
 
 On first desktop launch, fill in the Settings panel and click Save before sending a message.
+
+The legacy CLI is not a supported user product and is not included in official releases. It remains in the repository as an internal, experimental smoke/debug host; maintainers can use [docs/internal-cli-smoke.md](docs/internal-cli-smoke.md).
 
 Build the desktop app without launching it:
 
@@ -213,158 +206,6 @@ This beta bundles the current v1 desktop reliability work:
 - HITL permission dialogs with file mutation and command previews
 - larger file change diff preview, stable status-panel tabs, file mutation snapshots, per-change revert, local telemetry JSONL, model routing recommendations, MCP server config foundation, and tool replay logs
 
-Install it as a .NET global tool:
-
-```powershell
-dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release
-dotnet tool install --global --add-source .\artifacts\packages AgentQ.Tool
-```
-
-After installation, run it from any terminal with:
-
-```powershell
-agentq
-```
-
-To refresh an existing installation after rebuilding:
-
-```powershell
-dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool
-```
-
-Local development packs now use a timestamped numeric package version, so each `dotnet pack ... -c Release` produces an upgradable tool package. That means `dotnet tool update --global ...` refreshes the global `agentq` command in place instead of silently staying on an older build.
-
-Recommended local workflow:
-
-```powershell
-dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release
-dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool
-agentq --prompt "hello" --json
-```
-
-If the tool has not been installed before, run `dotnet tool install --global --add-source .\artifacts\packages AgentQ.Tool` once, then use `dotnet tool update --global ...` for later rebuilds.
-
-## Automation Mode
-
-AgentQ now supports one-shot non-interactive execution in addition to the interactive REPL.
-
-Examples:
-
-```powershell
-agentq --prompt "Summarize README.md"
-Get-Content .\prompt.txt | agentq --stdin
-agentq --input .\prompt.txt
-agentq --prompt "Summarize README.md" --json
-agentq --prompt "List files" --yes
-agentq --prompt "Read README.md" --allow-tool read_file
-agentq --prompt "Read README.md" --allow-tool read_file --deny-tool bash
-```
-
-Current non-interactive behavior:
-
-- tools that require permission are denied automatically unless `--yes` is provided
-- `--allow-tool <name>` can be repeated to approve only specific tools in non-interactive mode
-- `--deny-tool <name>` can be repeated to explicitly block tools and overrides allow rules
-- `--prompt`, `--stdin`, and `--input` are mutually exclusive
-- missing model/API configuration exits immediately instead of opening the REPL
-- `--json` emits a machine-readable result envelope with `success`, `exitCode`, `terminationReason`, `finalText`, `allowedTools`, `configuredDeniedTools`, `deniedTools`, `executedTools`, `toolErrors`, and structured `toolOutputs`
-
-Non-interactive mode reads configuration from the current process environment. If `agentq --prompt ... --json` works in `cmd.exe` but fails in PowerShell, or the reverse, check whether `AGENTQ_MODEL` and `AGENTQ_API_KEY` are only set in one shell session.
-
-`toolOutputs` items now include:
-
-- `toolName`
-- `isError`
-- `raw`
-- `isJson`
-- `parsed`
-
-Example:
-
-```json
-{
-  "toolName": "read_file",
-  "isError": false,
-  "raw": "{\"content\":\"hello\"}",
-  "isJson": true,
-  "parsed": {
-    "content": "hello"
-  }
-}
-```
-
-Additional JSON metadata includes:
-
-- `provider`
-- `model`
-- `baseUrl`
-- `permissionPolicy`
-
-## Smoke Test
-
-Use this sequence after rebuilding the CLI package:
-
-```powershell
-dotnet pack .\csharp\AgentQ.Cli\AgentQ.Cli.csproj -c Release
-dotnet tool update --global --add-source .\artifacts\packages AgentQ.Tool
-agentq --prompt "hello" --json
-```
-
-Expected success shape:
-
-```json
-{
-  "success": true,
-  "exitCode": 0,
-  "terminationReason": "completed",
-  "finalText": "Hello! How can I assist you today?"
-}
-```
-
-Set the required environment variables in the same shell before running the smoke test.
-
-If you already saved configuration with `/setup` or `/config save`, the installed `agentq` command can use that saved config without shell-local environment variables.
-
-PowerShell:
-
-```powershell
-$env:AGENTQ_MODEL="your-model"
-$env:AGENTQ_API_KEY="your-key"
-agentq --prompt "hello" --json
-```
-
-CMD:
-
-```cmd
-set AGENTQ_MODEL=your-model
-set AGENTQ_API_KEY=your-key
-agentq --prompt "hello" --json
-```
-
-Startup currently renders a centered pastel-purple `Q` mark before the status panel.
-
-Useful slash commands:
-
-- `/help`
-- `/clear`
-- `/history`
-- `/compact`
-- `/tools`
-- `/status`
-- `/provider <name>`
-- `/model <name>`
-- `/api-key <key>`
-- `/base-url <url>`
-- `/timeout <seconds>` (`0` disables the provider request timeout)
-- `/max-tokens <count>` (`8192` or higher is useful for long reviews)
-- `/config save`
-- `/config show`
-- `/config path`
-- `/config clear`
-- `/save <path>`
-- `/load <path>`
-- `/run <tool> <json>`
-
 ## Build and Test
 
 Use the repository wrapper scripts as the default entrypoints:
@@ -404,7 +245,7 @@ The test project targets `net10.0-windows` so it can cover desktop services with
 
 ## Mock Service
 
-The repository includes `AgentQ.MockService` for parity-style provider testing.
+The repository includes `AgentQ.MockService` for provider and internal Runtime-contract testing.
 
 Run it with:
 
@@ -416,7 +257,7 @@ The mock service listens on `http://localhost:18080/` by default. Override the l
 
 ## Docker
 
-The Windows desktop app is not containerized because it is a WPF application. Docker support currently targets the mock provider service used by CLI and provider parity workflows.
+The Windows desktop app is not containerized because it is a WPF application. Docker support targets the mock provider service used by provider and internal Runtime-contract workflows.
 
 Build and run the mock service with Docker Compose:
 
@@ -441,11 +282,10 @@ The CI workflow:
 
 - restores and builds `csharp/AgentQ.sln` on `windows-latest`
 - runs the full Release test suite
-- packs the CLI as a .NET tool package
 - publishes the Windows desktop app as a self-contained `win-x64` package
-- uploads CLI packages, desktop packages, and test results as artifacts
+- uploads desktop packages and test results as artifacts
 - builds the mock service Docker image on `ubuntu-latest`
-- starts the mock service container and runs a CLI JSON smoke test against it
+- starts the mock service container and runs the internal CLI Runtime-contract smoke against it
 
 ## Release Artifacts
 
@@ -458,11 +298,11 @@ git tag v0.1.0-beta.8
 git push origin v0.1.0-beta.8
 ```
 
-The release workflow builds and tests the solution, packs the CLI using the tag version, publishes the Windows desktop app, builds an Inno Setup installer, and creates a draft GitHub Release with:
+The release workflow builds and tests the solution, publishes the Windows desktop app, builds an Inno Setup installer, and creates a draft GitHub Release with:
 
 - `AgentQ-Setup-<tag>.exe`
-- `AgentQ.Tool.<version>.nupkg`
 - `AgentQ.Desktop-win-x64-<tag>.zip`
+- matching `.sha256` checksum files
 
 For most Windows users, download and run `AgentQ-Setup-<tag>.exe`. It installs AgentQ under `%LOCALAPPDATA%\Programs\AgentQ`, creates Start Menu shortcuts, offers an optional desktop shortcut, and includes an uninstaller.
 
@@ -474,22 +314,11 @@ The installer and desktop executable are not code-signed yet. Windows SmartScree
 
 Beta feedback is welcome. Please try the installer or portable ZIP and share bugs, rough edges, or suggestions through GitHub Issues, especially around installation, provider setup, model selection, optional embeddings, and desktop workflow stability.
 
-Before publishing a beta release, use [docs/archive/release-readiness.md](docs/archive/release-readiness.md) for the installer, portable ZIP, CLI package, checksum, smoke-test, and release-notes checklist.
+Before publishing a beta release, use [docs/archive/release-readiness.md](docs/archive/release-readiness.md) for the Desktop installer, portable ZIP, checksum, smoke-test, and release-notes checklist.
 
 ## OpenCode Go
 
-OpenCode Go can be used through AgentQ when you have an API key for one of the OpenAI-compatible Go models.
-
-PowerShell:
-
-```powershell
-$env:OPENCODE_GO_MODEL="kimi-k2.6"
-$env:OPENCODE_GO_API_KEY="<your_opencode_go_api_key>"
-
-agentq --prompt "hello" --json
-```
-
-Equivalent generic configuration:
+OpenCode Go can be configured in Desktop Settings using the equivalent provider values:
 
 ```powershell
 $env:AGENTQ_PROVIDER="opencode-go"
@@ -509,7 +338,7 @@ Current local validation passed in this environment:
 - Latest local validation: `.\build.ps1` passed
 - Latest local validation: `.\test.ps1`: `267` tests passed
 - Next beta target: `v0.1.0-beta.8`
-- Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and `AgentQ.Tool.0.1.0-beta.8.nupkg`
+- Expected release artifacts: `AgentQ-Setup-v0.1.0-beta.8.exe`, `AgentQ.Desktop-win-x64-v0.1.0-beta.8.zip`, and their `.sha256` checksum files
 
 The repository can still be validated on a normal local machine or CI runner as the primary source of truth for repeatable build and test confidence.
 

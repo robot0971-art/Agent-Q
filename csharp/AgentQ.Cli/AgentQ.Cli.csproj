@@ -26,10 +26,10 @@
     <Packable>true</Packable>
     <ToolCommandName>agentq</ToolCommandName>
     <PackageId>AgentQ.Tool</PackageId>
-    <PackageTitle>AgentQ CLI</PackageTitle>
-    <Description>AgentQ is a C# CLI coding assistant with tool-use support and provider abstraction.</Description>
+    <PackageTitle>AgentQ internal CLI smoke host</PackageTitle>
+    <Description>Internal, experimental, unsupported smoke/debug host for AgentQ provider streaming and tool-loop contracts. AgentQ Desktop is the supported product.</Description>
     <Authors>robot0971-art</Authors>
-    <PackageTags>agentq;cli;assistant;tool</PackageTags>
+    <PackageTags>agentq;internal;experimental;unsupported;smoke;debug</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageOutputPath>..\..\artifacts\packages</PackageOutputPath>

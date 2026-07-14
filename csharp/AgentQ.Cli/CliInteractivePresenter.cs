@@ -31,6 +31,8 @@ public sealed class CliInteractivePresenter(IConfigStore configStore)
 
         AnsiConsole.Write(new Panel(
             $"[bold #D66A22]AgentQ CLI[/]\n" +
+            $"[yellow]INTERNAL / EXPERIMENTAL / UNSUPPORTED[/]\n" +
+            $"[dim]Use AgentQ Desktop for supported product workflows.[/]\n\n" +
             $"[dim]Provider:[/] [cyan]{provider.Name}[/]\n" +
             $"[dim]Model:[/] [cyan]{config.Model}[/]\n" +
             $"[dim]Base URL:[/] [cyan]{config.BaseUrl}[/]\n" +
